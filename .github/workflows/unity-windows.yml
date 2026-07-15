@@ -1,0 +1,26 @@
+name: Unity Windows
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-windows-il2cpp:
+    if: ${{ false }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Unity project inputs
+        shell: pwsh
+        run: |
+          if (-not (Test-Path ProjectSettings/ProjectVersion.txt)) {
+            throw "Missing pinned Unity editor version"
+          }
+          if (-not (Test-Path Packages/packages-lock.json)) {
+            throw "Commit Unity-generated packages-lock.json before enabling CI"
+          }
+      - name: Stop until a Unity Windows runner is configured
+        shell: pwsh
+        run: |
+          throw "Configure a pinned Unity Windows runner and activation before enabling this job."
