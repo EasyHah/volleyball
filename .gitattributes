@@ -1,0 +1,3 @@
+# Unity serializes blank YAML values with a trailing space; keep generated files intact.
+*.asset whitespace=-trailing-space
+*.meta whitespace=-trailing-space
