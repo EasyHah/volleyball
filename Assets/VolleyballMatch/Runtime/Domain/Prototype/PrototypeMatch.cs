@@ -1,3 +1,5 @@
+using System;
+
 namespace VolleyballMatch.Domain.Prototype
 {
     public sealed class PrototypeMatch
@@ -19,6 +21,11 @@ namespace VolleyballMatch.Domain.Prototype
 
         public bool TryAwardPoint(TeamId winner)
         {
+            if (winner != TeamId.Blue && winner != TeamId.Orange)
+            {
+                throw new ArgumentOutOfRangeException(nameof(winner), winner, "Winner must identify a valid team.");
+            }
+
             if (!_isRallyActive)
             {
                 return false;
