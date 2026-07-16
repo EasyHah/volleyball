@@ -6,6 +6,13 @@ using VolleyballMatch.Domain.Simulation;
 
 namespace VolleyballMatch.Presentation
 {
+    public enum SetContactHand
+    {
+        Both,
+        Left,
+        Right
+    }
+
     public sealed class PlayerContactSurfaces
     {
         private readonly StickFigureRig _rig;
@@ -24,7 +31,8 @@ namespace VolleyballMatch.Presentation
             bool active,
             int contactGroupId,
             Vector3 localPositionError = default,
-            Vector3 localNormalErrorDegrees = default)
+            Vector3 localNormalErrorDegrees = default,
+            SetContactHand setContactHand = SetContactHand.Both)
         {
             return action switch
             {
@@ -32,11 +40,12 @@ namespace VolleyballMatch.Presentation
                 {
                     Snapshot("ForearmPlatform", BuildForearmPlatform(localPositionError, localNormalErrorDegrees), active, contactGroupId)
                 },
-                TechniqueAction.Set => new[]
-                {
-                    Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
-                    Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
-                },
+                TechniqueAction.Set => CaptureSet(
+                    active,
+                    contactGroupId,
+                    localPositionError,
+                    localNormalErrorDegrees,
+                    setContactHand),
                 TechniqueAction.Attack => new[]
                 {
                     Snapshot("AttackPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
@@ -51,6 +60,36 @@ namespace VolleyballMatch.Presentation
                     Snapshot("ServePalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
+            };
+        }
+
+        private IReadOnlyList<ContactSurfaceSnapshot> CaptureSet(
+            bool active,
+            int contactGroupId,
+            Vector3 localPositionError,
+            Vector3 localNormalErrorDegrees,
+            SetContactHand setContactHand)
+        {
+            if (setContactHand == SetContactHand.Left)
+            {
+                return new[]
+                {
+                    Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                };
+            }
+
+            if (setContactHand == SetContactHand.Right)
+            {
+                return new[]
+                {
+                    Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                };
+            }
+
+            return new[]
+            {
+                Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
+                Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
             };
         }
 

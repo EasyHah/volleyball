@@ -73,6 +73,13 @@ ends that attempt and restarts the loop; no scripted ball teleport advances a hi
 Switch views with `1` for the tactical overhead camera, `2` for the sideline
 broadcast camera, `3` for the smooth ball-follow camera, or `C` to cycle them.
 
+Setters use a short elbow draw followed by a two-hand extension. Their local
+target direction selects front, left/right side or back-set poses. Side sets
+require `SetTechnique >= 0.55`, back sets require `0.78`, and emergency one-hand
+sets require `0.90`; unavailable techniques fall back to a simpler visible pose
+and receive an additional control penalty. One-hand setting is an explicit
+emergency request, not the automatic result of an ordinary wide set.
+
 ## Physics-contact upgrade baseline
 
 The controlled-arc prototype remains the comparison baseline while the physical

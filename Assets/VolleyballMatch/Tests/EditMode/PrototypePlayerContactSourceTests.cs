@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using VolleyballMatch.AI;
 using VolleyballMatch.Domain.Players;
 using VolleyballMatch.Domain.Prototype;
 using VolleyballMatch.Domain.Simulation;
@@ -43,6 +44,93 @@ namespace VolleyballMatch.EditModeTests
                 Assert.That(contact.Count, Is.EqualTo(2));
                 Assert.That(contact[0].Surface.Active, Is.True);
                 Assert.That(contact[1].Surface.ContactGroupId, Is.EqualTo(40));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledSet_DrawsHandsBackThenPopsTowardDirectionalContactPose()
+        {
+            var playerObject = new GameObject("DirectionalSetter");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
+                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 1f, 1f, 1f));
+                var noError = new SkillExecutionError(
+                    0f,
+                    SimVector3.Zero,
+                    SimVector3.Zero,
+                    0f,
+                    1f,
+                    SimVector3.Zero,
+                    1f);
+                player.ScheduleContact(
+                    TechniqueAction.Set,
+                    2f,
+                    new SimVector3(6f, 7f, 1f),
+                    noError,
+                    41);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(1.65f, 1f / 120f, contacts);
+                var drawnHands = AveragePalms(player);
+                contacts.Clear();
+                player.CollectContacts(2f, 1f / 120f, contacts);
+                var poppedHands = AveragePalms(player);
+                foreach (var sampleTime in new[] { 2.10f, 2.20f, 2.30f, 2.40f, 2.49f })
+                {
+                    contacts.Clear();
+                    player.CollectContacts(sampleTime, 1f / 120f, contacts);
+                }
+
+                var recoveredHands = AveragePalms(player);
+
+                Assert.That(player.CurrentSetStyle, Is.EqualTo(SetTechniqueStyle.SideRightTwoHand));
+                Assert.That(Vector3.Distance(drawnHands, poppedHands), Is.GreaterThan(0.08f));
+                Assert.That(poppedHands.y, Is.GreaterThan(drawnHands.y));
+                Assert.That(recoveredHands.y, Is.LessThan(poppedHands.y - 0.08f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledEmergencySet_UsesOnePalmOnlyForEliteSetter()
+        {
+            var playerObject = new GameObject("EmergencySetter");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
+                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 0.95f, 1f, 1f));
+                var noError = new SkillExecutionError(
+                    0f,
+                    SimVector3.Zero,
+                    SimVector3.Zero,
+                    0f,
+                    1f,
+                    SimVector3.Zero,
+                    1f);
+                player.ScheduleContact(
+                    TechniqueAction.Set,
+                    2f,
+                    new SimVector3(6f, 7f, 1f),
+                    noError,
+                    42,
+                    emergencyOneHand: true);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(2f, 1f / 120f, contacts);
+
+                Assert.That(player.CurrentSetStyle, Is.EqualTo(SetTechniqueStyle.OneHandRight));
+                Assert.That(contacts, Has.Count.EqualTo(1));
+                Assert.That(contacts[0].Surface.Active, Is.True);
             }
             finally
             {
@@ -132,6 +220,12 @@ namespace VolleyballMatch.EditModeTests
             {
                 Object.DestroyImmediate(playerObject);
             }
+        }
+
+        private static Vector3 AveragePalms(PrototypePlayerAgent player)
+        {
+            return (player.Rig.GetJoint("LeftPalm").position +
+                    player.Rig.GetJoint("RightPalm").position) * 0.5f;
         }
     }
 }

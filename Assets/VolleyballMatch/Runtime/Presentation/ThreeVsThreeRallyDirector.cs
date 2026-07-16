@@ -141,11 +141,6 @@ namespace VolleyballMatch.Presentation
             float secondsFromNow,
             bool followCurrentTrajectory)
         {
-            foreach (var player in _players.Values)
-            {
-                player.CancelScheduledContact();
-            }
-
             var contact = _sequence[index];
             var actor = _players[contact.Actor];
             actor.PrepareForTraining(_homes[contact.Actor]);
@@ -200,8 +195,11 @@ namespace VolleyballMatch.Presentation
                 CompletedCycles++;
             }
 
+            var styleLabel = completed.Action == TechniqueAction.Set
+                ? $" {_players[completed.Actor].CurrentSetStyle}"
+                : string.Empty;
             _status =
-                $"{completed.Actor.Team} {completed.Action} HIT  " +
+                $"{completed.Actor.Team} {completed.Action}{styleLabel} HIT  " +
                 $"speed {contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} m/s";
             var impactFrame = contact.Candidate.Surface.At(contact.Hit.TimeFraction);
             var impactFromOrigin = contact.Hit.ContactPoint - impactFrame.Origin;
@@ -210,6 +208,7 @@ namespace VolleyballMatch.Presentation
             Debug.Log(
                 $"[Physical3v3] contact={SuccessfulContacts} cycle={CompletedCycles} " +
                 $"team={completed.Actor.Team} action={completed.Action} " +
+                $"style={styleLabel.Trim()} " +
                 $"quality={contact.Hit.Centeredness:0.00} " +
                 $"offset=({rightOffset:0.00},{upOffset:0.00}) " +
                 $"physical={contact.PhysicalResponse.PhysicalOutgoing.Magnitude:0.0} " +

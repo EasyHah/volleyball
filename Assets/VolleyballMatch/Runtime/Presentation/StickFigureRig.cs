@@ -337,11 +337,53 @@ namespace VolleyballMatch.Presentation
                 ("LeftKnee", new Vector3(-45f, 0f, 0f)),
                 ("RightKnee", new Vector3(-45f, 0f, 0f)));
 
+            SetTargets(StickFigurePose.SetDraw,
+                ("LeftShoulder", new Vector3(-108f, 0f, 25f)),
+                ("RightShoulder", new Vector3(-108f, 0f, -25f)),
+                ("LeftElbow", new Vector3(-68f, 0f, 0f)),
+                ("RightElbow", new Vector3(-68f, 0f, 0f)),
+                ("Torso", new Vector3(5f, 0f, 0f)));
+
             SetTargets(StickFigurePose.Set,
                 ("LeftShoulder", new Vector3(-125f, 0f, 28f)),
                 ("RightShoulder", new Vector3(-125f, 0f, -28f)),
                 ("LeftElbow", new Vector3(-48f, 0f, 0f)),
                 ("RightElbow", new Vector3(-48f, 0f, 0f)));
+
+            SetTargets(StickFigurePose.SetSideLeft,
+                ("LeftShoulder", new Vector3(-125f, 0f, 28f)),
+                ("RightShoulder", new Vector3(-125f, 0f, -28f)),
+                ("LeftElbow", new Vector3(-48f, 0f, 0f)),
+                ("RightElbow", new Vector3(-48f, 0f, 0f)),
+                ("Torso", new Vector3(0f, -8f, -3f)));
+
+            SetTargets(StickFigurePose.SetSideRight,
+                ("LeftShoulder", new Vector3(-125f, 0f, 28f)),
+                ("RightShoulder", new Vector3(-125f, 0f, -28f)),
+                ("LeftElbow", new Vector3(-48f, 0f, 0f)),
+                ("RightElbow", new Vector3(-48f, 0f, 0f)),
+                ("Torso", new Vector3(0f, 8f, 3f)));
+
+            SetTargets(StickFigurePose.SetBack,
+                ("LeftShoulder", new Vector3(-137f, 0f, 25f)),
+                ("RightShoulder", new Vector3(-137f, 0f, -25f)),
+                ("LeftElbow", new Vector3(-40f, 0f, 0f)),
+                ("RightElbow", new Vector3(-40f, 0f, 0f)),
+                ("Torso", new Vector3(12f, 0f, 0f)));
+
+            SetTargets(StickFigurePose.SetOneHandLeft,
+                ("LeftShoulder", new Vector3(-137f, 0f, 12f)),
+                ("LeftElbow", new Vector3(-30f, 0f, 0f)),
+                ("RightShoulder", new Vector3(15f, 0f, 18f)),
+                ("RightElbow", new Vector3(-25f, 0f, 0f)),
+                ("Torso", new Vector3(0f, -8f, -5f)));
+
+            SetTargets(StickFigurePose.SetOneHandRight,
+                ("RightShoulder", new Vector3(-137f, 0f, -12f)),
+                ("RightElbow", new Vector3(-30f, 0f, 0f)),
+                ("LeftShoulder", new Vector3(15f, 0f, -18f)),
+                ("LeftElbow", new Vector3(-25f, 0f, 0f)),
+                ("Torso", new Vector3(0f, 8f, 5f)));
 
             SetTargets(StickFigurePose.Approach,
                 ("LeftShoulder", new Vector3(38f, 0f, -12f)),

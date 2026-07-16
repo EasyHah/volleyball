@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using VolleyballMatch.AI;
 using VolleyballMatch.Domain.Players;
 using VolleyballMatch.Domain.Prototype;
 using VolleyballMatch.Domain.Simulation;
@@ -20,6 +21,10 @@ namespace VolleyballMatch.Presentation
 
         public PlayerContactSurfaces ContactSurfaces { get; private set; }
 
+        public SetTechniqueStyle CurrentSetStyle => _setDecision.ExecutedStyle;
+
+        public SetTechniqueStyle RequestedSetStyle => _setDecision.RequestedStyle;
+
         private ActionTimeline _actionTimeline;
         private TechniqueAction _scheduledAction;
         private SkillExecutionError _executionError;
@@ -30,6 +35,7 @@ namespace VolleyballMatch.Presentation
         private Vector3 _motionForward;
         private SimVector3 _plannedContactCenter;
         private bool _hasPlannedContactCenter;
+        private SetTechniqueDecision _setDecision;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -50,13 +56,26 @@ namespace VolleyballMatch.Presentation
             SimVector3 targetVelocity,
             SkillExecutionError executionError,
             int contactGroupId,
-            SimVector3? plannedContactCenter = null)
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false)
         {
             _scheduledAction = action;
             var powerScale = action == TechniqueAction.Attack
                 ? 0.6f + (Ability.AttackPower * 0.5f)
                 : 1f;
             _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
+            if (action == TechniqueAction.Set)
+            {
+                var worldTarget = new Vector3(
+                    _targetVelocity.X,
+                    _targetVelocity.Y,
+                    _targetVelocity.Z);
+                var localTarget = transform.InverseTransformDirection(worldTarget);
+                _setDecision = SetTechniqueSelector.Select(
+                    new SimVector3(localTarget.x, localTarget.y, localTarget.z),
+                    Ability.SetTechnique,
+                    emergencyOneHand);
+            }
             _executionError = executionError;
             _contactGroupId = contactGroupId;
             _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
@@ -125,17 +144,27 @@ namespace VolleyballMatch.Presentation
             ApplyScheduledRootMotion(sample, simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample);
-            var surfaces = ContactSurfaces.Capture(_scheduledAction, sample.SurfaceActive, _contactGroupId);
+            var surfaces = ContactSurfaces.Capture(
+                _scheduledAction,
+                sample.SurfaceActive,
+                _contactGroupId,
+                setContactHand: CurrentSetContactHand());
             var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
                 ? _targetVelocity.Normalized
                 : SimVector3.Up;
             var response = ResponseFor(_scheduledAction);
+            var playerTechnique = Ability.TechniqueFor(_scheduledAction);
+            if (_scheduledAction == TechniqueAction.Set)
+            {
+                playerTechnique *= _setDecision.ControlScale;
+            }
+
             foreach (var surface in surfaces)
             {
                 contacts.Add(new BallContactCandidate(
                     surface,
                     _scheduledAction,
-                    Ability.TechniqueFor(_scheduledAction),
+                    playerTechnique,
                     _targetVelocity,
                     strikeDirection,
                     response));
@@ -150,6 +179,11 @@ namespace VolleyballMatch.Presentation
         private void ApplyScheduledPose(ActionTimelineSample sample, float deltaSeconds)
         {
             if (_scheduledAction == TechniqueAction.Attack && ApplyAttackPose(sample, deltaSeconds))
+            {
+                return;
+            }
+
+            if (_scheduledAction == TechniqueAction.Set && ApplySetPose(sample, deltaSeconds))
             {
                 return;
             }
@@ -183,6 +217,58 @@ namespace VolleyballMatch.Presentation
                 _executionError.ContactPositionError,
                 _executionError.ContactNormalErrorDegrees,
                 errorWeight);
+        }
+
+        private bool ApplySetPose(ActionTimelineSample sample, float deltaSeconds)
+        {
+            var contactPose = SetContactPose(_setDecision.ExecutedStyle);
+            var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
+                ? 1f
+                : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
+            switch (sample.Phase)
+            {
+                case ActionPhase.Prepare:
+                    Rig.SetPoseWithContactError(
+                        StickFigurePose.SetDraw,
+                        Mathf.Clamp01(deltaSeconds * 12f),
+                        TechniqueAction.Set,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        0f);
+                    return true;
+                case ActionPhase.Power:
+                    Rig.SetPoseTransition(
+                        StickFigurePose.SetDraw,
+                        contactPose,
+                        sample.PhaseProgress * 0.8f,
+                        TechniqueAction.Set,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                case ActionPhase.Contact:
+                    Rig.SetPoseTransition(
+                        StickFigurePose.SetDraw,
+                        contactPose,
+                        0.8f + (sample.PhaseProgress * 0.2f),
+                        TechniqueAction.Set,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                case ActionPhase.FollowThrough:
+                    Rig.SetPoseTransition(
+                        contactPose,
+                        StickFigurePose.Ready,
+                        sample.PhaseProgress,
+                        TechniqueAction.Set,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private bool ApplyAttackPose(ActionTimelineSample sample, float deltaSeconds)
@@ -271,7 +357,11 @@ namespace VolleyballMatch.Presentation
             }
 
             var currentFrames = new PlayerContactSurfaces(Rig, transform)
-                .Capture(_scheduledAction, true, _contactGroupId);
+                .Capture(
+                    _scheduledAction,
+                    true,
+                    _contactGroupId,
+                    setContactHand: CurrentSetContactHand());
             var currentCenter = SimVector3.Zero;
             foreach (var frame in currentFrames)
             {
@@ -280,8 +370,14 @@ namespace VolleyballMatch.Presentation
             }
 
             currentCenter /= currentFrames.Count;
+
             var correction = _plannedContactCenter - currentCenter;
-            var maximumCorrection = _scheduledAction == TechniqueAction.Attack ? 0.70f : 0.16f;
+            var maximumCorrection = _scheduledAction switch
+            {
+                TechniqueAction.Attack => 0.70f,
+                TechniqueAction.Set => 0.30f,
+                _ => 0.16f
+            };
             if (correction.Magnitude > maximumCorrection)
             {
                 correction = correction.Normalized * maximumCorrection;
@@ -329,6 +425,34 @@ namespace VolleyballMatch.Presentation
                 TechniqueAction.Block => StickFigurePose.Block,
                 TechniqueAction.Serve => StickFigurePose.Serve,
                 _ => StickFigurePose.Ready
+            };
+        }
+
+        private static StickFigurePose SetContactPose(SetTechniqueStyle style)
+        {
+            return style switch
+            {
+                SetTechniqueStyle.SideLeftTwoHand => StickFigurePose.SetSideLeft,
+                SetTechniqueStyle.SideRightTwoHand => StickFigurePose.SetSideRight,
+                SetTechniqueStyle.BackTwoHand => StickFigurePose.SetBack,
+                SetTechniqueStyle.OneHandLeft => StickFigurePose.SetOneHandLeft,
+                SetTechniqueStyle.OneHandRight => StickFigurePose.SetOneHandRight,
+                _ => StickFigurePose.Set
+            };
+        }
+
+        private SetContactHand CurrentSetContactHand()
+        {
+            if (_scheduledAction != TechniqueAction.Set)
+            {
+                return SetContactHand.Both;
+            }
+
+            return _setDecision.ExecutedStyle switch
+            {
+                SetTechniqueStyle.OneHandLeft => SetContactHand.Left,
+                SetTechniqueStyle.OneHandRight => SetContactHand.Right,
+                _ => SetContactHand.Both
             };
         }
 
