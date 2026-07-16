@@ -52,5 +52,29 @@ namespace VolleyballMatch.EditModeTests
                 Object.DestroyImmediate(player);
             }
         }
+
+        [Test]
+        public void Capture_AttackSurfaceIsAnchoredToTheVisiblePalmCenter()
+        {
+            var player = new GameObject("VisibleAttackPalm");
+            try
+            {
+                var rig = StickFigureRig.Create(player.transform, Color.blue, "2");
+                rig.SetPose(StickFigurePose.Spike, 1f);
+                var surface = new PlayerContactSurfaces(rig, player.transform)
+                    .Capture(TechniqueAction.Attack, true, 24)[0];
+                var expectedVisibleCenter = rig.GetJoint("RightPalm").position;
+                var actualOrigin = new Vector3(
+                    surface.Current.Origin.X,
+                    surface.Current.Origin.Y,
+                    surface.Current.Origin.Z);
+
+                Assert.That(Vector3.Distance(actualOrigin, expectedVisibleCenter), Is.LessThan(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
     }
 }

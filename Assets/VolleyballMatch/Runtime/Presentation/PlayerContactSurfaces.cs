@@ -34,21 +34,21 @@ namespace VolleyballMatch.Presentation
                 },
                 TechniqueAction.Set => new[]
                 {
-                    Snapshot("LeftPalm", BuildPalm("LeftHand", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
-                    Snapshot("RightPalm", BuildPalm("RightHand", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                    Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
+                    Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
                 },
                 TechniqueAction.Attack => new[]
                 {
-                    Snapshot("AttackPalm", BuildPalm("RightHand", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
+                    Snapshot("AttackPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
                 },
                 TechniqueAction.Block => new[]
                 {
-                    Snapshot("BlockLeftPalm", BuildPalm("LeftHand", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
-                    Snapshot("BlockRightPalm", BuildPalm("RightHand", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                    Snapshot("BlockLeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
+                    Snapshot("BlockRightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
                 },
                 TechniqueAction.Serve => new[]
                 {
-                    Snapshot("ServePalm", BuildPalm("RightHand", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
+                    Snapshot("ServePalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
             };
@@ -79,19 +79,19 @@ namespace VolleyballMatch.Presentation
         }
 
         private ContactSurfaceFrame BuildPalm(
-            string handName,
+            string palmName,
             Vector3 localPositionError,
             Vector3 normalErrorDegrees,
             bool striking)
         {
-            var hand = _rig.GetJoint(handName);
+            var palm = _rig.GetJoint(palmName);
             var normal = striking
                 ? (_playerRoot.forward - (Vector3.up * 0.35f)).normalized
                 : (Vector3.up + (_playerRoot.forward * 0.22f)).normalized;
             normal = ApplyNormalError(normal, normalErrorDegrees);
             var right = Vector3.ProjectOnPlane(_playerRoot.right, normal).normalized;
             var up = Vector3.Cross(normal, right).normalized;
-            var origin = hand.position + (normal * 0.06f) + _playerRoot.TransformVector(localPositionError);
+            var origin = palm.position + _playerRoot.TransformVector(localPositionError);
             return ToFrame(origin, normal, right, up, 0.22f, 0.20f);
         }
 

@@ -11,6 +11,7 @@ namespace VolleyballMatch.Presentation
         {
             Application.targetFrameRate = 60;
             CourtBuilder.Build(transform);
+            ConfigureTrainingCamera();
 
             var ballObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             ballObject.name = "PhysicalVolleyball";
@@ -29,6 +30,20 @@ namespace VolleyballMatch.Presentation
             var attacker = CreateAgent(PlayerRole.Attacker, new Vector3(2.1f, 0f, -2.8f), "2");
             var director = gameObject.AddComponent<PhysicsTrainingDirector>();
             director.Initialize(ball, receiver, setter, attacker);
+        }
+
+        private static void ConfigureTrainingCamera()
+        {
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            camera.transform.SetPositionAndRotation(
+                new Vector3(0f, 8.5f, -10.2f),
+                Quaternion.Euler(52f, 0f, 0f));
+            camera.orthographicSize = 4.5f;
         }
 
         private PrototypePlayerAgent CreateAgent(PlayerRole role, Vector3 position, string jerseyNumber)

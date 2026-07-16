@@ -18,6 +18,7 @@ namespace VolleyballMatch.EditModeTests
                 Assert.That(rig.HasJoint("Head"), Is.True);
                 Assert.That(rig.HasJoint("LeftElbow"), Is.True);
                 Assert.That(rig.HasJoint("RightElbow"), Is.True);
+                Assert.That(rig.HasJoint("RightPalm"), Is.True);
                 Assert.That(rig.HasJoint("LeftKnee"), Is.True);
                 Assert.That(rig.HasJoint("RightKnee"), Is.True);
             }
@@ -42,6 +43,28 @@ namespace VolleyballMatch.EditModeTests
                     var rotation = rig.GetJoint("RightShoulder").localRotation;
                     Assert.That(IsFinite(rotation), Is.True, pose.ToString());
                 }
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void ReceivePose_BringsBothHandsTogetherForAVisibleForearmPlatform()
+        {
+            var root = new GameObject("ReceivePoseRig");
+
+            try
+            {
+                var rig = StickFigureRig.Create(root.transform, Color.blue, "3");
+                rig.SetPose(StickFigurePose.Receive, 1f);
+
+                var handSeparation = Vector3.Distance(
+                    rig.GetJoint("LeftPalm").position,
+                    rig.GetJoint("RightPalm").position);
+
+                Assert.That(handSeparation, Is.LessThan(0.08f));
             }
             finally
             {

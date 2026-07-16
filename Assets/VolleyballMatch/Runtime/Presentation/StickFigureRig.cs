@@ -172,13 +172,14 @@ namespace VolleyballMatch.Presentation
             var elbow = CreateJoint(side + "Elbow", shoulder, new Vector3(0f, -0.42f, 0f));
             CreateSegment(elbow, side + "Forearm", 0.38f, color);
             var hand = CreateJoint(side + "Hand", elbow, new Vector3(0f, -0.38f, 0f));
+            var palm = CreateJoint(side + "Palm", hand, new Vector3(0f, -0.04f, 0.06f));
             var handVisual = CreateVisual(
-                hand,
+                palm,
                 side + "HandVisual",
                 PrimitiveType.Cube,
                 new Vector3(0.16f, 0.08f, 0.22f),
                 new Color(1f, 0.78f, 0.61f));
-            handVisual.localPosition = new Vector3(0f, -0.04f, 0.06f);
+            handVisual.localPosition = Vector3.zero;
         }
 
         private void CreateLeg(string side, float direction, Color color)
@@ -292,8 +293,8 @@ namespace VolleyballMatch.Presentation
                 ("Torso", new Vector3(-8f, 0f, 0f)));
 
             SetTargets(StickFigurePose.Receive,
-                ("LeftShoulder", new Vector3(-58f, 0f, -14f)),
-                ("RightShoulder", new Vector3(-58f, 0f, 14f)),
+                ("LeftShoulder", new Vector3(-58f, 0f, 25f)),
+                ("RightShoulder", new Vector3(-58f, 0f, -25f)),
                 ("LeftElbow", new Vector3(8f, 0f, 0f)),
                 ("RightElbow", new Vector3(8f, 0f, 0f)),
                 ("LeftHip", new Vector3(25f, 0f, -8f)),
