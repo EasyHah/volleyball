@@ -20,6 +20,18 @@ namespace VolleyballMatch.EditModeTests
         }
 
         [Test]
+        public void CreatePlan_DifferentSeeds_ProduceDifferentPlans()
+        {
+            var first = new DeterministicRallyPlanner(1).CreatePlan(TeamId.Blue, 0);
+            var second = new DeterministicRallyPlanner(2).CreatePlan(TeamId.Blue, 0);
+
+            var plansAreIdentical = first.WinningTeam == second.WinningTeam
+                && first.Contacts.SequenceEqual(second.Contacts);
+
+            Assert.That(plansAreIdentical, Is.False);
+        }
+
+        [Test]
         public void CreatePlan_ContainsRequiredRallyActionsWithinContactBounds()
         {
             var plan = new DeterministicRallyPlanner(7429).CreatePlan(TeamId.Blue, 0);
