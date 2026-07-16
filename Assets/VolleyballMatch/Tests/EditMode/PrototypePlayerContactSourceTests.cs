@@ -92,5 +92,30 @@ namespace VolleyballMatch.EditModeTests
                 Object.DestroyImmediate(playerObject);
             }
         }
+
+        [Test]
+        public void PreviewContactFrames_UsesClosedSetHandsAndAttackJumpHeight()
+        {
+            var playerObject = new GameObject("ContactPreviewPlayer");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Attacker), Color.blue, "2");
+
+                var setFrames = player.PreviewContactFrames(TechniqueAction.Set);
+                var attackFrames = player.PreviewContactFrames(TechniqueAction.Attack);
+
+                Assert.That(setFrames.Count, Is.EqualTo(2));
+                Assert.That(
+                    (setFrames[0].Origin - setFrames[1].Origin).Magnitude,
+                    Is.LessThan(0.28f));
+                Assert.That(attackFrames[0].Origin.Y, Is.GreaterThan(3f));
+                Assert.That(player.transform.position, Is.EqualTo(Vector3.zero));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
     }
 }

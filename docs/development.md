@@ -51,6 +51,18 @@ mkdir -p TestResults
 Preserve the generated XML and log files as local review evidence; do not
 commit `TestResults/`.
 
+## Physical contact training
+
+Open `Assets/VolleyballMatch/Scenes/PhysicsContactTraining.unity` to inspect the
+new physics path. Play Mode cycles through three isolated drills: forearm pass,
+overhead set and jump spike. The overlay reports `HIT`, centeredness and applied
+technique control. A miss is not repaired by moving the ball or advancing the
+drill as if contact occurred.
+
+The training scene is intentionally separate from `AiRallyPrototype`: the old
+scene remains the controlled-arc comparison baseline until interception and the
+six-player physical rally director pass their own acceptance tests.
+
 ## Physics-contact upgrade baseline
 
 The controlled-arc prototype remains the comparison baseline while the physical

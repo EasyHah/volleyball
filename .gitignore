@@ -31,5 +31,9 @@
 # Local test verification artifacts
 TestResults/
 
+# Unity editor preferences generated for this prototype workspace
+ProjectSettings/PackageManagerSettings.asset
+ProjectSettings/SceneTemplateSettings.json
+
 # Local isolated development worktrees
 .worktrees/

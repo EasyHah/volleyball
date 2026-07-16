@@ -41,6 +41,35 @@ namespace VolleyballMatch.Presentation
             return _joints[jointName];
         }
 
+        public Dictionary<string, Quaternion> CaptureLocalRotations()
+        {
+            var snapshot = new Dictionary<string, Quaternion>(_joints.Count);
+            foreach (var joint in _joints)
+            {
+                snapshot.Add(joint.Key, joint.Value.localRotation);
+            }
+
+            return snapshot;
+        }
+
+        public void RestoreLocalRotations(IReadOnlyDictionary<string, Quaternion> snapshot)
+        {
+            if (snapshot == null)
+            {
+                throw new ArgumentNullException(nameof(snapshot));
+            }
+
+            foreach (var joint in _joints)
+            {
+                if (!snapshot.TryGetValue(joint.Key, out var rotation))
+                {
+                    throw new ArgumentException("Pose snapshot does not contain every rig joint.", nameof(snapshot));
+                }
+
+                joint.Value.localRotation = rotation;
+            }
+        }
+
         public void SetPose(StickFigurePose pose, float normalizedBlend)
         {
             SetPoseWithContactError(pose, normalizedBlend, TechniqueAction.Receive, SimVector3.Zero, SimVector3.Zero, 0f);
@@ -273,8 +302,8 @@ namespace VolleyballMatch.Presentation
                 ("RightKnee", new Vector3(-45f, 0f, 0f)));
 
             SetTargets(StickFigurePose.Set,
-                ("LeftShoulder", new Vector3(-125f, 0f, -20f)),
-                ("RightShoulder", new Vector3(-125f, 0f, 20f)),
+                ("LeftShoulder", new Vector3(-125f, 0f, 28f)),
+                ("RightShoulder", new Vector3(-125f, 0f, -28f)),
                 ("LeftElbow", new Vector3(-48f, 0f, 0f)),
                 ("RightElbow", new Vector3(-48f, 0f, 0f)));
 

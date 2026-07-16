@@ -28,6 +28,8 @@ namespace VolleyballMatch.Presentation
         private bool _hasScheduledContact;
         private Vector3 _motionOrigin;
         private Vector3 _motionForward;
+        private SimVector3 _plannedContactCenter;
+        private bool _hasPlannedContactCenter;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -47,7 +49,8 @@ namespace VolleyballMatch.Presentation
             float scheduledSimulationTime,
             SimVector3 targetVelocity,
             SkillExecutionError executionError,
-            int contactGroupId)
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null)
         {
             _scheduledAction = action;
             _targetVelocity = targetVelocity + executionError.TargetVelocityError;
@@ -56,13 +59,53 @@ namespace VolleyballMatch.Presentation
             _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
             _motionOrigin = transform.position;
             _motionForward = transform.forward;
+            _hasPlannedContactCenter = plannedContactCenter.HasValue;
+            _plannedContactCenter = plannedContactCenter.GetValueOrDefault();
             _hasScheduledContact = true;
         }
 
         public void CancelScheduledContact()
         {
             _hasScheduledContact = false;
+            _hasPlannedContactCenter = false;
             _actionTimeline = null;
+        }
+
+        public void PrepareForTraining(Vector3 worldPosition)
+        {
+            CancelScheduledContact();
+            transform.position = worldPosition;
+            _motionOrigin = worldPosition;
+            Rig.SetPose(StickFigurePose.Ready, 1f);
+        }
+
+        public IReadOnlyList<ContactSurfaceFrame> PreviewContactFrames(TechniqueAction action)
+        {
+            var savedPosition = transform.position;
+            var savedRotations = Rig.CaptureLocalRotations();
+            try
+            {
+                if (action == TechniqueAction.Attack)
+                {
+                    transform.position = EvaluateAttackContactPosition(savedPosition, transform.forward);
+                }
+
+                Rig.SetPose(ContactPoseFor(action), 1f);
+                var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
+                    .Capture(action, true, 0);
+                var frames = new ContactSurfaceFrame[previewSurfaces.Count];
+                for (var index = 0; index < previewSurfaces.Count; index++)
+                {
+                    frames[index] = previewSurfaces[index].Current;
+                }
+
+                return frames;
+            }
+            finally
+            {
+                transform.position = savedPosition;
+                Rig.RestoreLocalRotations(savedRotations);
+            }
         }
 
         public void CollectContacts(
@@ -78,6 +121,7 @@ namespace VolleyballMatch.Presentation
             var sample = _actionTimeline.Sample(simulationTime);
             ApplyScheduledRootMotion(sample, simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
+            ApplyLimitedContactAlignment(sample);
             var surfaces = ContactSurfaces.Capture(_scheduledAction, sample.SurfaceActive, _contactGroupId);
             var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
                 ? _targetVelocity.Normalized
@@ -123,7 +167,7 @@ namespace VolleyballMatch.Presentation
             var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
                 ? 1f
                 : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
-            var blend = Mathf.Clamp01(deltaSeconds * 12f * _executionError.SurfaceSpeedScale);
+            var blend = Mathf.Clamp01(deltaSeconds * 18f * _executionError.SurfaceSpeedScale);
             Rig.SetPoseWithContactError(
                 pose,
                 blend,
@@ -140,6 +184,46 @@ namespace VolleyballMatch.Presentation
                 return;
             }
 
+            var position = EvaluateAttackPosition(simulationTime);
+            if (sample.Phase == ActionPhase.Complete)
+            {
+                position.y = _motionOrigin.y;
+            }
+
+            transform.position = position;
+        }
+
+        private void ApplyLimitedContactAlignment(ActionTimelineSample sample)
+        {
+            if (!_hasPlannedContactCenter ||
+                sample.Phase != ActionPhase.Power && sample.Phase != ActionPhase.Contact)
+            {
+                return;
+            }
+
+            var currentFrames = new PlayerContactSurfaces(Rig, transform)
+                .Capture(_scheduledAction, true, _contactGroupId);
+            var currentCenter = SimVector3.Zero;
+            foreach (var frame in currentFrames)
+            {
+                currentCenter += frame.Current.Origin +
+                                 (frame.Current.Normal * SimulatedBall.DefaultRadius);
+            }
+
+            currentCenter /= currentFrames.Count;
+            var correction = _plannedContactCenter - currentCenter;
+            var maximumCorrection = _scheduledAction == TechniqueAction.Attack ? 0.14f : 0.08f;
+            if (correction.Magnitude > maximumCorrection)
+            {
+                correction = correction.Normalized * maximumCorrection;
+            }
+
+            correction *= sample.ContactWeight;
+            transform.position += new Vector3(correction.X, correction.Y, correction.Z);
+        }
+
+        private Vector3 EvaluateAttackPosition(float simulationTime)
+        {
             var takeoffTime = _actionTimeline.ActualContactTime - 0.38f;
             var landingTime = _actionTimeline.ActualContactTime + 0.45f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
@@ -150,12 +234,30 @@ namespace VolleyballMatch.Presentation
             var approachDistance = 0.45f + (Ability.Mobility * 0.35f);
             var position = _motionOrigin + (_motionForward * approachDistance * approachProgress);
             position.y = _motionOrigin.y + jumpHeight;
-            if (sample.Phase == ActionPhase.Complete)
-            {
-                position.y = _motionOrigin.y;
-            }
+            return position;
+        }
 
-            transform.position = position;
+        private Vector3 EvaluateAttackContactPosition(Vector3 origin, Vector3 forward)
+        {
+            const float jumpProgress = 0.38f / (0.38f + 0.45f);
+            var jumpHeight = (0.72f + (Ability.Jump * 0.5f)) * 4f * jumpProgress * (1f - jumpProgress);
+            var approachDistance = 0.45f + (Ability.Mobility * 0.35f);
+            var position = origin + (forward * approachDistance);
+            position.y = origin.y + jumpHeight;
+            return position;
+        }
+
+        private static StickFigurePose ContactPoseFor(TechniqueAction action)
+        {
+            return action switch
+            {
+                TechniqueAction.Receive => StickFigurePose.Receive,
+                TechniqueAction.Set => StickFigurePose.Set,
+                TechniqueAction.Attack => StickFigurePose.Spike,
+                TechniqueAction.Block => StickFigurePose.Block,
+                TechniqueAction.Serve => StickFigurePose.Serve,
+                _ => StickFigurePose.Ready
+            };
         }
 
         private static ContactResponseParameters ResponseFor(TechniqueAction action)
