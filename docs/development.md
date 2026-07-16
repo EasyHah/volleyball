@@ -50,3 +50,20 @@ mkdir -p TestResults
 
 Preserve the generated XML and log files as local review evidence; do not
 commit `TestResults/`.
+
+## Physics-contact upgrade baseline
+
+The controlled-arc prototype remains the comparison baseline while the physical
+ball is introduced behind a scene switch. On Unity `6000.0.43f1`, before the
+upgrade began, the baseline produced:
+
+- EditMode: 30/30 passing tests.
+- PlayMode smoke: three rallies and three points in about 33.29 seconds.
+- PlayMode soak: ten completed rallies in about 114.32 seconds.
+
+These results prove the old rally loop, not physical contact quality. New runs
+must additionally report ball discontinuities outside Reset, counted contacts
+without a swept intersection, contact point error, predicted-versus-actual
+landing error, maximum ball speed, and the current action phase. A regression is
+any non-Reset position discontinuity, non-finite state, duplicate contact inside
+one contact-group cooldown, or rally-state advance without a physical contact.
