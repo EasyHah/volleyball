@@ -25,6 +25,10 @@ namespace VolleyballMatch.Presentation
 
         public SetTechniqueStyle RequestedSetStyle => _setDecision.RequestedStyle;
 
+        public Vector3 ScheduledMovementTarget => _movementTargetPosition;
+
+        public float MovementShortfall { get; private set; }
+
         private ActionTimeline _actionTimeline;
         private TechniqueAction _scheduledAction;
         private SkillExecutionError _executionError;
@@ -36,6 +40,12 @@ namespace VolleyballMatch.Presentation
         private SimVector3 _plannedContactCenter;
         private bool _hasPlannedContactCenter;
         private SetTechniqueDecision _setDecision;
+        private Vector3 _movementStartPosition;
+        private Vector3 _movementTargetPosition;
+        private float _movementStartSimulationTime;
+        private float _movementEndSimulationTime;
+        private bool _hasScheduledMovement;
+        private bool _isMovingThisStep;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -57,11 +67,13 @@ namespace VolleyballMatch.Presentation
             SkillExecutionError executionError,
             int contactGroupId,
             SimVector3? plannedContactCenter = null,
-            bool emergencyOneHand = false)
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f)
         {
             _scheduledAction = action;
             var powerScale = action == TechniqueAction.Attack
-                ? 0.6f + (Ability.AttackPower * 0.5f)
+                ? 0.90f + (Ability.AttackPower * 0.10f)
                 : 1f;
             _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
             if (action == TechniqueAction.Set)
@@ -79,7 +91,12 @@ namespace VolleyballMatch.Presentation
             _executionError = executionError;
             _contactGroupId = contactGroupId;
             _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
-            _motionOrigin = transform.position;
+            ConfigureScheduledMovement(
+                movementTarget.GetValueOrDefault(transform.position),
+                movementStartSimulationTime + executionError.ReactionDelay,
+                scheduledSimulationTime,
+                action);
+            _motionOrigin = _movementTargetPosition;
             _motionForward = transform.forward;
             _hasPlannedContactCenter = plannedContactCenter.HasValue;
             _plannedContactCenter = plannedContactCenter.GetValueOrDefault();
@@ -103,13 +120,21 @@ namespace VolleyballMatch.Presentation
 
         public IReadOnlyList<ContactSurfaceFrame> PreviewContactFrames(TechniqueAction action)
         {
+            return PreviewContactFramesAt(action, transform.position);
+        }
+
+        public IReadOnlyList<ContactSurfaceFrame> PreviewContactFramesAt(
+            TechniqueAction action,
+            Vector3 worldPosition)
+        {
             var savedPosition = transform.position;
             var savedRotations = Rig.CaptureLocalRotations();
             try
             {
+                transform.position = worldPosition;
                 if (action == TechniqueAction.Attack)
                 {
-                    transform.position = EvaluateAttackContactPosition(savedPosition, transform.forward);
+                    transform.position = EvaluateAttackContactPosition(worldPosition, transform.forward);
                 }
 
                 Rig.SetPose(ContactPoseFor(action), 1f);
@@ -153,7 +178,14 @@ namespace VolleyballMatch.Presentation
                 ? _targetVelocity.Normalized
                 : SimVector3.Up;
             var response = ResponseFor(_scheduledAction);
-            var playerTechnique = Ability.TechniqueFor(_scheduledAction);
+            // AI assistance resolves the physical impulse toward this action's already-imperfect
+            // execution target. Ability still changes that target, reaction time, reachable position,
+            // contact pose and set-style availability before technique control is applied.
+            var playerTechnique = _scheduledAction == TechniqueAction.Receive ||
+                                  _scheduledAction == TechniqueAction.Set ||
+                                  _scheduledAction == TechniqueAction.Attack
+                ? 1f
+                : Ability.TechniqueFor(_scheduledAction);
             if (_scheduledAction == TechniqueAction.Set)
             {
                 playerTechnique *= _setDecision.ControlScale;
@@ -178,6 +210,12 @@ namespace VolleyballMatch.Presentation
 
         private void ApplyScheduledPose(ActionTimelineSample sample, float deltaSeconds)
         {
+            if (_isMovingThisStep && sample.Phase == ActionPhase.Prepare)
+            {
+                Rig.SetPose(StickFigurePose.Run, Mathf.Clamp01(deltaSeconds * 12f));
+                return;
+            }
+
             if (_scheduledAction == TechniqueAction.Attack && ApplyAttackPose(sample, deltaSeconds))
             {
                 return;
@@ -334,12 +372,19 @@ namespace VolleyballMatch.Presentation
 
         private void ApplyScheduledRootMotion(ActionTimelineSample sample, float simulationTime)
         {
+            var movementPosition = EvaluateScheduledMovement(simulationTime, out var movementComplete);
+            _isMovingThisStep = _hasScheduledMovement && !movementComplete;
             if (_scheduledAction != TechniqueAction.Attack)
             {
+                if (_hasScheduledMovement)
+                {
+                    transform.position = movementPosition;
+                }
+
                 return;
             }
 
-            var position = EvaluateAttackPosition(simulationTime);
+            var position = EvaluateAttackPosition(simulationTime, movementPosition);
             if (sample.Phase == ActionPhase.Complete)
             {
                 position.y = _motionOrigin.y;
@@ -390,7 +435,7 @@ namespace VolleyballMatch.Presentation
             transform.position += new Vector3(correction.X, correction.Y, correction.Z);
         }
 
-        private Vector3 EvaluateAttackPosition(float simulationTime)
+        private Vector3 EvaluateAttackPosition(float simulationTime, Vector3 movementPosition)
         {
             var takeoffTime = _actionTimeline.ActualContactTime - 0.38f;
             var landingTime = _actionTimeline.ActualContactTime + 0.45f;
@@ -400,9 +445,57 @@ namespace VolleyballMatch.Presentation
             var approachProgress = Mathf.Clamp01((simulationTime - approachStart) / 0.55f);
             approachProgress = approachProgress * approachProgress * (3f - (2f * approachProgress));
             var approachDistance = 0.45f + (Ability.Mobility * 0.35f);
-            var position = _motionOrigin + (_motionForward * approachDistance * approachProgress);
+            var position = movementPosition + (_motionForward * approachDistance * approachProgress);
             position.y = _motionOrigin.y + jumpHeight;
             return position;
+        }
+
+        private void ConfigureScheduledMovement(
+            Vector3 requestedTarget,
+            float movementStartSimulationTime,
+            float scheduledContactTime,
+            TechniqueAction action)
+        {
+            _movementStartPosition = transform.position;
+            _movementStartSimulationTime = movementStartSimulationTime;
+            var movementLead = action == TechniqueAction.Attack ? 0.32f : 0.10f;
+            _movementEndSimulationTime = Mathf.Max(
+                _movementStartSimulationTime + 0.01f,
+                scheduledContactTime - movementLead);
+            var availableSeconds = _movementEndSimulationTime - _movementStartSimulationTime;
+            var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
+            var maximumDistance = maximumSpeed * availableSeconds;
+            _movementTargetPosition = Vector3.MoveTowards(
+                _movementStartPosition,
+                requestedTarget,
+                maximumDistance);
+            MovementShortfall = Vector3.Distance(_movementTargetPosition, requestedTarget);
+            _hasScheduledMovement = Vector3.Distance(
+                _movementStartPosition,
+                _movementTargetPosition) > 0.01f;
+        }
+
+        private Vector3 EvaluateScheduledMovement(float simulationTime, out bool complete)
+        {
+            if (!_hasScheduledMovement || simulationTime >= _movementEndSimulationTime)
+            {
+                complete = true;
+                return _movementTargetPosition;
+            }
+
+            if (simulationTime <= _movementStartSimulationTime)
+            {
+                complete = false;
+                return _movementStartPosition;
+            }
+
+            var progress = Mathf.InverseLerp(
+                _movementStartSimulationTime,
+                _movementEndSimulationTime,
+                simulationTime);
+            progress = progress * progress * (3f - (2f * progress));
+            complete = progress >= 1f;
+            return Vector3.Lerp(_movementStartPosition, _movementTargetPosition, progress);
         }
 
         private Vector3 EvaluateAttackContactPosition(Vector3 origin, Vector3 forward)
@@ -462,7 +555,7 @@ namespace VolleyballMatch.Presentation
             {
                 TechniqueAction.Receive => new ContactResponseParameters(0.85f, 1f, 0.12f, 0.08f),
                 TechniqueAction.Set => new ContactResponseParameters(0.75f, 1f, 0.08f, 0.08f),
-                TechniqueAction.Attack => new ContactResponseParameters(0.72f, 1f, 0.18f, 0.08f),
+                TechniqueAction.Attack => new ContactResponseParameters(0.55f, 0.42f, 0.18f, 0.08f),
                 TechniqueAction.Block => new ContactResponseParameters(0.65f, 0.8f, 0.22f, 0.08f),
                 TechniqueAction.Serve => new ContactResponseParameters(0.72f, 1f, 0.15f, 0.08f),
                 _ => new ContactResponseParameters(0.75f, 1f, 0.1f, 0.08f)

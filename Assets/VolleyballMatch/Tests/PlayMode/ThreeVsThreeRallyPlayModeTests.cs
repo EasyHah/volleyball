@@ -27,7 +27,7 @@ namespace VolleyballMatch.PlayModeTests
                 Object.FindObjectsByType<SimulatedBall>(FindObjectsSortMode.None),
                 Has.Length.EqualTo(1));
 
-            var timeout = Time.realtimeSinceStartup + 14f;
+            var timeout = Time.realtimeSinceStartup + 20f;
             while (director.CompletedCycles < 1 && Time.realtimeSinceStartup < timeout)
             {
                 yield return null;
@@ -38,9 +38,10 @@ namespace VolleyballMatch.PlayModeTests
                 Is.GreaterThanOrEqualTo(1),
                 $"contacts={director.SuccessfulContacts}, misses={director.MissedRallies}");
             Assert.That(director.SuccessfulContacts, Is.GreaterThanOrEqualTo(6));
-            Assert.That(director.MissedRallies, Is.Zero);
-            Assert.That(ball.Diagnostics.GroundContacts, Is.Zero);
-            Assert.That(ball.Diagnostics.NetContacts, Is.Zero);
+            Assert.That(director.ExecutionErrorApplications, Is.GreaterThanOrEqualTo(6));
+            Assert.That(director.MovementAssignments, Is.GreaterThanOrEqualTo(6));
+            Assert.That(director.TacticRevision, Is.GreaterThanOrEqualTo(1));
+            Assert.That(director.TotalMovementShortfall, Is.GreaterThanOrEqualTo(0f));
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
 
             cameras.SetView(RallyCameraView.Sideline);
@@ -57,6 +58,19 @@ namespace VolleyballMatch.PlayModeTests
             Assert.That(cameras.CurrentView, Is.EqualTo(RallyCameraView.Tactical));
             Assert.That(Camera.main.orthographic, Is.True);
             Assert.That(cameras.ViewSwitchCount, Is.GreaterThanOrEqualTo(4));
+
+            var variationTimeout = Time.realtimeSinceStartup + 16f;
+            while (director.MissedRallies < 1 && Time.realtimeSinceStartup < variationTimeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(
+                director.MissedRallies,
+                Is.GreaterThanOrEqualTo(1),
+                "Seeded route changes should eventually produce a natural execution miss.");
+            Assert.That(director.TacticRevision, Is.GreaterThanOrEqualTo(2));
+            Assert.That(director.MovementAssignments, Is.GreaterThan(6));
         }
     }
 }

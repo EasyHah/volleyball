@@ -222,10 +222,87 @@ namespace VolleyballMatch.EditModeTests
             }
         }
 
+        [Test]
+        public void ScheduledMovement_ReachesNearbyTacticalPositionBeforeContact()
+        {
+            var playerObject = new GameObject("MovingDefender");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Defender), Color.blue, "3");
+                player.SetAbility(new PlayerAbilityProfile(0.9f, 1f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                var target = new Vector3(2f, 0f, -1f);
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    2f,
+                    new SimVector3(0f, 5f, 4f),
+                    NoExecutionError(),
+                    61,
+                    movementTarget: target,
+                    movementStartSimulationTime: 0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(0.8f, 1f / 120f, contacts);
+                var movingPosition = player.transform.position;
+                contacts.Clear();
+                player.CollectContacts(1.95f, 1f / 120f, contacts);
+
+                Assert.That(movingPosition.sqrMagnitude, Is.GreaterThan(0.01f));
+                Assert.That(Vector3.Distance(player.ScheduledMovementTarget, target), Is.LessThan(0.001f));
+                Assert.That(Vector3.Distance(player.transform.position, target), Is.LessThan(0.2f));
+                Assert.That(player.MovementShortfall, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledMovement_LeavesMeasuredShortfallWhenTargetIsUnreachable()
+        {
+            var playerObject = new GameObject("LateDefender");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Orange, PlayerRole.Defender), Color.red, "6");
+                player.SetAbility(new PlayerAbilityProfile(0.2f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                var requestedTarget = new Vector3(10f, 0f, 0f);
+
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    0.5f,
+                    new SimVector3(0f, 5f, -4f),
+                    NoExecutionError(),
+                    62,
+                    movementTarget: requestedTarget,
+                    movementStartSimulationTime: 0.35f);
+
+                Assert.That(player.MovementShortfall, Is.GreaterThan(8f));
+                Assert.That(player.ScheduledMovementTarget.x, Is.LessThan(2f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
         private static Vector3 AveragePalms(PrototypePlayerAgent player)
         {
             return (player.Rig.GetJoint("LeftPalm").position +
                     player.Rig.GetJoint("RightPalm").position) * 0.5f;
+        }
+
+        private static SkillExecutionError NoExecutionError()
+        {
+            return new SkillExecutionError(
+                0f,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                0f,
+                1f,
+                SimVector3.Zero,
+                1f);
         }
     }
 }
