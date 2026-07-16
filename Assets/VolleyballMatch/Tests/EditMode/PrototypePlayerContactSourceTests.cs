@@ -77,13 +77,25 @@ namespace VolleyballMatch.EditModeTests
                 player.CollectContacts(4.62f, 1f / 120f, contacts);
                 var takeoffHeight = player.transform.position.y;
                 contacts.Clear();
+                player.CollectContacts(4.98f, 1f / 120f, contacts);
+                var palmBeforeContact = player.transform.InverseTransformPoint(
+                    player.Rig.GetJoint("RightPalm").position).y;
+                contacts.Clear();
                 player.CollectContacts(5f, 1f / 120f, contacts);
                 var contactHeight = player.transform.position.y;
+                var palmAtContact = player.transform.InverseTransformPoint(
+                    player.Rig.GetJoint("RightPalm").position).y;
+                contacts.Clear();
+                player.CollectContacts(5.02f, 1f / 120f, contacts);
+                var palmAfterContact = player.transform.InverseTransformPoint(
+                    player.Rig.GetJoint("RightPalm").position).y;
                 contacts.Clear();
                 player.CollectContacts(5.7f, 1f / 120f, contacts);
 
                 Assert.That(takeoffHeight, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(contactHeight, Is.GreaterThan(0.8f));
+                Assert.That(palmBeforeContact, Is.GreaterThan(palmAtContact));
+                Assert.That(palmAfterContact, Is.LessThan(palmAtContact));
                 Assert.That(player.transform.position.y, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(player.transform.position.z, Is.GreaterThan(0.4f));
             }
@@ -104,12 +116,16 @@ namespace VolleyballMatch.EditModeTests
 
                 var setFrames = player.PreviewContactFrames(TechniqueAction.Set);
                 var attackFrames = player.PreviewContactFrames(TechniqueAction.Attack);
+                var attackBallCenter = attackFrames[0].Origin +
+                                       (attackFrames[0].Normal * SimulatedBall.DefaultRadius);
 
                 Assert.That(setFrames.Count, Is.EqualTo(2));
                 Assert.That(
                     (setFrames[0].Origin - setFrames[1].Origin).Magnitude,
                     Is.LessThan(0.28f));
                 Assert.That(attackFrames[0].Origin.Y, Is.GreaterThan(3f));
+                Assert.That(attackBallCenter.Z, Is.GreaterThan(0.95f));
+                Assert.That(Mathf.Abs(attackBallCenter.X), Is.LessThan(0.4f));
                 Assert.That(player.transform.position, Is.EqualTo(Vector3.zero));
             }
             finally

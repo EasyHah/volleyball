@@ -25,7 +25,7 @@ namespace VolleyballMatch.EditModeTests
 
         [TestCase(TechniqueAction.Receive, 0.45f)]
         [TestCase(TechniqueAction.Set, 0.70f)]
-        [TestCase(TechniqueAction.Attack, 0.25f)]
+        [TestCase(TechniqueAction.Attack, 1f)]
         [TestCase(TechniqueAction.Block, 0.05f)]
         [TestCase(TechniqueAction.Serve, 0.35f)]
         public void Apply_UsesActionSpecificMaximumControl(TechniqueAction action, float expected)

@@ -104,6 +104,41 @@ namespace VolleyballMatch.Presentation
             }
         }
 
+        public void SetPoseTransition(
+            StickFigurePose from,
+            StickFigurePose to,
+            float normalizedProgress,
+            TechniqueAction action,
+            SimVector3 positionError,
+            SimVector3 normalErrorDegrees,
+            float errorWeight)
+        {
+            if (!_poses.TryGetValue(from, out var fromTargets))
+            {
+                throw new ArgumentOutOfRangeException(nameof(from), from, "Unknown start pose.");
+            }
+
+            if (!_poses.TryGetValue(to, out var toTargets))
+            {
+                throw new ArgumentOutOfRangeException(nameof(to), to, "Unknown end pose.");
+            }
+
+            var progress = Mathf.Clamp01(normalizedProgress);
+            foreach (var joint in _joints)
+            {
+                var offset = ContactRotationOffset(
+                    joint.Key,
+                    action,
+                    positionError,
+                    normalErrorDegrees,
+                    Mathf.Clamp01(errorWeight));
+                joint.Value.localRotation = Quaternion.Slerp(
+                    Quaternion.Euler(fromTargets[joint.Key]),
+                    Quaternion.Euler(toTargets[joint.Key] + offset),
+                    progress);
+            }
+        }
+
         private static Vector3 ContactRotationOffset(
             string jointName,
             TechniqueAction action,
@@ -314,12 +349,19 @@ namespace VolleyballMatch.Presentation
                 ("LeftHip", new Vector3(-28f, 0f, 0f)),
                 ("RightHip", new Vector3(28f, 0f, 0f)));
 
+            SetTargets(StickFigurePose.SpikeWindup,
+                ("LeftShoulder", new Vector3(-112f, 0f, 16f)),
+                ("RightShoulder", new Vector3(-205f, 0f, -12f)),
+                ("LeftElbow", new Vector3(-42f, 0f, 0f)),
+                ("RightElbow", new Vector3(-48f, 0f, 0f)),
+                ("Torso", new Vector3(-6f, 0f, 8f)));
+
             SetTargets(StickFigurePose.Spike,
-                ("LeftShoulder", new Vector3(-105f, 0f, -15f)),
-                ("RightShoulder", new Vector3(-175f, 0f, 12f)),
+                ("LeftShoulder", new Vector3(-118f, 0f, 12f)),
+                ("RightShoulder", new Vector3(-140f, 0f, -18f)),
                 ("LeftElbow", new Vector3(-55f, 0f, 0f)),
-                ("RightElbow", new Vector3(10f, 0f, 0f)),
-                ("Torso", new Vector3(-15f, 0f, -8f)));
+                ("RightElbow", Vector3.zero),
+                ("Torso", new Vector3(-12f, 0f, -6f)));
 
             SetTargets(StickFigurePose.Block,
                 ("LeftShoulder", new Vector3(-168f, 0f, -10f)),

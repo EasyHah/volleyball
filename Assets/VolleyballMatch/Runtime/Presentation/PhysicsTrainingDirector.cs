@@ -71,6 +71,7 @@ namespace VolleyballMatch.Presentation
             float flightSeconds)
         {
             CurrentAction = action;
+            FocusTrainingCamera(action);
             _receiver.CancelScheduledContact();
             _setter.CancelScheduledContact();
             _attacker.CancelScheduledContact();
@@ -136,6 +137,21 @@ namespace VolleyballMatch.Presentation
             _ball.ResetBall(_ball.transform.position);
         }
 
+        private static void FocusTrainingCamera(TechniqueAction action)
+        {
+            var camera = Camera.main;
+            if (camera == null)
+            {
+                return;
+            }
+
+            var cameraZ = action == TechniqueAction.Attack ? -5.6f : -10.2f;
+            camera.transform.SetPositionAndRotation(
+                new Vector3(0f, 8.5f, cameraZ),
+                Quaternion.Euler(52f, 0f, 0f));
+            camera.orthographicSize = action == TechniqueAction.Attack ? 4.8f : 4.5f;
+        }
+
         private void HandlePlayerContact(PlayerBallContactEvent contact)
         {
             if (!_waitingForContact || contact.Candidate.Action != CurrentAction)
@@ -145,9 +161,12 @@ namespace VolleyballMatch.Presentation
 
             _waitingForContact = false;
             _currentSucceeded = true;
+            var speedDetails = CurrentAction == TechniqueAction.Attack
+                ? $"  speed {contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} m/s"
+                : string.Empty;
             _lastDetails =
                 $"{DisplayName(CurrentAction)}: HIT  quality {contact.Hit.Centeredness:0.00}  " +
-                $"control {contact.TechniqueResponse.AppliedControl:0.00}";
+                $"control {contact.TechniqueResponse.AppliedControl:0.00}{speedDetails}";
         }
 
         private void HandleEnvironmentContact(EnvironmentCollisionHit hit)
@@ -216,7 +235,7 @@ namespace VolleyballMatch.Presentation
             {
                 TechniqueAction.Receive => new SimVector3(0f, 6f, 5f),
                 TechniqueAction.Set => new SimVector3(2f, 7f, 6f),
-                TechniqueAction.Attack => new SimVector3(0f, -7f, 16f),
+                TechniqueAction.Attack => new SimVector3(0f, -7.5f, 23f),
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
             };
         }

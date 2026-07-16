@@ -172,6 +172,11 @@ namespace VolleyballMatch.Presentation
         public void ResetBall(Vector3 position, bool active = false)
         {
             EnsureInitialized();
+            var trail = GetComponent<TrailRenderer>();
+            if (trail != null)
+            {
+                trail.Clear();
+            }
             State.Reset(ToSimulation(position), SimVector3.Zero, active);
             _accumulator.Reset();
             transform.position = position;

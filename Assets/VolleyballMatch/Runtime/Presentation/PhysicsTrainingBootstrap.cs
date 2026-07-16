@@ -24,12 +24,30 @@ namespace VolleyballMatch.Presentation
                 Destroy(collider);
             }
 
+            ConfigureBallTrail(ballObject);
+
             var ball = ballObject.AddComponent<SimulatedBall>();
             var receiver = CreateAgent(PlayerRole.Defender, new Vector3(-2.4f, 0f, -4.6f), "3");
             var setter = CreateAgent(PlayerRole.Setter, new Vector3(0f, 0f, -3.4f), "1");
             var attacker = CreateAgent(PlayerRole.Attacker, new Vector3(2.1f, 0f, -2.8f), "2");
             var director = gameObject.AddComponent<PhysicsTrainingDirector>();
             director.Initialize(ball, receiver, setter, attacker);
+        }
+
+        private static void ConfigureBallTrail(GameObject ballObject)
+        {
+            var trail = ballObject.AddComponent<TrailRenderer>();
+            trail.time = 0.38f;
+            trail.minVertexDistance = 0.025f;
+            trail.startWidth = 0.075f;
+            trail.endWidth = 0.012f;
+            trail.startColor = new Color(1f, 0.96f, 0.35f, 0.95f);
+            trail.endColor = new Color(1f, 0.96f, 0.35f, 0f);
+            var shader = Shader.Find("Sprites/Default");
+            if (shader != null)
+            {
+                trail.material = new Material(shader);
+            }
         }
 
         private static void ConfigureTrainingCamera()

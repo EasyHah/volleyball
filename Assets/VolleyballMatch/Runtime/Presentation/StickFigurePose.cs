@@ -8,6 +8,7 @@ namespace VolleyballMatch.Presentation
         Receive,
         Set,
         Approach,
+        SpikeWindup,
         Spike,
         Block,
         Landing,

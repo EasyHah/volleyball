@@ -53,7 +53,10 @@ namespace VolleyballMatch.Presentation
             SimVector3? plannedContactCenter = null)
         {
             _scheduledAction = action;
-            _targetVelocity = targetVelocity + executionError.TargetVelocityError;
+            var powerScale = action == TechniqueAction.Attack
+                ? 0.6f + (Ability.AttackPower * 0.5f)
+                : 1f;
+            _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
             _executionError = executionError;
             _contactGroupId = contactGroupId;
             _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
@@ -146,6 +149,11 @@ namespace VolleyballMatch.Presentation
 
         private void ApplyScheduledPose(ActionTimelineSample sample, float deltaSeconds)
         {
+            if (_scheduledAction == TechniqueAction.Attack && ApplyAttackPose(sample, deltaSeconds))
+            {
+                return;
+            }
+
             var pose = _scheduledAction switch
             {
                 TechniqueAction.Receive => StickFigurePose.Receive,
@@ -175,6 +183,67 @@ namespace VolleyballMatch.Presentation
                 _executionError.ContactPositionError,
                 _executionError.ContactNormalErrorDegrees,
                 errorWeight);
+        }
+
+        private bool ApplyAttackPose(ActionTimelineSample sample, float deltaSeconds)
+        {
+            var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
+                ? 1f
+                : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
+            switch (sample.Phase)
+            {
+                case ActionPhase.Prepare:
+                    Rig.SetPoseWithContactError(
+                        StickFigurePose.SpikeWindup,
+                        Mathf.Clamp01(deltaSeconds * 10f),
+                        TechniqueAction.Attack,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        0f);
+                    return true;
+                case ActionPhase.Power:
+                    Rig.SetPoseTransition(
+                        StickFigurePose.SpikeWindup,
+                        StickFigurePose.Spike,
+                        sample.PhaseProgress * 0.75f,
+                        TechniqueAction.Attack,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                case ActionPhase.Contact when sample.PhaseProgress <= 0.5f:
+                    Rig.SetPoseTransition(
+                        StickFigurePose.SpikeWindup,
+                        StickFigurePose.Spike,
+                        0.75f + (sample.PhaseProgress * 0.5f),
+                        TechniqueAction.Attack,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                case ActionPhase.Contact:
+                    Rig.SetPoseTransition(
+                        StickFigurePose.Spike,
+                        StickFigurePose.Landing,
+                        (sample.PhaseProgress - 0.5f) * 0.5f,
+                        TechniqueAction.Attack,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                case ActionPhase.FollowThrough:
+                    Rig.SetPoseTransition(
+                        StickFigurePose.Spike,
+                        StickFigurePose.Landing,
+                        0.25f + (sample.PhaseProgress * 0.75f),
+                        TechniqueAction.Attack,
+                        _executionError.ContactPositionError,
+                        _executionError.ContactNormalErrorDegrees,
+                        errorWeight);
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private void ApplyScheduledRootMotion(ActionTimelineSample sample, float simulationTime)
