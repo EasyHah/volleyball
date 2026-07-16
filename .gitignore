@@ -28,5 +28,8 @@
 # Local visual brainstorming artifacts
 .superpowers/
 
+# Local test verification artifacts
+TestResults/
+
 # Local isolated development worktrees
 .worktrees/

@@ -1,0 +1,9 @@
+{
+  "name": "VolleyballMatch.PlayModeTests",
+  "references": [
+    "VolleyballMatch.Domain",
+    "VolleyballMatch.AI",
+    "VolleyballMatch.Presentation"
+  ],
+  "optionalUnityReferences": ["TestAssemblies"]
+}
