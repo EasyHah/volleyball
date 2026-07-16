@@ -84,5 +84,25 @@ namespace VolleyballMatch.Domain.Simulation
             ball.RegisterContact(hit.ContactGroupId, parameters.CooldownSeconds);
             return new ContactResponseResult(physicalOutgoing);
         }
+
+        public static void ApplyTechniqueVelocity(BallState ball, SweptBallHit hit, SimVector3 finalOutgoing)
+        {
+            if (ball == null)
+            {
+                throw new ArgumentNullException(nameof(ball));
+            }
+
+            if (!finalOutgoing.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(nameof(finalOutgoing));
+            }
+
+            if (ball.LastContactGroupId != hit.ContactGroupId || !ball.IsCoolingDown)
+            {
+                throw new InvalidOperationException("Technique velocity can only follow the matching committed physical contact.");
+            }
+
+            ball.Velocity = finalOutgoing;
+        }
     }
 }

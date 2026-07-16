@@ -50,11 +50,21 @@ namespace VolleyballMatch.Domain.Simulation
 
         public static ContactSurfaceFrame Lerp(ContactSurfaceFrame previous, ContactSurfaceFrame current, float alpha)
         {
+            var normal = SimVector3.Lerp(previous.Normal, current.Normal, alpha).Normalized;
+            var blendedRight = SimVector3.Lerp(previous.Right, current.Right, alpha);
+            var right = (blendedRight - (normal * SimVector3.Dot(blendedRight, normal))).Normalized;
+            var up = SimVector3.Cross(normal, right).Normalized;
+            var blendedUp = SimVector3.Lerp(previous.Up, current.Up, alpha);
+            if (SimVector3.Dot(up, blendedUp) < 0f)
+            {
+                up = -up;
+            }
+
             return new ContactSurfaceFrame(
                 SimVector3.Lerp(previous.Origin, current.Origin, alpha),
-                SimVector3.Lerp(previous.Normal, current.Normal, alpha).Normalized,
-                SimVector3.Lerp(previous.Right, current.Right, alpha).Normalized,
-                SimVector3.Lerp(previous.Up, current.Up, alpha).Normalized,
+                normal,
+                right,
+                up,
                 previous.Width + ((current.Width - previous.Width) * alpha),
                 previous.Height + ((current.Height - previous.Height) * alpha));
         }

@@ -40,6 +40,18 @@ namespace VolleyballMatch.EditModeTests
         }
 
         [Test]
+        public void TryFindContact_RepairsExistingFrontFacePenetrationAtStartOfStep()
+        {
+            var ball = AdvanceBall(new SimVector3(0f, 0.08f, 0f), new SimVector3(0f, -20f, 0f));
+
+            var found = SweptBallCollision.TryFindContact(ball, StaticSurface(2), Step, out var hit);
+
+            Assert.That(found, Is.True);
+            Assert.That(hit.TimeFraction, Is.Zero);
+            Assert.That(hit.ImpactCenter.Y, Is.EqualTo(ball.Radius).Within(0.00001f));
+        }
+
+        [Test]
         public void TryFindContact_UsesMovingSurfaceAndReportsItsVelocity()
         {
             var ball = AdvanceBall(new SimVector3(0f, 0.25f, 0f), SimVector3.Zero);

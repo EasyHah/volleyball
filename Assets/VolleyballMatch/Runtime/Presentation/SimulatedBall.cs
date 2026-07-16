@@ -1,0 +1,328 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using VolleyballMatch.AI;
+using VolleyballMatch.Domain.Players;
+using VolleyballMatch.Domain.Simulation;
+
+namespace VolleyballMatch.Presentation
+{
+    public readonly struct BallContactCandidate
+    {
+        public BallContactCandidate(
+            ContactSurfaceSnapshot surface,
+            TechniqueAction action,
+            float playerTechnique,
+            SimVector3 targetVelocity,
+            SimVector3 strikeDirection,
+            ContactResponseParameters responseParameters)
+        {
+            Surface = surface;
+            Action = action;
+            PlayerTechnique = playerTechnique;
+            TargetVelocity = targetVelocity;
+            StrikeDirection = strikeDirection;
+            ResponseParameters = responseParameters;
+        }
+
+        public ContactSurfaceSnapshot Surface { get; }
+
+        public TechniqueAction Action { get; }
+
+        public float PlayerTechnique { get; }
+
+        public SimVector3 TargetVelocity { get; }
+
+        public SimVector3 StrikeDirection { get; }
+
+        public ContactResponseParameters ResponseParameters { get; }
+    }
+
+    public interface IBallContactSource
+    {
+        void CollectContacts(float simulationTime, float deltaSeconds, ICollection<BallContactCandidate> contacts);
+    }
+
+    public readonly struct PlayerBallContactEvent
+    {
+        public PlayerBallContactEvent(
+            BallContactCandidate candidate,
+            SweptBallHit hit,
+            ContactResponseResult physicalResponse,
+            TechniqueControlResult techniqueResponse)
+        {
+            Candidate = candidate;
+            Hit = hit;
+            PhysicalResponse = physicalResponse;
+            TechniqueResponse = techniqueResponse;
+        }
+
+        public BallContactCandidate Candidate { get; }
+
+        public SweptBallHit Hit { get; }
+
+        public ContactResponseResult PhysicalResponse { get; }
+
+        public TechniqueControlResult TechniqueResponse { get; }
+    }
+
+    public readonly struct BallSimulationDiagnostics
+    {
+        public BallSimulationDiagnostics(
+            long completedSteps,
+            int resetCount,
+            int groundContacts,
+            int netContacts,
+            int nonFiniteStates,
+            float maximumSpeed)
+        {
+            CompletedSteps = completedSteps;
+            ResetCount = resetCount;
+            GroundContacts = groundContacts;
+            NetContacts = netContacts;
+            NonFiniteStates = nonFiniteStates;
+            MaximumSpeed = maximumSpeed;
+        }
+
+        public long CompletedSteps { get; }
+
+        public int ResetCount { get; }
+
+        public int GroundContacts { get; }
+
+        public int NetContacts { get; }
+
+        public int NonFiniteStates { get; }
+
+        public float MaximumSpeed { get; }
+    }
+
+    public sealed class SimulatedBall : MonoBehaviour
+    {
+        public const float DefaultRadius = 0.12f;
+        public const float DefaultFixedStep = 1f / 120f;
+
+        [SerializeField]
+        private float _gravity = -9.8f;
+
+        [SerializeField]
+        private float _linearDampingPer60Hz = 0.9995f;
+
+        [SerializeField]
+        private float _groundHeight = 0.15f;
+
+        [SerializeField]
+        private float _groundRestitution = 0.55f;
+
+        [SerializeField]
+        private float _groundFriction = 0.25f;
+
+        private readonly NetCollisionGeometry _net =
+            new NetCollisionGeometry(CourtBuilder.HalfWidth, 2.48f, 0.08f, 0.15f);
+        private readonly List<IBallContactSource> _contactSources = new List<IBallContactSource>();
+        private readonly List<BallContactCandidate> _contactCandidates = new List<BallContactCandidate>();
+
+        private FixedStepAccumulator _accumulator;
+        private BallSimulationParameters _parameters;
+        private long _completedSteps;
+        private int _resetCount;
+        private int _groundContacts;
+        private int _netContacts;
+        private int _nonFiniteStates;
+        private float _maximumSpeed;
+        private float _simulationTime;
+
+        public event Action<EnvironmentCollisionHit> EnvironmentContact;
+
+        public event Action<PlayerBallContactEvent> PlayerContact;
+
+        public BallState State { get; private set; }
+
+        public BallSimulationDiagnostics Diagnostics => new BallSimulationDiagnostics(
+            _completedSteps,
+            _resetCount,
+            _groundContacts,
+            _netContacts,
+            _nonFiniteStates,
+            _maximumSpeed);
+
+        public float SimulationTime => _simulationTime;
+
+        private void Awake()
+        {
+            EnsureInitialized();
+        }
+
+        private void Update()
+        {
+            AdvanceSimulation(Time.deltaTime);
+        }
+
+        private void LateUpdate()
+        {
+            if (State == null)
+            {
+                return;
+            }
+
+            var alpha = _accumulator == null ? 1f : (float)_accumulator.InterpolationAlpha;
+            transform.position = ToUnity(SimVector3.Lerp(State.PreviousPosition, State.Position, alpha));
+        }
+
+        public void ResetBall(Vector3 position, bool active = false)
+        {
+            EnsureInitialized();
+            State.Reset(ToSimulation(position), SimVector3.Zero, active);
+            _accumulator.Reset();
+            transform.position = position;
+            _simulationTime = 0f;
+            _resetCount++;
+        }
+
+        public void Launch(Vector3 initialVelocity)
+        {
+            EnsureInitialized();
+            var velocity = ToSimulation(initialVelocity);
+            if (!velocity.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(nameof(initialVelocity));
+            }
+
+            State.Reset(ToSimulation(transform.position), velocity, true);
+            _accumulator.Reset();
+            _maximumSpeed = Math.Max(_maximumSpeed, velocity.Magnitude);
+        }
+
+        public void AdvanceSimulation(double elapsedSeconds)
+        {
+            EnsureInitialized();
+            _accumulator.Advance(elapsedSeconds, StepSimulation);
+        }
+
+        public void RegisterContactSource(IBallContactSource source)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            if (!_contactSources.Contains(source))
+            {
+                _contactSources.Add(source);
+            }
+        }
+
+        public void UnregisterContactSource(IBallContactSource source)
+        {
+            if (source != null)
+            {
+                _contactSources.Remove(source);
+            }
+        }
+
+        private void StepSimulation(float deltaSeconds)
+        {
+            if (!State.IsActive)
+            {
+                return;
+            }
+
+            BallIntegrator.Step(State, deltaSeconds, _parameters);
+            _completedSteps++;
+            _simulationTime += deltaSeconds;
+            if (!State.Position.IsFinite || !State.Velocity.IsFinite)
+            {
+                _nonFiniteStates++;
+                State.MarkDead();
+                return;
+            }
+
+            var hasGround = EnvironmentCollision.TryGround(State, _groundHeight, out var groundHit);
+            var hasNet = EnvironmentCollision.TryNet(State, _net, out var netHit);
+            var hasPlayer = TryFindEarliestPlayerContact(deltaSeconds, out var playerCandidate, out var playerHit);
+            var environmentFraction = hasGround && (!hasNet || groundHit.TimeFraction <= netHit.TimeFraction)
+                ? groundHit.TimeFraction
+                : hasNet ? netHit.TimeFraction : float.PositiveInfinity;
+            if (hasPlayer && playerHit.TimeFraction <= environmentFraction)
+            {
+                var physical = ContactResponse.Apply(State, playerHit, playerCandidate.ResponseParameters);
+                var technique = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                    playerCandidate.Action,
+                    physical.PhysicalOutgoing,
+                    playerCandidate.TargetVelocity,
+                    playerCandidate.StrikeDirection,
+                    playerCandidate.PlayerTechnique,
+                    playerHit.Centeredness));
+                ContactResponse.ApplyTechniqueVelocity(State, playerHit, technique.FinalOutgoing);
+                PlayerContact?.Invoke(new PlayerBallContactEvent(playerCandidate, playerHit, physical, technique));
+            }
+            else if (hasGround && (!hasNet || groundHit.TimeFraction <= netHit.TimeFraction))
+            {
+                EnvironmentCollision.ApplyResponse(State, groundHit, _groundRestitution, _groundFriction);
+                State.MarkDead();
+                _groundContacts++;
+                EnvironmentContact?.Invoke(groundHit);
+            }
+            else if (hasNet)
+            {
+                EnvironmentCollision.ApplyResponse(State, netHit, 0.35f, 0.35f);
+                _netContacts++;
+                EnvironmentContact?.Invoke(netHit);
+            }
+
+            _maximumSpeed = Math.Max(_maximumSpeed, State.Velocity.Magnitude);
+        }
+
+        private bool TryFindEarliestPlayerContact(
+            float deltaSeconds,
+            out BallContactCandidate earliestCandidate,
+            out SweptBallHit earliestHit)
+        {
+            _contactCandidates.Clear();
+            foreach (var source in _contactSources)
+            {
+                source.CollectContacts(_simulationTime, deltaSeconds, _contactCandidates);
+            }
+
+            earliestCandidate = default;
+            earliestHit = default;
+            var found = false;
+            foreach (var candidate in _contactCandidates)
+            {
+                if (!SweptBallCollision.TryFindContact(State, candidate.Surface, deltaSeconds, out var hit) ||
+                    found && hit.TimeFraction >= earliestHit.TimeFraction)
+                {
+                    continue;
+                }
+
+                found = true;
+                earliestCandidate = candidate;
+                earliestHit = hit;
+            }
+
+            return found;
+        }
+
+        private void EnsureInitialized()
+        {
+            if (State != null)
+            {
+                return;
+            }
+
+            _parameters = new BallSimulationParameters(_gravity, _linearDampingPer60Hz);
+            _accumulator = new FixedStepAccumulator(1d / 120d, 16);
+            State = new BallState(ToSimulation(transform.position), SimVector3.Zero, DefaultRadius, false);
+        }
+
+        private static SimVector3 ToSimulation(Vector3 value)
+        {
+            return new SimVector3(value.x, value.y, value.z);
+        }
+
+        private static Vector3 ToUnity(SimVector3 value)
+        {
+            return new Vector3(value.X, value.Y, value.Z);
+        }
+    }
+}

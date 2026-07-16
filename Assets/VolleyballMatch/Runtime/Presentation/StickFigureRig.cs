@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using VolleyballMatch.Domain.Players;
+using VolleyballMatch.Domain.Simulation;
 
 namespace VolleyballMatch.Presentation
 {
@@ -41,6 +43,17 @@ namespace VolleyballMatch.Presentation
 
         public void SetPose(StickFigurePose pose, float normalizedBlend)
         {
+            SetPoseWithContactError(pose, normalizedBlend, TechniqueAction.Receive, SimVector3.Zero, SimVector3.Zero, 0f);
+        }
+
+        public void SetPoseWithContactError(
+            StickFigurePose pose,
+            float normalizedBlend,
+            TechniqueAction action,
+            SimVector3 positionError,
+            SimVector3 normalErrorDegrees,
+            float errorWeight)
+        {
             if (!_poses.TryGetValue(pose, out var targets))
             {
                 throw new ArgumentOutOfRangeException(nameof(pose), pose, "Unknown stick-figure pose.");
@@ -49,11 +62,58 @@ namespace VolleyballMatch.Presentation
             var blend = Mathf.Clamp01(normalizedBlend);
             foreach (var joint in _joints)
             {
+                var target = targets[joint.Key] + ContactRotationOffset(
+                    joint.Key,
+                    action,
+                    positionError,
+                    normalErrorDegrees,
+                    Mathf.Clamp01(errorWeight));
                 joint.Value.localRotation = Quaternion.Slerp(
                     joint.Value.localRotation,
-                    Quaternion.Euler(targets[joint.Key]),
+                    Quaternion.Euler(target),
                     blend);
             }
+        }
+
+        private static Vector3 ContactRotationOffset(
+            string jointName,
+            TechniqueAction action,
+            SimVector3 positionError,
+            SimVector3 normalErrorDegrees,
+            float weight)
+        {
+            var isLeft = jointName.StartsWith("Left", StringComparison.Ordinal);
+            var side = isLeft ? -1f : 1f;
+            var offset = Vector3.zero;
+            switch (action)
+            {
+                case TechniqueAction.Receive when jointName.EndsWith("Shoulder", StringComparison.Ordinal):
+                    offset = new Vector3(
+                        (-positionError.Z * 90f) + normalErrorDegrees.X,
+                        normalErrorDegrees.Y,
+                        (positionError.X * 100f * side) + normalErrorDegrees.Z);
+                    break;
+                case TechniqueAction.Set when jointName.EndsWith("Shoulder", StringComparison.Ordinal):
+                case TechniqueAction.Block when jointName.EndsWith("Shoulder", StringComparison.Ordinal):
+                    offset = new Vector3(
+                        (-positionError.Y * 80f) + normalErrorDegrees.X,
+                        positionError.X * 90f * side,
+                        normalErrorDegrees.Z);
+                    break;
+                case TechniqueAction.Attack when jointName == "RightShoulder":
+                case TechniqueAction.Serve when jointName == "RightShoulder":
+                    offset = new Vector3(
+                        (-positionError.Y * 100f) + normalErrorDegrees.X,
+                        positionError.X * 100f,
+                        normalErrorDegrees.Z);
+                    break;
+                case TechniqueAction.Attack when jointName == "RightElbow":
+                case TechniqueAction.Serve when jointName == "RightElbow":
+                    offset = new Vector3(positionError.Z * 90f, normalErrorDegrees.Y, 0f);
+                    break;
+            }
+
+            return offset * weight;
         }
 
         private void Build(Color teamColor, string jerseyNumber)
@@ -83,7 +143,13 @@ namespace VolleyballMatch.Presentation
             var elbow = CreateJoint(side + "Elbow", shoulder, new Vector3(0f, -0.42f, 0f));
             CreateSegment(elbow, side + "Forearm", 0.38f, color);
             var hand = CreateJoint(side + "Hand", elbow, new Vector3(0f, -0.38f, 0f));
-            CreateVisual(hand, side + "HandVisual", PrimitiveType.Sphere, Vector3.one * 0.15f, new Color(1f, 0.78f, 0.61f));
+            var handVisual = CreateVisual(
+                hand,
+                side + "HandVisual",
+                PrimitiveType.Cube,
+                new Vector3(0.16f, 0.08f, 0.22f),
+                new Color(1f, 0.78f, 0.61f));
+            handVisual.localPosition = new Vector3(0f, -0.04f, 0.06f);
         }
 
         private void CreateLeg(string side, float direction, Color color)
