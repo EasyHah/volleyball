@@ -135,6 +135,58 @@ outgoing = lerp(physicalOutgoing, assistedTargetVelocity, assistCorrection)
 - 动作、IK 和接触面通过语义部位接口连接，未来若切换 Humanoid，只替换骨骼适配与
   渲染层，不重写球模拟、AI、动作时间线和接触响应。
 
+## 球员属性与动作误差契约
+
+球员属性必须在本阶段预留为基础架构。属性不在触球完成后直接给球叠加随机偏差，
+而是影响角色本次动作的可见执行结果，再由实际接触产生球路差异：
+
+```text
+PlayerAbilityProfile
+  -> SkillExecutionResolver
+  -> 本次反应、时机、接触位置、法线和表面速度误差
+  -> 动画、IK 与骨骼接触面
+  -> 真实扫掠碰撞
+  -> 物理出球与受限辅助
+```
+
+第一阶段的最小属性集合：
+
+| 属性 | 影响 |
+| --- | --- |
+| `Mobility` | 最大移动速度、加速度、制动和可达范围。 |
+| `Reaction` | 开始移动、选位和进入动作准备阶段的延迟。 |
+| `Jump` | 起跳速度、最高触球高度和可用滞空时间。 |
+| `ReceiveTechnique` | 前臂平台位置、法线稳定性和一传目标控制。 |
+| `SetTechnique` | 双手接触时机、传球高度和二传目标控制。 |
+| `AttackTechnique` | 手掌触球位置、挥臂方向和击球时机。 |
+| `AttackPower` | 击球手掌表面速度和最大合理出球速度。 |
+
+身高、臂长、肩宽和手掌尺寸属于身体配置，直接改变几何可达范围，不与技术属性混为
+同一个数值。疲劳、状态、士气和临时增益以后作为属性修正层叠加，本阶段只保留接口。
+
+`SkillExecutionResolver` 为每次动作生成可重放的执行误差包：
+
+```text
+SkillExecutionError
+- reactionDelay
+- contactPositionError
+- contactNormalError
+- contactTimingError
+- surfaceSpeedScale
+- targetVelocityError
+- maximumAssistCorrection
+```
+
+约束：
+
+- 执行误差必须应用到实际动作、IK 和骨骼接触面，禁止只移动不可见的数学碰撞面。
+- 同一种误差只施加一次；如果接触位置已经偏移，出球阶段不能再次重复惩罚同一偏差。
+- 最终辅助强度为“动作基础辅助 × 实际接触质量 × 球员技术系数”。
+- 完全未接触时辅助为零；擦边接触只能获得有限辅助；正确接触才可获得完整辅助。
+- 所有误差使用独立的固定种子随机流，同一球员、回合、动作和种子必须能够重放。
+- 第一阶段六名球员可以使用相同默认属性，但运行时代码不得绕过属性接口读取硬编码
+  完美值。
+
 ### 防守垫球
 
 - 接触几何：两前臂之间的有限矩形平台，尺寸从骨骼世界位置实时生成。
@@ -191,7 +243,10 @@ outgoing = lerp(physicalOutgoing, assistedTargetVelocity, assistCorrection)
 | `Runtime/Domain/Simulation/ContactSurfaceSnapshot.cs` | 上一/当前有限接触面的纯数据快照。 |
 | `Runtime/Domain/Simulation/SweptBallCollision.cs` | 球对移动平面、地面和球网的连续检测。 |
 | `Runtime/Domain/Simulation/ContactResponse.cs` | 相对速度反射、恢复、摩擦、辅助混合和穿透修正。 |
+| `Runtime/Domain/Players/PlayerAbilityProfile.cs` | 移动、反应、跳跃和三类技术/力量基础属性。 |
+| `Runtime/Domain/Players/SkillExecutionError.cs` | 一次动作的不可变、可重放执行误差包。 |
 | `Runtime/AI/InterceptPlanner.cs` | 接球人选择、可达性和目标触球时刻。 |
+| `Runtime/AI/SkillExecutionResolver.cs` | 根据属性、动作难度和种子生成执行误差与辅助上限。 |
 | `Runtime/AI/ReturnVelocitySolver.cs` | 含阻尼的合法目标区域速度反解。 |
 | `Runtime/Presentation/SimulatedBall.cs` | 域模拟与可见球 Transform 的适配层。 |
 | `Runtime/Presentation/ActionTimeline.cs` | 准备、发力、触球、随挥、恢复的统一时序。 |
@@ -251,11 +306,16 @@ outgoing = lerp(physicalOutgoing, assistedTargetVelocity, assistCorrection)
 
 ### Task 7：加入预测接触、可达性和有限 IK
 
+- [ ] 实现不可变 `PlayerAbilityProfile`、`SkillExecutionError` 和固定种子的
+  `SkillExecutionResolver`。
 - [ ] AI 根据共享预测器选择接球人和绝对触球时间。
-- [ ] 使用角色速度、加速度、转向和跳跃能力判定可达性。
+- [ ] 使用球员的移动、反应、转向和跳跃属性判定可达性与动作准备延迟。
 - [ ] 动作时间不足时选择扑救、应急传球或判定无法触球，不瞬移补救。
-- [ ] 触球前有限时间启动 IK；超出关节活动范围时降低命中率而非拉长肢体。
+- [ ] 将技术属性产生的位置、法线、时机和表面速度误差应用到可见动作与 IK；超出
+  关节活动范围时降低命中率而非拉长肢体。
 - [ ] 动作状态和接触面激活必须由同一时间线驱动。
+- [ ] 覆盖“同属性同种子可重放”“不同技术属性产生不同误差范围”和“误差不重复
+  施加”的测试。
 
 ### Task 8：重写连续回合编排
 
@@ -291,12 +351,16 @@ outgoing = lerp(physicalOutgoing, assistedTargetVelocity, assistCorrection)
 6. AI 辅助可以提高目标落点准确率，但关闭辅助后仍保持正确的物理反射。
 7. 未真实命中的动作会失败；导演不得通过补帧、吸附或重新放置球制造成功。
 8. 球网和地面结果来自最早扫掠碰撞，快速球不能穿透。
+9. 相同来球下，高低技术属性通过可见动作误差产生可测量的球路差异；相同属性和种子
+   可重现相同结果。
 
 ## 已确认与待确认决策
 
 - **角色资产（已确认）：** 第一阶段使用增强版程序化简化人体；全身动作强调流畅和
   可读，技术动作的正确接触部位强调几何准确。Humanoid 仅作为核心系统完成后的可选
   外观升级。
+- **球员属性（已确认）：** 现在预留属性与动作误差解析系统。属性通过可见的反应、
+  时机、接触位置、法线和表面速度影响球路，不在触球后追加不可见的随机偏差。
 - **旋转：** 需要确认第一阶段是否加入球自旋和 Magnus 效应。默认建议先完成无自旋的
   重力、阻尼、球网和真实动作接触，再单独加入旋转。
 - **辅助强度：** 需要确认 AI 是否默认全辅助。建议垫球/二传使用高辅助保证战术连续，
