@@ -1,5 +1,11 @@
 # All-AI 3v3 Rally Scene Implementation Plan
 
+> **Stage status:** This readable-trajectory prototype has been implemented.
+> Its `BallArc/BallFlight` and single-pose motion approach is now a comparison
+> baseline only. Continue physics, contact synchronization and detailed action
+> work in
+> [`2026-07-16-physics-contact-rally-upgrade.md`](2026-07-16-physics-contact-rally-upgrade.md).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Deliver a Unity scene that continuously plays readable, seeded, all-AI 3v3 volleyball rallies with procedural stick figures, high tactical camera, deterministic score and automatic reset.

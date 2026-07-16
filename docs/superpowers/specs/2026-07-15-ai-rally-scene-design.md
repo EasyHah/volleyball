@@ -1,5 +1,11 @@
 # All-AI 3v3 Prototype Scene Design
 
+> **Stage status:** This document describes the completed first visual slice.
+> The next-stage requirement replaces controlled ball arcs and single key-pose
+> contacts with a fixed-step simulated ball, bone-derived contact surfaces and
+> synchronized multi-phase actions. See
+> [`../plans/2026-07-16-physics-contact-rally-upgrade.md`](../plans/2026-07-16-physics-contact-rally-upgrade.md).
+
 ## Purpose
 
 Build the first playable visual slice of Volleyball Match: a self-running 3v3
