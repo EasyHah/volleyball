@@ -66,6 +66,31 @@ namespace VolleyballMatch.EditModeTests
         }
 
         [Test]
+        public void TryFindContact_ClampsAnimationSamplingSpikeToHumanSurfaceSpeed()
+        {
+            var ball = AdvanceBall(new SimVector3(0f, 0.25f, 0f), SimVector3.Zero);
+            var previous = Frame(new SimVector3(0f, 0f, 0f));
+            var current = Frame(new SimVector3(0f, 2f, 0f));
+            var surface = new ContactSurfaceSnapshot(previous, current, true, 3);
+
+            var found = SweptBallCollision.TryFindContact(ball, surface, Step, out var hit);
+
+            Assert.That(found, Is.True);
+            Assert.That(hit.SurfaceVelocity.Magnitude, Is.EqualTo(25f).Within(0.0001f));
+        }
+
+        [Test]
+        public void TryFindContact_TreatsContactPointInsidePalmAsCentered()
+        {
+            var ball = AdvanceBall(new SimVector3(0.45f, 0.3f, 0f), new SimVector3(0f, -40f, 0f));
+
+            var found = SweptBallCollision.TryFindContact(ball, StaticSurface(1), Step, out var hit);
+
+            Assert.That(found, Is.True);
+            Assert.That(hit.Centeredness, Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
         public void TryFindContact_RejectsInactiveAndCoolingContactGroup()
         {
             var ball = AdvanceBall(new SimVector3(0f, 0.3f, 0f), new SimVector3(0f, -40f, 0f));

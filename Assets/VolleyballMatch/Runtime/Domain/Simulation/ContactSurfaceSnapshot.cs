@@ -97,6 +97,8 @@ namespace VolleyballMatch.Domain.Simulation
 
     public readonly struct ContactSurfaceSnapshot
     {
+        private const float MaximumHumanSurfaceSpeed = 25f;
+
         public ContactSurfaceSnapshot(
             ContactSurfaceFrame previous,
             ContactSurfaceFrame current,
@@ -131,7 +133,10 @@ namespace VolleyballMatch.Domain.Simulation
 
             var previousPoint = Previous.Origin + (Previous.Right * rightOffset) + (Previous.Up * upOffset);
             var currentPoint = Current.Origin + (Current.Right * rightOffset) + (Current.Up * upOffset);
-            return (currentPoint - previousPoint) / deltaSeconds;
+            var velocity = (currentPoint - previousPoint) / deltaSeconds;
+            return velocity.Magnitude <= MaximumHumanSurfaceSpeed
+                ? velocity
+                : velocity.Normalized * MaximumHumanSurfaceSpeed;
         }
     }
 }

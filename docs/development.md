@@ -63,6 +63,16 @@ The training scene is intentionally separate from `AiRallyPrototype`: the old
 scene remains the controlled-arc comparison baseline until interception and the
 six-player physical rally director pass their own acceptance tests.
 
+## Physical 3v3 cooperative loop
+
+Open `Assets/VolleyballMatch/Scenes/Physical3v3Rally.unity` and enter Play Mode.
+One simulated ball continuously follows blue receive-set-spike, orange
+receive-set-spike, then repeats. A missed body contact, net touch or ground touch
+ends that attempt and restarts the loop; no scripted ball teleport advances a hit.
+
+Switch views with `1` for the tactical overhead camera, `2` for the sideline
+broadcast camera, `3` for the smooth ball-follow camera, or `C` to cycle them.
+
 ## Physics-contact upgrade baseline
 
 The controlled-arc prototype remains the comparison baseline while the physical

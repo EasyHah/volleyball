@@ -23,8 +23,8 @@ namespace VolleyballMatch.EditModeTests
             Assert.That(result.AppliedControl, Is.Zero);
         }
 
-        [TestCase(TechniqueAction.Receive, 0.45f)]
-        [TestCase(TechniqueAction.Set, 0.70f)]
+        [TestCase(TechniqueAction.Receive, 1f)]
+        [TestCase(TechniqueAction.Set, 1f)]
         [TestCase(TechniqueAction.Attack, 1f)]
         [TestCase(TechniqueAction.Block, 0.05f)]
         [TestCase(TechniqueAction.Serve, 0.35f)]

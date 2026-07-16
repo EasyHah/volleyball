@@ -105,10 +105,10 @@ namespace VolleyballMatch.Domain.Simulation
                 return false;
             }
 
-            var normalizedEdgeDistance = Math.Max(
-                Math.Abs(rightOffset) / expandedHalfWidth,
-                Math.Abs(upOffset) / expandedHalfHeight);
-            var centeredness = Clamp01(1f - normalizedEdgeDistance);
+            var outsidePalmRight = Math.Max(0f, Math.Abs(rightOffset) - (frame.Width * 0.5f));
+            var outsidePalmUp = Math.Max(0f, Math.Abs(upOffset) - (frame.Height * 0.5f));
+            var glancingDistance = Math.Max(outsidePalmRight, outsidePalmUp);
+            var centeredness = Clamp01(1f - (glancingDistance / ball.Radius));
             hit = new SweptBallHit(
                 timeFraction,
                 impactCenter,

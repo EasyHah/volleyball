@@ -281,13 +281,16 @@ namespace VolleyballMatch.Presentation
 
             currentCenter /= currentFrames.Count;
             var correction = _plannedContactCenter - currentCenter;
-            var maximumCorrection = _scheduledAction == TechniqueAction.Attack ? 0.14f : 0.08f;
+            var maximumCorrection = _scheduledAction == TechniqueAction.Attack ? 0.70f : 0.16f;
             if (correction.Magnitude > maximumCorrection)
             {
                 correction = correction.Normalized * maximumCorrection;
             }
 
-            correction *= sample.ContactWeight;
+            if (sample.Phase == ActionPhase.Power)
+            {
+                correction *= Mathf.SmoothStep(0f, 1f, sample.PhaseProgress);
+            }
             transform.position += new Vector3(correction.X, correction.Y, correction.Z);
         }
 
