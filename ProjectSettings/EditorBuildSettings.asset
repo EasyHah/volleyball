@@ -4,6 +4,9 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/VolleyballMatch/Scenes/AiRallyPrototype.unity
+    guid: c9869faf721104ef79a1b50436555b23
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

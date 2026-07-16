@@ -126,7 +126,14 @@ namespace VolleyballMatch.Presentation
             var collider = visualObject.GetComponent<Collider>();
             if (collider != null)
             {
-                DestroyImmediate(collider);
+                if (Application.isPlaying)
+                {
+                    Destroy(collider);
+                }
+                else
+                {
+                    DestroyImmediate(collider);
+                }
             }
 
             var renderer = visualObject.GetComponent<Renderer>();
