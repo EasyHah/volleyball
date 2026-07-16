@@ -22,10 +22,12 @@ namespace VolleyballMatch.Presentation
             ball.transform.SetParent(transform, false);
             ball.transform.localScale = Vector3.one * 0.32f;
             ball.transform.localPosition = new Vector3(0f, 2.8f, -4.5f);
-            ball.AddComponent<BallFlight>();
+            var ballFlight = ball.AddComponent<BallFlight>();
 
-            ScoreDisplay.Create(transform);
-            CreateSixAgents();
+            var scoreDisplay = ScoreDisplay.Create(transform);
+            var agents = CreateSixAgents();
+            var director = gameObject.AddComponent<AiRallyDirector>();
+            director.Initialize(_seed, agents, ballFlight, scoreDisplay);
         }
 
         private List<PrototypePlayerAgent> CreateSixAgents()
