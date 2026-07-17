@@ -1,8 +1,8 @@
-# Volleyball Match
+# Volleyball
 
-The standalone Unity client for third-person volleyball matches. It owns rally
-state, rules, ball and player simulation, AI, player controls and match facts.
-It does not own player saves, progression, contracts, scouting or calendar state.
+A unified Unity game repository for real-time volleyball matches and the career
+experience around them. Match and career code share one Unity project and build,
+while folders and Assembly Definitions keep their responsibilities isolated.
 
 ## First playable target
 
@@ -37,13 +37,17 @@ Packages/                        Versioned Unity package manifest and lock file
 .github/workflows/               Disabled Windows CI enablement checklist
 ```
 
+The target module layout is documented in
+`docs/unified-unity-modules-plan.md`. Existing match code remains in place until
+the shared contracts and module-boundary tests are ready for a mechanical move.
+
 ## Contracts
 
-This repository consumes released `volleyball-contracts` artifacts only. During the
-initial local phase, copy a released fixture set into
-`Assets/VolleyballMatch/Fixtures/` and record the exact contract release in
-`docs/contract-consumption.md`. Never change a fixture or Schema here to make the
-client compile; propose that change in `volleyball-contracts` instead.
+The current Match module consumes released `volleyball-contracts` fixtures. The
+unified-game migration will promote the source contract types into the local
+`Shared` module while keeping the payload versioned and immutable. Until that
+migration is complete, record every imported fixture release in
+`docs/contract-consumption.md` and do not hand-edit copied payloads.
 
 ## Verification
 

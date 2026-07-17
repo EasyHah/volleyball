@@ -3,7 +3,7 @@
 ## Authority
 
 The match client consumes a frozen `MatchContextV1` and emits a `MatchResultV1`.
-The career service is authoritative for identity, session state, attributes,
+The Career module is authoritative for identity, session state, attributes,
 fatigue, injury consequences, coach trust, scouting and contracts.
 
 ## Required checks
