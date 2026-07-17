@@ -1,6 +1,0 @@
-{
-  "name": "VolleyballMatch.Match.Domain",
-  "rootNamespace": "VolleyballMatch.Domain",
-  "references": ["VolleyballMatch.Shared"],
-  "noEngineReferences": true
-}

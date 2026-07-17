@@ -1,0 +1,8 @@
+{
+  "name": "Volleyball.Career.Presentation",
+  "rootNamespace": "Volleyball.Career.Presentation",
+  "references": [
+    "Volleyball.Career.Domain",
+    "Volleyball.Career.Application"
+  ]
+}

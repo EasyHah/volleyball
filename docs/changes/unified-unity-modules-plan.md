@@ -11,7 +11,7 @@ Unity 工程之间重复导入资源、同步包版本和跨进程传递比赛�
 ## 目标目录
 
 ```text
-Assets/VolleyballMatch/
+Assets/Volleyball/
   Shared/
     Runtime/Contracts/       跨模块 ID、MatchContext、MatchResult、版本化 DTO
     Runtime/Foundation/      时间、随机种子、序列化和通用值对象
@@ -70,7 +70,7 @@ Career 选择赛事和阵容
 ## Assembly Definition 依赖
 
 ```text
-VolleyballMatch.Shared
+Volleyball.Shared
   ^             ^
   |             |
 Match.Domain  Career.Domain       （均禁止 UnityEngine 引用）

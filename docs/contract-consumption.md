@@ -7,7 +7,7 @@ The Career module is authoritative for identity, session state, attributes,
 fatigue, injury consequences, coach trust, scouting and contracts.
 
 The in-repository source of truth for the V1 boundary is now
-`Assets/VolleyballMatch/Shared/Runtime/`. Stable career `PlayerId` and `TeamId`
+`Assets/Volleyball/Shared/Runtime/`. Stable career `PlayerId` and `TeamId`
 values are strings; the prototype's blue/orange role identifier is only a court
 slot and is never a persisted identity.
 
@@ -20,7 +20,7 @@ an invalid `contextHash`. It must send the unmodified `sessionId`,
 
 ## Local fixture policy
 
-Fixtures copied under `Assets/VolleyballMatch/Shared/Tests/Fixtures/` are read-only consumer
+Fixtures copied under `Assets/Volleyball/Shared/Tests/Fixtures/` are read-only consumer
 test data. Their source release, source commit and contract version must be noted in
 the importing pull request. Updating a fixture requires a corresponding immutable
 contracts release; do not hand-edit copied data.

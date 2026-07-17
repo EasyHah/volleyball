@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260717-004 | 2026-07-17 | 已完成 | Match / Career / Shared / Bootstrap / Docs / Build Settings | **跨模块（重点）** | [Volleyball 全项目命名统一](2026-07-17-004-volleyball-naming-unification.md) |
 | CHG-20260717-003 | 2026-07-17 | 已完成 | Docs | 协作流程（重点） | [建立统一改动文档流程](2026-07-17-003-change-document-workflow.md) |
 | CHG-20260717-002 | 2026-07-17 | 已完成 | Match / Career / Bootstrap | **跨模块（重点）** | [Unity 模块目录与程序集迁移](2026-07-17-002-unity-module-separation.md) |
 | CHG-20260717-001 | 2026-07-17 | 已完成 | Shared / Match / Career | **跨模块（重点）** | [Shared 比赛与生涯契约边界](2026-07-17-001-shared-contract-boundary.md) |

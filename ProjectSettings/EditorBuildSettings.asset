@@ -6,13 +6,13 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity
+    path: Assets/Volleyball/Match/Scenes/AiRallyPrototype.unity
     guid: c9869faf721104ef79a1b50436555b23
   - enabled: 1
-    path: Assets/VolleyballMatch/Match/Scenes/PhysicsContactTraining.unity
+    path: Assets/Volleyball/Match/Scenes/PhysicsContactTraining.unity
     guid: 2d9c12852a4a4420952d76431c78467a
   - enabled: 1
-    path: Assets/VolleyballMatch/Match/Scenes/Physical3v3Rally.unity
+    path: Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity
     guid: 4ca3a03f5dea681ad6a5d38a5ffd48ec
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

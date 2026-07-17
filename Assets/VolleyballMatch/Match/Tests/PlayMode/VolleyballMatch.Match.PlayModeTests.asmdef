@@ -1,9 +1,0 @@
-{
-  "name": "VolleyballMatch.Match.PlayModeTests",
-  "references": [
-    "VolleyballMatch.Match.Domain",
-    "VolleyballMatch.Match.AI",
-    "VolleyballMatch.Match.Presentation"
-  ],
-  "optionalUnityReferences": ["TestAssemblies"]
-}

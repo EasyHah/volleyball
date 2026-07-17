@@ -1,0 +1,9 @@
+{
+  "name": "Volleyball.Career.Application",
+  "rootNamespace": "Volleyball.Career.Application",
+  "references": [
+    "Volleyball.Shared",
+    "Volleyball.Career.Domain"
+  ],
+  "noEngineReferences": true
+}

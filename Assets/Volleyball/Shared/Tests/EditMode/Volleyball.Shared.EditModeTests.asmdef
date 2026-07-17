@@ -1,0 +1,6 @@
+{
+  "name": "Volleyball.Shared.EditModeTests",
+  "references": ["Volleyball.Shared"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

@@ -35,7 +35,7 @@ keyboard, controller, graphics and performance checks.
 
 ## All-AI prototype verification
 
-Open `Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity` with Unity
+Open `Assets/Volleyball/Match/Scenes/AiRallyPrototype.unity` with Unity
 `6000.0.43f1`, enter Play Mode, and observe at least ten completed rallies.
 Confirm that every rally has a serve, receive, set, spike and defensive
 response; the tactical camera retains all players and the ball; score advances
@@ -59,7 +59,7 @@ commit `TestResults/`.
 
 ## Physical contact training
 
-Open `Assets/VolleyballMatch/Match/Scenes/PhysicsContactTraining.unity` to inspect the
+Open `Assets/Volleyball/Match/Scenes/PhysicsContactTraining.unity` to inspect the
 new physics path. Play Mode cycles through three isolated drills: forearm pass,
 overhead set and jump spike. The overlay reports `HIT`, centeredness and applied
 technique control. A miss is not repaired by moving the ball or advancing the
@@ -71,7 +71,7 @@ six-player physical rally director pass their own acceptance tests.
 
 ## Physical 3v3 cooperative loop
 
-Open `Assets/VolleyballMatch/Match/Scenes/Physical3v3Rally.unity` and enter Play Mode.
+Open `Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity` and enter Play Mode.
 One simulated ball continuously follows blue receive-set-spike, orange
 receive-set-spike, then repeats. A missed body contact, net touch or ground touch
 ends that attempt and restarts the loop; no scripted ball teleport advances a hit.

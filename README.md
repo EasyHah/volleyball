@@ -27,11 +27,11 @@ lock file before any feature work begins.
 ## Repository layout
 
 ```text
-Assets/VolleyballMatch/Match/     Match runtime, scenes and tests
-Assets/VolleyballMatch/Career/    Career domain, application and presentation modules
-Assets/VolleyballMatch/Shared/    Versioned Match/Career contracts and boundary tests
-Assets/VolleyballMatch/Bootstrap/ Cross-module composition and future entry scenes
-Assets/VolleyballMatch/Shared/Tests/Fixtures/ Read-only MatchContext and MatchResult fixtures
+Assets/Volleyball/Match/     Match runtime, scenes and tests
+Assets/Volleyball/Career/    Career domain, application and presentation modules
+Assets/Volleyball/Shared/    Versioned Match/Career contracts and boundary tests
+Assets/Volleyball/Bootstrap/ Cross-module composition and future entry scenes
+Assets/Volleyball/Shared/Tests/Fixtures/ Read-only MatchContext and MatchResult fixtures
 docs/                            Architecture, test and contract-consumption notes
 docs/changes/                    Match/Career change records and handoff highlights
 ProjectSettings/                 Version-pinned Unity project metadata
@@ -48,7 +48,7 @@ the other module are marked as cross-module highlights with explicit owner,
 consumer, compatibility and required follow-up.
 
 The first Shared boundary is now available as the Unity-free
-`VolleyballMatch.Shared` assembly. It defines stable career `PlayerId`/`TeamId`
+`Volleyball.Shared` assembly. It defines stable career `PlayerId`/`TeamId`
 values, immutable ability snapshots, and hash-validated `MatchContextV1` and
 `MatchResultV1` payloads. The existing prototype `PlayerId` remains a temporary
 court slot and must not be persisted as career identity.
