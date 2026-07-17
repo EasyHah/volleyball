@@ -1,0 +1,11 @@
+{
+  "name": "Volleyball.Match.AI.Editor",
+  "rootNamespace": "Volleyball.Editor.AI",
+  "references": [
+    "Volleyball.Match.Domain",
+    "Volleyball.Match.AI",
+    "Unity.Newtonsoft.Json"
+  ],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

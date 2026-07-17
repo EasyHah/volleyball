@@ -4,7 +4,9 @@
     "Volleyball.Shared",
     "Volleyball.Match.Domain",
     "Volleyball.Match.AI",
-    "Volleyball.Match.Presentation"
+    "Volleyball.Match.Presentation",
+    "Volleyball.Match.AI.Editor",
+    "Unity.Newtonsoft.Json"
   ],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"]
