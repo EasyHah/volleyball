@@ -19,13 +19,15 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 | CHG-20260719-001 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 防守候选触球池](2026-07-19-001-defensive-contact-candidates.md) |
 | CHG-20260718-007 | 2026-07-18 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 可见拦网与下撤覆盖](2026-07-18-007-visible-block-coverage.md) |
 | CHG-20260718-006 | 2026-07-18 | 已完成 | Match / Docs | 模块内部 | [MenShen 排球决策基准](2026-07-18-006-menshen-decision-benchmark.md) |
+| CHG-20260717-006 | 2026-07-17 | 进行中 | Career / Shared / Match / Bootstrap / Project Settings / Docs | **跨模块（重点）** | [球员生涯首个技术里程碑实施基线](2026-07-17-006-career-development-baseline.md) |
 | CHG-20260717-005 | 2026-07-17 | 已完成 | Match / Shared / Career | **跨模块（重点）** | [Physical3v3Rally 可结束单局与结果产出](2026-07-17-005-match-set-completion.md) |
 | CHG-20260717-004 | 2026-07-17 | 已完成 | Match / Career / Shared / Bootstrap / Docs / Build Settings | **跨模块（重点）** | [Volleyball 全项目命名统一](2026-07-17-004-volleyball-naming-unification.md) |
 | CHG-20260717-003 | 2026-07-17 | 已完成 | Docs | 协作流程（重点） | [建立统一改动文档流程](2026-07-17-003-change-document-workflow.md) |
 | CHG-20260717-002 | 2026-07-17 | 已完成 | Match / Career / Bootstrap | **跨模块（重点）** | [Unity 模块目录与程序集迁移](2026-07-17-002-unity-module-separation.md) |
 | CHG-20260717-001 | 2026-07-17 | 已完成 | Shared / Match / Career | **跨模块（重点）** | [Shared 比赛与生涯契约边界](2026-07-17-001-shared-contract-boundary.md) |
 
-当前跨模块实施路线：[比赛与生涯模块统一 Unity 仓库规划](unified-unity-modules-plan.md)。
+当前跨模块实施路线：[比赛与生涯模块统一 Unity 仓库规划](unified-unity-modules-plan.md)。球员生涯首个
+技术里程碑见[开发路线图](../career-development-roadmap.md)。
 
 ## 历史改动文档
 
