@@ -20,26 +20,26 @@
 
 | Path | Responsibility |
 | --- | --- |
-| `Assets/VolleyballMatch/Runtime/Domain/VolleyballMatch.Domain.asmdef` | Unity-free domain assembly. |
-| `Assets/VolleyballMatch/Runtime/Domain/Prototype/RallyPrimitives.cs` | Teams, player IDs, roles, court coordinates and action enums. |
-| `Assets/VolleyballMatch/Runtime/Domain/Prototype/RallyPlan.cs` | Immutable contact sequence and rally winner. |
-| `Assets/VolleyballMatch/Runtime/Domain/Prototype/PrototypeMatch.cs` | Score, serving team and once-only point award. |
-| `Assets/VolleyballMatch/Runtime/Domain/Prototype/BallArc.cs` | Pure quadratic ball-arc evaluation. |
-| `Assets/VolleyballMatch/Runtime/AI/VolleyballMatch.AI.asmdef` | AI assembly referencing Domain only. |
-| `Assets/VolleyballMatch/Runtime/AI/DeterministicRallyPlanner.cs` | Seeded, bounded choices that construct legal rally plans. |
-| `Assets/VolleyballMatch/Runtime/Presentation/VolleyballMatch.Presentation.asmdef` | Unity presentation assembly referencing Domain and AI. |
-| `Assets/VolleyballMatch/Runtime/Presentation/PrototypeSceneBootstrap.cs` | Creates the scene objects and connects runtime components. |
-| `Assets/VolleyballMatch/Runtime/Presentation/CourtBuilder.cs` | Builds the bright court, net, markings, lighting and high camera. |
-| `Assets/VolleyballMatch/Runtime/Presentation/StickFigureRig.cs` | Builds named joint hierarchy and blends named poses. |
-| `Assets/VolleyballMatch/Runtime/Presentation/PrototypePlayerAgent.cs` | Moves a rig to court targets and schedules poses. |
-| `Assets/VolleyballMatch/Runtime/Presentation/BallFlight.cs` | Uses `BallArc` to move the visible ball between contact points. |
-| `Assets/VolleyballMatch/Runtime/Presentation/ScoreDisplay.cs` | Renders score from `PrototypeMatch` with `TextMesh`. |
-| `Assets/VolleyballMatch/Runtime/Presentation/AiRallyDirector.cs` | Converts a rally plan into movement, pose and ball-flight presentation. |
-| `Assets/VolleyballMatch/Scenes/AiRallyPrototype.unity` | Empty saved Unity scene with `PrototypeSceneBootstrap` root. |
-| `Assets/VolleyballMatch/Tests/EditMode/VolleyballMatch.EditModeTests.asmdef` | EditMode tests referencing runtime assemblies. |
-| `Assets/VolleyballMatch/Tests/EditMode/*Tests.cs` | Deterministic domain, planner, arc and rig tests. |
-| `Assets/VolleyballMatch/Tests/PlayMode/VolleyballMatch.PlayModeTests.asmdef` | PlayMode scene-integration test assembly. |
-| `Assets/VolleyballMatch/Tests/PlayMode/AiRallyPrototypePlayModeTests.cs` | Multi-rally scene test. |
+| `Assets/VolleyballMatch/Match/Runtime/Domain/VolleyballMatch.Match.Domain.asmdef` | Unity-free domain assembly. |
+| `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/RallyPrimitives.cs` | Teams, player IDs, roles, court coordinates and action enums. |
+| `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/RallyPlan.cs` | Immutable contact sequence and rally winner. |
+| `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/PrototypeMatch.cs` | Score, serving team and once-only point award. |
+| `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/BallArc.cs` | Pure quadratic ball-arc evaluation. |
+| `Assets/VolleyballMatch/Match/Runtime/AI/VolleyballMatch.Match.AI.asmdef` | AI assembly referencing Domain only. |
+| `Assets/VolleyballMatch/Match/Runtime/AI/DeterministicRallyPlanner.cs` | Seeded, bounded choices that construct legal rally plans. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/VolleyballMatch.Match.Presentation.asmdef` | Unity presentation assembly referencing Domain and AI. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypeSceneBootstrap.cs` | Creates the scene objects and connects runtime components. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/CourtBuilder.cs` | Builds the bright court, net, markings, lighting and high camera. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/StickFigureRig.cs` | Builds named joint hierarchy and blends named poses. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypePlayerAgent.cs` | Moves a rig to court targets and schedules poses. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/BallFlight.cs` | Uses `BallArc` to move the visible ball between contact points. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/ScoreDisplay.cs` | Renders score from `PrototypeMatch` with `TextMesh`. |
+| `Assets/VolleyballMatch/Match/Runtime/Presentation/AiRallyDirector.cs` | Converts a rally plan into movement, pose and ball-flight presentation. |
+| `Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity` | Empty saved Unity scene with `PrototypeSceneBootstrap` root. |
+| `Assets/VolleyballMatch/Match/Tests/EditMode/VolleyballMatch.Match.EditModeTests.asmdef` | EditMode tests referencing runtime assemblies. |
+| `Assets/VolleyballMatch/Match/Tests/EditMode/*Tests.cs` | Deterministic domain, planner, arc and rig tests. |
+| `Assets/VolleyballMatch/Match/Tests/PlayMode/VolleyballMatch.Match.PlayModeTests.asmdef` | PlayMode scene-integration test assembly. |
+| `Assets/VolleyballMatch/Match/Tests/PlayMode/AiRallyPrototypePlayModeTests.cs` | Multi-rally scene test. |
 | `docs/development.md` | Reproducible test commands and manual ten-rally check. |
 
 Unity generates `.meta` files when the editor first imports new assets; include every generated `.meta` and the saved `.unity` file in the relevant commit.
@@ -47,16 +47,16 @@ Unity generates `.meta` files when the editor first imports new assets; include 
 ### Task 1: Establish Assembly Boundaries and Test Runner
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/Domain/VolleyballMatch.Domain.asmdef`
-- Create: `Assets/VolleyballMatch/Runtime/AI/VolleyballMatch.AI.asmdef`
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/VolleyballMatch.Presentation.asmdef`
-- Create: `Assets/VolleyballMatch/Tests/EditMode/VolleyballMatch.EditModeTests.asmdef`
-- Create: `Assets/VolleyballMatch/Tests/PlayMode/VolleyballMatch.PlayModeTests.asmdef`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Domain/VolleyballMatch.Match.Domain.asmdef`
+- Create: `Assets/VolleyballMatch/Match/Runtime/AI/VolleyballMatch.Match.AI.asmdef`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/VolleyballMatch.Match.Presentation.asmdef`
+- Create: `Assets/VolleyballMatch/Match/Tests/EditMode/VolleyballMatch.Match.EditModeTests.asmdef`
+- Create: `Assets/VolleyballMatch/Match/Tests/PlayMode/VolleyballMatch.Match.PlayModeTests.asmdef`
 
 - [ ] **Step 1: Create the runtime assembly definitions.**
 
 ```json
-// Assets/VolleyballMatch/Runtime/Domain/VolleyballMatch.Domain.asmdef
+// Assets/VolleyballMatch/Match/Runtime/Domain/VolleyballMatch.Match.Domain.asmdef
 {
   "name": "VolleyballMatch.Domain",
   "rootNamespace": "VolleyballMatch.Domain"
@@ -64,7 +64,7 @@ Unity generates `.meta` files when the editor first imports new assets; include 
 ```
 
 ```json
-// Assets/VolleyballMatch/Runtime/AI/VolleyballMatch.AI.asmdef
+// Assets/VolleyballMatch/Match/Runtime/AI/VolleyballMatch.Match.AI.asmdef
 {
   "name": "VolleyballMatch.AI",
   "rootNamespace": "VolleyballMatch.AI",
@@ -73,7 +73,7 @@ Unity generates `.meta` files when the editor first imports new assets; include 
 ```
 
 ```json
-// Assets/VolleyballMatch/Runtime/Presentation/VolleyballMatch.Presentation.asmdef
+// Assets/VolleyballMatch/Match/Runtime/Presentation/VolleyballMatch.Match.Presentation.asmdef
 {
   "name": "VolleyballMatch.Presentation",
   "rootNamespace": "VolleyballMatch.Presentation",
@@ -84,7 +84,7 @@ Unity generates `.meta` files when the editor first imports new assets; include 
 - [ ] **Step 2: Create test assembly definitions.**
 
 ```json
-// Assets/VolleyballMatch/Tests/EditMode/VolleyballMatch.EditModeTests.asmdef
+// Assets/VolleyballMatch/Match/Tests/EditMode/VolleyballMatch.Match.EditModeTests.asmdef
 {
   "name": "VolleyballMatch.EditModeTests",
   "references": [
@@ -98,7 +98,7 @@ Unity generates `.meta` files when the editor first imports new assets; include 
 ```
 
 ```json
-// Assets/VolleyballMatch/Tests/PlayMode/VolleyballMatch.PlayModeTests.asmdef
+// Assets/VolleyballMatch/Match/Tests/PlayMode/VolleyballMatch.Match.PlayModeTests.asmdef
 {
   "name": "VolleyballMatch.PlayModeTests",
   "references": [
@@ -128,17 +128,17 @@ boundary before adding tests with runtime-type references in later tasks.
 - [ ] **Step 4: Commit the assembly setup.**
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/*/*.asmdef Assets/VolleyballMatch/Tests/*/*.asmdef
+git add Assets/VolleyballMatch/Match/Runtime/*/*.asmdef Assets/VolleyballMatch/Match/Tests/*/*.asmdef
 git commit -m "chore: add volleyball runtime assemblies"
 ```
 
 ### Task 2: Implement Deterministic Match State
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/Domain/Prototype/RallyPrimitives.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Domain/Prototype/RallyPlan.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Domain/Prototype/PrototypeMatch.cs`
-- Create: `Assets/VolleyballMatch/Tests/EditMode/PrototypeMatchTests.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/RallyPrimitives.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/RallyPlan.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/PrototypeMatch.cs`
+- Create: `Assets/VolleyballMatch/Match/Tests/EditMode/PrototypeMatchTests.cs`
 
 - [ ] **Step 1: Write failing tests for initial serve, once-only score award and winning-team next serve.**
 
@@ -292,15 +292,15 @@ public sealed class PrototypeMatch
 Expected: `PrototypeMatchTests` passes.
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/Domain Assets/VolleyballMatch/Tests/EditMode/PrototypeMatchTests.cs
+git add Assets/VolleyballMatch/Match/Runtime/Domain Assets/VolleyballMatch/Match/Tests/EditMode/PrototypeMatchTests.cs
 git commit -m "feat: add deterministic prototype match state"
 ```
 
 ### Task 3: Build the Seeded All-AI Rally Planner
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/AI/DeterministicRallyPlanner.cs`
-- Create: `Assets/VolleyballMatch/Tests/EditMode/DeterministicRallyPlannerTests.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/AI/DeterministicRallyPlanner.cs`
+- Create: `Assets/VolleyballMatch/Match/Tests/EditMode/DeterministicRallyPlannerTests.cs`
 
 - [ ] **Step 1: Write failing tests for reproducibility, mandatory volleyball order and bounded contact count.**
 
@@ -406,16 +406,16 @@ contacts.
 - [ ] **Step 5: Commit the deterministic AI policy.**
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/AI Assets/VolleyballMatch/Tests/EditMode/DeterministicRallyPlannerTests.cs
+git add Assets/VolleyballMatch/Match/Runtime/AI Assets/VolleyballMatch/Match/Tests/EditMode/DeterministicRallyPlannerTests.cs
 git commit -m "feat: plan seeded all-ai rallies"
 ```
 
 ### Task 4: Implement Testable Ball Arc Math and Visible Ball Flights
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/Domain/Prototype/BallArc.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/BallFlight.cs`
-- Create: `Assets/VolleyballMatch/Tests/EditMode/BallArcTests.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/BallArc.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/BallFlight.cs`
+- Create: `Assets/VolleyballMatch/Match/Tests/EditMode/BallArcTests.cs`
 
 - [ ] **Step 1: Write failing tests for arc endpoints and raised midpoint.**
 
@@ -519,17 +519,17 @@ public sealed class BallFlight : MonoBehaviour
 - [ ] **Step 5: Commit arc math and flight adapter.**
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/Domain/Prototype/BallArc.cs Assets/VolleyballMatch/Runtime/Presentation/BallFlight.cs Assets/VolleyballMatch/Tests/EditMode/BallArcTests.cs
+git add Assets/VolleyballMatch/Match/Runtime/Domain/Prototype/BallArc.cs Assets/VolleyballMatch/Match/Runtime/Presentation/BallFlight.cs Assets/VolleyballMatch/Match/Tests/EditMode/BallArcTests.cs
 git commit -m "feat: animate controlled volleyball arcs"
 ```
 
 ### Task 5: Build and Animate the Jointed Stick Figure
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/StickFigurePose.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/StickFigureRig.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/PrototypePlayerAgent.cs`
-- Create: `Assets/VolleyballMatch/Tests/EditMode/StickFigureRigTests.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/StickFigurePose.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/StickFigureRig.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypePlayerAgent.cs`
+- Create: `Assets/VolleyballMatch/Match/Tests/EditMode/StickFigureRigTests.cs`
 
 - [ ] **Step 1: Write failing rig tests for all named joints and a non-snapping spike pose.**
 
@@ -678,18 +678,18 @@ public sealed class PrototypePlayerAgent : MonoBehaviour
 - [ ] **Step 5: Run rig and existing EditMode tests, then commit the rig, movement agent and tests.**
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/Presentation/StickFigurePose.cs Assets/VolleyballMatch/Runtime/Presentation/StickFigureRig.cs Assets/VolleyballMatch/Runtime/Presentation/PrototypePlayerAgent.cs Assets/VolleyballMatch/Tests/EditMode/StickFigureRigTests.cs
+git add Assets/VolleyballMatch/Match/Runtime/Presentation/StickFigurePose.cs Assets/VolleyballMatch/Match/Runtime/Presentation/StickFigureRig.cs Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypePlayerAgent.cs Assets/VolleyballMatch/Match/Tests/EditMode/StickFigureRigTests.cs
 git commit -m "feat: add animated jointed stick figures"
 ```
 
 ### Task 6: Create the Bright Prototype Gym and High Tactical Camera
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/PrototypeSceneBootstrap.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/CourtBuilder.cs`
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/ScoreDisplay.cs`
-- Create: `Assets/VolleyballMatch/Scenes/AiRallyPrototype.unity`
-- Create: `Assets/VolleyballMatch/Tests/EditMode/CourtBuilderTests.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypeSceneBootstrap.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/CourtBuilder.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/ScoreDisplay.cs`
+- Create: `Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity`
+- Create: `Assets/VolleyballMatch/Match/Tests/EditMode/CourtBuilderTests.cs`
 
 - [ ] **Step 1: Write a failing builder test for court, net and high camera.**
 
@@ -833,21 +833,21 @@ Add `CreateSixAgents` in this task; it creates and initializes all six
 Open Unity `6000.0.43f1`, choose **File > New Scene > Basic (Built-in)**, delete
 the default camera and light, create one empty root named `PrototypeBootstrap`,
 attach `PrototypeSceneBootstrap`, then save it as
-`Assets/VolleyballMatch/Scenes/AiRallyPrototype.unity`. Add it to Build Settings
+`Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity`. Add it to Build Settings
 so the PlayMode test can call `SceneManager.LoadSceneAsync("AiRallyPrototype")`.
 
 - [ ] **Step 6: Run `CourtBuilderTests`, enter Play Mode and verify the static scene shows all six players, court, net and score framing. Commit the scene.**
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/Presentation/PrototypeSceneBootstrap.cs Assets/VolleyballMatch/Runtime/Presentation/CourtBuilder.cs Assets/VolleyballMatch/Runtime/Presentation/ScoreDisplay.cs Assets/VolleyballMatch/Scenes/AiRallyPrototype.unity Assets/VolleyballMatch/Tests/EditMode/CourtBuilderTests.cs ProjectSettings/EditorBuildSettings.asset
+git add Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypeSceneBootstrap.cs Assets/VolleyballMatch/Match/Runtime/Presentation/CourtBuilder.cs Assets/VolleyballMatch/Match/Runtime/Presentation/ScoreDisplay.cs Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity Assets/VolleyballMatch/Match/Tests/EditMode/CourtBuilderTests.cs ProjectSettings/EditorBuildSettings.asset
 git commit -m "feat: add tactical 3v3 prototype court"
 ```
 
 ### Task 7: Drive Continuous All-AI Rallies in the Scene
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Runtime/Presentation/AiRallyDirector.cs`
-- Modify: `Assets/VolleyballMatch/Runtime/Presentation/PrototypeSceneBootstrap.cs`
+- Create: `Assets/VolleyballMatch/Match/Runtime/Presentation/AiRallyDirector.cs`
+- Modify: `Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypeSceneBootstrap.cs`
 
 - [ ] **Step 1: Write the failing director state test.**
 
@@ -984,14 +984,14 @@ a reset delay and a next serve by the winning side.
 - [ ] **Step 6: Commit full scene orchestration and director state test.**
 
 ```bash
-git add Assets/VolleyballMatch/Runtime/Presentation/AiRallyDirector.cs Assets/VolleyballMatch/Runtime/Presentation/PrototypeSceneBootstrap.cs Assets/VolleyballMatch/Tests/EditMode/AiRallyDirectorStateTests.cs
+git add Assets/VolleyballMatch/Match/Runtime/Presentation/AiRallyDirector.cs Assets/VolleyballMatch/Match/Runtime/Presentation/PrototypeSceneBootstrap.cs Assets/VolleyballMatch/Match/Tests/EditMode/AiRallyDirectorStateTests.cs
 git commit -m "feat: run continuous all-ai volleyball rallies"
 ```
 
 ### Task 8: Add PlayMode Coverage and Record Reproducible Verification
 
 **Files:**
-- Create: `Assets/VolleyballMatch/Tests/PlayMode/AiRallyPrototypePlayModeTests.cs`
+- Create: `Assets/VolleyballMatch/Match/Tests/PlayMode/AiRallyPrototypePlayModeTests.cs`
 - Modify: `docs/development.md`
 
 - [ ] **Step 1: Write the failing PlayMode test against the saved scene.**
@@ -1050,7 +1050,7 @@ Append this section:
 ```markdown
 ## All-AI prototype verification
 
-Open `Assets/VolleyballMatch/Scenes/AiRallyPrototype.unity` with Unity
+Open `Assets/VolleyballMatch/Match/Scenes/AiRallyPrototype.unity` with Unity
 `6000.0.43f1`, enter Play Mode, and observe at least ten completed rallies.
 Confirm that every rally has a serve, receive, set, spike and defensive
 response; the tactical camera retains all players and the ball; score advances
@@ -1065,7 +1065,7 @@ local review evidence; do not commit `TestResults/`.
 
 ```bash
 git diff --check
-git add Assets/VolleyballMatch/Tests/PlayMode/AiRallyPrototypePlayModeTests.cs Assets/VolleyballMatch/Tests/PlayMode/VolleyballMatch.PlayModeTests.asmdef docs/development.md ProjectSettings/EditorBuildSettings.asset
+git add Assets/VolleyballMatch/Match/Tests/PlayMode/AiRallyPrototypePlayModeTests.cs Assets/VolleyballMatch/Match/Tests/PlayMode/VolleyballMatch.Match.PlayModeTests.asmdef docs/development.md ProjectSettings/EditorBuildSettings.asset
 git commit -m "test: verify all-ai rally prototype"
 ```
 

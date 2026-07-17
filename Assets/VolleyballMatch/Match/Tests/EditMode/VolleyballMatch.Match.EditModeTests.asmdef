@@ -1,0 +1,11 @@
+{
+  "name": "VolleyballMatch.Match.EditModeTests",
+  "references": [
+    "VolleyballMatch.Shared",
+    "VolleyballMatch.Match.Domain",
+    "VolleyballMatch.Match.AI",
+    "VolleyballMatch.Match.Presentation"
+  ],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

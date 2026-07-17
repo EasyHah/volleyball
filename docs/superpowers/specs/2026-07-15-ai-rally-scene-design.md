@@ -38,7 +38,7 @@ automatically resets into the next serve.
 
 ## Scene Layout
 
-Create one playable scene under `Assets/VolleyballMatch/Scenes/`. It contains
+Create one playable scene under `Assets/VolleyballMatch/Match/Scenes/`. It contains
 a bright indoor environment, standard-proportion 3v3 court markings, a centered
 net and posts, a directional light, a high orthographic or perspective camera,
 and a small score display.

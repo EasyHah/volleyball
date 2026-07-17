@@ -36,8 +36,8 @@ Assets/VolleyballMatch/
 ```
 
 根目录只保留一套 `Packages/` 和 `ProjectSettings/`，并继续固定 Unity
-`6000.0.43f1`。当前 `Runtime/`、`Scenes/` 和 `Tests/` 暂时保持原位，等模块边界测试齐全后再
-进行机械迁移，避免目录改造和玩法开发同时发生。
+`6000.0.43f1`。截至 2026-07-17，现有比赛代码、场景和测试已经机械迁移到 `Match/`，
+Career 与 Bootstrap 的程序集骨架也已建立；迁移没有同时修改比赛玩法。
 
 ## 模块职责
 
@@ -114,13 +114,14 @@ Boot -> MainMenu -> CareerHome -> MatchLoading -> Match -> MatchSummary -> Caree
 - 在 Shared 新增稳定 `PlayerId`/`TeamId`；现有蓝/橙方 `PlayerId` 仅作为场上槽位，不能写入存档。
 - 把能力快照、`MatchContext` 和 `MatchResult` 提升为 Shared 契约。
 - 为比赛输入输出补序列化、版本兼容和固定种子测试。
-- 保持现有场景路径不变，优先确保比赛原型继续可玩。
+- 完成状态：Shared 契约、稳定 ID、版本/哈希校验和边界测试已落地。
 
 ### 阶段 2：目录与程序集迁移
 
 - 将现有比赛代码机械迁移到 `Match/`，不在同一提交修改玩法。
 - 创建 Career、Shared、Bootstrap asmdef，并加入依赖方向测试。
 - 更新测试命令、Build Settings、文档链接和场景路径。
+- 完成状态：目录、程序集、Build Settings 和依赖方向测试已落地；原有代码 namespace 暂不改名，降低场景脚本失联风险。
 
 ### 阶段 3：生涯最小闭环
 

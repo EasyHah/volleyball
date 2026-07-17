@@ -20,7 +20,7 @@ an invalid `contextHash`. It must send the unmodified `sessionId`,
 
 ## Local fixture policy
 
-Fixtures copied under `Assets/VolleyballMatch/Fixtures/` are read-only consumer
+Fixtures copied under `Assets/VolleyballMatch/Shared/Tests/Fixtures/` are read-only consumer
 test data. Their source release, source commit and contract version must be noted in
 the importing pull request. Updating a fixture requires a corresponding immutable
 contracts release; do not hand-edit copied data.

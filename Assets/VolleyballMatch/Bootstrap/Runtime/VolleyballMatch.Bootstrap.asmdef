@@ -1,0 +1,10 @@
+{
+  "name": "VolleyballMatch.Bootstrap",
+  "rootNamespace": "VolleyballMatch.Bootstrap",
+  "references": [
+    "VolleyballMatch.Shared",
+    "VolleyballMatch.Match.Presentation",
+    "VolleyballMatch.Career.Application",
+    "VolleyballMatch.Career.Presentation"
+  ]
+}

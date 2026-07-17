@@ -1,0 +1,13 @@
+{
+  "name": "VolleyballMatch.Career.EditModeTests",
+  "references": [
+    "VolleyballMatch.Shared",
+    "VolleyballMatch.Career.Domain",
+    "VolleyballMatch.Career.Application",
+    "VolleyballMatch.Career.Presentation",
+    "VolleyballMatch.Match.Presentation",
+    "VolleyballMatch.Bootstrap"
+  ],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

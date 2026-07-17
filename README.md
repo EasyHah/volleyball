@@ -27,20 +27,20 @@ lock file before any feature work begins.
 ## Repository layout
 
 ```text
-Assets/VolleyballMatch/Runtime/  Match-domain and Unity adapter code
-Assets/VolleyballMatch/Shared/   Versioned Match/Career contracts and boundary tests
-Assets/VolleyballMatch/Tests/    EditMode and PlayMode test assemblies
-Assets/VolleyballMatch/Scenes/   3v3 prototype scenes
-Assets/VolleyballMatch/Fixtures/ Read-only MatchContext and MatchResult fixtures
+Assets/VolleyballMatch/Match/     Match runtime, scenes and tests
+Assets/VolleyballMatch/Career/    Career domain, application and presentation modules
+Assets/VolleyballMatch/Shared/    Versioned Match/Career contracts and boundary tests
+Assets/VolleyballMatch/Bootstrap/ Cross-module composition and future entry scenes
+Assets/VolleyballMatch/Shared/Tests/Fixtures/ Read-only MatchContext and MatchResult fixtures
 docs/                            Architecture, test and contract-consumption notes
 ProjectSettings/                 Version-pinned Unity project metadata
 Packages/                        Versioned Unity package manifest and lock file
 .github/workflows/               Disabled Windows CI enablement checklist
 ```
 
-The target module layout is documented in
-`docs/unified-unity-modules-plan.md`. Existing match code remains in place until
-the shared contracts and module-boundary tests are ready for a mechanical move.
+The module layout is documented in `docs/unified-unity-modules-plan.md`. Match
+code now lives under `Match/`; Career and Bootstrap have explicit assembly
+boundaries ready for the first playable career loop.
 
 The first Shared boundary is now available as the Unity-free
 `VolleyballMatch.Shared` assembly. It defines stable career `PlayerId`/`TeamId`
@@ -50,11 +50,9 @@ court slot and must not be persisted as career identity.
 
 ## Contracts
 
-The current Match module consumes released `volleyball-contracts` fixtures. The
-unified-game migration will promote the source contract types into the local
-`Shared` module while keeping the payload versioned and immutable. Until that
-migration is complete, record every imported fixture release in
-`docs/contract-consumption.md` and do not hand-edit copied payloads.
+Match and Career communicate only through the local, Unity-free `Shared`
+contracts. Record any fixture revision in `docs/contract-consumption.md`; do not
+hand-edit copied payloads.
 
 ## Verification
 
