@@ -36,7 +36,17 @@
 
 `PlayerId`、`TeamId` 只保证字符串格式与值相等；稳定 ID 的注册、不可复用、tombstone 和内容资产校验仍待实现。Match 原型里的场上槽位 ID 不得直接写入生涯存档。
 
-### 2.3 Shared 升级门槛
+### 2.3 当前 Career 原型耦合
+
+当前 `CareerPlayerRecord` 直接保存七项浮点 `PlayerAbilitySnapshotV1`，与已确认的八项整数
+`CareerPlayerAttributes` 冲突；当前 `CareerMatchRequest`/`IMatchGateway.Play` 还让 Application 直接暴露
+Shared V1 并同步返回结果。这些类型只代表原型，不得写入正式快照或作为跨场景生命周期。
+
+阶段 1 必须先建立 Career 自有八项属性、请求和比赛事实类型；Shared DTO 只允许在
+`Career.MatchIntegration` 映射。正式比赛端口为可取消的异步 `ExecuteAsync`，且取消/加载失败保留
+`PendingMatch`，不生成伪结果。
+
+### 2.4 Shared 升级门槛
 
 在 Career 可以正式创建 `PendingMatch` 或结算 FakeMatch 前，必须完成一次受控 Shared 契约升级：
 
@@ -63,7 +73,6 @@ LocalPlayerProfile
 ├─ profileRevision
 ├─ profileSnapshotHash
 ├─ displayName
-├─ settings
 ├─ createdAtUtcMs
 ├─ updatedAtUtcMs
 └─ CareerIndexEntry[]
@@ -84,11 +93,13 @@ Application.persistentDataPath/
       ├─ profile.json
       ├─ profile.bak
       ├─ profile.tmp.{operationId}
+      ├─ profile.replace-backup.{operationId}
       └─ Careers/
          ├─ {saveId}.json
          ├─ {saveId}.bak
          ├─ {saveId}.tmp.{operationId}
-         ├─ {saveId}.delete.{operationId}
+         ├─ {saveId}.replace-backup.{operationId}
+         ├─ {saveId}.recovery-intent.{operationId}.json
          └─ Quarantine/
 ```
 
@@ -98,7 +109,7 @@ Application.persistentDataPath/
 `.bak` 只保护档案元数据和可重建索引，不代替任何生涯备份。`profiles-index.json` 是可重建目录，仍需
 原子替换，但损坏时以扫描有效 `profile.json` 重建，不能据其内容删除目录。
 
-### 3.3 创建、索引修复与删除
+### 3.3 创建与索引修复
 
 创建生涯的提交顺序固定为：
 
@@ -108,13 +119,9 @@ Application.persistentDataPath/
 
 若步骤 2 后崩溃，启动扫描根据存档内部 `profileId` 识别有效孤儿，把摘要重新挂回正确档案。禁止因索引暂缺而删除有效存档。
 
-删除生涯的提交顺序固定为：
-
-1. 依次获取档案级锁和该生涯锁，把主文件原子重命名为 `{saveId}.delete.{operationId}`；
-2. 以档案 CAS 原子移除索引项；
-3. 索引成功后物理删除删除标记与对应 `.bak`。
-
-启动扫描遇到删除标记时：若索引已无该 `saveId`，完成物理清理；若索引仍指向它且删除操作没有完成证据，则恢复原名并保留生涯。扫描器不能同时保留索引又删除唯一有效文件。若主文件与删除标记均存在或归属冲突，全部保留并隔离冲突副本，要求显式恢复决策。
+首个里程碑不提供删除本地档案、删除生涯或设置功能，因此初始 schema 不包含 `settings`，磁盘协议也不
+实现删除标记或删除恢复。以后加入删除时必须单独设计玩家确认、锁顺序、索引 CAS、撤销边界和失败
+恢复，并通过新变更记录与测试；不得把未调用的删除状态提前放入首版 DTO。
 
 ## 4. CareerSaveSnapshot
 
@@ -147,8 +154,9 @@ CareerSaveSnapshot
 │  ├─ onboardingState
 │  ├─ weekPlan
 │  ├─ weekExecutionState
-│  └─ pendingEvent
-├─ player / team / coachTrust / fatigue / mindset
+│  ├─ pendingEvent
+│  └─ trainingEmphases[]
+├─ player(CareerPlayerAttributes) / team / coachTrust / fatigue / mindset
 ├─ schedule / matchHistory / aggregateStats
 ├─ notifications
 └─ operationReceipts[]
@@ -213,7 +221,7 @@ Shared 门禁完成后的同一里程碑中，首个显式 schema 升级加入 `
 ### 5.2 单写者队列
 
 每个 `saveId` 只有一个应用命令与提交队列；不同 `saveId` 可独立运行。自动保存、手动保存、计划确认、
-训练/休息/事件、比赛创建、比赛结算、周末结算和删除都必须经过对应队列；后续合同等系统接入时也必须
+训练/休息/事件、比赛创建、比赛结算和周末结算都必须经过对应队列；后续合同等系统接入时也必须
 复用同一队列。UI、场景和 Match 模块均不能绕过仓储直接写盘。
 
 只有原子替换成功后，应用层才向 UI 发布新状态并处理下一命令。写盘中的内存草稿不是权威状态。
@@ -224,9 +232,9 @@ Shared 门禁完成后的同一里程碑中，首个显式 schema 升级加入 `
 跨进程文件锁。不同生涯可以独立提交权威快照，但随后重建 `CareerIndexEntry` 时必须进入所属档案队列；
 索引更新失败不回滚已经成功的生涯提交，启动扫描会按权威快照修复摘要。
 
-`profiles-index.json` 使用独立的全局目录队列、文件锁、`catalogRevision` 和 `catalogHash`。创建/删除本地
-档案必须走该 CAS；删除生涯或修复孤儿时按“档案锁 -> 生涯锁”的固定顺序取锁。普通生涯提交不在持有
-生涯锁时等待档案锁，避免反向锁序。两个不同 `saveId` 的并发创建、删除或摘要更新不得通过最后写入者
+`profiles-index.json` 使用独立的全局目录队列、文件锁、`catalogRevision` 和 `catalogHash`。创建本地
+档案必须走该 CAS；修复孤儿时按“档案锁 -> 生涯锁”的固定顺序取锁。普通生涯提交不在持有
+生涯锁时等待档案锁，避免反向锁序。两个不同 `saveId` 的并发创建或摘要更新不得通过最后写入者
 覆盖彼此。
 
 ## 6. 正式持久化入队与周状态机
@@ -243,7 +251,8 @@ CareerCreated
 ```
 
 每段确认都以独立 `operationId` 原子提交选择、结果、回执和下一阶段；重启只恢复到尚未确认的下一段，
-不能重复领取已确认结果。第三段提交同时建立完整球员、球队归属和第一周 `Planning`。
+不能重复领取已确认结果。第三段提交同时建立完整球员、球队归属和第一周 `Planning`。初始结果页读取
+该快照；“继续”只是 UI 导航，不存在 `AwaitingTryoutReview`，也不提交新 revision。
 
 ```text
 Planning
@@ -288,18 +297,90 @@ Planning
 
 ### 7.2 键控随机
 
-每份生涯创建时固定 `careerSeed`，领域层不维护全局顺序随机游标。每次抽取由以下键独立派生：
+每份生涯创建时通过注入的 `ICareerSeedSource` 固定 32 字节 `careerSeed`；生产实现使用系统密码学随机源，
+测试实现传入固定字节。JSON 只接受 64 个小写十六进制字符，加载时解码为原始 32 字节。领域层不维护
+全局顺序随机游标。每次抽取由以下键独立派生：
 
 ```text
 careerRandomAlgorithmVersion + careerSeed + streamId + season + week
 + entityId + occurrenceId + drawIndex
 ```
 
-`streamId` 来自版本控制注册表。首个里程碑只注册有真实调用方的 `tryout`、`training` 和 `event`；
-`scouting`、`offer` 等未来流在首次实现对应系统时新增。既有值不得改义或复用。同一操作多次抽取显式
-增加 `drawIndex`。没有实体时使用注册表中的明确空实体 ID，不使用空字符串。
+`streamId` 来自版本控制注册表。首个里程碑只注册有真实随机调用的 `tryout`、`event` 和
+`match_seed`；训练结果由配置和输入直接计算，不注册 `training`。`scouting`、`offer` 等未来流在首次
+实现对应系统时新增。既有值不得改义或复用。同一操作多次抽取显式增加 `drawIndex`。没有实体时使用
+注册表中的明确 sentinel ID，不使用空字符串。
 
-键编码使用域分隔符 `volleyball-career-rng`，每个字段含类型标签与长度前缀；整数固定端序，字符串为 UTF-8。Domain 只通过 `IDeterministicRandom` 请求随机数，禁止直接使用时间、`UnityEngine.Random`、`System.Random` 或无序集合迭代结果。
+`careerRandomAlgorithmVersion = 1` 的规范二进制键固定如下，任何字段或编码变化都必须提升版本：
+
+1. 前缀为 ASCII `volleyball-career-rng`，随后一个 `0x00` 分隔字节和一个版本字节 `0x01`；
+2. 之后依次写 TLV：一字节 tag、四字节无符号大端长度、原始 value；
+3. tag `0x01` 为 32 字节 seed，`0x02` 为 `streamId` UTF-8，`0x03/0x04` 为四字节无符号大端
+   `season/week`，`0x05` 为实体稳定 ID UTF-8，`0x06` 为 `occurrenceId` 的 36 字节小写 UUID D 格式
+   ASCII，`0x07` 为四字节无符号大端 `drawIndex`；
+4. 字符串按原始 Unicode 标量编码为严格 UTF-8，不做正规化；无效代理项、空 ID、超范围整数或未知
+   stream 直接拒绝；
+5. 每次哈希再追加 tag `0x08`、长度 `0x00000004` 和四字节无符号大端 `attempt`，从零开始，计算
+   `SHA-256(baseKey || attemptTlv)`。
+
+把结果映射到半开整数范围 `[minInclusive, maxExclusive)` 时，宽度必须在 `1..2^32`。取哈希前八字节为
+无符号大端 `u64`，在数学整数域令 `remainder = 2^64 mod width`。`remainder = 0` 时所有 `u64` 都接受；
+否则令可表示的 `limit = ulong.MaxValue - remainder + 1`，仅当 `u64 < limit` 时接受。被拒绝时递增
+`attempt` 重算，接受时返回 `minInclusive + (u64 mod width)`。实现可以用 `UInt128` 直接计算，但禁止把
+`2^64` 先存入 `ulong`；这保证 `width = 1`、`2^32` 等整除边界不会溢出或永久拒绝。
+
+首个里程碑的实际调用注册表固定如下；未列出的调用不允许自行占用这些流：
+
+| stream | `season/week` | `entityId` | `occurrenceId` | `drawIndex` 与范围 | 输出解释 |
+| --- | --- | --- | --- | --- | --- |
+| `tryout` | 固定 `1/0`；`week = 0` 是只允许该流使用的入队 sentinel | 全局唯一稳定 `choiceId` | 该段已保存的发生 ID | 版本化 `outputIds[]` 中的零基索引；`[0, 201)` | 减 `100` 得到 `-100..100` 内部属性单位的扰动，再由该输出配置钳制；每个输出只抽一次 |
+| `event` | 事件首次创建时的赛季/周次 | 全局唯一稳定 `optionId` | 已保存的事件发生 ID | 首个样例固定 `0`；`[0, 10000)` | 万分位落入该选项版本化结果区间，解析出的具体后果立即保存 |
+| `match_seed` | 赛程项冻结的赛季/周次 | 全局唯一稳定赛程项 ID | `sessionId` | 固定 `0`；`[0, 2^32)` | 结果作为 `uint32` 位模式，以 unchecked 二补码转换为 Shared 契约的 `int32 seed` 并冻结 |
+
+试训的 `outputIds[]` 与事件结果区间属于对应内容版本；`choiceId`、`optionId` 和赛程项 ID 自身必须全局
+唯一，不再运行时拼接复合字符串。任何新增抽取都必须分配新 `drawIndex`/流版本并补 fixture，不能插入
+后改变既有输出的索引。
+
+以下是锁定 TLV、哈希和范围映射的正式**算法** golden vector；它刻意使用 `[0, 100)`，不是上表
+`event` 实际调用的结果区间：
+
+```text
+seedHex       = 000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f
+streamId      = event
+season/week   = 1 / 1
+entityId      = event.team_meal
+occurrenceId  = 00000000-0000-0000-0000-000000000001
+drawIndex     = 0
+attempt       = 0
+range         = [0, 100)
+sha256        = 0955c7f662dbf95ea75c1670c4888602c8844c9d01af69f7a3741bc3286104d4
+firstU64      = 672663580396222814
+result        = 14
+```
+
+golden 测试还必须锁定完整哈希输入十六进制，避免两个错误编码实现只在最终结果上偶然相等：
+
+```text
+766f6c6c657962616c6c2d6361726565722d726e6700010100000020000102030405060708090a0b0c0d0e0f101112131415
+161718191a1b1c1d1e1f02000000056576656e74030000000400000001040000000400000001050000000f6576656e742e74
+65616d5f6d65616c060000002430303030303030302d303030302d303030302d303030302d30303030303030303030303107
+0000000400000000080000000400000000
+```
+
+拒绝采样单测除上述哈希向量外，还必须向范围映射器注入可控 `u64` 序列：覆盖 `width = 1` 与
+`width = 2^32` 的零 remainder 路径，以及首值 `u64 >= limit`、次值 `u64 < limit` 时 `attempt` 恰好增加
+一次的路径。不得只用几乎不会自然命中拒绝区间的 SHA-256 样本证明该分支。
+
+实际调用集成测试还必须锁定以下三条向量（均使用上述 seed、`drawIndex/attempt = 0`）：
+
+| stream | season/week | entity / occurrence | range | SHA-256 | raw result / 解释 |
+| --- | --- | --- | --- | --- | --- |
+| `tryout` | `1/0` | `tryout.attack.choice.power` / `00000000-0000-0000-0000-000000000002` | `[0, 201)` | `99908aaaed0e6c837a7fafb7e21796b716ecc384f5c3f7bcb8ac9a0d3e2ab1d4` | `39` / 扰动 `-61` |
+| `event` | `1/1` | `event.team_meal.option.attend` / `00000000-0000-0000-0000-000000000003` | `[0, 10000)` | `498a5ad33f7737a79b2d489870aa5b9c32a287a44c5af6d94bad45877cd9de8d` | `6791` / 万分位 `6791` |
+| `match_seed` | `1/1` | `schedule.u1w1.match.01` / `00000000-0000-0000-0000-000000000004` | `[0, 2^32)` | `9983cd3901876225ebe7e0fec528093f18a90471be144c6c4bc1d43aaa896b7d` | `25649701` / `int32 25649701` |
+
+Domain 只通过 `IDeterministicRandom` 请求随机数，禁止直接使用时间、`UnityEngine.Random`、
+`System.Random` 或无序集合迭代结果。
 
 生涯为每场比赛派生并冻结独立 `matchSeed`。确定性承诺覆盖生涯领域计算、由相同正式契约驱动的快速
 模拟，以及相同 `MatchResult` 下的生涯结算；不承诺 Unity 物理直接比赛逐帧重放。
@@ -337,6 +418,7 @@ outcomeSummary
 - `sessionId`、创建它的 `operationId`、创建 `lineageId/revision`；
 - 全部适用版本轴及 `contextHash`；
 - 首个里程碑适用的 FakeMatch fixture ID 与 fixture 版本；
+- 按方向聚合后的 `trainingEmphasis` 定点整数映射，以及独立的 `preMatchPriority`；
 - 本场已解析的具体数值和来源稳定 ID；
 - 对应赛程项 ID、槽位 ID和允许的执行模式。
 
@@ -371,7 +453,8 @@ settlementSummary
    `expectedVersionToken`，计算首次结算。
 
 首次结算在一个新 revision 中同时写入：原始比赛结果、两个哈希、本里程碑实际实现的属性经验、疲劳、
-心态和信任后果、全部周末后果、`SettlementReceipt`、比赛历史更新、已清除的 `PendingMatch` 和下一周
+心态和信任后果、全部周末后果、`SettlementReceipt`、比赛历史更新、已清除的 `PendingMatch` 与
+`trainingEmphases[]`，以及下一周
 `Planning`。不得拆成多次保存。后续伤病、球探等系统接入后，只能以规则和 schema 升级扩充同一
 原子提交，不能另开旁路写盘。
 
@@ -379,14 +462,24 @@ settlementSummary
 
 ### 10.1 正式规范
 
-正式 `contextHash`、`resultHash`、`inputFingerprint` 和 `snapshotHash` 均使用 SHA-256、小写十六进制。规范字节是 UTF-8、无 BOM、无额外空白的规范 JSON：
+正式 `contextHash`、`resultHash`、`inputFingerprint` 和 `snapshotHash` 均使用 SHA-256、小写十六进制。
+规范字节采用 [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785.html) 的 I-JSON 字符串有效性与字符串序列化
+规则；所有参与规范哈希的整数还必须位于 I-JSON 可互操作安全范围 `[-9007199254740991,
+9007199254740991]`，各 schema 可定义更窄范围。对象字段顺序由每个 schema/contract 版本显式固定，不
+使用 JCS 的属性排序；因此不得简单标注为
+“完整 JCS”。输出是 UTF-8、无 BOM、JSON token 之间无空白：
 
 - 每个版本固定字段顺序；
 - 计算某哈希时排除该哈希字段自身；
 - `contextHash`、`resultHash` 和 `inputFingerprint` 明确逐项排除日志时间、传输时间和显示文本等
   非业务元数据；
-- 枚举写契约规定的小写 ASCII 标识；
-- 数值只用整数，不使用浮点数、区域化格式或科学计数法；
+- 解析器拒绝重复属性名、尾随 token、未知必需字段、无效 UTF-8 和非法单独代理项；
+- 字符串以双引号包围，双引号与反斜线分别写为 `\"` 与 `\\`；U+0008/0009/000A/000C/000D 分别写为
+  `\b/\t/\n/\f/\r`，其余 U+0000–001F 写小写 `\u00xx`；斜线 `/` 不转义，其他 Unicode 标量按原值
+  写 UTF-8，不进行 NFC/NFD 正规化；
+- 枚举写契约规定的小写 ASCII 标识，布尔/null 只写 `true`、`false`、`null`；
+- 数值只用十进制整数：零写 `0`，负数只带一个前导 `-`，非零数无前导零；不使用浮点、`+`、区域化
+  格式或科学计数法；
 - 可选字段显式写 `null` 或版本规定默认值；
 - 有序列表保持业务顺序；逻辑映射先转为按稳定 ID ordinal 排序的条目数组；
 - Unicode 按原始标量序列写 UTF-8，不做区域化比较或平台相关正规化。
@@ -394,13 +487,16 @@ settlementSummary
 `snapshotHash` 为损坏检测覆盖快照中除自身之外的全部已序列化字段，包括玩家输入的显示名、时间戳和
 恢复来源；它不能套用比赛契约排除显示文本的规则。这样任意存档字段位翻转都能被发现。
 
-必须提供跨模块共享的 golden byte vectors 与 golden hashes，覆盖 Unicode、`null`、空集合、列表顺序、映射排序、整数边界、时间字段和排除字段。先比较规范字节，再比较哈希，不能只测试同一实现自算自验。
+必须提供跨模块共享的 golden byte vectors 与 golden hashes，覆盖引号、反斜线、斜线、全部控制字符
+转义、BMP/非 BMP 字符、组合与分解 Unicode、`null`、空集合、列表顺序、映射排序、整数边界、时间字段
+和排除字段；负例必须覆盖重复属性、非法 lone surrogate、无效 UTF-8、前导零和尾随 token。先比较规范
+字节，再比较哈希，不能只测试同一实现自算自验。
 
 `snapshotHash` 用于发现意外损坏，不是签名，不提供防作弊、防篡改或身份认证保证。
 
 ### 10.2 与当前 V1 的关系
 
-当前 `MatchContextV1` 的哈希规则继续只代表 V1。不得在不提升 `contractVersion` 的情况下改为本节规则，也不得宣称当前 V1 的浮点规范化满足正式存档要求。正式比赛接入依赖第 2.3 节 Shared 升级门槛。
+当前 `MatchContextV1` 的哈希规则继续只代表 V1。不得在不提升 `contractVersion` 的情况下改为本节规则，也不得宣称当前 V1 的浮点规范化满足正式存档要求。正式比赛接入依赖第 2.4 节 Shared 升级门槛。
 
 ## 11. 文件提交协议与单备份
 
@@ -411,47 +507,87 @@ settlementSummary
 3. 关闭所有句柄；
 4. 重新读取临时文件，验证 JSON、Schema、全部适用版本、归属 ID、预期版本令牌关系、业务不变量和
    `snapshotHash`；
-5. 目标不存在时，以同卷原子移动发布；若目标同时出现，返回冲突而不是覆盖。
+5. 目标不存在时，以同卷原子移动发布；无论 API 正常返回还是抛出异常，都在锁内重扫目标与临时文件，
+   只有目标文件验证为预期初始版本令牌才发布应用状态；若目标同时出现，返回冲突而不是覆盖。
 
 ### 11.2 更新已有存档
 
 1. 在独占锁内完成 CAS；
-2. 同目录写入并耐久刷新临时文件；
-3. 关闭后重读并完整验证；
-4. 使用 Windows 带备份的原子替换：新临时文件替换 `{saveId}.json`，被替换的已验证主文件成为 `{saveId}.bak`；
-5. 替换成功后再发布应用状态。
+2. 同目录写入并耐久刷新 `{saveId}.tmp.{operationId}`，关闭后重读并完整验证；
+3. 确认 `{saveId}.replace-backup.{operationId}` 不存在；不得把固定 `{saveId}.bak` 直接作为
+   `File.Replace` 的 backup destination，因为该 API 可以覆盖既有备份目标；
+4. 调用 Windows `File.Replace(temp, main, operationBackup)`。主文件、临时文件和操作专用备份必须同卷；
+5. 无论 API 返回成功、抛出异常还是调用进程在响应前终止，下次恢复都必须在相同 `saveId` 锁内重新扫描
+   并完整验证主 `.json`、固定 `.bak`、操作专用备份与 `.tmp`，不能只根据返回值推断提交结果。
 
-每条生涯只保留一个已验证的上一 revision `.bak`，不滚动多代。不得先删除旧 `.bak` 再进行非原子覆盖。备份也必须验证内部 `profileId/saveId/revision` 和哈希。
+重扫后只允许以下裁决：
 
-替换前失败，旧主文件仍是权威；替换后响应前崩溃，重试通过完整版本令牌或回执识别已经成功的提交。
+- 主文件等于预期 next version token：业务提交已经发布；若操作专用备份等于 expected token，将其原子
+  收敛为唯一固定 `.bak`，旧 `.bak` 只有在收敛成功后才能删除；若找不到 expected 备份候选，有效 next
+  主文件仍是权威，但生涯进入 `BackupDegraded` 只读诊断状态，不能回滚或伪造上一修订；
+- 主文件仍等于 expected token：提交未发布，旧主文件继续权威；临时与操作专用候选保留到诊断完成后
+  再隔离；
+- 主文件缺失且操作专用备份等于 expected token：Windows 可能已经移动旧文件；从该候选复制到新的
+  同卷修复临时文件，复验后原子移动回主路径，恢复原 expected token，不发布 next snapshot；
+- 主文件为其他有效 token、候选归属冲突，或 expected/next 均无法证明：停止自动写入，保留所有证据并
+  返回 `AmbiguousReplaceState`，不得猜测最新文件。
+
+稳定状态每条生涯只保留一个已验证的上一 revision `.bak`；操作专用备份只允许存在于替换或恢复窗口。
+备份收敛本身也使用操作专用路径和原子替换，并在异常后重扫。隔离文件名至少包含 `saveId`、来源类型、
+`operationId` 和冲突序号，不能只用可能碰撞的时间戳。
+
+该协议依据 Windows
+[ReplaceFileW 失败状态](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew)：部分
+错误会让被替换文件改名到 backup path，故“抛异常后旧主文件必在原位置”不是合法不变量。
 
 ## 12. 启动恢复、损坏隔离与孤儿扫描
 
-启动扫描按档案逐个执行，不让单个损坏存档阻止其他生涯加载。扫描结果是明确分类，不猜测覆盖：
+启动扫描按档案逐个执行，不让单个损坏存档阻止其他生涯加载。扫描先按 `operationId` 归组全部候选；
+只要发现一个尚未收敛的 `{saveId}.recovery-intent.{operationId}.json`，就必须先在 `saveId` 锁内验证并执行本节的独立恢复裁决，
+不得先套用普通临时文件或“有效主文件”规则。意图损坏、归属不符或同一 `saveId` 同时出现多个未收敛
+意图时返回 `AmbiguousRestoreState` 并保留全部证据。以下通用分类只适用于没有未收敛恢复意图的候选：
 
 | 发现 | 处理 |
 | --- | --- |
+| 存在 `{saveId}.recovery-intent.{operationId}.json` | 暂停通用扫描；有效时按本节恢复裁决表处理，损坏或冲突时进入 `AmbiguousRestoreState` |
 | 主文件有效 | 作为权威；验证索引摘要，必要时重建摘要 |
 | 主文件损坏，`.bak` 有效 | 保持两者原位并只读验证；向玩家提供从上一 revision 恢复，确认前不移动、覆盖或删除任一候选 |
-| 主文件与 `.bak` 都损坏 | 两者隔离，生涯标记不可载入；不创建空白同 ID 存档 |
+| 主文件与 `.bak` 都损坏 | 以操作 ID 唯一路径隔离两者，生涯标记不可载入；不创建空白同 ID 存档 |
+| 存在 `replace-backup.{operationId}` | 与 expected/next token 及主文件共同按第 11.2 节裁决；不能按时间戳猜测或直接删除 |
 | 有有效主文件时发现任意临时文件 | 临时文件属于未越过提交点的产物，隔离；主文件保持权威，不提供提升选项 |
 | 主文件缺失但 `.bak` 有效 | 保留备份并显示恢复提示；临时文件仍视为未提交，不优先于备份 |
 | 只有临时文件且无主文件 | 视为首次创建未提交，隔离并不发布生涯；保留脱敏诊断供开发期排查 |
 | 文件版本高于客户端 | 原样保留，拒绝破坏性载入 |
 | 存档有效但索引缺项 | 作为孤儿重新挂回内部 `profileId` 对应档案 |
 | 索引存在但文件缺失 | 索引项标记缺失，保留诊断；不能自动创建替代生涯 |
-| 删除标记存在 | 按第 3.3 节完成删除或回滚，不凭文件名猜测 |
 | 文件内部归属与目录冲突 | 隔离并报告，不移动到猜测档案 |
 
 隔离操作本身失败时停止对该文件的自动恢复，不覆盖任何候选。恢复 `.bak` 的正式协议是：只读验证
 备份，并向玩家明确说明将回退到哪个赛季、周次和更新时间；只有玩家确认后，恢复命令才进入该
 `saveId` 队列、取得独占锁，并重新验证主文件状态、损坏文件字节指纹、备份版本令牌和目标路径。
 
-恢复命令以备份业务状态创建恢复快照：生成全新 `lineageId`，令 `revision = B + 1`，写入
+恢复命令先耐久创建并复验唯一 `{saveId}.recovery-intent.{operationId}.json`，至少记录 `saveId`、恢复前主文件是
+缺失还是损坏、损坏字节 SHA-256、已确认 `.bak` token、恢复 next token、临时文件名和隔离目标名；该
+意图只用于崩溃后裁决，不是可载入生涯，也不能被提升为主档。随后以备份业务状态创建恢复快照：生成
+全新 `lineageId`，令 `revision = B + 1`，写入
 `restoredFromVersionToken`，更新时戳并重算哈希，再写入同卷临时文件并完整复验。损坏主文件仍存在时，
-使用一次 Windows 原子替换发布恢复快照，并把被替换的损坏主文件作为该替换的备份目标直接写入
-`Quarantine/{saveId}.corrupt.{utcMs}.json`；主文件缺失时则以同卷原子移动发布。两种路径都不改写或
-删除已验证 `.bak`。
+使用一次 Windows 原子替换发布恢复快照，并把被替换的损坏主文件写入事先确认不存在的
+`Quarantine/{saveId}.corrupt.{operationId}.{conflictIndex}.json`；主文件缺失时则以同卷原子移动发布。
+两种路径都不改写或删除已验证 `.bak`。无论 API 返回、抛出异常还是进程中断，下次恢复都在锁内按下表
+独立裁决，不能复用第 11.2 节要求“操作备份等于有效 expected token”的普通更新规则：
+
+| 重扫证据 | 恢复裁决 |
+| --- | --- |
+| 主文件等于本次恢复 next token，固定 `.bak` 仍等于确认时的备份 token | 恢复已发布；隔离文件若匹配原损坏字节指纹则保留为证据，缺失时只标记诊断证据降级，不回滚有效恢复主档 |
+| 主文件字节指纹仍等于确认时的损坏指纹，固定 `.bak` 仍有效且 token 未变 | 恢复未发布；保留原状态并再次提示，临时恢复快照不得自行提升 |
+| 主文件缺失、固定 `.bak` 仍有效且 token 未变、隔离文件匹配原损坏指纹 | 替换可能只完成了旧文件移动；恢复未发布，保留隔离证据并再次提示，不提升临时文件 |
+| 恢复前主文件本就缺失，重扫后仍缺失且固定 `.bak` token 未变 | 原子移动未发布；再次提示，不提升临时文件 |
+| 主文件为其他有效 token、`.bak` token 改变、损坏指纹不符或候选归属冲突 | 返回 `AmbiguousRestoreState`，保留全部证据并停止自动写入 |
+
+表中“恢复前主文件本就缺失”必须由确认命令的持久诊断上下文证明，不能在异常后反推。恢复重扫覆盖
+主文件、固定 `.bak`、本次恢复临时文件和本次隔离目标；任何临时文件都只用于证明/隔离，不作为权威
+候选。恢复 token、备份 token 与损坏字节 SHA-256 指纹共同构成本次恢复回执的判定证据。只有裁决已
+收敛并保存诊断结果后才能隔离或清理 recovery intent；意图损坏或缺失时不得猜测恢复前状态。
 
 因此，确认前或原子发布前崩溃仍保留原“损坏主文件 + 有效备份”，或者“无主文件 + 有效备份”，下次
 启动会再次提示；原子发布后崩溃则已有完整新主档。恢复临时文件永远不会自行提升，可在下次扫描隔离。
@@ -503,9 +639,10 @@ settlementSummary
 | 创建 | 临时写入前/中/Flush 后/移动前/移动后、索引更新前后 | 无半文件成为主档；移动后崩溃可扫描为孤儿并挂回 |
 | CAS | 入队后、取锁前、锁内重读前后、版本令牌不匹配 | 单写者顺序稳定；冲突不覆盖并重新载入验证 |
 | 跨进程 | 第二进程争锁、持锁进程强制终止 | 第二进程拒绝或只读；锁释放后按磁盘权威恢复 |
-| 档案/目录索引 | 两条生涯并发更新摘要、并发创建/删除、profile/catalog CAS 冲突 | 不丢索引项；冲突重读；可从权威文件重建 |
+| 档案/目录索引 | 两条生涯并发更新摘要、并发创建、profile/catalog CAS 冲突 | 不丢索引项；冲突重读；可从权威文件重建 |
 | 更新 | 临时写一半、Flush 失败、关闭失败、重读失败、Schema/哈希失败 | 临时文件隔离；主文件与 `.bak` 不被错误替换 |
-| 原子替换 | 替换调用前、系统调用失败、替换成功但返回前终止 | 前者旧主档有效；后者新版本令牌有效且重试幂等；仅一份上一 revision 备份 |
+| 原子替换 | 替换调用前、三个已知 ReplaceFileW 部分失败码、其他异常、成功但返回前终止 | 总是重扫；expected/next/歧义三类裁决正确，不凭异常猜测；稳定后仅一份 `.bak` |
+| 操作专用备份 | 已存在目标、主档旧/新/缺失、候选损坏、备份收敛中断 | 路径不碰撞；可恢复旧主档或确认新提交；歧义时停止写入 |
 | 周状态机 | 每条状态边的提交前与提交后，覆盖训练、休息、事件、比赛槽、周末 | 相同 ID 重算或由 `OperationReceipt` 去重；后果不重复、不跳过 |
 | PendingMatch | 上下文提交前后、场景加载中、比赛退出/闪退 | 未提交不进比赛；已提交回到赛前并复用原上下文/seed/sessionId |
 | 比赛结算 | resultHash 校验前后、查回执前后、生成快照后、替换前后 | 无回执才首次结算；成功后重试返回既有摘要 |
@@ -519,7 +656,6 @@ settlementSummary
 | 备份恢复 | 确认前、取锁/复验、恢复临时文件、原子替换/移动前后，含主档已缺失 | 发布前下次仍提示；发布后新 lineage 唯一有效；损坏证据与 `.bak` 保留 |
 | 临时清理 | 临时 revision 低/同/高、hash 有效/无效、主档存在/缺失 | 全部视为未提交产物并隔离；不越过原子提交点；有效 `.bak` 仍可提示恢复 |
 | 索引 | 档案索引缺项、重复项、摘要陈旧、索引损坏 | 由有效存档重建；绝不因缺项删除生涯 |
-| 删除 | 重命名前后、索引更新前后、物理清理前后、主档与标记并存 | 扫描可完成或回滚；不会同时丢失索引和唯一有效文件 |
 | 手动保存 | Planning、Planned、AwaitingMatch、命令执行中、无业务变化、退出超时 | 只在 Planning 接受；比赛中不做检查点；空保存不增 revision |
 | 日志隐私 | 所有错误与冲突路径 | 无显示名、完整 JSON、用户绝对路径或未经处理的关联 ID |
 
@@ -529,12 +665,13 @@ Windows 文件测试至少覆盖首次创建、覆盖替换、杀死子进程后
 
 ### 16.1 建议顺序
 
-1. 稳定 ID 注册表、版本值对象、规范 JSON/哈希组件及 golden vectors；
+1. Career 自有 `CareerPlayerAttributes`、稳定 ID 注册表、版本值对象、规范 JSON/哈希组件及 golden
+   vectors；移除 Domain/Application 对 Shared 比赛 DTO 的引用；
 2. `LocalPlayerProfile`、索引 DTO、`CareerSaveSnapshot` 最小骨架；
 3. 每 `saveId` 队列、文件锁、CAS、临时验证、原子替换和单 `.bak`；
-4. 启动扫描、隔离、孤儿重挂与删除恢复；
+4. 启动扫描、替换异常裁决、隔离与孤儿重挂；
 5. 周状态机、键控随机和 `OperationReceipt`；
-6. 完成 Shared 升级门槛；
+6. 完成 Shared 升级门槛、`Career.MatchIntegration` DTO 映射和异步比赛端口；
 7. `PendingMatch`、`SettlementReceipt` 与 FakeMatch 联合闭环；真实直接比赛和快速模拟是后续消费者；
 8. 迁移器、恢复 UI、日志隐私和完整失败注入矩阵。
 
@@ -548,5 +685,5 @@ Windows 文件测试至少覆盖首次创建、覆盖替换、杀死子进程后
 - 重复比赛结果返回既有 `SettlementReceipt`，冲突结果不会覆盖；
 - 每个周转移提交前后强制终止均不重复或丢失后果；
 - 主档损坏后保留隔离原件，并可在玩家确认后以新 lineage 从唯一已验证上一 revision 备份恢复；
-- 孤儿扫描和删除中断均有可重复测试；
+- 孤儿扫描和替换异常裁决均有可重复测试；
 - 文档中的当前代码事实已按实现更新，且未把规划字段写成 V1 既有能力。

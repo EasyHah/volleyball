@@ -32,16 +32,17 @@
 ```text
 路线文档评审
   -> Unity 6000.3.20f1 独立升级
-      -> 重放并合并 career-week-plan
-      -> career-save-model
-          -> career-local-persistence
-              -> career-player-tryout
-                  -> career-week-execution
-                      -> Shared 契约联合门禁
-                          -> career-fake-match
-                              -> Input System 独立基线
-                                  -> career-ui-vertical-slice
-                                      -> career-recovery-build
+      -> 协作基础设施基线
+          -> 重放并合并 career-week-plan
+              -> career-save-model
+                  -> career-local-persistence
+                      -> career-player-tryout
+                          -> career-week-execution
+                              -> Shared 契约联合门禁
+                                  -> career-fake-match
+                                      -> Input System 独立基线
+                                          -> career-ui-vertical-slice
+                                              -> career-recovery-build
 ```
 
 URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责人主导。它不阻塞纯 C# 的 Career Domain、Application 与 Persistence 工作，但必须在依赖 URP 的比赛场景或最终集成构建验收前完成。NavMesh 只有在 Match AI 出现真实调用方时才立项。
@@ -62,16 +63,49 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 - Career 与 Match 两位负责人确认路线、跨模块门禁和验收范围；
 - 文档 PR 不夹带功能代码、包升级或资源重导入。
 
-### 3.2 已完成的周计划前置切片
+### 3.2 待对齐的周计划前置切片
 
 `feature/career-week-plan` 已实现固定三个行动槽、比赛槽保护、确认锁定和稳定行动 ID，并在 Unity
-`6000.0.43f1` 上通过完整 EditMode 测试。它是后续周状态与存档模型的前置切片，不在本路线中重新设计。
+`6000.0.43f1` 上通过完整 EditMode 测试；但它当前仍把 `Academics`、`Social` 作为常驻行动，测试也
+明确允许安排它们。这与已确认的“四类常驻行动；学业和社交只通过事件出现”冲突，因此不能按原样合并。
 
-由于目标 Unity 版本已调整，该分支当前属于“实现完成、待新基线集成验证”：Unity 升级合并后，将其变基到最新 `main`，使用 `6000.3.20f1` 重跑完整 EditMode 测试；只有测试通过且变更记录更新后才能合并。失败时只修复升级导致的兼容问题，不顺带扩展周执行、UI 或存档范围。
+Unity 升级合并后，将该分支变基到最新 `main`，直接删除 `Academics`、`Social` 枚举值，并把相关测试
+改为只接受专项训练、力量训练、团队合练、休息和系统预留的比赛。该分支尚未形成需要兼容的正式存档，
+因此不保留“可反序列化但在领域入口拒绝”的旧枚举值。`CHG-005` 必须
+同步记录这次需求对齐；之后使用 `6000.3.20f1` 重跑完整 EditMode。只有代码、测试、变更记录和新基线
+证据全部一致才能合并，不得把旧枚举保留为“以后可能使用”的无调用方占位。
+
+### 3.3 当前 Career 耦合与目标程序集依赖
+
+当前 `CareerPlayerRecord` 直接保存七项浮点 `PlayerAbilitySnapshotV1`，`Career.Application` 也直接暴露
+同步 `IMatchGateway.Play`。它们是原型代码，不是本里程碑的正式领域模型或场景生命周期接口。正式目标
+依赖如下：
+
+| 程序集 | Unity API | 允许依赖 |
+| --- | --- | --- |
+| `Volleyball.Shared` | 禁止 | 无业务模块依赖；只放稳定跨模块 ID、版本化比赛 DTO 与 `IMatchRunnerV*` 异步执行契约 |
+| `Volleyball.Career.Domain` | 禁止 | `Volleyball.Shared` 中的稳定 ID；禁止引用 `MatchContextV*`、`MatchResultV*`、`PlayerAbilitySnapshotV*` |
+| `Volleyball.Career.Application` | 禁止 | `Volleyball.Career.Domain`；定义用例、仓储端口和 Career 自有比赛端口 |
+| `Volleyball.Career.Persistence` | 禁止 | `Volleyball.Career.Domain`、`Volleyball.Career.Application`；路径由外部注入 |
+| `Volleyball.Career.Content` | 允许 | `Volleyball.Career.Domain`；只把 ScriptableObject 映射为纯 C# 配置 |
+| `Volleyball.Career.MatchIntegration` | 允许 | Career Domain/Application 与 `Volleyball.Shared`；独占 Career/Shared DTO 映射，不引用 Match 内部 Domain |
+| `Volleyball.Career.Presentation` | 允许 | Career Domain/Application；不得直接写存档或 Shared 比赛 DTO |
+| `Volleyball.Bootstrap` | 允许 | 组装双方公开适配器、场景和应用状态机，不承载领域规则 |
+
+Career Domain 建立自有的八项 `0–10000` 整数能力模型；Shared 比赛能力只在
+`Career.MatchIntegration` 中转换。允许 Domain 复用 Shared 的稳定 `PlayerId/TeamId`，但模块边界测试
+必须禁止任何 Shared 比赛 DTO 回流到 Domain/Application。
+
+阶段 1 直接删除当前 `CareerMatchRequest` 与同步 `IMatchGateway.Play`，只允许先定义尚未接线的 Career 自有
+异步端口，例如 `Task<CareerMatchFacts> ExecuteAsync(CareerMatchLaunch, CancellationToken)`。请求和返回
+都是 Career 自有类型。Shared 另行定义版本化 `IMatchRunnerV*`，只接收/返回 Shared DTO；FakeMatch 与未来
+真实比赛各自实现该契约。`Career.MatchIntegration` 依赖注入 `IMatchRunnerV*`，负责 Career/Shared 映射并
+实现 Career 端口；Bootstrap 只组装实现，不复制映射规则。正式流程调用前必须已经耐久提交
+`PendingMatch`；取消或场景加载失败只返回错误并保留待处理比赛，不能伪造比赛结果。
 
 ## 4. 实施阶段
 
-### 阶段 0：锁定 Unity Editor
+### 阶段 0A：锁定 Unity Editor
 
 - 建议分支：`chore/unity-6000.3.20f1`
 - 负责人：双方共同确认，一人执行
@@ -90,14 +124,39 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 - 完整 EditMode、PlayMode 与 Windows x64 开发构建通过；
 - 两位负责人确认场景、Prefab 与包锁中的变化都是升级所必需。
 
+### 阶段 0B：协作基础设施基线
+
+- 建议分支：`chore/collaboration-baseline`
+- 负责人：双方
+
+进入条件：Unity `6000.3.20f1` 升级已合并，避免基础设施分支同时携带项目重导入差异。
+
+范围：在功能开发前落地 `CODEOWNERS`、UnityYAMLMerge、Git LFS/锁约定和不需要 Unity 许可证的基础
+CI。当前仓库只有最小 `.gitattributes`，Unity Windows workflow 整个 job 仍为禁用状态，不能把它们写成
+已经完成。
+
+退出条件：
+
+- `CODEOWNERS` 使用双方真实 GitHub handle，Career/Match 各自目录归对应负责人，Shared、Bootstrap、
+  Packages、ProjectSettings、公共场景和 workflow 要求双方评审；
+- `.unity`、`.prefab`、`.asset` 配置 UnityYAMLMerge，并在两台开发机验证相同的 merge driver；大型二进制
+  资源进入 Git LFS，需要独占编辑的源资产标记 `lockable`，YAML 资产不进入 LFS；
+- 启用独立、非 `if: false` 的无许可证 CI job，至少执行变更记录检查、`.meta` 配对、asmdef JSON/依赖方向、
+  禁止业务代码落入 `Assembly-CSharp` 和 `git diff --check`；
+- 两位负责人验证分支保护所需检查名称，并把本地安装/锁文件规则写入 `docs/development.md`。
+
 ### 阶段 1：正式存档模型
 
 - 建议分支：`feature/career-save-model`
 - 负责人：Career
 
-进入条件：Unity 升级已合并；`career-week-plan` 已在新版本上重放测试并合并。
+进入条件：Unity 升级与协作基础设施已合并；`career-week-plan` 已完成需求对齐、在新版本上重放测试并
+合并。
 
-范围：建立最小但正式的 `CareerSaveSnapshot`、版本字段、`revision`、周状态、操作回执与必要稳定 ID。
+范围：建立最小但正式的 `CareerSaveSnapshot`、版本字段、`revision`、周状态、操作回执与必要稳定 ID，
+并把 `CareerPlayerRecord` 从 `PlayerAbilitySnapshotV1` 解耦为 Career 自有八项整数属性模型。删除当前
+`CareerMatchRequest` 与同步 `IMatchGateway.Play`；若为了后续编译先建立 Career 自有异步端口，本阶段不得
+接线或调用它。
 字段只覆盖此时已有调用方的创建、Planning 和行动执行状态，但结构不得是一次性临时存档。正式
 `PendingMatch` 与 `SettlementReceipt` 依赖新版 Shared 契约，在阶段 6 以显式 schema 升级加入；本阶段
 不得用原始 JSON、空接口或猜测字段提前占位。
@@ -105,6 +164,7 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 退出条件：
 
 - 模型能表达从新建生涯到比赛槽执行前的每个权威状态；
+- Domain/Application 不再引用 Shared 的能力、比赛上下文或比赛结果 DTO；
 - 周状态与操作回执可以证明行动恢复和幂等行为；
 - 序列化映射、版本默认值与非法状态均有 EditMode 测试；
 - 没有磁盘 I/O、UI、场景或 Match 内部引用进入 Domain/Application 模型。
@@ -135,7 +195,9 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 
 进入条件：本地档案和生涯快照可稳定创建、提交和恢复。
 
-范围：最小新建字段、固定主攻位置、三次试训选择、八项初始属性、可见综合潜力等级、初始教练信任与心态。静态数值从带稳定业务 ID 和版本的内容配置进入纯 C# 规则。
+范围：最小新建字段、固定主攻位置、三次试训选择、Career 自有八项初始属性、可见综合潜力等级、初始
+教练信任与心态。静态数值从带稳定业务 ID 和版本的内容配置进入纯 C# 规则。第三段提交直接建立入队和
+第一周 `Planning`；结果页“继续”只导航，不产生额外 revision。
 
 退出条件：
 
@@ -158,6 +220,8 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 退出条件：
 
 - 每种常驻行动都有可解释且合法的结算结果；
+- 多次专项/力量训练按 `trainingEmphasis` 聚合规则产生唯一结果；同方向递减/上限、不同方向共存、
+  团队合练不生成 emphasis、冻结、消费和清除都有 EditMode 测试，且不与 `preMatchPriority` 混名；
 - 确认计划、执行自由槽和处理事件的每个持久化边界均有提交前后失败测试；
 - 已应用的行动和事件不会重复，未应用的步骤不会被跳过；
 - 完成比赛前步骤后能稳定停在“比赛槽尚未执行”的权威状态，但在 Shared 门禁前不创建
@@ -170,12 +234,17 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 
 进入条件：前四个 Career 阶段不再依赖猜测性比赛字段；Career 提供真实消费需求，Match 提供可生成事实。
 
-范围：集中确认并升级一次 Shared 契约、版本、冻结上下文、比赛统计、规范哈希和固定 fixture。Career 与 Match 均不得在各自功能分支里私自追加 Shared 字段。
+范围：集中确认并升级一次 Shared 契约、版本、冻结上下文、比赛统计、规范哈希、固定 fixture 和
+`IMatchRunnerV*` 异步执行契约，并建立 `Career.MatchIntegration` 的双向 DTO 映射及适配器。Career 与
+Match 均不得在各自功能分支里私自追加 Shared 字段。本阶段只做适配器/fixture 级验证，不从生涯流程
+启动比赛。
 
 退出条件：
 
 - 两位负责人共同批准字段定义、计数口径和兼容策略；
 - 两个模块分别读取同一组 golden fixture 并通过契约与哈希测试；
+- FakeMatch runner 的 fixture 结果能经适配器转换为 Career 自有事实，但尚不由生涯流程调用；同步
+  `IMatchGateway.Play` 已在阶段 1 删除；
 - Career 只准备输入和计算长期后果，Match 只执行比赛/快速模拟并报告事实；
 - 变更记录标记为 `跨模块（重点）`，并写明两端升级动作。
 
@@ -187,9 +256,10 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 进入条件：Shared 契约升级已合并；固定上下文与结果 fixture 可用。
 
 范围：以显式 schema 升级加入正式 `PendingMatch` 和 `SettlementReceipt`，并完成赛前重点、
-FakeMatch 固定事实、结果哈希校验、回执查询和从比赛前重试。第一周的比赛结算、全部周末后果与
-第二周初始化必须生成同一版下一快照并一次原子提交。FakeMatch 是可替换的开发适配器，不包含真实
-物理或快速模拟算法。
+FakeMatch 固定事实、结果哈希校验、回执查询和从比赛前重试。只有 `PendingMatch` 成功提交后，生涯流程
+才首次通过 Career 异步端口调用 FakeMatch runner。第一周的比赛结算、全部周末后果与
+第二周初始化必须生成同一版下一快照并一次原子提交。FakeMatch 是可替换的开发期 runner 实现，不包含
+真实物理或快速模拟算法。
 
 退出条件：
 
@@ -257,7 +327,8 @@ FakeMatch 固定事实、结果哈希校验、回执查询和从比赛前重试�
 
 CI 按能力分阶段推进：
 
-1. 立即启用不需要 Unity 许可证的仓库检查：变更记录、`.meta` 完整性、程序集引用方向和基础结构检查；
+1. 阶段 0B 启用独立且不受 Unity job 开关影响的无许可证检查：变更记录、`.meta` 完整性、程序集
+   引用方向、默认程序集污染和基础结构检查；
 2. 在固定执行环境可用前，每个分支由开发者使用精确 Unity 版本本地跑测试，并把版本与结果写入变更记录；
 3. Shared 契约升级前，建立可用的 Windows Unity 测试环境，至少自动执行编译、程序集边界、EditMode 和契约 fixture；
 4. UI 或场景变更追加 PlayMode；最终阶段由 CI 或固定 Windows 测试机执行 EditMode、PlayMode 与 Windows x64 构建。
@@ -276,7 +347,7 @@ CI 暂不可用不等于测试门禁可跳过；只能用可复现的本地/固�
 | --- | --- | --- |
 | `Assets/Volleyball/Career/**` | 生涯开发者 | 生涯负责人评审；不得反向依赖 Match 内部代码 |
 | `Assets/Volleyball/Match/**` | 比赛开发者 | 比赛负责人评审；不得写生涯长期状态 |
-| `Shared/**`、`Bootstrap/**`、包、Build Settings、公共场景 | 双方 | 两位负责人共同批准 |
+| `Assets/Volleyball/Shared/**`、`Assets/Volleyball/Bootstrap/**`、`Packages/**`、`ProjectSettings/**`、公共场景与 workflow | 双方 | 两位负责人共同批准 |
 | 各自大型场景和 Prefab | 对应所有者 | 对方修改前先协调，避免并行编辑同一 YAML 资源 |
 
 只有 `main` 是长期分支。每个阶段从最新 `main` 建立短分支，通过 PR 合并并附带独立变更记录；共同区域必须标记 `跨模块（重点）`。每周至少进行一次双方集成同步和闭环回归。不得直接推送、强制推送或把无关资源重导入混入功能 PR。
@@ -284,6 +355,7 @@ CI 暂不可用不等于测试门禁可跳过；只能用可复现的本地/固�
 ## 7. 硬性验收门禁
 
 - 每个分支的新增规则必须有 EditMode 测试，且完整 EditMode 套件全绿；
+- 阶段 0B 的 CODEOWNERS、UnityYAMLMerge/LFS 规则和无许可证 CI 未通过前，不开始功能分支；
 - 存档阶段必须覆盖往返、损坏、备份恢复、版本令牌冲突和原子替换失败；
 - 周执行阶段必须覆盖每个状态提交前后的失败，证明不会重复或跳过结算；
 - FakeMatch 必须覆盖重复结果幂等、哈希冲突和 `PendingMatch` 恢复；
@@ -312,6 +384,7 @@ CI 暂不可用不等于测试门禁可跳过；只能用可复现的本地/固�
 - 正式美术、外观编辑、按键重绑定、超宽屏和 4K 专项适配；
 - 注册登录、云存档、跨电脑识别、在线对战、遥测 SDK、反作弊和存档加密；
 - 生产后端、数据库或多仓库拆分；
+- 本地档案/生涯删除、设置页和玩家可编辑设置；
 - 从比赛中途继续；`PendingMatch` 只支持返回赛前并从本场开头重试。
 
 这些能力需要在一周技术闭环稳定后分别重新设计和评审，不得以“预留接口”为由提前创建没有调用方的空实现。
