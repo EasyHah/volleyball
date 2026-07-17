@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using Volleyball.Domain.Prototype;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Presentation
 {
@@ -38,6 +39,13 @@ namespace Volleyball.Presentation
             }
 
             _label.text = $"BLUE {match.BlueScore}  :  {match.OrangeScore} ORANGE";
+        }
+
+        public void RenderSet(int homeScore, int awayScore, TeamSide servingSide, bool isComplete)
+        {
+            var serving = servingSide == TeamSide.Home ? "BLUE SERVE" : "ORANGE SERVE";
+            var suffix = isComplete ? "  RESULT READY" : "  " + serving;
+            _label.text = $"BLUE {homeScore}  :  {awayScore} ORANGE{suffix}";
         }
     }
 }

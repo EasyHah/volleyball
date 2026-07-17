@@ -29,6 +29,8 @@ namespace Volleyball.Presentation
 
         public float MovementShortfall { get; private set; }
 
+        public float ScheduledMovementDistance { get; private set; }
+
         private ActionTimeline _actionTimeline;
         private TechniqueAction _scheduledAction;
         private SkillExecutionError _executionError;
@@ -469,6 +471,9 @@ namespace Volleyball.Presentation
                 _movementStartPosition,
                 requestedTarget,
                 maximumDistance);
+            ScheduledMovementDistance = Vector3.Distance(
+                _movementStartPosition,
+                _movementTargetPosition);
             MovementShortfall = Vector3.Distance(_movementTargetPosition, requestedTarget);
             _hasScheduledMovement = Vector3.Distance(
                 _movementStartPosition,

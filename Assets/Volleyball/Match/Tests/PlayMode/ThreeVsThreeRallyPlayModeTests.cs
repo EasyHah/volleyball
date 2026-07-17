@@ -27,21 +27,22 @@ namespace Volleyball.PlayModeTests
                 Object.FindObjectsByType<SimulatedBall>(FindObjectsSortMode.None),
                 Has.Length.EqualTo(1));
 
-            var timeout = Time.realtimeSinceStartup + 20f;
-            while (director.CompletedCycles < 1 && Time.realtimeSinceStartup < timeout)
+            var timeout = Time.realtimeSinceStartup + 120f;
+            while (director.Result == null && Time.realtimeSinceStartup < timeout)
             {
                 yield return null;
             }
 
+            Assert.That(director.Result, Is.Not.Null);
             Assert.That(
-                director.CompletedCycles,
-                Is.GreaterThanOrEqualTo(1),
-                $"contacts={director.SuccessfulContacts}, misses={director.MissedRallies}");
-            Assert.That(director.SuccessfulContacts, Is.GreaterThanOrEqualTo(6));
-            Assert.That(director.ExecutionErrorApplications, Is.GreaterThanOrEqualTo(6));
-            Assert.That(director.MovementAssignments, Is.GreaterThanOrEqualTo(6));
-            Assert.That(director.TacticRevision, Is.GreaterThanOrEqualTo(1));
-            Assert.That(director.TotalMovementShortfall, Is.GreaterThanOrEqualTo(0f));
+                Mathf.Max(director.Result.HomeScore, director.Result.AwayScore),
+                Is.GreaterThanOrEqualTo(15));
+            Assert.That(
+                Mathf.Abs(director.Result.HomeScore - director.Result.AwayScore),
+                Is.GreaterThanOrEqualTo(2));
+            Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(6));
+            Assert.That(director.IsLoopRunning, Is.False);
+            Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
 
             cameras.SetView(RallyCameraView.Sideline);
@@ -59,18 +60,6 @@ namespace Volleyball.PlayModeTests
             Assert.That(Camera.main.orthographic, Is.True);
             Assert.That(cameras.ViewSwitchCount, Is.GreaterThanOrEqualTo(4));
 
-            var variationTimeout = Time.realtimeSinceStartup + 16f;
-            while (director.MissedRallies < 1 && Time.realtimeSinceStartup < variationTimeout)
-            {
-                yield return null;
-            }
-
-            Assert.That(
-                director.MissedRallies,
-                Is.GreaterThanOrEqualTo(1),
-                "Seeded route changes should eventually produce a natural execution miss.");
-            Assert.That(director.TacticRevision, Is.GreaterThanOrEqualTo(2));
-            Assert.That(director.MovementAssignments, Is.GreaterThan(6));
         }
     }
 }

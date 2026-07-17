@@ -39,6 +39,8 @@ namespace Volleyball.Domain
 
         public TeamSide ServingSide { get; private set; }
 
+        public TeamSide ReceivingSide => ServingSide == TeamSide.Home ? TeamSide.Away : TeamSide.Home;
+
         public bool IsComplete { get; private set; }
 
         public TeamSide WinnerSide

@@ -19,8 +19,14 @@ generation.
 - A team that wins while already serving keeps service and does not rotate.
 - A receiving team that wins takes service and rotates its three court slots by
   one position before the next rally.
-- A missed expected contact, contact timeout, ball-ground collision, net
-  collision, or other terminal environment collision awards the opponent a point.
+- A missed expected contact or contact timeout awards the opponent a point.
+- A net collision applies its physical response and rally play continues when the
+  ball can still legally cross the net.
+- After the final valid touch, a legal ground landing in the opponent's court
+  awards that touching team the point. A ground landing in its own court, or
+  outside either opponent-court boundary, awards the opponent the point.
+- A ball that crosses the net plane outside the antenna interval is a fault by
+  the final touching team and awards the opponent the point.
 - When the set is complete, no new rally is scheduled, the ball is stopped, and
   the scene shows the final score and that a result is ready.
 
@@ -31,11 +37,11 @@ rally winner plus optional point and error attribution; updates score, serving
 team, per-team rotation offset, player statistics, and completion state; and can
 create `MatchResultV1` from its immutable `MatchContextV1`.
 
-`ThreeVsThreeRallyDirector` remains a Unity adapter. It translates physical ball
-events into one terminal rally outcome, identifies the final successful contact
-and responsible error player, calls `MatchSet`, updates player court positions
-when rotation changes, and stops after completion. It never implements scoring,
-rotation, or result validation itself.
+`ThreeVsThreeRallyDirector` remains a Unity adapter. A pure court referee uses
+the final successful contact, net-plane crossing and ground landing to determine
+the terminal rally outcome. The director calls `MatchSet`, updates player court
+positions when rotation changes, and stops after completion. It never implements
+scoring, rotation, or result validation itself.
 
 ## Data And Statistics
 
@@ -58,7 +64,7 @@ for every context player and returns all six entries in `MatchResultV1`.
 ```text
 Start rally with current serving team and rotated court slots
   -> accepted contacts update MatchSet contacts/workload
-  -> physical terminal event determines rally winner and attribution
+  -> court referee determines rally winner from last touch, net crossing and landing
   -> MatchSet awards point, service and any receiving-team rotation
   -> if incomplete, director applies new positions and starts next rally
   -> if complete, director stores MatchResultV1, stops the ball and renders final state
@@ -68,8 +74,9 @@ Start rally with current serving team and rotated court slots
 
 EditMode tests cover initial service, ordinary rally scoring, receiving-team
 service transfer and one-step rotation, serving-team non-rotation, 15-point
-completion, deuce continuation, all-six-player result statistics, and result
-validation against the original context.
+completion, deuce continuation, all-six-player result statistics, result
+validation against the original context, legal/opponent-side and own-side ground
+landings, out-of-bounds ground landings, antenna faults, and legal net contacts.
 
 The existing `Physical3v3Rally` PlayMode test becomes a set-completion smoke test:
 it waits for a completed result, confirms a valid 15-point win-by-two score,
@@ -79,7 +86,6 @@ rallies after completion.
 ## Risks And Boundaries
 
 The physical prototype currently follows a fixed six-contact loop rather than a
-full referee model. This milestone treats its existing timeout and terminal
-environment events as rally-ending faults. Out-of-bounds, blocks, service faults
-and detailed volleyball stat categories are deferred until the physical rules
-model owns those distinctions.
+full referee model. This milestone adds only the court geometry required to judge
+net-plane antenna crossings and final ground landings. Blocks, service faults and
+detailed volleyball stat categories remain deferred.

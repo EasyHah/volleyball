@@ -75,5 +75,17 @@ namespace Volleyball.EditModeTests
 
             Assert.That(outcome.HasValue, Is.False);
         }
+
+        [Test]
+        public void NetCrossing_InsideAntennaBelowNet_LeavesRallyUnresolvedForNetResponse()
+        {
+            var outcome = MatchRallyReferee.ResolveNetCrossing(
+                TeamSide.Home,
+                new SimVector3(0f, NetHeight - 0.1f, 0f),
+                HalfWidth,
+                NetHeight);
+
+            Assert.That(outcome.HasValue, Is.False);
+        }
     }
 }

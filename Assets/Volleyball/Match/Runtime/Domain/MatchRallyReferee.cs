@@ -63,7 +63,7 @@ namespace Volleyball.Domain
                 throw new ArgumentOutOfRangeException(nameof(crossingPoint));
             }
 
-            if (Math.Abs(crossingPoint.X) <= antennaHalfWidth && crossingPoint.Y >= netHeight)
+            if (Math.Abs(crossingPoint.X) <= antennaHalfWidth)
             {
                 return null;
             }

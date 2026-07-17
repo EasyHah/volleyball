@@ -35,6 +35,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ReceivingSide_IsAlwaysTheOpponentOfTheServingSide()
+        {
+            var set = CreateSet(TeamSide.Home);
+
+            Assert.That(set.ReceivingSide, Is.EqualTo(TeamSide.Away));
+
+            set.ResolveRally(TeamSide.Away, null, null);
+
+            Assert.That(set.ReceivingSide, Is.EqualTo(TeamSide.Home));
+        }
+
+        [Test]
         public void ResolveRally_AtFourteenAll_RequiresTwoPointLeadToComplete()
         {
             var set = CreateSet(TeamSide.Home);

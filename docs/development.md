@@ -73,8 +73,13 @@ six-player physical rally director pass their own acceptance tests.
 
 Open `Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity` and enter Play Mode.
 One simulated ball continuously follows blue receive-set-spike, orange
-receive-set-spike, then repeats. A missed body contact, net touch or ground touch
-ends that attempt and restarts the loop; no scripted ball teleport advances a hit.
+receive-set-spike rallies until one team reaches 15 points with a two-point lead.
+The scene then stops and displays `RESULT READY`; `ThreeVsThreeRallyDirector.Result`
+contains one `MatchResultV1` with all six player statistics. A legal opponent-court
+landing after the final touch scores, while an own-court landing, out-of-bounds
+opponent-court landing, antenna fault or contact timeout gives the point away.
+Net contact itself is legal when the ball later crosses the net inside the antenna
+interval and above net height.
 
 Switch views with `1` for the tactical overhead camera, `2` for the sideline
 broadcast camera, `3` for the smooth ball-follow camera, or `C` to cycle them.

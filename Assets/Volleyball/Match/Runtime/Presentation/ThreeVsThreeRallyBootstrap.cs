@@ -2,6 +2,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
+using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
+using PlayerAbilitySnapshotV1 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV1;
+using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
+using PlayerSnapshotV1 = Volleyball.Shared.Contracts.PlayerSnapshotV1;
+using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using TeamSide = Volleyball.Shared.Contracts.TeamSide;
+using TeamSnapshotV1 = Volleyball.Shared.Contracts.TeamSnapshotV1;
 
 namespace Volleyball.Presentation
 {
@@ -16,8 +23,9 @@ namespace Volleyball.Presentation
             CourtBuilder.Build(transform);
             var ball = CreateBall();
             var agents = CreateSixAgents();
+            var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<ThreeVsThreeRallyDirector>();
-            director.Initialize(ball, agents);
+            director.Initialize(ball, agents, CreateSandboxContext(), scoreDisplay);
             var cameras = gameObject.AddComponent<RallyCameraController>();
             cameras.Initialize(ball);
         }
@@ -115,6 +123,39 @@ namespace Volleyball.Presentation
                     0.92f + teamAdjustment),
                 _ => PlayerAbilityProfile.Default
             };
+        }
+
+        private static MatchContextV1 CreateSandboxContext()
+        {
+            return MatchContextV1.Create(
+                System.Guid.Parse("22222222-2222-2222-2222-222222222222"),
+                7351,
+                CreateTeam("sandbox-home", "Blue", TeamSide.Home, "home"),
+                CreateTeam("sandbox-away", "Orange", TeamSide.Away, "away"));
+        }
+
+        private static TeamSnapshotV1 CreateTeam(string id, string name, TeamSide side, string prefix)
+        {
+            return new TeamSnapshotV1(
+                new Volleyball.Shared.Contracts.TeamId(id),
+                name,
+                side,
+                new[]
+                {
+                    CreatePlayer(prefix + "-setter", "Setter", 1, PlayerPosition.Setter),
+                    CreatePlayer(prefix + "-attacker", "Attacker", 2, PlayerPosition.OutsideHitter),
+                    CreatePlayer(prefix + "-defender", "Defender", 3, PlayerPosition.Defender)
+                });
+        }
+
+        private static PlayerSnapshotV1 CreatePlayer(string id, string name, int number, PlayerPosition position)
+        {
+            return new PlayerSnapshotV1(
+                new StablePlayerId(id),
+                name,
+                number,
+                position,
+                new PlayerAbilitySnapshotV1(0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f));
         }
     }
 }

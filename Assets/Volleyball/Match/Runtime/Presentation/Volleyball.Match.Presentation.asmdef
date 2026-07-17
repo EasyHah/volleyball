@@ -1,5 +1,5 @@
 {
   "name": "Volleyball.Match.Presentation",
   "rootNamespace": "Volleyball.Presentation",
-  "references": ["Volleyball.Match.Domain", "Volleyball.Match.AI"]
+  "references": ["Volleyball.Shared", "Volleyball.Match.Domain", "Volleyball.Match.AI"]
 }

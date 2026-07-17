@@ -12,6 +12,31 @@ namespace Volleyball.EditModeTests
     public sealed class PrototypePlayerContactSourceTests
     {
         [Test]
+        public void ScheduleContact_RecordsAssignedMovementDistance()
+        {
+            var playerObject = new GameObject("MovingReceiver");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Defender), Color.blue, "3");
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    2f,
+                    new SimVector3(0f, 6f, 4f),
+                    new SkillExecutionError(0f, SimVector3.Zero, SimVector3.Zero, 0f, 1f, SimVector3.Zero, 1f),
+                    39,
+                    movementTarget: new Vector3(3f, 0f, 0f),
+                    movementStartSimulationTime: 0f);
+
+                Assert.That(player.ScheduledMovementDistance, Is.GreaterThan(0f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
         public void ScheduledSet_ActivatesTwoVisiblePalmSurfacesAtContactTime()
         {
             var playerObject = new GameObject("ScheduledSetter");

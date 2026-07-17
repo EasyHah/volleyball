@@ -3,9 +3,14 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.AI;
+using Volleyball.Domain;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
+using MatchResultV1 = Volleyball.Shared.Contracts.MatchResultV1;
+using TeamSide = Volleyball.Shared.Contracts.TeamSide;
+using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
@@ -21,6 +26,7 @@ namespace Volleyball.Presentation
         private readonly List<Vector3> _rootTargets = new List<Vector3>(6);
 
         private SimulatedBall _ball;
+        private ScoreDisplay _scoreDisplay;
         private readonly PhysicalRallyTacticPlanner _tacticPlanner =
             new PhysicalRallyTacticPlanner(7351);
         private PhysicalRallyTactics _currentTactics;
@@ -32,13 +38,18 @@ namespace Volleyball.Presentation
         private float _expectedContactTime;
         private bool _waitingForContact;
         private bool _restartScheduled;
+        private bool _waitingForLanding;
         private string _status = "Preparing physical 3v3 loop";
+        private MatchSet _set;
+        private PlayerId? _lastTouch;
 
         public int CompletedCycles { get; private set; }
 
         public int SuccessfulContacts { get; private set; }
 
         public int MissedRallies { get; private set; }
+
+        public int GroundResolvedRallies { get; private set; }
 
         public int TacticRevision => _tacticRevision;
 
@@ -58,13 +69,20 @@ namespace Volleyball.Presentation
 
         public bool IsLoopRunning => _waitingForContact && !_restartScheduled;
 
+        public MatchResultV1 Result { get; private set; }
+
         public TechniqueAction ExpectedAction => _sequence.Count == 0
             ? TechniqueAction.Receive
             : _sequence[_expectedIndex].Action;
 
-        public void Initialize(SimulatedBall ball, IEnumerable<PrototypePlayerAgent> agents)
+        public void Initialize(
+            SimulatedBall ball,
+            IEnumerable<PrototypePlayerAgent> agents,
+            MatchContextV1 context,
+            ScoreDisplay scoreDisplay)
         {
             _ball = ball != null ? ball : throw new ArgumentNullException(nameof(ball));
+            _scoreDisplay = scoreDisplay ?? throw new ArgumentNullException(nameof(scoreDisplay));
             if (agents == null)
             {
                 throw new ArgumentNullException(nameof(agents));
@@ -86,15 +104,19 @@ namespace Volleyball.Presentation
             }
 
             BuildSequence();
+            _set = new MatchSet(context ?? throw new ArgumentNullException(nameof(context)), TeamSide.Home);
+            RenderScore();
             ApplyTactics(_tacticPlanner.Create(_tacticRevision), true);
             _ball.PlayerContact += HandlePlayerContact;
             _ball.EnvironmentContact += HandleEnvironmentContact;
+            _ball.NetPlaneCrossed += HandleNetPlaneCrossing;
             StartCoroutine(StartInitialLoop(0.35f));
         }
 
         private void Update()
         {
             if (_waitingForContact &&
+                !_waitingForLanding &&
                 !_restartScheduled &&
                 _ball.SimulationTime > _expectedContactTime + 0.35f)
             {
@@ -122,12 +144,26 @@ namespace Volleyball.Presentation
         {
             _currentTactics = tactics;
             _rootTargets.Clear();
-            _rootTargets.Add(ToUnity(tactics.Blue.DefenderPosition));
-            _rootTargets.Add(ToUnity(tactics.Blue.SetterPosition));
-            _rootTargets.Add(ToUnity(tactics.Blue.AttackerPosition));
-            _rootTargets.Add(ToUnity(tactics.Orange.DefenderPosition));
-            _rootTargets.Add(ToUnity(tactics.Orange.SetterPosition));
-            _rootTargets.Add(ToUnity(tactics.Orange.AttackerPosition));
+            var blueTargets = new[]
+            {
+                ToUnity(tactics.Blue.DefenderPosition),
+                ToUnity(tactics.Blue.SetterPosition),
+                ToUnity(tactics.Blue.AttackerPosition)
+            };
+            var orangeTargets = new[]
+            {
+                ToUnity(tactics.Orange.DefenderPosition),
+                ToUnity(tactics.Orange.SetterPosition),
+                ToUnity(tactics.Orange.AttackerPosition)
+            };
+            for (var index = 0; index < _sequence.Count; index++)
+            {
+                var contact = _sequence[index];
+                var targets = contact.Actor.Team == TeamId.Blue ? blueTargets : orangeTargets;
+                var side = ToSide(contact.Actor.Team);
+                var roleIndex = RoleIndex(contact.Actor.Role);
+                _rootTargets.Add(targets[(roleIndex + _set.RotationOffsetFor(side)) % 3]);
+            }
             _contactCenters.Clear();
             for (var index = 0; index < _sequence.Count; index++)
             {
@@ -156,11 +192,15 @@ namespace Volleyball.Presentation
                 player.CancelScheduledContact();
             }
 
-            _expectedIndex = 0;
+            _expectedIndex = _set.ReceivingSide == TeamSide.Home ? 0 : 3;
+            _lastTouch = null;
+            _waitingForLanding = false;
             const float initialFlightSeconds = 0.90f;
             var launch = ArrivalLaunchSolver.Solve(
-                _contactCenters[0],
-                new SimVector3(0f, -7f, -9f),
+                _contactCenters[_expectedIndex],
+                _set.ReceivingSide == TeamSide.Home
+                    ? new SimVector3(0f, -7f, -9f)
+                    : new SimVector3(0f, -7f, 9f),
                 initialFlightSeconds,
                 SimulatedBall.DefaultFixedStep,
                 SimulationParameters);
@@ -169,7 +209,7 @@ namespace Volleyball.Presentation
             _ball.Launch(ToUnity(launch.InitialVelocity));
             _waitingForContact = true;
             _restartScheduled = false;
-            _status = "Initial ball to BLUE DEFENDER";
+            _status = "Serve to " + _set.ReceivingSide.ToString().ToUpperInvariant() + " DEFENDER";
         }
 
         private void ScheduleExpectedContact(
@@ -188,10 +228,11 @@ namespace Volleyball.Presentation
                 ? PredictBallCenter(secondsFromNow)
                 : _contactCenters[index];
             var nextIndex = (index + 1) % _sequence.Count;
+            var terminalAttack = contact.Action == TechniqueAction.Attack;
             var outgoing = ReturnVelocitySolver.Solve(
                 plannedContactCenter,
-                index == _sequence.Count - 1
-                    ? _pendingBlueReceiveCenter
+                terminalAttack
+                    ? AttackLandingTarget(contact.Actor.Team)
                     : _contactCenters[nextIndex],
                 FlightTimeFor(index),
                 SimulatedBall.DefaultFixedStep,
@@ -235,8 +276,12 @@ namespace Volleyball.Presentation
 
             SuccessfulContacts++;
             var completed = _sequence[_expectedIndex];
+            _set.RecordContact(
+                StableId(completed.Actor),
+                _players[completed.Actor].ScheduledMovementDistance);
             var completedIndex = _expectedIndex;
             var completedFlightSeconds = FlightTimeFor(completedIndex);
+            _lastTouch = completed.Actor;
             _expectedIndex = (_expectedIndex + 1) % _sequence.Count;
             if (_expectedIndex == 0)
             {
@@ -263,9 +308,11 @@ namespace Volleyball.Presentation
                 $"target={contact.Candidate.TargetVelocity.Magnitude:0.0} " +
                 $"speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
 
-            if (completedIndex == _sequence.Count - 1)
+            if (completed.Action == TechniqueAction.Attack)
             {
                 PromotePendingTactics();
+                _waitingForLanding = true;
+                return;
             }
 
             ScheduleExpectedContact(
@@ -276,10 +323,26 @@ namespace Volleyball.Presentation
 
         private void HandleEnvironmentContact(EnvironmentCollisionHit hit)
         {
-            if (_waitingForContact && !_restartScheduled)
+            if (!_waitingForContact || _restartScheduled || Result != null)
             {
-                ScheduleRestart($"miss ({hit.Kind})");
+                return;
             }
+
+            if (hit.Kind == EnvironmentContactKind.Net)
+            {
+                return;
+            }
+
+            var last = _lastTouch;
+            var outcome = last.HasValue
+                ? MatchRallyReferee.ResolveGroundLanding(ToSide(last.Value.Team), hit.ContactPoint, CourtBuilder.HalfWidth, CourtBuilder.HalfLength)
+                : new RallyOutcome(TeamSide.Away, true, "ground before contact");
+            ResolveRally(
+                outcome,
+                outcome.IsFault ? null : last,
+                outcome.IsFault ? last : null,
+                outcome.Reason);
+            GroundResolvedRallies++;
         }
 
         private void ScheduleRestart(string reason)
@@ -289,11 +352,48 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            var expected = _sequence[_expectedIndex].Actor;
+            ResolveRally(new RallyOutcome(ToSide(expected.Team) == TeamSide.Home ? TeamSide.Away : TeamSide.Home, true, reason), null, expected, reason);
+        }
+
+        private void HandleNetPlaneCrossing(NetPlaneCrossingEvent crossing)
+        {
+            if (!_waitingForContact || _restartScheduled || Result != null || !_lastTouch.HasValue)
+            {
+                return;
+            }
+
+            var outcome = MatchRallyReferee.ResolveNetCrossing(
+                ToSide(_lastTouch.Value.Team), crossing.Point, CourtBuilder.HalfWidth, CourtBuilder.NetHeight);
+            if (outcome.HasValue)
+            {
+                ResolveRally(outcome.Value, null, _lastTouch, outcome.Value.Reason);
+            }
+        }
+
+        private void ResolveRally(RallyOutcome outcome, PlayerId? scorer, PlayerId? errorPlayer, string reason)
+        {
+            if (_restartScheduled || Result != null)
+            {
+                return;
+            }
+
             _restartScheduled = true;
             _waitingForContact = false;
-            MissedRallies++;
-            _status = reason + " - restarting";
-            Debug.LogWarning($"[Physical3v3] {_status}");
+            _waitingForLanding = false;
+            _set.ResolveRally(outcome.Winner, scorer.HasValue ? StableId(scorer.Value) : null, errorPlayer.HasValue ? StableId(errorPlayer.Value) : null);
+            RenderScore();
+            _status = $"{reason}  {_set.HomeScore}:{_set.AwayScore}";
+            if (_set.IsComplete)
+            {
+                Result = _set.CreateResult();
+                foreach (var player in _players.Values) player.CancelScheduledContact();
+                _ball.Stop();
+                _status = $"RESULT READY  {_set.HomeScore}:{_set.AwayScore}";
+                RenderScore();
+                return;
+            }
+
             _tacticRevision++;
             ApplyTactics(_tacticPlanner.Create(_tacticRevision), false);
             StartCoroutine(StartInitialLoop(0.65f));
@@ -356,6 +456,39 @@ namespace Volleyball.Presentation
         private static int StablePlayerId(PlayerId player)
         {
             return ((int)player.Team * 10) + (int)player.Role;
+        }
+
+        private static TeamSide ToSide(TeamId team)
+        {
+            return team == TeamId.Blue ? TeamSide.Home : TeamSide.Away;
+        }
+
+        private static StablePlayerId StableId(PlayerId player)
+        {
+            var prefix = player.Team == TeamId.Blue ? "home-" : "away-";
+            return new StablePlayerId(prefix + player.Role.ToString().ToLowerInvariant());
+        }
+
+        private void RenderScore()
+        {
+            _scoreDisplay.RenderSet(_set.HomeScore, _set.AwayScore, _set.ServingSide, _set.IsComplete);
+        }
+
+        private static int RoleIndex(PlayerRole role)
+        {
+            return role switch
+            {
+                PlayerRole.Defender => 0,
+                PlayerRole.Setter => 1,
+                PlayerRole.Attacker => 2,
+                _ => throw new ArgumentOutOfRangeException(nameof(role))
+            };
+        }
+
+        private static SimVector3 AttackLandingTarget(TeamId attackerTeam)
+        {
+            var targetZ = attackerTeam == TeamId.Blue ? 4.5f : -4.5f;
+            return new SimVector3(0f, SimulatedBall.DefaultRadius + 0.15f, targetZ);
         }
 
         private static SimVector3 ContactCenter(

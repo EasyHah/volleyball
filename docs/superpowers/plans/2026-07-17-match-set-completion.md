@@ -13,6 +13,7 @@
 ## File Structure
 
 - Create: `Assets/Volleyball/Match/Runtime/Domain/MatchSet.cs` - pure set state, rotation, stat accumulation, and `MatchResultV1` construction.
+- Create: `Assets/Volleyball/Match/Runtime/Domain/MatchRallyReferee.cs` - pure court-boundary, antenna-crossing, and ground-landing adjudication.
 - Create: `Assets/Volleyball/Match/Tests/EditMode/MatchSetTests.cs` - deterministic rule and result tests.
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/ThreeVsThreeRallyBootstrap.cs` - create one stable six-player sandbox context and inject it into the director.
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/ThreeVsThreeRallyDirector.cs` - resolve physical rallies through `MatchSet`, apply rotations, stop at completion, and expose result state.
@@ -274,11 +275,75 @@ git commit -m "feat: initialize physical set context"
 
 **Files:**
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/ThreeVsThreeRallyDirector.cs`
+- Create: `Assets/Volleyball/Match/Runtime/Domain/MatchRallyReferee.cs`
+- Create: `Assets/Volleyball/Match/Tests/EditMode/MatchRallyRefereeTests.cs`
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/ScoreDisplay.cs`
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/ThreeVsThreeRallyBootstrap.cs`
 - Modify: `Assets/Volleyball/Match/Tests/PlayMode/ThreeVsThreeRallyPlayModeTests.cs`
 
-- [ ] **Step 1: Write the failing set-completion PlayMode test**
+- [ ] **Step 1: Write the failing court-referee tests**
+
+```csharp
+[Test]
+public void GroundLanding_AfterHomeTouchInAwayCourt_AwardsHome()
+{
+    var outcome = MatchRallyReferee.ResolveGroundLanding(
+        TeamSide.Home, new SimVector3(0f, 0f, 3f), CourtBuilder.HalfWidth, CourtBuilder.HalfLength);
+
+    Assert.That(outcome.Winner, Is.EqualTo(TeamSide.Home));
+}
+
+[Test]
+public void GroundLanding_AfterHomeTouchOutsideAwayCourt_AwardsAway()
+{
+    var outcome = MatchRallyReferee.ResolveGroundLanding(
+        TeamSide.Home, new SimVector3(CourtBuilder.HalfWidth + 0.01f, 0f, 3f), CourtBuilder.HalfWidth, CourtBuilder.HalfLength);
+
+    Assert.That(outcome.Winner, Is.EqualTo(TeamSide.Away));
+}
+
+[Test]
+public void NetCrossing_OutsideAntenna_AwardsOpponent()
+{
+    var outcome = MatchRallyReferee.ResolveNetCrossing(
+        TeamSide.Home, new SimVector3(CourtBuilder.HalfWidth + 0.01f, CourtBuilder.NetHeight + 0.1f, 0f), CourtBuilder.HalfWidth, CourtBuilder.NetHeight);
+
+    Assert.That(outcome.Winner, Is.EqualTo(TeamSide.Away));
+}
+```
+
+- [ ] **Step 2: Run the focused referee suite and verify it fails**
+
+Run the Task 1 EditMode command with filter
+`Volleyball.EditModeTests.MatchRallyRefereeTests` and results named
+`MatchRallyReferee-red.xml`.
+
+Expected: compilation failure because `MatchRallyReferee` does not exist.
+
+- [ ] **Step 3: Implement the pure referee and net-crossing observation**
+
+`MatchRallyReferee` must expose `ResolveGroundLanding` and `ResolveNetCrossing`.
+Use court coordinates `|x| <= HalfWidth`, `|z| <= HalfLength`; Home is the
+negative-z half and Away is the positive-z half. A landing in the final touch
+team's half or outside the opponent court gives the opponent the point. A net
+plane crossing outside `|x| <= HalfWidth` or below `NetHeight` gives the
+opponent the point. A crossing inside the antenna interval returns no terminal
+outcome.
+
+Modify `SimulatedBall` to raise a new event only when its segment crosses z=0,
+with the interpolated crossing point. A net collision remains non-terminal and
+does not prevent the later crossing event. Test the segment-crossing helper with
+both directions and a non-crossing segment.
+
+- [ ] **Step 4: Run the referee suite to verify it passes**
+
+Run the Task 4 Step 2 command with `MatchRallyReferee-green.xml`.
+
+Expected: legal opponent-court landings award the final touch team; own-half,
+out-of-bounds, and antenna faults award its opponent; a legal net contact leaves
+the rally unresolved.
+
+- [ ] **Step 5: Write the failing set-completion PlayMode test**
 
 ```csharp
 [UnityTest]
@@ -301,7 +366,7 @@ public IEnumerator PhysicalScene_CompletesOneSetAndExposesValidatedResult()
 }
 ```
 
-- [ ] **Step 2: Run the PlayMode test and verify it fails**
+- [ ] **Step 6: Run the PlayMode test and verify it fails**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -313,7 +378,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation failure or timeout because a completed result is not yet produced.
 
-- [ ] **Step 3: Route accepted contacts and terminal faults into `MatchSet`**
+- [ ] **Step 7: Route accepted contacts and referee outcomes into `MatchSet`**
 
 ```csharp
 private void ResolveRally(TeamSide winner, PlayerId? scorer, PlayerId? errorPlayer, string reason)
@@ -333,21 +398,21 @@ private void ResolveRally(TeamSide winner, PlayerId? scorer, PlayerId? errorPlay
 }
 ```
 
-On each accepted `HandlePlayerContact`, call `RecordContact` with the agent's movement distance before changing expected contact. On timeout/environment collision, use the currently expected actor as `errorPlayer`, award the other side, and use the most recent accepted actor only when that actor belongs to the winning team as `scorer`; otherwise pass null. Ensure one terminal event cannot resolve the same rally twice.
+On each accepted `HandlePlayerContact`, call `RecordContact` with the agent's movement distance before changing expected contact and retain that player as the final valid touch. On timeout, use the currently expected actor as `errorPlayer` and award the other side. On a ground hit, call `MatchRallyReferee.ResolveGroundLanding` with the final-touch team and hit contact point. On a net-plane crossing, call `ResolveNetCrossing`; only its terminal fault ends the rally. Ignore a `Net` environment contact after applying its physical response. Ensure one terminal event cannot resolve the same rally twice.
 
 `StopCompletedSet` must cancel all scheduled contacts, set `_waitingForContact` and `_restartScheduled` so no coroutine restarts, stop/reset the ball velocity through a dedicated `SimulatedBall.Stop()` API if one does not exist, and display `RESULT READY` plus final score.
 
-- [ ] **Step 4: Apply roster rotations and score display**
+- [ ] **Step 8: Apply roster rotations and score display**
 
 Use each team's `RotationOffsetFor` to map its stable players into its three existing court targets before `PrepareForTraining`. Keep the six agents and visual jersey labels; rotate their court assignments rather than reassigning stable IDs. Replace `ScoreDisplay.Render(PrototypeMatch)` with a render method accepting score, serving side, and completion state. Create and update the display from `ThreeVsThreeRallyBootstrap`/director.
 
-- [ ] **Step 5: Run the focused PlayMode test to verify it passes**
+- [ ] **Step 9: Run the focused PlayMode test to verify it passes**
 
 Run the Task 4 Step 2 command with `PhysicalSet-green.xml`.
 
 Expected: one physical scene completes a valid 15-point win-by-two set, returns six stats entries, and schedules no subsequent rally.
 
-- [ ] **Step 6: Run the full suites**
+- [ ] **Step 10: Run the full suites**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -359,7 +424,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: both XML roots report `result="Passed"` with zero failed tests.
 
-- [ ] **Step 7: Commit the scene behavior**
+- [ ] **Step 11: Commit the scene behavior**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/Presentation Assets/Volleyball/Match/Tests/PlayMode/ThreeVsThreeRallyPlayModeTests.cs
