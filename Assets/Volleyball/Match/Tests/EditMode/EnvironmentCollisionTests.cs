@@ -1,10 +1,41 @@
 using NUnit.Framework;
 using Volleyball.Domain.Simulation;
+using Volleyball.Presentation;
 
 namespace Volleyball.EditModeTests
 {
     public sealed class EnvironmentCollisionTests
     {
+        [Test]
+        public void NetPlaneCrossing_InterpolatesBothDirectionsAndRejectsSameSideSegments()
+        {
+            Assert.That(
+                SimulatedBall.TryNetPlaneCrossing(
+                    new SimVector3(2f, 3f, -4f),
+                    new SimVector3(4f, 5f, 2f),
+                    out var forward),
+                Is.True);
+            Assert.That(forward.X, Is.EqualTo(3.3333333f).Within(0.00001f));
+            Assert.That(forward.Y, Is.EqualTo(4.3333335f).Within(0.00001f));
+            Assert.That(forward.Z, Is.Zero);
+
+            Assert.That(
+                SimulatedBall.TryNetPlaneCrossing(
+                    new SimVector3(-2f, 4f, 3f),
+                    new SimVector3(2f, 2f, -1f),
+                    out var backward),
+                Is.True);
+            Assert.That(backward.X, Is.EqualTo(1f).Within(0.00001f));
+            Assert.That(backward.Y, Is.EqualTo(2.5f).Within(0.00001f));
+            Assert.That(backward.Z, Is.Zero);
+
+            Assert.That(
+                SimulatedBall.TryNetPlaneCrossing(
+                    new SimVector3(0f, 1f, 2f),
+                    new SimVector3(1f, 2f, 3f),
+                    out _),
+                Is.False);
+        }
         [Test]
         public void TryGround_DetectsFirstRadiusOffsetCrossing()
         {

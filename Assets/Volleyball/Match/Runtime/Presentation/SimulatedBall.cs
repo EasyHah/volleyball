@@ -66,6 +66,16 @@ namespace Volleyball.Presentation
         public TechniqueControlResult TechniqueResponse { get; }
     }
 
+    public readonly struct NetPlaneCrossingEvent
+    {
+        public NetPlaneCrossingEvent(SimVector3 point)
+        {
+            Point = point;
+        }
+
+        public SimVector3 Point { get; }
+    }
+
     public readonly struct BallSimulationDiagnostics
     {
         public BallSimulationDiagnostics(
@@ -136,6 +146,8 @@ namespace Volleyball.Presentation
 
         public event Action<PlayerBallContactEvent> PlayerContact;
 
+        public event Action<NetPlaneCrossingEvent> NetPlaneCrossed;
+
         public BallState State { get; private set; }
 
         public BallSimulationDiagnostics Diagnostics => new BallSimulationDiagnostics(
@@ -198,6 +210,13 @@ namespace Volleyball.Presentation
             _maximumSpeed = Math.Max(_maximumSpeed, velocity.Magnitude);
         }
 
+        public void Stop()
+        {
+            EnsureInitialized();
+            State.Reset(State.Position, SimVector3.Zero, false);
+            _accumulator.Reset();
+        }
+
         public void AdvanceSimulation(double elapsedSeconds)
         {
             EnsureInitialized();
@@ -240,6 +259,11 @@ namespace Volleyball.Presentation
                 _nonFiniteStates++;
                 State.MarkDead();
                 return;
+            }
+
+            if (TryNetPlaneCrossing(State.PreviousPosition, State.Position, out var crossing))
+            {
+                NetPlaneCrossed?.Invoke(new NetPlaneCrossingEvent(crossing));
             }
 
             var hasGround = EnvironmentCollision.TryGround(State, _groundHeight, out var groundHit);
@@ -307,6 +331,30 @@ namespace Volleyball.Presentation
 
             return found;
         }
+
+        public static bool TryNetPlaneCrossing(
+            SimVector3 previous,
+            SimVector3 current,
+            out SimVector3 crossing)
+        {
+            crossing = SimVector3.Zero;
+            if ((previous.Z < 0f && current.Z < 0f) ||
+                (previous.Z > 0f && current.Z > 0f) ||
+                previous.Z == current.Z)
+            {
+                return false;
+            }
+
+            var fraction = -previous.Z / (current.Z - previous.Z);
+            if (fraction < 0f || fraction > 1f)
+            {
+                return false;
+            }
+
+            crossing = SimVector3.Lerp(previous, current, fraction);
+            return true;
+        }
+
 
         private void EnsureInitialized()
         {
