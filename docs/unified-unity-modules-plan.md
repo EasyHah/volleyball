@@ -111,7 +111,8 @@ Boot -> MainMenu -> CareerHome -> MatchLoading -> Match -> MatchSummary -> Caree
 
 ### 阶段 1：冻结边界
 
-- 把现有 `PlayerId`、能力快照、`MatchContext` 和 `MatchResult` 提升为 Shared 契约。
+- 在 Shared 新增稳定 `PlayerId`/`TeamId`；现有蓝/橙方 `PlayerId` 仅作为场上槽位，不能写入存档。
+- 把能力快照、`MatchContext` 和 `MatchResult` 提升为 Shared 契约。
 - 为比赛输入输出补序列化、版本兼容和固定种子测试。
 - 保持现有场景路径不变，优先确保比赛原型继续可玩。
 

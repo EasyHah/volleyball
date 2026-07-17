@@ -28,6 +28,7 @@ lock file before any feature work begins.
 
 ```text
 Assets/VolleyballMatch/Runtime/  Match-domain and Unity adapter code
+Assets/VolleyballMatch/Shared/   Versioned Match/Career contracts and boundary tests
 Assets/VolleyballMatch/Tests/    EditMode and PlayMode test assemblies
 Assets/VolleyballMatch/Scenes/   3v3 prototype scenes
 Assets/VolleyballMatch/Fixtures/ Read-only MatchContext and MatchResult fixtures
@@ -40,6 +41,12 @@ Packages/                        Versioned Unity package manifest and lock file
 The target module layout is documented in
 `docs/unified-unity-modules-plan.md`. Existing match code remains in place until
 the shared contracts and module-boundary tests are ready for a mechanical move.
+
+The first Shared boundary is now available as the Unity-free
+`VolleyballMatch.Shared` assembly. It defines stable career `PlayerId`/`TeamId`
+values, immutable ability snapshots, and hash-validated `MatchContextV1` and
+`MatchResultV1` payloads. The existing prototype `PlayerId` remains a temporary
+court slot and must not be persisted as career identity.
 
 ## Contracts
 

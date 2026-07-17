@@ -1,4 +1,5 @@
 using System;
+using VolleyballMatch.Shared.Contracts;
 
 namespace VolleyballMatch.Domain.Players
 {
@@ -31,6 +32,18 @@ namespace VolleyballMatch.Domain.Players
             AttackPower = Validate(attackPower, nameof(attackPower));
         }
 
+        public PlayerAbilityProfile(PlayerAbilitySnapshotV1 snapshot)
+            : this(
+                snapshot?.Mobility ?? throw new ArgumentNullException(nameof(snapshot)),
+                snapshot.Reaction,
+                snapshot.Jump,
+                snapshot.ReceiveTechnique,
+                snapshot.SetTechnique,
+                snapshot.AttackTechnique,
+                snapshot.AttackPower)
+        {
+        }
+
         public static PlayerAbilityProfile Default =>
             new PlayerAbilityProfile(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
 
@@ -47,6 +60,18 @@ namespace VolleyballMatch.Domain.Players
         public float AttackTechnique { get; }
 
         public float AttackPower { get; }
+
+        public PlayerAbilitySnapshotV1 ToSnapshot()
+        {
+            return new PlayerAbilitySnapshotV1(
+                Mobility,
+                Reaction,
+                Jump,
+                ReceiveTechnique,
+                SetTechnique,
+                AttackTechnique,
+                AttackPower);
+        }
 
         public float TechniqueFor(TechniqueAction action)
         {

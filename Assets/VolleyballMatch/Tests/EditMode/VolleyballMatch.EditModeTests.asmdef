@@ -1,6 +1,7 @@
 {
   "name": "VolleyballMatch.EditModeTests",
   "references": [
+    "VolleyballMatch.Shared",
     "VolleyballMatch.Domain",
     "VolleyballMatch.AI",
     "VolleyballMatch.Presentation"
