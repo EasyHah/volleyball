@@ -1,0 +1,55 @@
+# 改动文档中心
+
+本目录是 Match 与 Career 两边开发者共享的改动交接入口。所有代码、资源、场景、配置、
+Shared 契约或模块编排改动，都必须在这里新增或更新一份改动文档，并在提交或 Pull Request
+中附上链接。
+
+架构说明与长期开发规范仍保留在 `docs/` 根目录；可以和一次具体实现、提交或 Pull Request
+对应的改动记录、实现计划和设计稿统一保存在本目录。启用本流程之前的 Match 原型文档已
+迁入 `archive/match-prototype/`，仅作为历史依据。
+
+## 改动索引
+
+| 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
+| --- | --- | --- | --- | --- | --- |
+| CHG-20260717-003 | 2026-07-17 | 已完成 | Docs | 协作流程（重点） | [建立统一改动文档流程](2026-07-17-003-change-document-workflow.md) |
+| CHG-20260717-002 | 2026-07-17 | 已完成 | Match / Career / Bootstrap | **跨模块（重点）** | [Unity 模块目录与程序集迁移](2026-07-17-002-unity-module-separation.md) |
+| CHG-20260717-001 | 2026-07-17 | 已完成 | Shared / Match / Career | **跨模块（重点）** | [Shared 比赛与生涯契约边界](2026-07-17-001-shared-contract-boundary.md) |
+
+当前跨模块实施路线：[比赛与生涯模块统一 Unity 仓库规划](unified-unity-modules-plan.md)。
+
+## 历史改动文档
+
+以下文档早于统一模板，内容仅涉及 Match 原型，不包含 Career/Shared 交互要求：
+
+- [AI 回合场景实现计划](archive/match-prototype/2026-07-15-all-ai-rally-scene.md)
+- [物理接触回合升级计划](archive/match-prototype/2026-07-16-physics-contact-rally-upgrade.md)
+- [AI 回合场景设计](archive/match-prototype/2026-07-15-ai-rally-scene-design.md)
+
+## 新增规则
+
+1. 从 [TEMPLATE.md](TEMPLATE.md) 复制新文档，文件名使用
+   `YYYY-MM-DD-NNN-short-description.md`。
+2. 编号使用 `CHG-YYYYMMDD-NNN`；同一天的 `NNN` 从 `001` 递增。
+3. 开发开始时状态写“计划中”或“进行中”，合并前补齐实际文件、验证结果和提交/PR。
+4. 新文档必须加入上方索引，最新记录放在最上方。
+5. 一次改动可以持续更新同一文档，不要为同一个目的拆出互相矛盾的多份记录。
+
+## 跨模块重点标注
+
+满足以下任一条件，就属于“与对方交互”的改动：
+
+- 修改 `Shared` 中的 DTO、ID、枚举、序列化、版本号、校验或测试夹具。
+- 修改 MatchContext、MatchResult 或比赛前后数据流。
+- 修改 Match、Career 或 Bootstrap 之间的 asmdef 引用和公开接口。
+- 修改由另一模块加载的场景、资源路径、存档字段或启动流程。
+- 要求另一边开发者同步改代码、改数据、重新生成资源或执行迁移。
+
+这类文档必须同时做到：
+
+- 索引的“交互级别”写成 `跨模块（重点）`。
+- 正文紧接元数据放置 `> [!IMPORTANT]` 区块。
+- 明确写出接口提供方、使用方、兼容性和“对方开发者需要做什么”。
+- 如果没有额外动作，也必须明确写“无需改代码”，不能留空。
+
+模块内部改动的“跨模块交互重点”章节填写“无”，方便对方快速判断是否需要阅读。

@@ -2,7 +2,7 @@
 
 The repository now targets one Unity project containing isolated Match, Career,
 Shared and Bootstrap modules. The staged folder and Assembly Definition migration
-is specified in `unified-unity-modules-plan.md`; the sections below describe the
+is specified in `changes/unified-unity-modules-plan.md`; the sections below describe the
 existing Match module boundary.
 
 ## Boundaries

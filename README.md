@@ -33,14 +33,19 @@ Assets/VolleyballMatch/Shared/    Versioned Match/Career contracts and boundary 
 Assets/VolleyballMatch/Bootstrap/ Cross-module composition and future entry scenes
 Assets/VolleyballMatch/Shared/Tests/Fixtures/ Read-only MatchContext and MatchResult fixtures
 docs/                            Architecture, test and contract-consumption notes
+docs/changes/                    Match/Career change records and handoff highlights
 ProjectSettings/                 Version-pinned Unity project metadata
 Packages/                        Versioned Unity package manifest and lock file
 .github/workflows/               Disabled Windows CI enablement checklist
 ```
 
-The module layout is documented in `docs/unified-unity-modules-plan.md`. Match
+The module layout is documented in `docs/changes/unified-unity-modules-plan.md`. Match
 code now lives under `Match/`; Career and Bootstrap have explicit assembly
 boundaries ready for the first playable career loop.
+
+All implementation changes are recorded in `docs/changes/`. Changes that affect
+the other module are marked as cross-module highlights with explicit owner,
+consumer, compatibility and required follow-up.
 
 The first Shared boundary is now available as the Unity-free
 `VolleyballMatch.Shared` assembly. It defines stable career `PlayerId`/`TeamId`

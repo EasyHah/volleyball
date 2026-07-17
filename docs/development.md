@@ -7,6 +7,12 @@
 `chore/<description>` or `docs/<description>` branches from the latest `main`.
 Merge through pull requests only, then delete the branch.
 
+Every code, resource, scene, configuration or contract change must add or update
+a record under `docs/changes/` and link it from `docs/changes/README.md`. Start
+from `docs/changes/TEMPLATE.md`. If Match and Career interact through Shared,
+Bootstrap, a scene path, a save field or a public interface, mark the record as
+`跨模块（重点）` and state what the other developer must do before merge.
+
 The future remote `main` branch must require CI, up-to-date branches and at least
 one review; direct push, force push and branch deletion must be disabled.
 
