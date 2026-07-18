@@ -88,6 +88,65 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Create_BackSetUsesLongerAttackFlightThanFrontRowSpike()
+        {
+            var planner = new PhysicalRallyTacticPlanner(7351);
+            var checkedBackSets = 0;
+
+            for (var revision = 0; revision < 64; revision++)
+            {
+                var tactics = planner.Create(revision);
+                if (tactics.Blue.SetRoute == SetRoute.BackSet &&
+                    tactics.Blue.SpikeRoute != SpikeRoute.RollShot)
+                {
+                    checkedBackSets++;
+                    Assert.That(tactics.Blue.AttackFlightSeconds, Is.EqualTo(0.625f).Within(0.0001f));
+                }
+
+                if (tactics.Orange.SetRoute == SetRoute.BackSet &&
+                    tactics.Orange.SpikeRoute != SpikeRoute.RollShot)
+                {
+                    checkedBackSets++;
+                    Assert.That(tactics.Orange.AttackFlightSeconds, Is.EqualTo(0.625f).Within(0.0001f));
+                }
+            }
+
+            Assert.That(checkedBackSets, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void Create_BlueBlockCoverageTracksOrangeAttackLane()
+        {
+            var planner = new PhysicalRallyTacticPlanner(7351);
+
+            for (var revision = 0; revision < 64; revision++)
+            {
+                var tactics = planner.Create(revision);
+
+                Assert.That(
+                    tactics.Blue.BlockPosition.X,
+                    Is.EqualTo(tactics.Orange.AttackerPosition.X).Within(0.001f));
+                Assert.That(tactics.Blue.BlockPosition.Z, Is.LessThan(0f));
+            }
+        }
+
+        [Test]
+        public void Create_OrangeBlockCoverageTracksBlueAttackLane()
+        {
+            var planner = new PhysicalRallyTacticPlanner(7351);
+
+            for (var revision = 0; revision < 64; revision++)
+            {
+                var tactics = planner.Create(revision);
+
+                Assert.That(
+                    tactics.Orange.BlockPosition.X,
+                    Is.EqualTo(tactics.Blue.AttackerPosition.X).Within(0.001f));
+                Assert.That(tactics.Orange.BlockPosition.Z, Is.GreaterThan(0f));
+            }
+        }
+
+        [Test]
         public void PlanBlockCoverage_AttackerTakesPrimaryBlockWhenCloseToAttackLane()
         {
             var plan = PhysicalRallyTacticPlanner.PlanBlockCoverage(

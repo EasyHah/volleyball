@@ -222,10 +222,12 @@ namespace Volleyball.AI
             var orangeAttack = AttackPosition(orangeSet, 1f);
             var blueDefense = DefensePosition(orangeSpike, orangeAttack, -1f);
             var orangeDefense = DefensePosition(blueSpike, blueAttack, 1f);
+            var blueBlockCoverage = PlanBlockCoverage(orangeAttack, TeamSideSign.Blue);
+            var orangeBlockCoverage = PlanBlockCoverage(blueAttack, TeamSideSign.Orange);
 
             return new PhysicalRallyTactics(
-                CreateTeam(blueSet, blueSpike, blueAttack, blueDefense, -1f),
-                CreateTeam(orangeSet, orangeSpike, orangeAttack, orangeDefense, 1f));
+                CreateTeam(blueSet, blueSpike, blueAttack, blueDefense, blueBlockCoverage, -1f),
+                CreateTeam(orangeSet, orangeSpike, orangeAttack, orangeDefense, orangeBlockCoverage, 1f));
         }
 
         public static BlockCoveragePlan PlanBlockCoverage(
@@ -265,6 +267,7 @@ namespace Volleyball.AI
             SpikeRoute spikeRoute,
             CourtPoint attackPosition,
             CourtPoint defensePosition,
+            BlockCoveragePlan blockCoverage,
             float sideSign)
         {
             var setterX = setRoute switch
@@ -280,14 +283,16 @@ namespace Volleyball.AI
                 SetRoute.BackSet => 0.70f,
                 _ => 0.80f
             };
-            var attackFlight = spikeRoute == SpikeRoute.RollShot ? 0.60f : 0.45f;
+            var attackFlight = setRoute == SetRoute.BackSet
+                ? 0.625f
+                : spikeRoute == SpikeRoute.RollShot ? 0.60f : 0.45f;
             return new TeamRallyTactic(
                 setRoute,
                 spikeRoute,
                 new CourtPoint(setterX, sideSign * 3.35f),
                 attackPosition,
                 defensePosition,
-                PlanBlockCoverage(attackPosition, sideSign < 0f ? TeamSideSign.Blue : TeamSideSign.Orange),
+                blockCoverage,
                 setFlight,
                 attackFlight);
         }

@@ -312,6 +312,97 @@ namespace Volleyball.EditModeTests
             }
         }
 
+        [Test]
+        public void ScheduledMovement_GroundsRootWhenSchedulingFromAirbornePosition()
+        {
+            var playerObject = new GameObject("GroundedReceiver");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Defender), Color.blue, "3");
+                player.transform.position = new Vector3(-1f, 1.25f, -4f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    2f,
+                    new SimVector3(0f, 5f, 4f),
+                    NoExecutionError(),
+                    63,
+                    movementTarget: new Vector3(1f, 0f, -3f),
+                    movementStartSimulationTime: 0f);
+                player.CollectContacts(0.25f, 1f / 120f, contacts);
+
+                Assert.That(player.transform.position.y, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void SupportAction_AdvancesFromSimulationTimeWithoutAddingContactCandidates()
+        {
+            var playerObject = new GameObject("SupportBlocker");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Orange, PlayerRole.Attacker), Color.red, "5");
+                player.transform.position = new Vector3(-2f, 0f, 4f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.ScheduleSupportAction(
+                    TechniqueAction.Block,
+                    10f,
+                    new Vector3(1f, 0f, 0.65f),
+                    9f);
+                player.CollectContacts(9.50f, 1f / 120f, contacts);
+                var movingPosition = player.transform.position;
+                player.CollectContacts(10f, 1f / 120f, contacts);
+                var contactPosition = player.transform.position;
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(movingPosition.x, Is.GreaterThan(-1.9f));
+                Assert.That(movingPosition.z, Is.LessThan(3.9f));
+                Assert.That(contactPosition.y, Is.GreaterThan(0.2f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void SupportAction_StaysGroundedUntilMovementStartToAvoidTeleporting()
+        {
+            var playerObject = new GameObject("SupportCover");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
+                player.transform.position = new Vector3(0f, 1.4f, -3f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.ScheduleSupportAction(
+                    TechniqueAction.Receive,
+                    12f,
+                    new Vector3(2f, 0f, -4.15f),
+                    11f);
+                player.CollectContacts(10.90f, 1f / 120f, contacts);
+                var beforeStart = player.transform.position;
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(beforeStart.x, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(beforeStart.y, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(beforeStart.z, Is.EqualTo(-3f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
         private static Vector3 AveragePalms(PrototypePlayerAgent player)
         {
             return (player.Rig.GetJoint("LeftPalm").position +

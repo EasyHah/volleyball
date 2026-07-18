@@ -42,6 +42,7 @@ namespace Volleyball.Presentation
         private string _status = "Preparing physical 3v3 loop";
         private MatchSet _set;
         private PlayerId? _lastTouch;
+        private bool _lastTouchWasBackSetAttack;
 
         public int CompletedCycles { get; private set; }
 
@@ -60,6 +61,12 @@ namespace Volleyball.Presentation
         public int BlockSupportAssignments { get; private set; }
 
         public int CoverageSupportAssignments { get; private set; }
+
+        public int BlockSupportActivations { get; private set; }
+
+        public int BackSetAttackContacts { get; private set; }
+
+        public int BackSetAttackFaults { get; private set; }
 
         public float TotalMovementShortfall { get; private set; }
 
@@ -100,6 +107,7 @@ namespace Volleyball.Presentation
                 }
 
                 _ball.RegisterContactSource(agent);
+                agent.SupportActionActivated += HandleSupportActionActivated;
             }
 
             if (_players.Count != 6)
@@ -115,6 +123,17 @@ namespace Volleyball.Presentation
             _ball.EnvironmentContact += HandleEnvironmentContact;
             _ball.NetPlaneCrossed += HandleNetPlaneCrossing;
             StartCoroutine(StartInitialLoop(0.35f));
+        }
+
+        private void OnDestroy()
+        {
+            foreach (var agent in _players.Values)
+            {
+                if (agent != null)
+                {
+                    agent.SupportActionActivated -= HandleSupportActionActivated;
+                }
+            }
         }
 
         private void Update()
@@ -198,6 +217,7 @@ namespace Volleyball.Presentation
 
             _expectedIndex = _set.ReceivingSide == TeamSide.Home ? 0 : 3;
             _lastTouch = null;
+            _lastTouchWasBackSetAttack = false;
             _waitingForLanding = false;
             const float initialFlightSeconds = 0.90f;
             var launch = ArrivalLaunchSolver.Solve(
@@ -299,6 +319,19 @@ namespace Volleyball.Presentation
                 $"cover={defendingTactic.CoverReceiver} lane=({defendingTactic.BlockPosition.X:0.00},{defendingTactic.BlockPosition.Z:0.00})");
         }
 
+        private void HandleSupportActionActivated(PrototypePlayerAgent player, TechniqueAction action)
+        {
+            if (action != TechniqueAction.Block)
+            {
+                return;
+            }
+
+            BlockSupportActivations++;
+            Debug.Log(
+                $"[Physical3v3] block-active team={player.Id.Team} role={player.Id.Role} " +
+                $"time={_ball.SimulationTime:0.00}");
+        }
+
         private void HandlePlayerContact(PlayerBallContactEvent contact)
         {
             if (!_waitingForContact || _restartScheduled || contact.Candidate.Action != ExpectedAction)
@@ -314,6 +347,13 @@ namespace Volleyball.Presentation
             var completedIndex = _expectedIndex;
             var completedFlightSeconds = FlightTimeFor(completedIndex);
             _lastTouch = completed.Actor;
+            _lastTouchWasBackSetAttack =
+                completed.Action == TechniqueAction.Attack &&
+                SetRouteFor(completed.Actor.Team) == SetRoute.BackSet;
+            if (_lastTouchWasBackSetAttack)
+            {
+                BackSetAttackContacts++;
+            }
             _expectedIndex = (_expectedIndex + 1) % _sequence.Count;
             if (_expectedIndex == 0)
             {
@@ -374,6 +414,10 @@ namespace Volleyball.Presentation
                 outcome.IsFault ? null : last,
                 outcome.IsFault ? last : null,
                 outcome.Reason);
+            if (_lastTouchWasBackSetAttack && outcome.IsFault)
+            {
+                BackSetAttackFaults++;
+            }
             GroundResolvedRallies++;
         }
 
@@ -400,6 +444,10 @@ namespace Volleyball.Presentation
             if (outcome.HasValue)
             {
                 ResolveRally(outcome.Value, null, _lastTouch, outcome.Value.Reason);
+                if (_lastTouchWasBackSetAttack && outcome.Value.IsFault)
+                {
+                    BackSetAttackFaults++;
+                }
             }
         }
 
@@ -483,6 +531,13 @@ namespace Volleyball.Presentation
                 5 => _currentTactics.Orange.AttackFlightSeconds,
                 _ => throw new ArgumentOutOfRangeException(nameof(contactIndex))
             };
+        }
+
+        private SetRoute SetRouteFor(TeamId team)
+        {
+            return team == TeamId.Blue
+                ? _currentTactics.Blue.SetRoute
+                : _currentTactics.Orange.SetRoute;
         }
 
         private static int StablePlayerId(PlayerId player)
