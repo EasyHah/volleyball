@@ -104,6 +104,12 @@ opponent-court landing, antenna fault or contact timeout gives the point away.
 Net contact itself is legal when the ball later crosses the net inside the antenna
 interval and above net height.
 
+The defending team now shows visible block coverage on attacks. The attacker is
+the primary blocker for wide lanes; the setter can block middle lanes while the
+attacker drops into coverage. These support actions are visual only in this pass:
+they move players and play Block/Receive poses, but they do not register ball
+contacts, alter the ball path, consume touches or change scoring.
+
 Switch views with `1` for the tactical overhead camera, `2` for the sideline
 broadcast camera, `3` for the smooth ball-follow camera, or `C` to cycle them.
 

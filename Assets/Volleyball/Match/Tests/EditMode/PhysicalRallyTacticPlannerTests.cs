@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using Volleyball.AI;
+using Volleyball.Domain.Prototype;
 
 namespace Volleyball.EditModeTests
 {
@@ -86,14 +87,46 @@ namespace Volleyball.EditModeTests
             Assert.That(orangeBackSets, Is.GreaterThan(0));
         }
 
+        [Test]
+        public void PlanBlockCoverage_AttackerTakesPrimaryBlockWhenCloseToAttackLane()
+        {
+            var plan = PhysicalRallyTacticPlanner.PlanBlockCoverage(
+                new CourtPoint(2.8f, 2.4f),
+                TeamSideSign.Orange);
+
+            Assert.That(plan.Blocker, Is.EqualTo(PlayerRole.Attacker));
+            Assert.That(plan.BlockPosition.X, Is.EqualTo(2.8f).Within(0.01f));
+            Assert.That(plan.BlockPosition.Z, Is.EqualTo(0.65f).Within(0.01f));
+            Assert.That(plan.CoverReceiver, Is.EqualTo(PlayerRole.Setter));
+            Assert.That(plan.CoverPosition.Z, Is.GreaterThan(3.0f));
+        }
+
+        [Test]
+        public void PlanBlockCoverage_SetterCanBlockWhenSetterIsCloserToMiddleLane()
+        {
+            var plan = PhysicalRallyTacticPlanner.PlanBlockCoverage(
+                new CourtPoint(0.15f, -2.1f),
+                TeamSideSign.Blue);
+
+            Assert.That(plan.Blocker, Is.EqualTo(PlayerRole.Setter));
+            Assert.That(plan.BlockPosition.X, Is.EqualTo(0.15f).Within(0.01f));
+            Assert.That(plan.BlockPosition.Z, Is.EqualTo(-0.65f).Within(0.01f));
+            Assert.That(plan.CoverReceiver, Is.EqualTo(PlayerRole.Attacker));
+            Assert.That(plan.CoverPosition.Z, Is.LessThan(-3.0f));
+        }
+
         private static void AssertInside(TeamRallyTactic tactic)
         {
             Assert.That(tactic.SetterPosition.X, Is.InRange(-4.5f, 4.5f));
             Assert.That(tactic.AttackerPosition.X, Is.InRange(-4.5f, 4.5f));
             Assert.That(tactic.DefenderPosition.X, Is.InRange(-4.5f, 4.5f));
+            Assert.That(tactic.BlockPosition.X, Is.InRange(-4.5f, 4.5f));
+            Assert.That(tactic.CoverPosition.X, Is.InRange(-4.5f, 4.5f));
             Assert.That(tactic.SetterPosition.Z, Is.InRange(-9f, 9f));
             Assert.That(tactic.AttackerPosition.Z, Is.InRange(-9f, 9f));
             Assert.That(tactic.DefenderPosition.Z, Is.InRange(-9f, 9f));
+            Assert.That(tactic.BlockPosition.Z, Is.InRange(-9f, 9f));
+            Assert.That(tactic.CoverPosition.Z, Is.InRange(-9f, 9f));
         }
     }
 }

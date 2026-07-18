@@ -57,6 +57,10 @@ namespace Volleyball.Presentation
 
         public int MovementAssignments { get; private set; }
 
+        public int BlockSupportAssignments { get; private set; }
+
+        public int CoverageSupportAssignments { get; private set; }
+
         public float TotalMovementShortfall { get; private set; }
 
         public SetRoute BlueSetRoute => _currentTactics.Blue.SetRoute;
@@ -258,6 +262,11 @@ namespace Volleyball.Presentation
                 movementStartSimulationTime: _ball.SimulationTime);
             MovementAssignments++;
             TotalMovementShortfall += actor.MovementShortfall;
+            if (terminalAttack)
+            {
+                ScheduleBlockCoverage(contact.Actor.Team, _expectedContactTime);
+            }
+
             if (followCurrentTrajectory)
             {
                 var adjustment = plannedContactCenter - _contactCenters[index];
@@ -265,6 +274,29 @@ namespace Volleyball.Presentation
                     $"[Physical3v3] aim team={contact.Actor.Team} action={contact.Action} " +
                     $"adjust=({adjustment.X:0.00},{adjustment.Y:0.00},{adjustment.Z:0.00})");
             }
+        }
+
+        private void ScheduleBlockCoverage(TeamId attackingTeam, float attackContactTime)
+        {
+            var defendingTeam = attackingTeam == TeamId.Blue ? TeamId.Orange : TeamId.Blue;
+            var defendingTactic = defendingTeam == TeamId.Blue ? _currentTactics.Blue : _currentTactics.Orange;
+            var blocker = new PlayerId(defendingTeam, defendingTactic.Blocker);
+            var cover = new PlayerId(defendingTeam, defendingTactic.CoverReceiver);
+            _players[blocker].ScheduleSupportAction(
+                TechniqueAction.Block,
+                attackContactTime,
+                ToUnity(defendingTactic.BlockPosition),
+                _ball.SimulationTime);
+            _players[cover].ScheduleSupportAction(
+                TechniqueAction.Receive,
+                attackContactTime + 0.12f,
+                ToUnity(defendingTactic.CoverPosition),
+                _ball.SimulationTime);
+            BlockSupportAssignments++;
+            CoverageSupportAssignments++;
+            Debug.Log(
+                $"[Physical3v3] block team={defendingTeam} blocker={defendingTactic.Blocker} " +
+                $"cover={defendingTactic.CoverReceiver} lane=({defendingTactic.BlockPosition.X:0.00},{defendingTactic.BlockPosition.Z:0.00})");
         }
 
         private void HandlePlayerContact(PlayerBallContactEvent contact)
@@ -413,7 +445,7 @@ namespace Volleyball.Presentation
             GUI.Label(
                 new Rect(34f, 91f, 520f, 24f),
                 $"{BlueSetRoute}/{BlueSpikeRoute} vs {OrangeSetRoute}/{OrangeSpikeRoute}   " +
-                $"cycles {CompletedCycles} contacts {SuccessfulContacts} restarts {MissedRallies}",
+                $"cycles {CompletedCycles} contacts {SuccessfulContacts} blocks {BlockSupportAssignments}",
                 GUI.skin.label);
         }
 

@@ -43,6 +43,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(6));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
+            Assert.That(director.BlockSupportAssignments, Is.GreaterThan(0));
+            Assert.That(director.CoverageSupportAssignments, Is.GreaterThan(0));
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
 
             cameras.SetView(RallyCameraView.Sideline);

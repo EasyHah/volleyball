@@ -19,6 +19,74 @@ namespace Volleyball.AI
         RollShot
     }
 
+    public enum TeamSideSign
+    {
+        Blue = -1,
+        Orange = 1
+    }
+
+    public readonly struct BlockCoveragePlan : IEquatable<BlockCoveragePlan>
+    {
+        public BlockCoveragePlan(
+            PlayerRole blocker,
+            CourtPoint blockPosition,
+            PlayerRole coverReceiver,
+            CourtPoint coverPosition)
+        {
+            if (!Enum.IsDefined(typeof(PlayerRole), blocker))
+            {
+                throw new ArgumentOutOfRangeException(nameof(blocker));
+            }
+
+            if (!Enum.IsDefined(typeof(PlayerRole), coverReceiver))
+            {
+                throw new ArgumentOutOfRangeException(nameof(coverReceiver));
+            }
+
+            if (blocker == coverReceiver)
+            {
+                throw new ArgumentException("Blocker and cover receiver must be different roles.");
+            }
+
+            Blocker = blocker;
+            BlockPosition = blockPosition;
+            CoverReceiver = coverReceiver;
+            CoverPosition = coverPosition;
+        }
+
+        public PlayerRole Blocker { get; }
+
+        public CourtPoint BlockPosition { get; }
+
+        public PlayerRole CoverReceiver { get; }
+
+        public CourtPoint CoverPosition { get; }
+
+        public bool Equals(BlockCoveragePlan other)
+        {
+            return Blocker == other.Blocker &&
+                   BlockPosition.Equals(other.BlockPosition) &&
+                   CoverReceiver == other.CoverReceiver &&
+                   CoverPosition.Equals(other.CoverPosition);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is BlockCoveragePlan other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                var hashCode = (int)Blocker;
+                hashCode = (hashCode * 397) ^ BlockPosition.GetHashCode();
+                hashCode = (hashCode * 397) ^ (int)CoverReceiver;
+                return (hashCode * 397) ^ CoverPosition.GetHashCode();
+            }
+        }
+    }
+
     public readonly struct TeamRallyTactic : IEquatable<TeamRallyTactic>
     {
         public TeamRallyTactic(
@@ -27,6 +95,7 @@ namespace Volleyball.AI
             CourtPoint setterPosition,
             CourtPoint attackerPosition,
             CourtPoint defenderPosition,
+            BlockCoveragePlan blockCoverage,
             float setFlightSeconds,
             float attackFlightSeconds)
         {
@@ -35,6 +104,7 @@ namespace Volleyball.AI
             SetterPosition = setterPosition;
             AttackerPosition = attackerPosition;
             DefenderPosition = defenderPosition;
+            BlockCoverage = blockCoverage;
             SetFlightSeconds = setFlightSeconds;
             AttackFlightSeconds = attackFlightSeconds;
         }
@@ -49,6 +119,16 @@ namespace Volleyball.AI
 
         public CourtPoint DefenderPosition { get; }
 
+        public BlockCoveragePlan BlockCoverage { get; }
+
+        public PlayerRole Blocker => BlockCoverage.Blocker;
+
+        public CourtPoint BlockPosition => BlockCoverage.BlockPosition;
+
+        public PlayerRole CoverReceiver => BlockCoverage.CoverReceiver;
+
+        public CourtPoint CoverPosition => BlockCoverage.CoverPosition;
+
         public float SetFlightSeconds { get; }
 
         public float AttackFlightSeconds { get; }
@@ -60,6 +140,7 @@ namespace Volleyball.AI
                    SetterPosition.Equals(other.SetterPosition) &&
                    AttackerPosition.Equals(other.AttackerPosition) &&
                    DefenderPosition.Equals(other.DefenderPosition) &&
+                   BlockCoverage.Equals(other.BlockCoverage) &&
                    SetFlightSeconds.Equals(other.SetFlightSeconds) &&
                    AttackFlightSeconds.Equals(other.AttackFlightSeconds);
         }
@@ -78,6 +159,7 @@ namespace Volleyball.AI
                 hashCode = (hashCode * 397) ^ SetterPosition.GetHashCode();
                 hashCode = (hashCode * 397) ^ AttackerPosition.GetHashCode();
                 hashCode = (hashCode * 397) ^ DefenderPosition.GetHashCode();
+                hashCode = (hashCode * 397) ^ BlockCoverage.GetHashCode();
                 hashCode = (hashCode * 397) ^ SetFlightSeconds.GetHashCode();
                 return (hashCode * 397) ^ AttackFlightSeconds.GetHashCode();
             }
@@ -146,6 +228,38 @@ namespace Volleyball.AI
                 CreateTeam(orangeSet, orangeSpike, orangeAttack, orangeDefense, 1f));
         }
 
+        public static BlockCoveragePlan PlanBlockCoverage(
+            CourtPoint opponentAttackPosition,
+            TeamSideSign defendingSide)
+        {
+            if (!Enum.IsDefined(typeof(TeamSideSign), defendingSide))
+            {
+                throw new ArgumentOutOfRangeException(nameof(defendingSide));
+            }
+
+            var sideSign = (float)defendingSide;
+            var laneX = Clamp(opponentAttackPosition.X, -3.55f, 3.55f);
+            var attackerHomeX = sideSign > 0f ? -2.1f : 2.1f;
+            var setterHomeX = 0f;
+            var attackerDistance = Math.Abs(laneX - attackerHomeX);
+            var setterDistance = Math.Abs(laneX - setterHomeX);
+            var blocker = Math.Abs(laneX) >= 1.35f || attackerDistance <= setterDistance + 0.60f
+                ? PlayerRole.Attacker
+                : PlayerRole.Setter;
+            var coverReceiver = blocker == PlayerRole.Attacker
+                ? PlayerRole.Setter
+                : PlayerRole.Attacker;
+            var coverX = blocker == PlayerRole.Attacker
+                ? Clamp(-laneX * 0.35f, -2.4f, 2.4f)
+                : Clamp(attackerHomeX, -2.8f, 2.8f);
+
+            return new BlockCoveragePlan(
+                blocker,
+                new CourtPoint(laneX, sideSign * 0.65f),
+                coverReceiver,
+                new CourtPoint(coverX, sideSign * 4.15f));
+        }
+
         private static TeamRallyTactic CreateTeam(
             SetRoute setRoute,
             SpikeRoute spikeRoute,
@@ -173,6 +287,7 @@ namespace Volleyball.AI
                 new CourtPoint(setterX, sideSign * 3.35f),
                 attackPosition,
                 defensePosition,
+                PlanBlockCoverage(attackPosition, sideSign < 0f ? TeamSideSign.Blue : TeamSideSign.Orange),
                 setFlight,
                 attackFlight);
         }
@@ -203,7 +318,12 @@ namespace Volleyball.AI
                 _ => throw new ArgumentOutOfRangeException(nameof(route), route, null)
             };
             var z = sideSign * (route == SpikeRoute.RollShot ? 4.05f : 5.25f);
-            return new CourtPoint(Math.Max(-3.6f, Math.Min(3.6f, x)), z);
+            return new CourtPoint(Clamp(x, -3.6f, 3.6f), z);
+        }
+
+        private static float Clamp(float value, float min, float max)
+        {
+            return Math.Max(min, Math.Min(max, value));
         }
     }
 }

@@ -48,6 +48,13 @@ namespace Volleyball.Presentation
         private float _movementEndSimulationTime;
         private bool _hasScheduledMovement;
         private bool _isMovingThisStep;
+        private ActionTimeline _supportTimeline;
+        private TechniqueAction _supportAction;
+        private Vector3 _supportStartPosition;
+        private Vector3 _supportTargetPosition;
+        private float _supportStartSimulationTime;
+        private float _supportEndSimulationTime;
+        private bool _hasSupportAction;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -103,6 +110,7 @@ namespace Volleyball.Presentation
             _hasPlannedContactCenter = plannedContactCenter.HasValue;
             _plannedContactCenter = plannedContactCenter.GetValueOrDefault();
             _hasScheduledContact = true;
+            _hasSupportAction = false;
         }
 
         public void CancelScheduledContact()
@@ -110,6 +118,35 @@ namespace Volleyball.Presentation
             _hasScheduledContact = false;
             _hasPlannedContactCenter = false;
             _actionTimeline = null;
+            _hasSupportAction = false;
+            _supportTimeline = null;
+        }
+
+        public void ScheduleSupportAction(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            Vector3 movementTarget,
+            float movementStartSimulationTime)
+        {
+            if (action != TechniqueAction.Block && action != TechniqueAction.Receive)
+            {
+                throw new System.ArgumentException("Only block and receive support actions are supported.", nameof(action));
+            }
+
+            _supportAction = action;
+            _supportTimeline = new ActionTimeline(action, scheduledSimulationTime);
+            _supportStartPosition = transform.position;
+            _supportStartSimulationTime = movementStartSimulationTime;
+            _supportEndSimulationTime = Mathf.Max(
+                _supportStartSimulationTime + 0.01f,
+                scheduledSimulationTime - 0.10f);
+            var availableSeconds = _supportEndSimulationTime - _supportStartSimulationTime;
+            var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
+            _supportTargetPosition = Vector3.MoveTowards(
+                _supportStartPosition,
+                movementTarget,
+                maximumSpeed * availableSeconds);
+            _hasSupportAction = true;
         }
 
         public void PrepareForTraining(Vector3 worldPosition)
@@ -118,6 +155,32 @@ namespace Volleyball.Presentation
             transform.position = worldPosition;
             _motionOrigin = worldPosition;
             Rig.SetPose(StickFigurePose.Ready, 1f);
+        }
+
+        private void Update()
+        {
+            if (!_hasSupportAction || _hasScheduledContact)
+            {
+                return;
+            }
+
+            var simulationTime = Time.time;
+            var sample = _supportTimeline.Sample(simulationTime);
+            transform.position = EvaluateSupportMovement(simulationTime);
+            var pose = _supportAction == TechniqueAction.Block
+                ? StickFigurePose.Block
+                : StickFigurePose.Receive;
+            if (sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete)
+            {
+                pose = StickFigurePose.Ready;
+            }
+
+            Rig.SetPose(pose, Mathf.Clamp01(Time.deltaTime * 12f));
+            if (sample.Phase == ActionPhase.Complete)
+            {
+                _hasSupportAction = false;
+                _supportTimeline = null;
+            }
         }
 
         public IReadOnlyList<ContactSurfaceFrame> PreviewContactFrames(TechniqueAction action)
@@ -501,6 +564,26 @@ namespace Volleyball.Presentation
             progress = progress * progress * (3f - (2f * progress));
             complete = progress >= 1f;
             return Vector3.Lerp(_movementStartPosition, _movementTargetPosition, progress);
+        }
+
+        private Vector3 EvaluateSupportMovement(float simulationTime)
+        {
+            if (simulationTime >= _supportEndSimulationTime)
+            {
+                return _supportTargetPosition;
+            }
+
+            if (simulationTime <= _supportStartSimulationTime)
+            {
+                return _supportStartPosition;
+            }
+
+            var progress = Mathf.InverseLerp(
+                _supportStartSimulationTime,
+                _supportEndSimulationTime,
+                simulationTime);
+            progress = progress * progress * (3f - (2f * progress));
+            return Vector3.Lerp(_supportStartPosition, _supportTargetPosition, progress);
         }
 
         private Vector3 EvaluateAttackContactPosition(Vector3 origin, Vector3 forward)
