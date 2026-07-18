@@ -102,6 +102,14 @@ namespace Volleyball.EditModeTests
             Assert.That(config.Error, Does.Not.Contain("sentinel-secret"));
         }
 
+        [Test]
+        public void SmokeCaseId_ReadsCaseIdAfterFlag()
+        {
+            var args = new[] { "-batchmode", "-menshenSmokeCase", "R03", "-quit" };
+
+            Assert.That(MenShenBenchmarkCommandLine.SmokeCaseId(args), Is.EqualTo("R03"));
+        }
+
         private static MenShenBenchmarkRunner CreateRunner(IMenShenChatClient client)
         {
             return new MenShenBenchmarkRunner(

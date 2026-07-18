@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260718-006 | 2026-07-18 | 已完成 | Match / Docs | 模块内部 | [MenShen 排球决策基准](2026-07-18-006-menshen-decision-benchmark.md) |
 | CHG-20260717-005 | 2026-07-17 | 已完成 | Match / Shared / Career | **跨模块（重点）** | [Physical3v3Rally 可结束单局与结果产出](2026-07-17-005-match-set-completion.md) |
 | CHG-20260717-004 | 2026-07-17 | 已完成 | Match / Career / Shared / Bootstrap / Docs / Build Settings | **跨模块（重点）** | [Volleyball 全项目命名统一](2026-07-17-004-volleyball-naming-unification.md) |
 | CHG-20260717-003 | 2026-07-17 | 已完成 | Docs | 协作流程（重点） | [建立统一改动文档流程](2026-07-17-003-change-document-workflow.md) |

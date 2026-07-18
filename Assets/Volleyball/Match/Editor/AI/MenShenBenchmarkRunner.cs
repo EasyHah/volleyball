@@ -60,7 +60,31 @@ namespace Volleyball.Editor.AI
                 throw new ArgumentOutOfRangeException(nameof(repetitions));
             }
 
-            var plans = CreatePlans(catalog, repetitions, seed);
+            return await RunAsync(catalog.Cases, repetitions, seed, cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task<MenShenBenchmarkRunResult> RunAsync(
+            IReadOnlyList<BenchmarkCase> cases,
+            int repetitions,
+            int seed,
+            CancellationToken cancellationToken)
+        {
+            if (cases == null)
+            {
+                throw new ArgumentNullException(nameof(cases));
+            }
+
+            if (cases.Count == 0)
+            {
+                throw new ArgumentException("Benchmark requires at least one case.", nameof(cases));
+            }
+
+            if (repetitions <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(repetitions));
+            }
+
+            var plans = CreatePlans(cases, repetitions, seed);
             var attempts = new List<MenShenBenchmarkAttempt>(plans.Count);
             foreach (var plan in plans)
             {
@@ -87,16 +111,16 @@ namespace Volleyball.Editor.AI
         }
 
         private List<AttemptPlan> CreatePlans(
-            BenchmarkCaseCatalog catalog,
+            IReadOnlyList<BenchmarkCase> cases,
             int repetitions,
             int seed)
         {
-            var plans = new List<AttemptPlan>(profiles.Count * catalog.Cases.Count * repetitions);
+            var plans = new List<AttemptPlan>(profiles.Count * cases.Count * repetitions);
             for (var repetition = 1; repetition <= repetitions; repetition++)
             {
                 foreach (var profile in profiles)
                 {
-                    foreach (var item in catalog.Cases)
+                    foreach (var item in cases)
                     {
                         plans.Add(new AttemptPlan(profile, item, repetition));
                     }

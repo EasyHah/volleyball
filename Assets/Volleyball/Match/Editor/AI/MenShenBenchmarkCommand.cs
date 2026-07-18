@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
@@ -122,6 +123,20 @@ namespace Volleyball.Editor.AI
             }
 
             var catalog = BenchmarkCaseCatalog.Load(FixturePath);
+            var cases = catalog.Cases;
+            var repetitions = 3;
+            var smokeCase = MenShenBenchmarkCommandLine.SmokeCaseId(Environment.GetCommandLineArgs());
+            if (!string.IsNullOrEmpty(smokeCase))
+            {
+                cases = catalog.Cases.Where(item => item.Id == smokeCase).ToArray();
+                if (cases.Count == 0)
+                {
+                    throw new InvalidOperationException("Smoke case was not found: " + smokeCase);
+                }
+
+                repetitions = 1;
+            }
+
             var runner = new MenShenBenchmarkRunner(
                 new MenShenChatClient(new System.Net.Http.HttpClient(), config.Endpoint),
                 new[]
@@ -132,7 +147,7 @@ namespace Volleyball.Editor.AI
                 },
                 config.ApiKey,
                 TimeSpan.FromMilliseconds(250));
-            var result = await runner.RunAsync(catalog, 3, 7351, CancellationToken.None)
+            var result = await runner.RunAsync(cases, repetitions, 7351, CancellationToken.None)
                 .ConfigureAwait(false);
 
             return MenShenBenchmarkReportWriter.Write(result, "TestResults/MenShen");
@@ -157,6 +172,29 @@ namespace Volleyball.Editor.AI
             return string.IsNullOrEmpty(apiKey)
                 ? message
                 : message.Replace(apiKey, "[redacted]");
+        }
+    }
+
+    public static class MenShenBenchmarkCommandLine
+    {
+        public static string SmokeCaseId(string[] args)
+        {
+            if (args == null)
+            {
+                return string.Empty;
+            }
+
+            for (var index = 0; index < args.Length - 1; index++)
+            {
+                if (args[index] == "-menshenSmokeCase" &&
+                    !string.IsNullOrWhiteSpace(args[index + 1]) &&
+                    !args[index + 1].StartsWith("-", StringComparison.Ordinal))
+                {
+                    return args[index + 1];
+                }
+            }
+
+            return string.Empty;
         }
     }
 }

@@ -223,7 +223,7 @@ namespace Volleyball.Editor.AI
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json")
             };
-            request.Headers.TryAddWithoutValidation("api-key", apiKey);
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
             return request;
         }
 

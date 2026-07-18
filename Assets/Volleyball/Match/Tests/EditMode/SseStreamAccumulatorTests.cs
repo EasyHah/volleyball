@@ -67,6 +67,27 @@ namespace Volleyball.EditModeTests
             Assert.That(result.Content, Is.Empty);
         }
 
+        [Test]
+        public void CompleteAsync_UsesBearerAuthorizationForV1Endpoint()
+        {
+            var handler = new HeaderCaptureHandler();
+            var httpClient = new HttpClient(handler);
+            var client = new MenShenChatClient(
+                httpClient,
+                new Uri("https://menshen-code.test.xdf.cn/v1/chat/completions"));
+
+            var result = client.CompleteAsync(
+                MenShenModelProfile.DoubaoMini,
+                "system",
+                "case",
+                "sentinel-secret",
+                TimeSpan.FromSeconds(1),
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            Assert.That(result.Status, Is.EqualTo(MenShenChatStatus.Success));
+            Assert.That(handler.AuthorizationHeader, Is.EqualTo("Bearer sentinel-secret"));
+        }
+
         private sealed class DelayedHandler : HttpMessageHandler
         {
             private readonly TimeSpan delay;
@@ -85,6 +106,22 @@ namespace Volleyball.EditModeTests
                 {
                     Content = new StringContent("data: [DONE]\n\n")
                 };
+            }
+        }
+
+        private sealed class HeaderCaptureHandler : HttpMessageHandler
+        {
+            public string AuthorizationHeader { get; private set; }
+
+            protected override Task<HttpResponseMessage> SendAsync(
+                HttpRequestMessage request,
+                CancellationToken cancellationToken)
+            {
+                AuthorizationHeader = request.Headers.Authorization?.ToString();
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("data: {\"choices\":[{\"delta\":{\"content\":\"{}\"}}]}\n\ndata: [DONE]\n\n")
+                });
             }
         }
     }
