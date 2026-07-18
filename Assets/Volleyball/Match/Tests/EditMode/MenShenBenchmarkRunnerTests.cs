@@ -71,6 +71,37 @@ namespace Volleyball.EditModeTests
             Assert.That(File.ReadAllText(Path.Combine(output, "review.csv")).Split('\n').Count(line => line.Contains(",")), Is.GreaterThanOrEqualTo(181));
         }
 
+        [Test]
+        public void Resolve_MissingKey_DisablesRunWithoutPrintingSecret()
+        {
+            var config = MenShenBenchmarkConfiguration.Resolve(_ => null);
+
+            Assert.That(config.CanRun, Is.False);
+            Assert.That(config.Error, Is.EqualTo("MENSHEN_API_KEY is not configured."));
+        }
+
+        [Test]
+        public void Resolve_HttpNonLocalEndpoint_RejectsInsecureTransport()
+        {
+            string Read(string name)
+            {
+                switch (name)
+                {
+                    case "MENSHEN_API_KEY":
+                        return "sentinel-secret";
+                    case "MENSHEN_BASE_URL":
+                        return "http://menshen-code.test.xdf.cn/v1/chat/completions";
+                    default:
+                        return null;
+                }
+            }
+
+            var config = MenShenBenchmarkConfiguration.Resolve(Read);
+
+            Assert.That(config.CanRun, Is.False);
+            Assert.That(config.Error, Does.Not.Contain("sentinel-secret"));
+        }
+
         private static MenShenBenchmarkRunner CreateRunner(IMenShenChatClient client)
         {
             return new MenShenBenchmarkRunner(

@@ -57,6 +57,29 @@ mkdir -p TestResults
 Preserve the generated XML and log files as local review evidence; do not
 commit `TestResults/`.
 
+## MenShen decision benchmark
+
+The MenShen volleyball decision benchmark is Editor-only development tooling.
+It reads `MENSHEN_API_KEY` from the current process environment, writes local
+reports under ignored `TestResults/MenShen/`, and must not be wired into Unity
+player builds.
+
+Run it from the repository root with Unity `6000.0.43f1`:
+
+```bash
+source "$HOME/.zshrc"
+test -n "$MENSHEN_API_KEY" || { echo "MENSHEN_API_KEY is missing"; exit 1; }
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+"$UNITY" -batchmode -quit -projectPath "$PWD" \
+  -executeMethod Volleyball.Editor.AI.MenShenBenchmarkCommand.Run \
+  -logFile "$PWD/TestResults/MenShen-benchmark.log"
+```
+
+`MENSHEN_BASE_URL` is optional and defaults to the coding gateway. Non-local
+HTTP endpoints are rejected; use HTTPS for real gateway runs. Live gateway runs
+are not part of EditMode or PlayMode regression, and production builds must not
+receive a MenShen key.
+
 ## Physical contact training
 
 Open `Assets/Volleyball/Match/Scenes/PhysicsContactTraining.unity` to inspect the
