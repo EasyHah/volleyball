@@ -6,8 +6,9 @@
     "Volleyball.Match.AI",
     "Volleyball.Match.Presentation",
     "Volleyball.Match.AI.Editor",
-    "Unity.Newtonsoft.Json"
+    "Newtonsoft.Json"
   ],
+  "precompiledReferences": ["Newtonsoft.Json.dll"],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"]
 }
