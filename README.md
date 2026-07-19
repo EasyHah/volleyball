@@ -14,6 +14,11 @@ The player moves and aims. In valid positions the game automatically selects the
 volleyball action: receive/dig, spike or block jump. There are no timing-button
 minigames.
 
+The repository now also includes the formal physical match target at
+`Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity`: twelve players, six-position
+rotation, 25-point win-by-two scoring, physical blocks and complete match statistics.
+The original 3v3 scene remains an automated compatibility baseline.
+
 ## Project setup
 
 Open this repository in Unity Hub with Unity `6000.0.43f1`. Unity will create

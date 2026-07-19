@@ -14,5 +14,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity
     guid: 4ca3a03f5dea681ad6a5d38a5ffd48ec
+  - enabled: 1
+    path: Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity
+    guid: 6f6f726d616c36667636636f75727431
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0

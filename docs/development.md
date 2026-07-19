@@ -149,6 +149,29 @@ sets require `0.90`; unavailable techniques fall back to a simpler visible pose
 and receive an additional control penalty. One-hand setting is an explicit
 emergency request, not the automatic result of an ordinary wide set.
 
+## Formal indoor 6v6 loop
+
+Open `Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity` and enter Play Mode.
+The scene creates one 9×18 metre court, one simulated ball and twelve visible players.
+It plays a 25-point, win-by-two set and stops at `RESULT READY`; the result contains
+one statistics entry for every player in the injected context.
+
+The bottom roster panels show P1–P6, front/back row and the current server. A side-out
+rotates the receiving team clockwise before its next serve. The setter, outside
+hitters, opposite, middle blocker and libero profiles are mirrored across teams;
+reachability can still choose an emergency non-specialist. Player roots remain in
+their own half while hands can legally penetrate the net plane for attack or block.
+
+Run the deterministic full-scene test with:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testFilter "Volleyball.PlayModeTests.FormalSixVsSixRallyPlayModeTests" \
+  -testResults "$PWD/TestResults/Formal6v6.xml" \
+  -logFile "$PWD/TestResults/Formal6v6.log"
+```
+
 ## Physics-contact upgrade baseline
 
 The controlled-arc prototype remains the comparison baseline while the physical

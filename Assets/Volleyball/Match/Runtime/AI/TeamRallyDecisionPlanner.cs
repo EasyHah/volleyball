@@ -463,9 +463,9 @@ namespace Volleyball.AI
                 copy.Add(player);
             }
 
-            if (copy.Count != 3)
+            if (copy.Count < 3 || copy.Count > 6)
             {
-                throw new ArgumentException("Exactly three players are required.", nameof(players));
+                throw new ArgumentException("A rally team requires three to six players.", nameof(players));
             }
 
             return copy.AsReadOnly();
@@ -603,9 +603,23 @@ namespace Volleyball.AI
         {
             return stage switch
             {
-                RallyDecisionStage.Receive => role == PlayerRole.Defender ? 1f : 0f,
+                RallyDecisionStage.Receive => role switch
+                {
+                    PlayerRole.Defender => 1f,
+                    PlayerRole.OutsideHitter => 0.78f,
+                    PlayerRole.Attacker => 0.68f,
+                    PlayerRole.Opposite => 0.42f,
+                    _ => 0f
+                },
                 RallyDecisionStage.Organize => role == PlayerRole.Setter ? 1f : 0f,
-                RallyDecisionStage.Attack => role == PlayerRole.Attacker ? 1f : 0f,
+                RallyDecisionStage.Attack => role switch
+                {
+                    PlayerRole.Attacker => 1f,
+                    PlayerRole.OutsideHitter => 0.96f,
+                    PlayerRole.Opposite => 0.94f,
+                    PlayerRole.MiddleBlocker => 0.86f,
+                    _ => 0f
+                },
                 _ => 0f
             };
         }

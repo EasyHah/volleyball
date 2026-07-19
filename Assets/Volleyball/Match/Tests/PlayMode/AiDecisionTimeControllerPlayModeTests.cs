@@ -136,6 +136,158 @@ namespace Volleyball.PlayModeTests
             }
         }
 
+        [UnityTest]
+        public IEnumerator InvalidProposal_RestoresMatchTimeAndUsesFallback()
+        {
+            var root = new GameObject("AiDecisionTimeInvalidTest");
+            var originalTimeScale = Time.timeScale;
+            var originalFixedDeltaTime = Time.fixedDeltaTime;
+            try
+            {
+                Time.timeScale = 1f;
+                Time.fixedDeltaTime = 0.02f;
+                var controller = root.AddComponent<AiDecisionTimeController>();
+                controller.Configure(new ImmediateSource(
+                    new RallyTacticalWeightProposal(float.NaN, 1f, 1f, 1f)),
+                    realTimeTimeoutSeconds: 0.5f,
+                    restoreDurationSeconds: 0f,
+                    minimumSimulationWindowSeconds: 0.1f);
+                var completed = false;
+                var status = AiDecisionWaitStatus.None;
+                controller.TryRequestWeights(
+                    CreateRequest(0.4f),
+                    RallyTacticalWeights.Default,
+                    (_, resolvedStatus) =>
+                    {
+                        status = resolvedStatus;
+                        completed = true;
+                    });
+
+                yield return null;
+                yield return null;
+
+                Assert.That(completed, Is.True);
+                Assert.That(status, Is.EqualTo(AiDecisionWaitStatus.InvalidProposal));
+                Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(Time.fixedDeltaTime, Is.EqualTo(0.02f).Within(0.001f));
+            }
+            finally
+            {
+                Object.Destroy(root);
+                Time.timeScale = originalTimeScale;
+                Time.fixedDeltaTime = originalFixedDeltaTime;
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator SynchronousException_RestoresMatchTimeAndUsesFallback()
+        {
+            var root = new GameObject("AiDecisionTimeExceptionTest");
+            var originalTimeScale = Time.timeScale;
+            var originalFixedDeltaTime = Time.fixedDeltaTime;
+            try
+            {
+                Time.timeScale = 1f;
+                Time.fixedDeltaTime = 0.02f;
+                var controller = root.AddComponent<AiDecisionTimeController>();
+                controller.Configure(
+                    new ThrowingSource(),
+                    realTimeTimeoutSeconds: 0.5f,
+                    restoreDurationSeconds: 0f,
+                    minimumSimulationWindowSeconds: 0.1f);
+                var status = AiDecisionWaitStatus.None;
+
+                Assert.That(controller.TryRequestWeights(
+                    CreateRequest(0.4f),
+                    RallyTacticalWeights.Default,
+                    (_, resolvedStatus) => status = resolvedStatus), Is.True);
+
+                Assert.That(status, Is.EqualTo(AiDecisionWaitStatus.Faulted));
+                Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(Time.fixedDeltaTime, Is.EqualTo(0.02f).Within(0.001f));
+                yield return null;
+            }
+            finally
+            {
+                Object.Destroy(root);
+                Time.timeScale = originalTimeScale;
+                Time.fixedDeltaTime = originalFixedDeltaTime;
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ExplicitCancellation_RestoresMatchTimeImmediately()
+        {
+            var root = new GameObject("AiDecisionTimeCancelTest");
+            var originalTimeScale = Time.timeScale;
+            var originalFixedDeltaTime = Time.fixedDeltaTime;
+            try
+            {
+                Time.timeScale = 1f;
+                Time.fixedDeltaTime = 0.02f;
+                var controller = root.AddComponent<AiDecisionTimeController>();
+                controller.Configure(
+                    new DeferredWeightSource(),
+                    realTimeTimeoutSeconds: 0.5f,
+                    restoreDurationSeconds: 0.1f,
+                    minimumSimulationWindowSeconds: 0.1f);
+                controller.TryRequestWeights(
+                    CreateRequest(0.4f),
+                    RallyTacticalWeights.Default,
+                    (_, _) => { });
+                Assert.That(Time.timeScale, Is.LessThan(1f));
+
+                controller.CancelPending();
+
+                Assert.That(controller.LastStatus, Is.EqualTo(AiDecisionWaitStatus.Cancelled));
+                Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(Time.fixedDeltaTime, Is.EqualTo(0.02f).Within(0.001f));
+                yield return null;
+            }
+            finally
+            {
+                Object.Destroy(root);
+                Time.timeScale = originalTimeScale;
+                Time.fixedDeltaTime = originalFixedDeltaTime;
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator ComponentDisable_CancelsPendingRequestAndRestoresMatchTime()
+        {
+            var root = new GameObject("AiDecisionTimeDisableTest");
+            var originalTimeScale = Time.timeScale;
+            var originalFixedDeltaTime = Time.fixedDeltaTime;
+            try
+            {
+                Time.timeScale = 1f;
+                Time.fixedDeltaTime = 0.02f;
+                var controller = root.AddComponent<AiDecisionTimeController>();
+                controller.Configure(
+                    new DeferredWeightSource(),
+                    realTimeTimeoutSeconds: 0.5f,
+                    restoreDurationSeconds: 0.1f,
+                    minimumSimulationWindowSeconds: 0.1f);
+                controller.TryRequestWeights(
+                    CreateRequest(0.4f),
+                    RallyTacticalWeights.Default,
+                    (_, _) => { });
+
+                controller.enabled = false;
+
+                Assert.That(controller.LastStatus, Is.EqualTo(AiDecisionWaitStatus.Cancelled));
+                Assert.That(Time.timeScale, Is.EqualTo(1f).Within(0.001f));
+                Assert.That(Time.fixedDeltaTime, Is.EqualTo(0.02f).Within(0.001f));
+                yield return null;
+            }
+            finally
+            {
+                Object.Destroy(root);
+                Time.timeScale = originalTimeScale;
+                Time.fixedDeltaTime = originalFixedDeltaTime;
+            }
+        }
+
         private static RallyTacticalWeightRequest CreateRequest(float availableSimulationSeconds)
         {
             return new RallyTacticalWeightRequest(
@@ -168,6 +320,33 @@ namespace Volleyball.PlayModeTests
             public void Complete(RallyTacticalWeightProposal proposal)
             {
                 _completion.TrySetResult(proposal);
+            }
+        }
+
+        private sealed class ImmediateSource : IRallyTacticalWeightSource
+        {
+            private readonly RallyTacticalWeightProposal _proposal;
+
+            public ImmediateSource(RallyTacticalWeightProposal proposal)
+            {
+                _proposal = proposal;
+            }
+
+            public Task<RallyTacticalWeightProposal> RequestAsync(
+                RallyTacticalWeightRequest request,
+                CancellationToken cancellationToken)
+            {
+                return Task.FromResult(_proposal);
+            }
+        }
+
+        private sealed class ThrowingSource : IRallyTacticalWeightSource
+        {
+            public Task<RallyTacticalWeightProposal> RequestAsync(
+                RallyTacticalWeightRequest request,
+                CancellationToken cancellationToken)
+            {
+                throw new System.InvalidOperationException("deterministic test failure");
             }
         }
     }

@@ -6,6 +6,7 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
@@ -18,6 +19,8 @@ namespace Volleyball.Presentation
         private float _moveSpeed = 7f;
 
         public PlayerId Id { get; private set; }
+
+        public StablePlayerId StableId { get; private set; }
 
         public StickFigureRig Rig { get; private set; }
 
@@ -88,10 +91,26 @@ namespace Volleyball.Presentation
         private AttackApproachPlan _attackApproach;
         private Vector3 _attackTakeoffPosition;
         private bool _physicalBlockActivationLogged;
+        private float _courtHalfLength = CourtBuilder.HalfLength;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
+            var prefix = id.Team == TeamId.Blue ? "home-" : "away-";
+            Initialize(
+                id,
+                new StablePlayerId(prefix + id.Role.ToString().ToLowerInvariant()),
+                color,
+                jerseyNumber);
+        }
+
+        public void Initialize(
+            PlayerId id,
+            StablePlayerId stableId,
+            Color color,
+            string jerseyNumber)
+        {
             Id = id;
+            StableId = stableId;
             Rig = StickFigureRig.Create(transform, color, jerseyNumber);
             Ability = PlayerAbilityProfile.Default;
             ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
@@ -100,6 +119,16 @@ namespace Volleyball.Presentation
         public void SetAbility(PlayerAbilityProfile ability)
         {
             Ability = ability;
+        }
+
+        public void SetCourtHalfLength(float courtHalfLength)
+        {
+            if (float.IsNaN(courtHalfLength) || float.IsInfinity(courtHalfLength) || courtHalfLength <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(courtHalfLength));
+            }
+
+            _courtHalfLength = courtHalfLength;
         }
 
         public void ScheduleContact(
@@ -267,7 +296,7 @@ namespace Volleyball.Presentation
             _supportTargetPosition = Vector3.MoveTowards(
                 previousTarget,
                 ConstrainGroundPosition(movementTarget),
-                0.55f);
+                0.549f);
             BlockRetargetDistance = Vector3.Distance(previousTarget, _supportTargetPosition);
             _supportEndSimulationTime = Mathf.Max(
                 _supportStartSimulationTime + 0.01f,
@@ -314,6 +343,12 @@ namespace Volleyball.Presentation
             transform.position = constrained;
             _motionOrigin = constrained;
             Rig.SetPose(StickFigurePose.Ready, 1f);
+        }
+
+        public void ApplyCrowdingOffset(Vector3 worldOffset)
+        {
+            worldOffset.y = 0f;
+            transform.position = ConstrainToOwnCourt(transform.position + worldOffset);
         }
 
         public IReadOnlyList<ContactSurfaceFrame> PreviewContactFrames(TechniqueAction action)
@@ -971,12 +1006,12 @@ namespace Volleyball.Presentation
             position.z = Id.Team == TeamId.Blue
                 ? Mathf.Clamp(
                     position.z,
-                    -CourtBuilder.HalfLength + BoundaryClearance,
+                    -_courtHalfLength + BoundaryClearance,
                     -NetClearance)
                 : Mathf.Clamp(
                     position.z,
                     NetClearance,
-                    CourtBuilder.HalfLength - BoundaryClearance);
+                    _courtHalfLength - BoundaryClearance);
             return position;
         }
 
@@ -985,8 +1020,8 @@ namespace Volleyball.Presentation
             const float tolerance = 0.0001f;
             if (position.x < -CourtBuilder.HalfWidth + BoundaryClearance - tolerance ||
                 position.x > CourtBuilder.HalfWidth - BoundaryClearance + tolerance ||
-                position.z < -CourtBuilder.HalfLength + BoundaryClearance - tolerance ||
-                position.z > CourtBuilder.HalfLength - BoundaryClearance + tolerance)
+                position.z < -_courtHalfLength + BoundaryClearance - tolerance ||
+                position.z > _courtHalfLength - BoundaryClearance + tolerance)
             {
                 return false;
             }

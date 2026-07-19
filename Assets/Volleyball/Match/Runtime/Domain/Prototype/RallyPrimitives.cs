@@ -12,7 +12,10 @@ namespace Volleyball.Domain.Prototype
     {
         Setter,
         Attacker,
-        Defender
+        Defender,
+        Opposite,
+        OutsideHitter,
+        MiddleBlocker
     }
 
     public enum RallyActionKind
@@ -29,18 +32,31 @@ namespace Volleyball.Domain.Prototype
     public readonly struct PlayerId : IEquatable<PlayerId>
     {
         public PlayerId(TeamId team, PlayerRole role)
+            : this(team, role, (int)role)
         {
+        }
+
+        public PlayerId(TeamId team, PlayerRole role, int rosterSlot)
+        {
+            if (rosterSlot < 0 || rosterSlot > 13)
+            {
+                throw new ArgumentOutOfRangeException(nameof(rosterSlot));
+            }
+
             Team = team;
             Role = role;
+            RosterSlot = rosterSlot;
         }
 
         public TeamId Team { get; }
 
         public PlayerRole Role { get; }
 
+        public int RosterSlot { get; }
+
         public bool Equals(PlayerId other)
         {
-            return Team == other.Team && Role == other.Role;
+            return Team == other.Team && Role == other.Role && RosterSlot == other.RosterSlot;
         }
 
         public override bool Equals(object obj)
@@ -52,7 +68,10 @@ namespace Volleyball.Domain.Prototype
         {
             unchecked
             {
-                return ((int)Team * 397) ^ (int)Role;
+                var legacyHashCode = ((int)Team * 397) ^ (int)Role;
+                return RosterSlot == (int)Role
+                    ? legacyHashCode
+                    : (legacyHashCode * 397) ^ RosterSlot;
             }
         }
     }

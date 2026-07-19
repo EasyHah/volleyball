@@ -120,7 +120,12 @@ namespace Volleyball.PlayModeTests
 
         private static void AssertMirroredRoleAbilities(PrototypePlayerAgent[] players)
         {
-            foreach (PlayerRole role in System.Enum.GetValues(typeof(PlayerRole)))
+            foreach (var role in new[]
+                     {
+                         PlayerRole.Setter,
+                         PlayerRole.Attacker,
+                         PlayerRole.Defender
+                     })
             {
                 PrototypePlayerAgent blue = null;
                 PrototypePlayerAgent orange = null;

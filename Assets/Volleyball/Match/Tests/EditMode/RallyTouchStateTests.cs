@@ -51,6 +51,22 @@ namespace Volleyball.EditModeTests
             Assert.That(state.ContactWindow, Is.Not.Null);
         }
 
+        [Test]
+        public void ConsecutiveTouches_ByDifferentRosterSlotsWithSameRole_AreLegal()
+        {
+            var outsideA = new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter, 1);
+            var outsideB = new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter, 4);
+            var state = new RallyTouchState(TeamId.Blue);
+            Accept(state, outsideA, TechniqueAction.Receive, 1f);
+            state.OpenWindow(Window(outsideB, TechniqueAction.Set, 2f, 3f));
+
+            var evaluation = state.Accept(outsideB, TechniqueAction.Set, 2f);
+
+            Assert.That(evaluation.Disposition, Is.EqualTo(RallyContactDisposition.Accept));
+            Assert.That(state.CountedTeamTouches, Is.EqualTo(2));
+            Assert.That(state.LastCountedActor, Is.EqualTo(outsideB));
+        }
+
         [TestCase(TeamId.Blue)]
         [TestCase(TeamId.Orange)]
         public void BlockAndBeginPossession_HandleCountedAndPhysicalTouchState(TeamId nextTeam)

@@ -31,6 +31,27 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Plan_SixPlayerRosterSupportsDistinctSlotsAndDuplicateRoles()
+        {
+            var players = new[]
+            {
+                Snapshot(PlayerRole.Opposite, 0, -3f),
+                Snapshot(PlayerRole.OutsideHitter, 1, -2f),
+                Snapshot(PlayerRole.MiddleBlocker, 2, -1f),
+                Snapshot(PlayerRole.Setter, 3, 1f),
+                Snapshot(PlayerRole.OutsideHitter, 4, 2f),
+                Snapshot(PlayerRole.Defender, 5, 0f)
+            };
+
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateRawInput(players));
+
+            Assert.That(decision.HasDecision, Is.True);
+            Assert.That(decision.Candidates, Has.Count.EqualTo(6));
+            Assert.That(decision.Actor.Role, Is.EqualTo(PlayerRole.Setter));
+            Assert.That(decision.Actor.RosterSlot, Is.EqualTo(3));
+        }
+
+        [Test]
         public void Plan_OrganizeUsesReachableDefenderWhenTheSetterCannotArrive()
         {
             var input = CreateInput(
@@ -697,6 +718,14 @@ namespace Volleyball.EditModeTests
         private static PlayerAbilityProfile Ability(float mobility)
         {
             return new PlayerAbilityProfile(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+        }
+
+        private static RallyPlayerSnapshot Snapshot(PlayerRole role, int slot, float x)
+        {
+            return new RallyPlayerSnapshot(
+                new PlayerId(TeamId.Blue, role, slot),
+                new SimVector3(x, 0f, -2f),
+                Ability(0.8f));
         }
     }
 }

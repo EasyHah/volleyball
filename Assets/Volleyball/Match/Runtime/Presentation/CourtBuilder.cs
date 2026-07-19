@@ -7,24 +7,30 @@ namespace Volleyball.Presentation
     {
         public const float HalfWidth = 4.5f;
         public const float HalfLength = 7.5f;
+        public const float FormalHalfLength = 9f;
         public const float NetHeight = 2.43f;
 
         private static readonly Color FloorColor = new Color(0.36f, 0.76f, 0.94f);
         private static readonly Color CourtColor = new Color(0.93f, 0.71f, 0.4f);
 
-        public static Transform Build(Transform parent)
+        public static Transform Build(Transform parent, float halfLength = HalfLength)
         {
             if (parent == null)
             {
                 throw new ArgumentNullException(nameof(parent));
             }
 
+            if (float.IsNaN(halfLength) || float.IsInfinity(halfLength) || halfLength <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(halfLength));
+            }
+
             var root = new GameObject("Court").transform;
             root.SetParent(parent, false);
-            CreateBox(root, "Floor", Vector3.zero, new Vector3(HalfWidth * 2f + 2f, 0.2f, HalfLength * 2f + 2f), FloorColor);
-            CreateBox(root, "PlayingSurface", Vector3.up * 0.11f, new Vector3(HalfWidth * 2f, 0.04f, HalfLength * 2f), CourtColor);
+            CreateBox(root, "Floor", Vector3.zero, new Vector3(HalfWidth * 2f + 2f, 0.2f, halfLength * 2f + 2f), FloorColor);
+            CreateBox(root, "PlayingSurface", Vector3.up * 0.11f, new Vector3(HalfWidth * 2f, 0.04f, halfLength * 2f), CourtColor);
             CreateNet(root);
-            CreateLines(root);
+            CreateLines(root, halfLength);
             CreateLight(root);
             CreateCamera(root);
             return root;
@@ -68,14 +74,14 @@ namespace Volleyball.Presentation
             }
         }
 
-        private static void CreateLines(Transform parent)
+        private static void CreateLines(Transform parent, float halfLength)
         {
             const float lineHeight = 0.145f;
             const float lineThickness = 0.08f;
-            CreateBox(parent, "LeftSideline", new Vector3(-HalfWidth, lineHeight, 0f), new Vector3(lineThickness, 0.025f, HalfLength * 2f), Color.white);
-            CreateBox(parent, "RightSideline", new Vector3(HalfWidth, lineHeight, 0f), new Vector3(lineThickness, 0.025f, HalfLength * 2f), Color.white);
-            CreateBox(parent, "BlueEndLine", new Vector3(0f, lineHeight, -HalfLength), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
-            CreateBox(parent, "OrangeEndLine", new Vector3(0f, lineHeight, HalfLength), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
+            CreateBox(parent, "LeftSideline", new Vector3(-HalfWidth, lineHeight, 0f), new Vector3(lineThickness, 0.025f, halfLength * 2f), Color.white);
+            CreateBox(parent, "RightSideline", new Vector3(HalfWidth, lineHeight, 0f), new Vector3(lineThickness, 0.025f, halfLength * 2f), Color.white);
+            CreateBox(parent, "BlueEndLine", new Vector3(0f, lineHeight, -halfLength), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
+            CreateBox(parent, "OrangeEndLine", new Vector3(0f, lineHeight, halfLength), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
             CreateBox(parent, "CenterLine", new Vector3(0f, lineHeight, 0f), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
             CreateBox(parent, "BlueAttackLine", new Vector3(0f, lineHeight, -3f), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
             CreateBox(parent, "OrangeAttackLine", new Vector3(0f, lineHeight, 3f), new Vector3(HalfWidth * 2f, 0.025f, lineThickness), Color.white);
@@ -102,7 +108,7 @@ namespace Volleyball.Presentation
                 Quaternion.Euler(52f, 0f, 0f));
             var camera = cameraObject.AddComponent<Camera>();
             camera.orthographic = true;
-            camera.orthographicSize = 10.5f;
+            camera.orthographicSize = 12f;
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0.65f, 0.88f, 1f);
             camera.tag = "MainCamera";

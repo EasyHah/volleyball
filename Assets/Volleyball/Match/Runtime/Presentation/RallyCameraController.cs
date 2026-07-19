@@ -88,15 +88,15 @@ namespace Volleyball.Presentation
             {
                 case RallyCameraView.Tactical:
                     _camera.orthographic = true;
-                    _camera.orthographicSize = 10.5f;
+                    _camera.orthographicSize = 12f;
                     _camera.transform.SetPositionAndRotation(
-                        new Vector3(0f, 16f, -13f),
-                        Quaternion.Euler(52f, 0f, 0f));
+                        new Vector3(0f, 18f, -15f),
+                        Quaternion.Euler(54f, 0f, 0f));
                     break;
                 case RallyCameraView.Sideline:
                     _camera.orthographic = false;
                     _camera.fieldOfView = 44f;
-                    _camera.transform.position = new Vector3(12.5f, 5.5f, -0.5f);
+                    _camera.transform.position = new Vector3(14.5f, 6.2f, -0.5f);
                     _camera.transform.LookAt(new Vector3(0f, 1.7f, 0f));
                     break;
                 case RallyCameraView.BallFollow:

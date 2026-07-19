@@ -165,9 +165,7 @@ namespace Volleyball.Domain.Prototype
         internal static void ValidateActor(PlayerId actor, string parameterName)
         {
             ValidateTeam(actor.Team, parameterName);
-            if (actor.Role != PlayerRole.Setter
-                && actor.Role != PlayerRole.Attacker
-                && actor.Role != PlayerRole.Defender)
+            if (!Enum.IsDefined(typeof(PlayerRole), actor.Role))
             {
                 throw new ArgumentOutOfRangeException(parameterName, actor.Role, "Unknown player role.");
             }

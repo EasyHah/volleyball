@@ -37,8 +37,22 @@ scene: a rally begins from an AI serve, a point completes a rally, side-out rota
 the winning 3v3 team once, player eligibility automatically selects the correct
 action, and all non-created athletes remain AI controlled.
 
-## Future expansion
+## Physical match formats
 
-6v6 replaces simplified rotation only after the 3v3 control loop is reliable. The
-V1 contract already includes a 6v6 fixture as an acceptance sample; it is not a
-requirement to build 6v6 in this repository's first feature branch.
+`PhysicalMatchRallyDirector` is the single Unity adapter for both physical formats.
+The retained `ThreeVsThreeRallyDirector` and the formal
+`FormalSixVsSixRallyDirector` are thin scene-facing types and contain no duplicated
+rally logic. `PhysicalMatchConfiguration` supplies roster size, set rules, formation
+and HUD identity.
+
+The 3v3 scene remains a 15-point, win-by-two regression target. The independent
+`FormalIndoor6v6` scene uses six rotation positions, a 25-point win-by-two set and
+all twelve context players in the result. Position 1 serves; positions 2–4 are
+front row; a receiving team that wins the rally rotates clockwise before serving.
+
+Prototype court identity is team + role + roster slot, while `PrototypePlayerAgent`
+stores the stable Shared `PlayerId` separately. This permits multiple outside
+hitters with the same role without conflating physics identity and career identity.
+`MatchSet` remains Unity-free and owns scoring, service transfer, rotation and
+statistics. `RallyTouchState` continues to own three-touch legality, consecutive
+contacts and block/serve exclusions.

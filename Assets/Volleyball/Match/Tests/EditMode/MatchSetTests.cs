@@ -89,6 +89,54 @@ namespace Volleyball.EditModeTests
             Assert.Throws<InvalidOperationException>(() => CreateSet(TeamSide.Home).CreateResult());
         }
 
+        [Test]
+        public void FormalIndoorSixPlayerSet_UsesTwentyFivePointsAndAllSixRotationPositions()
+        {
+            var set = new MatchSet(CreateSixPlayerContext(), TeamSide.Home);
+            var initialServers = new[]
+            {
+                set.ServerFor(TeamSide.Away),
+                set.PlayerAtRotationPosition(TeamSide.Away, IndoorRotationPosition.FrontRight),
+                set.PlayerAtRotationPosition(TeamSide.Away, IndoorRotationPosition.FrontCenter),
+                set.PlayerAtRotationPosition(TeamSide.Away, IndoorRotationPosition.FrontLeft),
+                set.PlayerAtRotationPosition(TeamSide.Away, IndoorRotationPosition.BackLeft),
+                set.PlayerAtRotationPosition(TeamSide.Away, IndoorRotationPosition.BackCenter)
+            };
+
+            Assert.That(set.SetTargetScore, Is.EqualTo(25));
+            Assert.That(set.RosterSize, Is.EqualTo(6));
+            Assert.That(set.IsFrontRow(initialServers[1]), Is.True);
+            Assert.That(set.IsFrontRow(initialServers[2]), Is.True);
+            Assert.That(set.IsFrontRow(initialServers[3]), Is.True);
+            Assert.That(set.IsFrontRow(initialServers[0]), Is.False);
+            Assert.That(set.IsFrontRow(initialServers[4]), Is.False);
+            Assert.That(set.IsFrontRow(initialServers[5]), Is.False);
+
+            set.ResolveRally(TeamSide.Away, null, null);
+
+            Assert.That(set.ServingSide, Is.EqualTo(TeamSide.Away));
+            Assert.That(set.ServerFor(TeamSide.Away), Is.EqualTo(initialServers[1]));
+            Assert.That(set.RotationPositionFor(initialServers[0]), Is.EqualTo(6));
+            Assert.That(set.RotationOffsetFor(TeamSide.Away), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void FormalIndoorSet_AtTwentyFourAllRequiresTwoPointLead()
+        {
+            var set = new MatchSet(CreateSixPlayerContext(), TeamSide.Home);
+            Resolve(set, TeamSide.Home, 24);
+            Resolve(set, TeamSide.Away, 24);
+
+            set.ResolveRally(TeamSide.Home, null, null);
+            Assert.That(set.IsComplete, Is.False);
+            set.ResolveRally(TeamSide.Home, null, null);
+
+            Assert.That(set.IsComplete, Is.True);
+            Assert.That(set.HomeScore, Is.EqualTo(26));
+            Assert.That(set.AwayScore, Is.EqualTo(24));
+            Assert.That(set.CreateResult().PlayerStats, Has.Count.EqualTo(12));
+        }
+
         private static void Resolve(MatchSet set, TeamSide winner, int count)
         {
             for (var index = 0; index < count; index++)
@@ -123,6 +171,36 @@ namespace Volleyball.EditModeTests
                 7351,
                 CreateTeam("home", "Home", TeamSide.Home, "home"),
                 CreateTeam("away", "Away", TeamSide.Away, "away"));
+        }
+
+        private static MatchContextV1 CreateSixPlayerContext()
+        {
+            return MatchContextV1.Create(
+                Guid.Parse("66666666-6666-6666-6666-666666666666"),
+                7351,
+                CreateSixPlayerTeam("home6", "Home 6", TeamSide.Home, "home"),
+                CreateSixPlayerTeam("away6", "Away 6", TeamSide.Away, "away"));
+        }
+
+        private static TeamSnapshotV1 CreateSixPlayerTeam(
+            string id,
+            string name,
+            TeamSide side,
+            string prefix)
+        {
+            return new TeamSnapshotV1(
+                new TeamId(id),
+                name,
+                side,
+                new List<PlayerSnapshotV1>
+                {
+                    CreatePlayer(prefix + "-opposite", "Opposite", 1, PlayerPosition.Opposite),
+                    CreatePlayer(prefix + "-outside-a", "Outside A", 2, PlayerPosition.OutsideHitter),
+                    CreatePlayer(prefix + "-middle-a", "Middle A", 3, PlayerPosition.MiddleBlocker),
+                    CreatePlayer(prefix + "-setter", "Setter", 4, PlayerPosition.Setter),
+                    CreatePlayer(prefix + "-outside-b", "Outside B", 5, PlayerPosition.OutsideHitter),
+                    CreatePlayer(prefix + "-libero", "Libero", 6, PlayerPosition.Libero)
+                });
         }
 
         private static TeamSnapshotV1 CreateTeam(string id, string name, TeamSide side, string prefix)

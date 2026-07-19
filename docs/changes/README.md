@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260719-005 | 2026-07-19 | 已完成 | Match / Docs / Build Settings | 模块内部 | [正式室内 6v6 单局](2026-07-19-005-formal-indoor-6v6.md) |
 | CHG-20260719-004 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [3v3 半场边界、对局平衡与 AI 等待减速](2026-07-19-004-rally-boundaries-ai-time.md) |
 | CHG-20260719-003 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 拦网命中反馈](2026-07-19-003-physical-block-impact-feedback.md) |
 | CHG-20260719-002 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 统一多角色回合决策](2026-07-19-002-unified-multi-role-rally-decision.md) |
