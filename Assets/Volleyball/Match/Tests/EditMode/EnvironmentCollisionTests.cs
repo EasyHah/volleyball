@@ -36,6 +36,20 @@ namespace Volleyball.EditModeTests
                     out _),
                 Is.False);
         }
+
+        [Test]
+        public void NetPlaneCrossing_ReturnsTheInterpolatedTimeFraction()
+        {
+            var found = SimulatedBall.TryNetPlaneCrossing(
+                new SimVector3(2f, 3f, -4f),
+                new SimVector3(4f, 5f, 4f),
+                out var crossing,
+                out var timeFraction);
+
+            Assert.That(found, Is.True);
+            Assert.That(timeFraction, Is.EqualTo(0.5f).Within(0.00001f));
+            Assert.That(crossing, Is.EqualTo(new SimVector3(3f, 4f, 0f)));
+        }
         [Test]
         public void TryGround_DetectsFirstRadiusOffsetCrossing()
         {

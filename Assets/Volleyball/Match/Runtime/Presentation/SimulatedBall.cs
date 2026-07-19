@@ -360,7 +360,17 @@ namespace Volleyball.Presentation
             SimVector3 current,
             out SimVector3 crossing)
         {
+            return TryNetPlaneCrossing(previous, current, out crossing, out _);
+        }
+
+        public static bool TryNetPlaneCrossing(
+            SimVector3 previous,
+            SimVector3 current,
+            out SimVector3 crossing,
+            out float timeFraction)
+        {
             crossing = SimVector3.Zero;
+            timeFraction = 0f;
             if ((previous.Z < 0f && current.Z < 0f) ||
                 (previous.Z > 0f && current.Z > 0f) ||
                 previous.Z == current.Z)
@@ -368,13 +378,13 @@ namespace Volleyball.Presentation
                 return false;
             }
 
-            var fraction = -previous.Z / (current.Z - previous.Z);
-            if (fraction < 0f || fraction > 1f)
+            timeFraction = -previous.Z / (current.Z - previous.Z);
+            if (timeFraction < 0f || timeFraction > 1f)
             {
                 return false;
             }
 
-            crossing = SimVector3.Lerp(previous, current, fraction);
+            crossing = SimVector3.Lerp(previous, current, timeFraction);
             return true;
         }
 
