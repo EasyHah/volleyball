@@ -412,6 +412,10 @@ namespace Volleyball.AI
     public sealed class TeamRallyDecisionPlanner
     {
         private const float ReactionSeconds = 0.22f;
+        private const float AttackContactHeight = 2.7f;
+        private const float AttackContactPreparationSeconds = 0.2f;
+        private const float MaximumApproachDistance = 2f;
+        private const float FullJumpApproachDistance = 1.5f;
         private readonly int _seed;
 
         public TeamRallyDecisionPlanner(int seed)
@@ -505,8 +509,8 @@ namespace Volleyball.AI
             SimVector3 movementTarget,
             AttackApproachPlan? approach)
         {
-            var effectiveSeconds = Math.Max(0f, input.AvailableSeconds - (ReactionSeconds * (1f - player.Ability.Reaction)));
-            var speed = input.BaseMovementSpeed * (0.65f + (player.Ability.Mobility * 0.5f));
+            var effectiveSeconds = EffectiveSeconds(input, player);
+            var speed = MovementSpeed(input, player);
             var distance = GroundDistance(player.WorldPosition, movementTarget);
             var reachability = (speed * effectiveSeconds) - distance;
             var nominalRole = NominalRole(input.Stage, player.Id.Role) * input.Weights.RolePreference;
@@ -550,17 +554,32 @@ namespace Volleyball.AI
 
             if (input.Stage == RallyDecisionStage.Organize)
             {
-                return new DecisionTargets(TechniqueAction.Set, input.PredictedBallCenter, groundBall, groundBall, groundBall);
+                var organizeFrame = new TeamCourtFrame(input.Team);
+                var organizeTakeoff = AttackTakeoff(input.Tactic, organizeFrame);
+                var futureContact = new SimVector3(organizeTakeoff.X, AttackContactHeight, organizeTakeoff.Z);
+                return new DecisionTargets(
+                    TechniqueAction.Set,
+                    input.PredictedBallCenter,
+                    groundBall,
+                    futureContact,
+                    organizeTakeoff);
             }
 
             var frame = new TeamCourtFrame(input.Team);
-            var takeoff = new SimVector3(input.Tactic.AttackerPosition.X, 0f, input.Tactic.AttackerPosition.Z);
+            var takeoff = AttackTakeoff(input.Tactic, frame);
             return new DecisionTargets(
                 TechniqueAction.Attack,
                 takeoff,
                 takeoff,
                 LandingTarget(input.Tactic, frame),
                 takeoff);
+        }
+
+        private static SimVector3 AttackTakeoff(TeamRallyTactic tactic, TeamCourtFrame frame)
+        {
+            var authoredWorld = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            var local = frame.ToLocal(authoredWorld);
+            return frame.ToWorld(new SimVector3(local.X, 0f, local.Z));
         }
 
         private static SimVector3 LandingTarget(TeamRallyTactic tactic, TeamCourtFrame frame)
@@ -587,10 +606,17 @@ namespace Volleyball.AI
             var frame = new TeamCourtFrame(input.Team);
             var localTakeoff = frame.ToLocal(takeoff);
             var desiredDistance = 0.6f + (1.4f * player.Ability.Mobility);
-            var usableDistance = Math.Min(desiredDistance, 2f);
-            var localStart = new SimVector3(localTakeoff.X, localTakeoff.Y, localTakeoff.Z - usableDistance);
+            var effectiveSeconds = EffectiveSeconds(input, player);
+            var speed = MovementSpeed(input, player);
+            var availablePathDistance = speed * Math.Max(0f, effectiveSeconds - AttackContactPreparationSeconds);
+            var usableDistance = FindReachableApproachDistance(
+                frame.ToLocal(player.WorldPosition),
+                localTakeoff,
+                Math.Min(desiredDistance, MaximumApproachDistance),
+                availablePathDistance);
+            var localStart = ApproachStart(localTakeoff, usableDistance);
             var distance = GroundDistance(localStart, localTakeoff);
-            var jumpQuality = Clamp(distance / 1.5f, 0f, 1f);
+            var jumpQuality = Clamp(distance / FullJumpApproachDistance, 0f, 1f);
             var localLanding = frame.ToLocal(landing);
             var approachDirection = HorizontalDirection(localTakeoff - localStart);
             var spikeDirection = HorizontalDirection(localLanding - localTakeoff);
@@ -599,6 +625,47 @@ namespace Volleyball.AI
             var tolerance = Clamp(input.Weights.DirectionTolerance * 0.5f, 0f, 1f);
             var anglePenalty = Clamp(rawPenalty * (1f - tolerance), 0f, 1f);
             return new AttackApproachPlan(frame.ToWorld(localStart), takeoff, distance, jumpQuality, anglePenalty);
+        }
+
+        private static float FindReachableApproachDistance(
+            SimVector3 localPlayer,
+            SimVector3 localTakeoff,
+            float desiredDistance,
+            float availablePathDistance)
+        {
+            var low = 0f;
+            var high = desiredDistance;
+            for (var iteration = 0; iteration < 20; iteration++)
+            {
+                var candidate = (low + high) * 0.5f;
+                var start = ApproachStart(localTakeoff, candidate);
+                var routeDistance = GroundDistance(localPlayer, start) + candidate;
+                if (routeDistance <= availablePathDistance)
+                {
+                    low = candidate;
+                }
+                else
+                {
+                    high = candidate;
+                }
+            }
+
+            return low;
+        }
+
+        private static SimVector3 ApproachStart(SimVector3 localTakeoff, float distance)
+        {
+            return new SimVector3(localTakeoff.X, localTakeoff.Y, localTakeoff.Z - distance);
+        }
+
+        private static float EffectiveSeconds(TeamRallyDecisionInput input, RallyPlayerSnapshot player)
+        {
+            return Math.Max(0f, input.AvailableSeconds - (ReactionSeconds * (1f - player.Ability.Reaction)));
+        }
+
+        private static float MovementSpeed(TeamRallyDecisionInput input, RallyPlayerSnapshot player)
+        {
+            return input.BaseMovementSpeed * (0.65f + (player.Ability.Mobility * 0.5f));
         }
 
         private static SimVector3 HorizontalDirection(SimVector3 value)

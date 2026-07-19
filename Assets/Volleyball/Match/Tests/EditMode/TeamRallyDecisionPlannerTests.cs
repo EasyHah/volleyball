@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using NUnit.Framework;
 using Volleyball.AI;
@@ -46,6 +47,30 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
             Assert.That(decision.Action, Is.EqualTo(TechniqueAction.Set));
+        }
+
+        [TestCase(TeamId.Blue)]
+        [TestCase(TeamId.Orange)]
+        public void Plan_OrganizeTargetsTheFutureAttackerContactPointInTheTeamCourtFrame(TeamId team)
+        {
+            var tactic = CreateTactic(SpikeRoute.Line, team);
+            var currentBall = new SimVector3(-1.5f, 2.1f, 0.35f * new TeamCourtFrame(team).WorldDepthSign);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+                team,
+                RallyDecisionStage.Organize,
+                currentBall,
+                new SimVector3(0f, 0f, tactic.SetterPosition.Z),
+                new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z),
+                new SimVector3(1f, 0f, tactic.DefenderPosition.Z),
+                tactic: tactic));
+
+            var expectedTakeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            Assert.That(decision.BallTarget.X, Is.EqualTo(expectedTakeoff.X).Within(0.00001f));
+            Assert.That(decision.BallTarget.Z, Is.EqualTo(expectedTakeoff.Z).Within(0.00001f));
+            Assert.That(decision.BallTarget.Z, Is.Not.EqualTo(currentBall.Z).Within(0.00001f));
+            Assert.That(decision.BallTarget.Y, Is.GreaterThan(expectedTakeoff.Y));
+            Assert.That(new TeamCourtFrame(team).ToLocal(decision.BallTarget).Z,
+                Is.EqualTo(new TeamCourtFrame(team).ToLocal(expectedTakeoff).Z).Within(0.00001f));
         }
 
         [Test]
@@ -170,6 +195,193 @@ namespace Volleyball.EditModeTests
                 Is.GreaterThan(cappedApproach.AttackApproach.Value.AnglePenalty));
         }
 
+        [Test]
+        public void Plan_AttackApproachQualityIsLimitedByTimeRemainingAfterReachingTakeoff()
+        {
+            var tactic = CreateTactic(SpikeRoute.Line);
+            var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            var shortTime = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+                TeamId.Blue,
+                RallyDecisionStage.Attack,
+                new SimVector3(0f, 3f, -1f),
+                new SimVector3(9f, 0f, -5f),
+                takeoff,
+                new SimVector3(8f, 0f, -5f),
+                tactic: tactic,
+                availableSeconds: 0.25f));
+            var ampleTime = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+                TeamId.Blue,
+                RallyDecisionStage.Attack,
+                new SimVector3(0f, 3f, -1f),
+                new SimVector3(9f, 0f, -5f),
+                takeoff,
+                new SimVector3(8f, 0f, -5f),
+                tactic: tactic,
+                availableSeconds: 2f));
+
+            Assert.That(shortTime.HasDecision, Is.True);
+            Assert.That(shortTime.AttackApproach.Value.JumpQuality, Is.LessThan(0.1f));
+            Assert.That(ampleTime.AttackApproach.Value.JumpQuality,
+                Is.GreaterThan(shortTime.AttackApproach.Value.JumpQuality));
+            Assert.That(ampleTime.AttackApproach.Value.JumpQuality, Is.EqualTo(1f).Within(0.00001f));
+        }
+
+        [TestCase(TeamId.Blue)]
+        [TestCase(TeamId.Orange)]
+        public void Plan_AttackUsesCorrectWorldAndLocalApproachGeometryForBothTeams(TeamId team)
+        {
+            var tactic = CreateTactic(SpikeRoute.CrossCourt, team);
+            var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+                team,
+                RallyDecisionStage.Attack,
+                new SimVector3(0f, 3f, -new TeamCourtFrame(team).WorldDepthSign),
+                new SimVector3(8f, 0f, tactic.SetterPosition.Z),
+                takeoff,
+                new SimVector3(7f, 0f, tactic.DefenderPosition.Z),
+                tactic: tactic,
+                availableSeconds: 2f));
+
+            var approach = decision.AttackApproach.Value;
+            var frame = new TeamCourtFrame(team);
+            var localTakeoff = frame.ToLocal(approach.Takeoff);
+            var localStart = frame.ToLocal(approach.ApproachStart);
+            var localBallTarget = frame.ToLocal(decision.BallTarget);
+            Assert.That(approach.Takeoff, Is.EqualTo(takeoff));
+            Assert.That(localTakeoff.X, Is.EqualTo(approach.Takeoff.X).Within(0.00001f));
+            Assert.That(localTakeoff.Y, Is.EqualTo(approach.Takeoff.Y).Within(0.00001f));
+            Assert.That(localTakeoff.Z, Is.EqualTo(frame.ToLocal(takeoff).Z).Within(0.00001f));
+            Assert.That(approach.ApproachStart.X, Is.EqualTo(takeoff.X).Within(0.00001f));
+            Assert.That(approach.ApproachStart.Y, Is.EqualTo(takeoff.Y).Within(0.00001f));
+            Assert.That(localStart.X, Is.EqualTo(approach.ApproachStart.X).Within(0.00001f));
+            Assert.That(localStart.Y, Is.EqualTo(approach.ApproachStart.Y).Within(0.00001f));
+            Assert.That(localStart.Z,
+                Is.EqualTo(localTakeoff.Z - approach.Distance).Within(0.00001f));
+            Assert.That(localBallTarget.X, Is.EqualTo(decision.BallTarget.X).Within(0.00001f));
+            Assert.That(localBallTarget.Y, Is.EqualTo(decision.BallTarget.Y).Within(0.00001f));
+            Assert.That(localBallTarget.Z, Is.EqualTo(5.25f).Within(0.00001f));
+        }
+
+        [Test]
+        public void Plan_IsDeterministicAndCandidatesAreNotExternallyMutable()
+        {
+            var players = new List<RallyPlayerSnapshot>
+            {
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Setter), new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(1f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Defender), new SimVector3(2f, 0f, -2f), Ability(0.8f))
+            };
+            var tactic = CreateTactic(SpikeRoute.Line);
+            var input = new TeamRallyDecisionInput(
+                TeamId.Blue,
+                tactic,
+                players,
+                new SimVector3(0f, 3f, -1f),
+                2f,
+                5f,
+                0,
+                null,
+                2,
+                3,
+                RallyDecisionStage.Attack,
+                RallyTacticalWeights.Default);
+            players[0] = new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Setter), new SimVector3(99f, 0f, -2f), Ability(0.8f));
+
+            var planner = new TeamRallyDecisionPlanner(17);
+            var first = planner.Plan(input);
+            var second = planner.Plan(input);
+
+            Assert.That(second.HasDecision, Is.EqualTo(first.HasDecision));
+            Assert.That(second.Actor, Is.EqualTo(first.Actor));
+            Assert.That(second.Action, Is.EqualTo(first.Action));
+            Assert.That(second.Score, Is.EqualTo(first.Score));
+            Assert.That(second.ContactTarget, Is.EqualTo(first.ContactTarget));
+            Assert.That(second.MovementTarget, Is.EqualTo(first.MovementTarget));
+            Assert.That(second.BallTarget, Is.EqualTo(first.BallTarget));
+            Assert.That(second.AttackApproach, Is.EqualTo(first.AttackApproach));
+            Assert.That(input.Players[0].WorldPosition.X, Is.Not.EqualTo(99f));
+            Assert.Throws<NotSupportedException>(() => ((IList<RallyDecisionCandidate>)first.Candidates)[0] = default);
+            Assert.That(second.Candidates.Count, Is.EqualTo(first.Candidates.Count));
+            for (var index = 0; index < first.Candidates.Count; index++)
+            {
+                Assert.That(second.Candidates[index].Actor, Is.EqualTo(first.Candidates[index].Actor));
+                Assert.That(second.Candidates[index].IsFeasible, Is.EqualTo(first.Candidates[index].IsFeasible));
+                Assert.That(second.Candidates[index].Score, Is.EqualTo(first.Candidates[index].Score));
+            }
+        }
+
+        [Test]
+        public void TeamRallyDecisionInput_RejectsInvalidTeamsCountsActorsAndFiniteValues()
+        {
+            var blueSetter = new RallyPlayerSnapshot(
+                new PlayerId(TeamId.Blue, PlayerRole.Setter),
+                new SimVector3(0f, 0f, -2f),
+                Ability(0.8f));
+            var blueAttacker = new RallyPlayerSnapshot(
+                new PlayerId(TeamId.Blue, PlayerRole.Attacker),
+                new SimVector3(1f, 0f, -2f),
+                Ability(0.8f));
+            var blueDefender = new RallyPlayerSnapshot(
+                new PlayerId(TeamId.Blue, PlayerRole.Defender),
+                new SimVector3(2f, 0f, -2f),
+                Ability(0.8f));
+            Assert.Throws<ArgumentException>(() => CreateRawInput(new[]
+            {
+                blueSetter,
+                blueAttacker,
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Orange, PlayerRole.Defender), new SimVector3(2f, 0f, -2f), Ability(0.8f))
+            }));
+            Assert.Throws<ArgumentException>(() => CreateRawInput(new[] { blueSetter, blueSetter, blueDefender }));
+            Assert.Throws<ArgumentException>(() => CreateRawInput(new[] { blueSetter, blueAttacker }));
+            Assert.Throws<ArgumentOutOfRangeException>(() => CreateRawInput(
+                new[] { blueSetter, blueAttacker, blueDefender },
+                lastCountedActor: new PlayerId(TeamId.Orange, PlayerRole.Setter)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => CreateRawInput(
+                new[] { blueSetter, blueAttacker, blueDefender },
+                predictedBallCenter: new SimVector3(float.NaN, 1f, -2f)));
+            Assert.Throws<ArgumentOutOfRangeException>(() => CreateRawInput(
+                new[] { blueSetter, blueAttacker, blueDefender }, availableSeconds: 0f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => CreateRawInput(
+                new[] { blueSetter, blueAttacker, blueDefender }, availableSeconds: float.NaN));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TeamRallyDecisionInput(
+                TeamId.Blue,
+                CreateTactic(SpikeRoute.Line),
+                new[] { blueSetter, blueAttacker, blueDefender },
+                new SimVector3(0f, 2f, -2f),
+                2f,
+                float.PositiveInfinity,
+                0,
+                null,
+                0,
+                0,
+                RallyDecisionStage.Organize,
+                RallyTacticalWeights.Default));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new RallyPlayerSnapshot(
+                new PlayerId((TeamId)99, PlayerRole.Setter),
+                SimVector3.Zero,
+                Ability(0.8f)));
+        }
+
+        [Test]
+        public void Plan_NonPreferredRoleCanWinWhenItsReachabilityScoreIsHigher()
+        {
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+                TeamId.Blue,
+                RallyDecisionStage.Organize,
+                new SimVector3(0f, 2f, -2f),
+                new SimVector3(1.5f, 0f, -2f),
+                new SimVector3(0.5f, 0f, -2f),
+                new SimVector3(0f, 0f, -2f),
+                availableSeconds: 0.5f));
+
+            Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
+            Assert.That(decision.Score.NominalRole, Is.Zero);
+            Assert.That(decision.Score.Total, Is.GreaterThan(0f));
+            var setter = FindCandidate(decision, PlayerRole.Setter);
+            Assert.That(setter.IsFeasible, Is.True);
+            Assert.That(decision.Score.Total, Is.GreaterThan(setter.Score.Total));
+        }
+
         private static TeamRallyDecisionInput CreateOrangeAttackInput(SpikeRoute route)
         {
             var tactic = CreateTactic(route, TeamId.Orange);
@@ -242,6 +454,45 @@ namespace Volleyball.EditModeTests
                 0,
                 stage,
                 RallyTacticalWeights.Default);
+        }
+
+        private static TeamRallyDecisionInput CreateRawInput(
+            IEnumerable<RallyPlayerSnapshot> players,
+            SimVector3 predictedBallCenter = default,
+            float availableSeconds = 2f,
+            PlayerId? lastCountedActor = null)
+        {
+            if (predictedBallCenter.Equals(default(SimVector3)))
+            {
+                predictedBallCenter = new SimVector3(0f, 2f, -2f);
+            }
+
+            return new TeamRallyDecisionInput(
+                TeamId.Blue,
+                CreateTactic(SpikeRoute.Line),
+                players,
+                predictedBallCenter,
+                availableSeconds,
+                5f,
+                0,
+                lastCountedActor,
+                0,
+                0,
+                RallyDecisionStage.Organize,
+                RallyTacticalWeights.Default);
+        }
+
+        private static RallyDecisionCandidate FindCandidate(TeamRallyDecision decision, PlayerRole role)
+        {
+            for (var index = 0; index < decision.Candidates.Count; index++)
+            {
+                if (decision.Candidates[index].Actor.Role == role)
+                {
+                    return decision.Candidates[index];
+                }
+            }
+
+            throw new AssertionException("Expected candidate role was not present.");
         }
 
         private static TeamRallyTactic CreateTactic(SpikeRoute route, TeamId team = TeamId.Blue)
