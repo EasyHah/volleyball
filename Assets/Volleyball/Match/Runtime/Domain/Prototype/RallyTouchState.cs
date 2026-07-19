@@ -19,6 +19,7 @@ namespace Volleyball.Domain.Prototype
         WrongTeam,
         WrongAction,
         WrongActor,
+        WrongPossessionTeam,
         ConsecutiveCountedTouch,
         FourthCountedTouch
     }
@@ -242,6 +243,11 @@ namespace Volleyball.Domain.Prototype
 
             if (IsCountedAction(action))
             {
+                if (actor.Team != PossessionTeam)
+                {
+                    return Fault(RallyContactRejectionReason.WrongPossessionTeam);
+                }
+
                 if (LastCountedActor.HasValue && LastCountedActor.Value.Equals(actor))
                 {
                     return Fault(RallyContactRejectionReason.ConsecutiveCountedTouch);

@@ -123,6 +123,49 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CountedTouchFromNonPossessionTeam_IsFaultAndDoesNotChangeState()
+        {
+            var state = new RallyTouchState(TeamId.Blue);
+            var window = Window(OrangeSetter, TechniqueAction.Receive, 1f, 2f);
+            state.OpenWindow(window);
+
+            var evaluation = state.Evaluate(OrangeSetter, TechniqueAction.Receive, 1f);
+
+            Assert.That(evaluation, Is.EqualTo(new RallyContactEvaluation(
+                RallyContactDisposition.Fault,
+                RallyContactRejectionReason.WrongPossessionTeam)));
+            Assert.That(state.CountedTeamTouches, Is.EqualTo(0));
+            Assert.That(state.LastCountedActor.HasValue, Is.False);
+            Assert.That(state.LastPhysicalTouch.HasValue, Is.False);
+            Assert.That(state.ContactWindow, Is.SameAs(window));
+
+            Assert.That(state.Accept(OrangeSetter, TechniqueAction.Receive, 1f), Is.EqualTo(new RallyContactEvaluation(
+                RallyContactDisposition.Fault,
+                RallyContactRejectionReason.WrongPossessionTeam)));
+            Assert.That(state.CountedTeamTouches, Is.EqualTo(0));
+            Assert.That(state.LastCountedActor.HasValue, Is.False);
+            Assert.That(state.LastPhysicalTouch.HasValue, Is.False);
+            Assert.That(state.ContactWindow, Is.SameAs(window));
+        }
+
+        [TestCase(TechniqueAction.Block)]
+        [TestCase(TechniqueAction.Serve)]
+        public void NonCountedTouchFromNonPossessionTeam_IsAccepted(TechniqueAction action)
+        {
+            var state = new RallyTouchState(TeamId.Blue);
+            state.OpenWindow(Window(OrangeSetter, action, 1f, 2f));
+
+            var evaluation = state.Accept(OrangeSetter, action, 1f);
+
+            Assert.That(evaluation.Disposition, Is.EqualTo(RallyContactDisposition.Accept));
+            Assert.That(state.PossessionTeam, Is.EqualTo(TeamId.Blue));
+            Assert.That(state.CountedTeamTouches, Is.EqualTo(0));
+            Assert.That(state.LastCountedActor.HasValue, Is.False);
+            Assert.That(state.LastPhysicalTouch, Is.EqualTo(OrangeSetter));
+            Assert.That(state.ContactWindow, Is.Null);
+        }
+
+        [Test]
         public void InvalidWindowContacts_AreIgnoredAndLeaveStateUnchanged()
         {
             var state = new RallyTouchState(TeamId.Blue);
