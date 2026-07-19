@@ -68,6 +68,10 @@ namespace Volleyball.Presentation
 
         public int BackSetAttackFaults { get; private set; }
 
+        public int EmergencyReceiveWindowAssignments { get; private set; }
+
+        public int EmergencyReceiveContacts { get; private set; }
+
         public float TotalMovementShortfall { get; private set; }
 
         public SetRoute BlueSetRoute => _currentTactics.Blue.SetRoute;
@@ -334,7 +338,21 @@ namespace Volleyball.Presentation
 
         private void HandlePlayerContact(PlayerBallContactEvent contact)
         {
-            if (!_waitingForContact || _restartScheduled || contact.Candidate.Action != ExpectedAction)
+            if (!_waitingForContact || _restartScheduled)
+            {
+                return;
+            }
+
+            if (_waitingForLanding &&
+                contact.Candidate.Action == TechniqueAction.Receive &&
+                contact.Candidate.Actor.HasValue &&
+                contact.Candidate.Actor.Value.Team == _sequence[_expectedIndex].Actor.Team)
+            {
+                HandleEmergencyReceiveContact(contact);
+                return;
+            }
+
+            if (contact.Candidate.Action != ExpectedAction)
             {
                 return;
             }
@@ -382,6 +400,10 @@ namespace Volleyball.Presentation
 
             if (completed.Action == TechniqueAction.Attack)
             {
+                EnableEmergencyReceiveWindows(
+                    completed.Actor.Team,
+                    _ball.SimulationTime,
+                    _ball.SimulationTime + completedFlightSeconds);
                 PromotePendingTactics();
                 _waitingForLanding = true;
                 return;
@@ -390,6 +412,33 @@ namespace Volleyball.Presentation
             ScheduleExpectedContact(
                 _expectedIndex,
                 completedFlightSeconds,
+                true);
+        }
+
+        private void HandleEmergencyReceiveContact(PlayerBallContactEvent contact)
+        {
+            var receiver = contact.Candidate.Actor.Value;
+            SuccessfulContacts++;
+            EmergencyReceiveContacts++;
+            _set.RecordContact(StableId(receiver), 0f);
+            _lastTouch = receiver;
+            _lastTouchWasBackSetAttack = false;
+            DisableEmergencyReceiveWindows(receiver.Team);
+
+            _expectedIndex = receiver.Team == TeamId.Blue ? 1 : 4;
+            _waitingForLanding = false;
+            _status =
+                $"{receiver.Team} {receiver.Role} EMERGENCY RECEIVE  " +
+                $"speed {contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} m/s";
+            Debug.Log(
+                $"[Physical3v3] emergency-receive contact={SuccessfulContacts} " +
+                $"team={receiver.Team} role={receiver.Role} " +
+                $"quality={contact.Hit.Centeredness:0.00} " +
+                $"speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
+
+            ScheduleExpectedContact(
+                _expectedIndex,
+                FlightTimeFor(receiver.Team == TeamId.Blue ? 0 : 3),
                 true);
         }
 
@@ -461,6 +510,8 @@ namespace Volleyball.Presentation
             _restartScheduled = true;
             _waitingForContact = false;
             _waitingForLanding = false;
+            DisableEmergencyReceiveWindows(TeamId.Blue);
+            DisableEmergencyReceiveWindows(TeamId.Orange);
             _set.ResolveRally(outcome.Winner, scorer.HasValue ? StableId(scorer.Value) : null, errorPlayer.HasValue ? StableId(errorPlayer.Value) : null);
             RenderScore();
             _status = $"{reason}  {_set.HomeScore}:{_set.AwayScore}";
@@ -506,6 +557,39 @@ namespace Volleyball.Presentation
                 blueDefender.PreviewContactFramesAt(TechniqueAction.Receive, target),
                 TechniqueAction.Receive);
             _hasPendingTactics = true;
+        }
+
+        private void EnableEmergencyReceiveWindows(
+            TeamId attackingTeam,
+            float startSimulationTime,
+            float endSimulationTime)
+        {
+            var defendingTeam = attackingTeam == TeamId.Blue ? TeamId.Orange : TeamId.Blue;
+            var setterIndex = defendingTeam == TeamId.Blue ? 1 : 4;
+            var setterTarget = _contactCenters[setterIndex];
+            foreach (PlayerRole role in Enum.GetValues(typeof(PlayerRole)))
+            {
+                var player = new PlayerId(defendingTeam, role);
+                _players[player].EnableEmergencyReceiveWindow(
+                    startSimulationTime,
+                    endSimulationTime,
+                    ReturnVelocitySolver.Solve(
+                        PredictBallCenter(0.12f),
+                        setterTarget,
+                        0.60f,
+                        SimulatedBall.DefaultFixedStep,
+                        SimulationParameters).InitialVelocity,
+                    9000 + (SuccessfulContacts * 10) + RoleIndex(role));
+                EmergencyReceiveWindowAssignments++;
+            }
+        }
+
+        private void DisableEmergencyReceiveWindows(TeamId team)
+        {
+            foreach (PlayerRole role in Enum.GetValues(typeof(PlayerRole)))
+            {
+                _players[new PlayerId(team, role)].DisableEmergencyReceiveWindow();
+            }
         }
 
         private void PromotePendingTactics()

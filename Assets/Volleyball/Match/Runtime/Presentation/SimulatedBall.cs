@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.AI;
 using Volleyball.Domain.Players;
+using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 
 namespace Volleyball.Presentation
@@ -16,9 +17,29 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
             ContactResponseParameters responseParameters)
+            : this(
+                surface,
+                action,
+                null,
+                playerTechnique,
+                targetVelocity,
+                strikeDirection,
+                responseParameters)
+        {
+        }
+
+        public BallContactCandidate(
+            ContactSurfaceSnapshot surface,
+            TechniqueAction action,
+            PlayerId? actor,
+            float playerTechnique,
+            SimVector3 targetVelocity,
+            SimVector3 strikeDirection,
+            ContactResponseParameters responseParameters)
         {
             Surface = surface;
             Action = action;
+            Actor = actor;
             PlayerTechnique = playerTechnique;
             TargetVelocity = targetVelocity;
             StrikeDirection = strikeDirection;
@@ -28,6 +49,8 @@ namespace Volleyball.Presentation
         public ContactSurfaceSnapshot Surface { get; }
 
         public TechniqueAction Action { get; }
+
+        public PlayerId? Actor { get; }
 
         public float PlayerTechnique { get; }
 

@@ -48,6 +48,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.BlockSupportActivations, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.BackSetAttackContacts, Is.GreaterThan(0));
             Assert.That(director.BackSetAttackFaults, Is.LessThan(director.BackSetAttackContacts));
+            Assert.That(director.EmergencyReceiveWindowAssignments, Is.GreaterThan(0));
+            Assert.That(director.EmergencyReceiveContacts, Is.GreaterThan(0));
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
 
             cameras.SetView(RallyCameraView.Sideline);

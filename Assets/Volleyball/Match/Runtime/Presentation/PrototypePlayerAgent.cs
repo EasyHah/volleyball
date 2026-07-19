@@ -59,6 +59,11 @@ namespace Volleyball.Presentation
         private float _supportEndSimulationTime;
         private bool _hasSupportAction;
         private bool _supportActionActivated;
+        private bool _hasEmergencyReceiveWindow;
+        private float _emergencyReceiveStartSimulationTime;
+        private float _emergencyReceiveEndSimulationTime;
+        private SimVector3 _emergencyReceiveTargetVelocity;
+        private int _emergencyReceiveContactGroupId;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -126,6 +131,25 @@ namespace Volleyball.Presentation
             _hasSupportAction = false;
             _supportTimeline = null;
             _supportActionActivated = false;
+            DisableEmergencyReceiveWindow();
+        }
+
+        public void EnableEmergencyReceiveWindow(
+            float startSimulationTime,
+            float endSimulationTime,
+            SimVector3 targetVelocity,
+            int contactGroupId)
+        {
+            _hasEmergencyReceiveWindow = true;
+            _emergencyReceiveStartSimulationTime = startSimulationTime;
+            _emergencyReceiveEndSimulationTime = Mathf.Max(startSimulationTime, endSimulationTime);
+            _emergencyReceiveTargetVelocity = targetVelocity;
+            _emergencyReceiveContactGroupId = contactGroupId;
+        }
+
+        public void DisableEmergencyReceiveWindow()
+        {
+            _hasEmergencyReceiveWindow = false;
         }
 
         public void ScheduleSupportAction(
@@ -216,6 +240,12 @@ namespace Volleyball.Presentation
                 ApplySupportAction(simulationTime, deltaSeconds);
             }
 
+            if (!_hasScheduledContact &&
+                TryAddEmergencyReceiveContacts(simulationTime, deltaSeconds, contacts))
+            {
+                return;
+            }
+
             if (!_hasScheduledContact)
             {
                 return;
@@ -252,6 +282,7 @@ namespace Volleyball.Presentation
                 contacts.Add(new BallContactCandidate(
                     surface,
                     _scheduledAction,
+                    Id,
                     playerTechnique,
                     _targetVelocity,
                     strikeDirection,
@@ -262,6 +293,52 @@ namespace Volleyball.Presentation
             {
                 CancelScheduledContact();
             }
+        }
+
+        private bool TryAddEmergencyReceiveContacts(
+            float simulationTime,
+            float deltaSeconds,
+            ICollection<BallContactCandidate> contacts)
+        {
+            if (!_hasEmergencyReceiveWindow)
+            {
+                return false;
+            }
+
+            if (simulationTime < _emergencyReceiveStartSimulationTime)
+            {
+                return false;
+            }
+
+            if (simulationTime > _emergencyReceiveEndSimulationTime)
+            {
+                DisableEmergencyReceiveWindow();
+                return false;
+            }
+
+            Rig.SetPose(StickFigurePose.Receive, Mathf.Clamp01(deltaSeconds * 18f));
+            var strikeDirection = _emergencyReceiveTargetVelocity.SqrMagnitude > 0.000001f
+                ? _emergencyReceiveTargetVelocity.Normalized
+                : SimVector3.Up;
+            var response = ResponseFor(TechniqueAction.Receive);
+            var playerTechnique = Ability.TechniqueFor(TechniqueAction.Receive);
+            var surfaces = ContactSurfaces.Capture(
+                TechniqueAction.Receive,
+                true,
+                _emergencyReceiveContactGroupId);
+            foreach (var surface in surfaces)
+            {
+                contacts.Add(new BallContactCandidate(
+                    surface,
+                    TechniqueAction.Receive,
+                    Id,
+                    playerTechnique,
+                    _emergencyReceiveTargetVelocity,
+                    strikeDirection,
+                    response));
+            }
+
+            return true;
         }
 
         private void ApplySupportAction(float simulationTime, float deltaSeconds)

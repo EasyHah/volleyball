@@ -403,6 +403,74 @@ namespace Volleyball.EditModeTests
             }
         }
 
+        [Test]
+        public void EmergencyReceiveWindow_AddsReceiveCandidateWithoutScheduledContact()
+        {
+            var playerObject = new GameObject("EmergencyDigSetter");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
+                var contacts = new List<BallContactCandidate>();
+
+                player.EnableEmergencyReceiveWindow(
+                    4f,
+                    4.5f,
+                    new SimVector3(0f, 5.5f, 2.5f),
+                    91);
+                player.CollectContacts(4.1f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Has.Count.EqualTo(1));
+                Assert.That(contacts[0].Action, Is.EqualTo(TechniqueAction.Receive));
+                Assert.That(contacts[0].Actor, Is.EqualTo(player.Id));
+                Assert.That(contacts[0].Surface.Active, Is.True);
+                Assert.That(contacts[0].Surface.ContactGroupId, Is.EqualTo(91));
+                Assert.That(contacts[0].TargetVelocity.Z, Is.EqualTo(2.5f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void EmergencyReceiveWindow_ExpiresAndDoesNotOverrideScheduledContact()
+        {
+            var playerObject = new GameObject("ScheduledSetterWithExpiredWindow");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
+                var contacts = new List<BallContactCandidate>();
+
+                player.EnableEmergencyReceiveWindow(
+                    1f,
+                    1.25f,
+                    new SimVector3(0f, 5.5f, 2.5f),
+                    92);
+                player.CollectContacts(1.5f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+
+                player.ScheduleContact(
+                    TechniqueAction.Set,
+                    2f,
+                    new SimVector3(0f, 6f, 4f),
+                    NoExecutionError(),
+                    93);
+                player.CollectContacts(2f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Has.Count.EqualTo(2));
+                Assert.That(contacts[0].Action, Is.EqualTo(TechniqueAction.Set));
+                Assert.That(contacts[0].Actor, Is.EqualTo(player.Id));
+                Assert.That(contacts[0].Surface.ContactGroupId, Is.EqualTo(93));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
         private static Vector3 AveragePalms(PrototypePlayerAgent player)
         {
             return (player.Rig.GetJoint("LeftPalm").position +
