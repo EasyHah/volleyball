@@ -40,6 +40,10 @@ namespace Volleyball.Presentation
 
         public float BlockRetargetTimeShift { get; private set; }
 
+        public float PhysicalBlockContactTime { get; private set; }
+
+        public float MaximumAppliedContactCorrection { get; private set; }
+
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
 
         private ActionTimeline _actionTimeline;
@@ -78,6 +82,7 @@ namespace Volleyball.Presentation
         private bool _hasAttackApproach;
         private AttackApproachPlan _attackApproach;
         private Vector3 _attackTakeoffPosition;
+        private bool _physicalBlockActivationLogged;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -223,6 +228,8 @@ namespace Volleyball.Presentation
             _physicalBlockTargetVelocity = targetVelocity;
             _physicalBlockContactGroupId = contactGroupId;
             _hasPhysicalBlockContact = true;
+            PhysicalBlockContactTime = scheduledSimulationTime;
+            _physicalBlockActivationLogged = false;
             PhysicalBlockContactAssignments++;
             BlockRetargetDistance = 0f;
             BlockRetargetTimeShift = 0f;
@@ -248,6 +255,7 @@ namespace Volleyball.Presentation
             var appliedShift = Mathf.Clamp(requestedShift, -0.12f, 0.12f);
             var adjustedContactTime = _supportTimeline.ScheduledContactTime + appliedShift;
             _supportTimeline = new ActionTimeline(TechniqueAction.Block, adjustedContactTime);
+            PhysicalBlockContactTime = adjustedContactTime;
             BlockRetargetTimeShift = Mathf.Abs(appliedShift);
 
             var previousTarget = _supportTargetPosition;
@@ -311,16 +319,29 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             Vector3 worldPosition)
         {
+            var previewPosition = action == TechniqueAction.Attack
+                ? EvaluateAttackContactPosition(worldPosition, transform.forward)
+                : worldPosition;
+            return PreviewContactFramesAtResolvedPosition(action, previewPosition);
+        }
+
+        public IReadOnlyList<ContactSurfaceFrame> PreviewAttackContactFramesAt(
+            AttackApproachPlan approach)
+        {
+            return PreviewContactFramesAtResolvedPosition(
+                TechniqueAction.Attack,
+                EvaluatePlannedAttackContactPosition(approach));
+        }
+
+        private IReadOnlyList<ContactSurfaceFrame> PreviewContactFramesAtResolvedPosition(
+            TechniqueAction action,
+            Vector3 worldPosition)
+        {
             var savedPosition = transform.position;
             var savedRotations = Rig.CaptureLocalRotations();
             try
             {
                 transform.position = worldPosition;
-                if (action == TechniqueAction.Attack)
-                {
-                    transform.position = EvaluateAttackContactPosition(worldPosition, transform.forward);
-                }
-
                 Rig.SetPose(ContactPoseFor(action), 1f);
                 var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
                     .Capture(action, true, 0);
@@ -433,6 +454,17 @@ namespace Volleyball.Presentation
 
             if (sample.SurfaceActive)
             {
+                if (!_physicalBlockActivationLogged)
+                {
+                    _physicalBlockActivationLogged = true;
+                    Debug.Log(
+                        $"[Physical3v3] block-surface team={Id.Team} actor={Id.Role} " +
+                        $"time={simulationTime:0.00} root=({transform.position.x:0.00}," +
+                        $"{transform.position.y:0.00},{transform.position.z:0.00}) " +
+                        $"palms=({surfaces[0].Current.Origin.X:0.00}," +
+                        $"{surfaces[0].Current.Origin.Y:0.00},{surfaces[0].Current.Origin.Z:0.00})");
+                }
+
                 var strikeDirection = _physicalBlockTargetVelocity.SqrMagnitude > 0.000001f
                     ? _physicalBlockTargetVelocity.Normalized
                     : -new SimVector3(transform.forward.x, transform.forward.y, transform.forward.z);
@@ -753,13 +785,18 @@ namespace Volleyball.Presentation
             };
             if (correction.Magnitude > maximumCorrection)
             {
-                correction = correction.Normalized * maximumCorrection;
+                // Keep a small numerical margin so the applied vector remains inside the
+                // public bound after single-precision normalization and magnitude recovery.
+                correction = correction.Normalized * (maximumCorrection - 0.0001f);
             }
 
             if (sample.Phase == ActionPhase.Power)
             {
                 correction *= Mathf.SmoothStep(0f, 1f, sample.PhaseProgress);
             }
+            MaximumAppliedContactCorrection = Mathf.Max(
+                MaximumAppliedContactCorrection,
+                correction.Magnitude);
             transform.position += new Vector3(correction.X, correction.Y, correction.Z);
         }
 
@@ -905,7 +942,7 @@ namespace Volleyball.Presentation
             var takeoffTime = _supportTimeline.ActualContactTime - 0.22f;
             var landingTime = _supportTimeline.ActualContactTime + 0.28f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
-            var jumpHeight = 0.46f + (Ability.Jump * 0.30f);
+            var jumpHeight = 0.30f + (Ability.Jump * 0.20f);
             return jumpHeight * 4f * jumpProgress * (1f - jumpProgress);
         }
 
@@ -927,6 +964,16 @@ namespace Volleyball.Presentation
             var approachDistance = 0.45f + (Ability.Mobility * 0.35f);
             var position = origin + (forward * approachDistance);
             position.y = origin.y + jumpHeight;
+            return position;
+        }
+
+        private Vector3 EvaluatePlannedAttackContactPosition(AttackApproachPlan approach)
+        {
+            const float jumpProgress = 0.38f / (0.38f + 0.45f);
+            var position = ToUnity(approach.Takeoff);
+            position.y += (0.72f + (Ability.Jump * 0.5f)) *
+                          approach.JumpQuality *
+                          4f * jumpProgress * (1f - jumpProgress);
             return position;
         }
 

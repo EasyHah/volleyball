@@ -52,8 +52,8 @@ namespace Volleyball.Presentation
                 },
                 TechniqueAction.Block => new[]
                 {
-                    Snapshot("BlockLeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
-                    Snapshot("BlockRightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                    Snapshot("BlockLeftPalm", BuildBlockPalm("LeftPalm", localPositionError, localNormalErrorDegrees), active, contactGroupId),
+                    Snapshot("BlockRightPalm", BuildBlockPalm("RightPalm", localPositionError, localNormalErrorDegrees), active, contactGroupId)
                 },
                 TechniqueAction.Serve => new[]
                 {
@@ -132,6 +132,20 @@ namespace Volleyball.Presentation
             var up = Vector3.Cross(normal, right).normalized;
             var origin = palm.position + _playerRoot.TransformVector(localPositionError);
             return ToFrame(origin, normal, right, up, 0.22f, 0.20f);
+        }
+
+        private ContactSurfaceFrame BuildBlockPalm(
+            string palmName,
+            Vector3 localPositionError,
+            Vector3 normalErrorDegrees)
+        {
+            var palm = _rig.GetJoint(palmName);
+            var normal = (_playerRoot.forward + (Vector3.up * 0.08f)).normalized;
+            normal = ApplyNormalError(normal, normalErrorDegrees);
+            var right = Vector3.ProjectOnPlane(_playerRoot.right, normal).normalized;
+            var up = Vector3.Cross(normal, right).normalized;
+            var origin = palm.position + _playerRoot.TransformVector(localPositionError);
+            return ToFrame(origin, normal, right, up, 0.34f, 0.55f);
         }
 
         private Vector3 ApplyNormalError(Vector3 normal, Vector3 localDegrees)

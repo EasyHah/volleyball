@@ -406,8 +406,8 @@ namespace Volleyball.Presentation
                 ("Torso", new Vector3(-12f, 0f, -6f)));
 
             SetTargets(StickFigurePose.Block,
-                ("LeftShoulder", new Vector3(-168f, 0f, -10f)),
-                ("RightShoulder", new Vector3(-168f, 0f, 10f)),
+                ("LeftShoulder", new Vector3(-168f, 0f, 18f)),
+                ("RightShoulder", new Vector3(-168f, 0f, -18f)),
                 ("LeftElbow", new Vector3(5f, 0f, 0f)),
                 ("RightElbow", new Vector3(5f, 0f, 0f)));
 

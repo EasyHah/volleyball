@@ -248,6 +248,43 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PreviewAttackContactFramesAt_MatchesTheScheduledApproachContactGeometry()
+        {
+            var player = CreatePlayer("PlannedAttackPreview", TeamId.Blue, PlayerRole.Defender);
+            try
+            {
+                var approach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -1.2f),
+                    new SimVector3(0f, 0f, 0f),
+                    1.2f,
+                    0.35f,
+                    0.1f);
+                player.transform.position = new Vector3(0f, 0f, -1.2f);
+                var preview = player.PreviewAttackContactFramesAt(approach);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    5f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    704,
+                    movementStartSimulationTime: 3.5f,
+                    attackApproach: approach);
+
+                var contacts = Collect(player, 5f);
+
+                Assert.That(contacts, Has.Count.EqualTo(1));
+                Assert.That(
+                    (preview[0].Origin - contacts[0].Surface.Current.Origin).Magnitude,
+                    Is.LessThan(0.01f));
+                Assert.That(preview[0].Origin.Z, Is.LessThan(0.4f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void ScheduledMovement_ReachesNearbyTacticalPositionBeforeContact()
         {
             var playerObject = new GameObject("MovingDefender");

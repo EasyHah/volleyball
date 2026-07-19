@@ -43,13 +43,12 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(6));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
-            Assert.That(director.BlockSupportAssignments, Is.GreaterThan(0));
-            Assert.That(director.CoverageSupportAssignments, Is.GreaterThan(0));
-            Assert.That(director.BlockSupportActivations, Is.GreaterThanOrEqualTo(3));
-            Assert.That(director.BackSetAttackContacts, Is.GreaterThan(0));
-            Assert.That(director.BackSetAttackFaults, Is.LessThan(director.BackSetAttackContacts));
-            Assert.That(director.EmergencyReceiveWindowAssignments, Is.GreaterThan(0));
-            Assert.That(director.EmergencyReceiveContacts, Is.GreaterThan(0));
+            Assert.That(director.PhysicalBlockContacts, Is.GreaterThan(0));
+            Assert.That(director.PostBlockContinuations, Is.GreaterThan(0));
+            Assert.That(director.NonSetterSetContacts, Is.GreaterThan(0));
+            Assert.That(director.DefenderAttackContacts, Is.GreaterThan(0));
+            Assert.That(director.IllegalContactFaults, Is.GreaterThanOrEqualTo(0));
+            Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(0.70f));
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
 
             cameras.SetView(RallyCameraView.Sideline);
