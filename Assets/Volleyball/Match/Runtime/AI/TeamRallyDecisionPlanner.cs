@@ -192,6 +192,8 @@ namespace Volleyball.AI
     {
         public RallyDecisionCandidate(PlayerId actor, bool isFeasible, RallyDecisionScore score)
         {
+            ValidatePlayerId(actor, nameof(actor));
+            ValidateScore(score, nameof(score));
             Actor = actor;
             IsFeasible = isFeasible;
             Score = score;
@@ -202,6 +204,31 @@ namespace Volleyball.AI
         public bool IsFeasible { get; }
 
         public RallyDecisionScore Score { get; }
+
+        internal static void ValidatePlayerId(PlayerId id, string parameterName)
+        {
+            if (!Enum.IsDefined(typeof(TeamId), id.Team) || !Enum.IsDefined(typeof(PlayerRole), id.Role))
+            {
+                throw new ArgumentOutOfRangeException(parameterName);
+            }
+        }
+
+        internal static void ValidateScore(RallyDecisionScore score, string parameterName)
+        {
+            if (!IsFinite(score.Reachability) ||
+                !IsFinite(score.NominalRole) ||
+                !IsFinite(score.Approach) ||
+                !IsFinite(score.Angle) ||
+                !IsFinite(score.Total))
+            {
+                throw new ArgumentOutOfRangeException(parameterName);
+            }
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
     }
 
     public sealed class TeamRallyDecision
@@ -226,6 +253,9 @@ namespace Volleyball.AI
             IEnumerable<RallyDecisionCandidate> candidates,
             AttackApproachPlan? attackApproach)
         {
+            RallyDecisionCandidate.ValidatePlayerId(actor, nameof(actor));
+            ValidateAction(action, nameof(action));
+            RallyDecisionCandidate.ValidateScore(score, nameof(score));
             if (!contactTarget.IsFinite || !movementTarget.IsFinite || !ballTarget.IsFinite)
             {
                 throw new ArgumentOutOfRangeException(nameof(contactTarget));
@@ -236,6 +266,18 @@ namespace Volleyball.AI
                 throw new ArgumentNullException(nameof(candidates));
             }
 
+            if (action == TechniqueAction.Attack && !attackApproach.HasValue)
+            {
+                throw new ArgumentException("Attack decisions require an approach plan.", nameof(attackApproach));
+            }
+
+            if (action != TechniqueAction.Attack && attackApproach.HasValue)
+            {
+                throw new ArgumentException("Only attack decisions may include an approach plan.", nameof(attackApproach));
+            }
+
+            var candidateCopy = CopyAndValidateCandidates(candidates, actor);
+
             HasDecision = true;
             Actor = actor;
             Action = action;
@@ -243,7 +285,7 @@ namespace Volleyball.AI
             MovementTarget = movementTarget;
             BallTarget = ballTarget;
             Score = score;
-            Candidates = CopyCandidates(candidates);
+            Candidates = candidateCopy;
             AttackApproach = attackApproach;
         }
 
@@ -265,15 +307,44 @@ namespace Volleyball.AI
 
         public AttackApproachPlan? AttackApproach { get; }
 
-        private static IReadOnlyList<RallyDecisionCandidate> CopyCandidates(IEnumerable<RallyDecisionCandidate> candidates)
+        private static IReadOnlyList<RallyDecisionCandidate> CopyAndValidateCandidates(
+            IEnumerable<RallyDecisionCandidate> candidates,
+            PlayerId actor)
         {
             var copy = new List<RallyDecisionCandidate>();
+            var containsActor = false;
             foreach (var candidate in candidates)
             {
+                RallyDecisionCandidate.ValidatePlayerId(candidate.Actor, nameof(candidates));
+                RallyDecisionCandidate.ValidateScore(candidate.Score, nameof(candidates));
+                if (candidate.Actor.Team != actor.Team)
+                {
+                    throw new ArgumentException("Candidates must belong to the decision actor's team.", nameof(candidates));
+                }
+
+                containsActor |= candidate.Actor.Equals(actor);
                 copy.Add(candidate);
             }
 
+            if (copy.Count == 0)
+            {
+                throw new ArgumentException("A decision requires at least one candidate.", nameof(candidates));
+            }
+
+            if (!containsActor)
+            {
+                throw new ArgumentException("Candidates must include the selected actor.", nameof(candidates));
+            }
+
             return copy.AsReadOnly();
+        }
+
+        private static void ValidateAction(TechniqueAction action, string parameterName)
+        {
+            if (!Enum.IsDefined(typeof(TechniqueAction), action))
+            {
+                throw new ArgumentOutOfRangeException(parameterName);
+            }
         }
     }
 
@@ -616,7 +687,7 @@ namespace Volleyball.AI
                 availablePathDistance);
             var localStart = ApproachStart(localTakeoff, usableDistance);
             var distance = GroundDistance(localStart, localTakeoff);
-            var jumpQuality = Clamp(distance / FullJumpApproachDistance, 0f, 1f);
+            var jumpQuality = SmoothCappedJumpQuality(distance);
             var localLanding = frame.ToLocal(landing);
             var approachDirection = HorizontalDirection(localTakeoff - localStart);
             var spikeDirection = HorizontalDirection(localLanding - localTakeoff);
@@ -656,6 +727,12 @@ namespace Volleyball.AI
         private static SimVector3 ApproachStart(SimVector3 localTakeoff, float distance)
         {
             return new SimVector3(localTakeoff.X, localTakeoff.Y, localTakeoff.Z - distance);
+        }
+
+        private static float SmoothCappedJumpQuality(float distance)
+        {
+            var normalized = Clamp(distance / FullJumpApproachDistance, 0f, 1f);
+            return normalized * normalized * (3f - (2f * normalized));
         }
 
         private static float EffectiveSeconds(TeamRallyDecisionInput input, RallyPlayerSnapshot player)

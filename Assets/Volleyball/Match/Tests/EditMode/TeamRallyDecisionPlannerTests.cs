@@ -226,6 +226,26 @@ namespace Volleyball.EditModeTests
             Assert.That(ampleTime.AttackApproach.Value.JumpQuality, Is.EqualTo(1f).Within(0.00001f));
         }
 
+        [Test]
+        public void Plan_AttackApproachQualityEasesSmoothlyIntoItsExplicitCap()
+        {
+            var below = AttackDecisionForApproachDistance(1.3f).AttackApproach.Value.JumpQuality;
+            var near = AttackDecisionForApproachDistance(1.4f).AttackApproach.Value.JumpQuality;
+            var at = AttackDecisionForApproachDistance(1.5f).AttackApproach.Value.JumpQuality;
+            var above = AttackDecisionForApproachDistance(1.6f).AttackApproach.Value.JumpQuality;
+
+            var earlyGain = near - below;
+            var capGain = at - near;
+            Assert.That(below, Is.GreaterThan(0f));
+            Assert.That(near, Is.GreaterThan(below));
+            Assert.That(at, Is.GreaterThan(near));
+            Assert.That(at, Is.EqualTo(1f).Within(0.00001f));
+            Assert.That(above, Is.EqualTo(1f).Within(0.00001f));
+            Assert.That(capGain, Is.LessThan(earlyGain));
+            Assert.That(capGain, Is.LessThan(0.02f));
+            Assert.That(above - at, Is.LessThanOrEqualTo(capGain));
+        }
+
         [TestCase(TeamId.Blue)]
         [TestCase(TeamId.Orange)]
         public void Plan_AttackUsesCorrectWorldAndLocalApproachGeometryForBothTeams(TeamId team)
@@ -382,6 +402,145 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.Score.Total, Is.GreaterThan(setter.Score.Total));
         }
 
+        [Test]
+        public void RallyDecisionCandidate_RejectsInvalidActorAndPreservesFiniteZeroScore()
+        {
+            var validScore = ValidScore();
+
+            Assert.Throws<ArgumentOutOfRangeException>(() => new RallyDecisionCandidate(
+                new PlayerId((TeamId)99, PlayerRole.Setter),
+                true,
+                validScore));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new RallyDecisionCandidate(
+                new PlayerId(TeamId.Blue, (PlayerRole)99),
+                true,
+                validScore));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new RallyDecisionScore(
+                float.NaN,
+                0f,
+                0f,
+                0f,
+                0f));
+            var finiteZero = new RallyDecisionCandidate(
+                new PlayerId(TeamId.Blue, PlayerRole.Setter),
+                true,
+                default);
+            Assert.That(finiteZero.Score.Total, Is.Zero);
+        }
+
+        [Test]
+        public void TeamRallyDecision_RejectsInvalidPublicOutputsAndPreservesValidNoDecision()
+        {
+            var actor = new PlayerId(TeamId.Blue, PlayerRole.Attacker);
+            var candidate = new RallyDecisionCandidate(actor, true, ValidScore());
+            var attackApproach = new AttackApproachPlan(
+                new SimVector3(2f, 0f, -3.5f),
+                new SimVector3(2f, 0f, -2.45f),
+                1.05f,
+                0.5f,
+                0.1f);
+
+            Assert.That(TeamRallyDecision.NoDecision.HasDecision, Is.False);
+            Assert.That(TeamRallyDecision.NoDecision.Candidates, Is.Empty);
+            Assert.Throws<NotSupportedException>(() =>
+                ((IList<RallyDecisionCandidate>)TeamRallyDecision.NoDecision.Candidates).Add(candidate));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TeamRallyDecision(
+                new PlayerId((TeamId)99, PlayerRole.Attacker),
+                TechniqueAction.Attack,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { candidate },
+                attackApproach));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TeamRallyDecision(
+                actor,
+                (TechniqueAction)99,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { candidate },
+                attackApproach));
+            Assert.Throws<ArgumentException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Receive,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { candidate },
+                attackApproach));
+            Assert.Throws<ArgumentException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Attack,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { candidate },
+                null));
+            Assert.Throws<ArgumentException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Receive,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                Array.Empty<RallyDecisionCandidate>(),
+                null));
+            Assert.Throws<ArgumentNullException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Receive,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                null,
+                null));
+            Assert.Throws<ArgumentException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Receive,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { new RallyDecisionCandidate(new PlayerId(TeamId.Blue, PlayerRole.Setter), true, ValidScore()) },
+                null));
+            Assert.Throws<ArgumentException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Receive,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { new RallyDecisionCandidate(new PlayerId(TeamId.Orange, PlayerRole.Attacker), true, ValidScore()), candidate },
+                null));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new TeamRallyDecision(
+                actor,
+                TechniqueAction.Receive,
+                new SimVector3(float.NaN, 0f, 0f),
+                SimVector3.Zero,
+                SimVector3.Zero,
+                ValidScore(),
+                new[] { candidate },
+                null));
+
+            var valid = new TeamRallyDecision(
+                actor,
+                TechniqueAction.Attack,
+                new SimVector3(2f, 2.7f, -2.45f),
+                new SimVector3(2f, 0f, -2.45f),
+                new SimVector3(2f, 0f, 5.25f),
+                ValidScore(),
+                new[] { candidate },
+                attackApproach);
+
+            Assert.That(valid.HasDecision, Is.True);
+            Assert.That(valid.Actor, Is.EqualTo(actor));
+            Assert.That(valid.AttackApproach, Is.EqualTo(attackApproach));
+        }
+
         private static TeamRallyDecisionInput CreateOrangeAttackInput(SpikeRoute route)
         {
             var tactic = CreateTactic(route, TeamId.Orange);
@@ -480,6 +639,28 @@ namespace Volleyball.EditModeTests
                 0,
                 RallyDecisionStage.Organize,
                 RallyTacticalWeights.Default);
+        }
+
+        private static TeamRallyDecision AttackDecisionForApproachDistance(float desiredDistance)
+        {
+            var tactic = CreateTactic(SpikeRoute.Line);
+            var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            var mobility = (desiredDistance - 0.6f) / 1.4f;
+            return new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+                TeamId.Blue,
+                RallyDecisionStage.Attack,
+                new SimVector3(0f, 3f, -1f),
+                new SimVector3(8f, 0f, -5f),
+                takeoff,
+                new SimVector3(7f, 0f, -5f),
+                tactic: tactic,
+                availableSeconds: 2f,
+                attackerAbility: Ability(mobility)));
+        }
+
+        private static RallyDecisionScore ValidScore()
+        {
+            return new RallyDecisionScore(1f, 0.5f, 0.2f, -0.1f, 1.6f);
         }
 
         private static RallyDecisionCandidate FindCandidate(TeamRallyDecision decision, PlayerRole role)
