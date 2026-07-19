@@ -8,7 +8,7 @@
 - Branch: `codex/blocking-roles`
 - Feature spec: `docs/superpowers/specs/2026-07-19-unified-multi-role-rally-decision-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-19-unified-multi-role-rally-decision.md`
-- Current implementation head before delivery documentation: `33e6dc2 feat: use dynamic multi-role rally decisions`
+- Current implementation head before latest delivery documentation: `f3d2634 feat: add physical block impact feedback`
 - Current phase: Tasks 1-7 are implemented and fully verified. No implementation step remains; the branch is ready for review and merge.
 
 ## User-Confirmed Rules
@@ -38,6 +38,7 @@
 | `e0a558e` | Pre-physics contact eligibility and ordered same-step events | EditMode 14/14 passed |
 | `1d33c7b` | Physical block windows and bounded attack approaches | EditMode 19/19 passed |
 | `33e6dc2` | Dynamic possession orchestration and real role attribution | EditMode 17/17 and PlayMode 1/1 passed |
+| `f3d2634` | Team-colored physical block impact feedback | EditMode 2/2 and PlayMode 1/1 passed |
 
 ## Current Capabilities
 
@@ -51,12 +52,14 @@
 - `SimulatedBall` resolves Ignore / Accept / Fault before applying a player response and preserves player, net, ground and net-plane event order inside one fixed step.
 - `PrototypePlayerAgent` has dedicated physical block windows, bounded retargeting, continuous attack approaches and planned-contact previews that match the actual jump quality.
 - `ThreeVsThreeRallyDirector` is a possession orchestrator. It records the actual actor and movement, supports non-setter sets and defender attacks, and starts a zero-count possession after a real block.
+- An accepted physical Block plays a reusable code-generated impact core, expanding ring, point light and ball-trail pulse. The effect count must equal the physical block count.
 
 ## Completion State
 
 - No feature implementation task remains.
 - `CHG-20260719-002` records the Match-only boundary, behavior, verification paths, risk and rollback order.
-- Full EditMode passed `214/214`; full PlayMode passed `3/3` on Unity `6000.0.43f1`.
+- `CHG-20260719-003` records the accepted-Block-only visual feedback and focused/full test evidence.
+- Latest full EditMode passed `216/216`; full PlayMode passed `3/3` on Unity `6000.0.43f1`.
 - Physical3v3Rally evidence includes a non-setter Set, Defender Attack, real Block, post-block zero-touch possession and final `RESULT`.
 - Review and merge `codex/blocking-roles`; handle the unrelated ProjectSettings change only as a separate user decision.
 
@@ -78,23 +81,24 @@ Use the worktree as the current directory:
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
-  -testResults "$PWD/TestResults/EditMode-unified-rally-final.xml" \
-  -logFile "$PWD/TestResults/EditMode-unified-rally-final.log"
+  -testResults "$PWD/TestResults/EditMode-block-impact-final.xml" \
+  -logFile "$PWD/TestResults/EditMode-block-impact-final.log"
 
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
-  -testResults "$PWD/TestResults/PlayMode-unified-rally-final.xml" \
-  -logFile "$PWD/TestResults/PlayMode-unified-rally-final.log"
+  -testResults "$PWD/TestResults/PlayMode-block-impact-final.xml" \
+  -logFile "$PWD/TestResults/PlayMode-block-impact-final.log"
 
 rg -n 'test-run|total=|failed=|result=' \
-  "$PWD/TestResults/EditMode-unified-rally-final.xml" \
-  "$PWD/TestResults/PlayMode-unified-rally-final.xml"
+  "$PWD/TestResults/EditMode-block-impact-final.xml" \
+  "$PWD/TestResults/PlayMode-block-impact-final.xml"
 ```
 
 Verified outputs on 2026-07-19:
 
-- `EditMode-unified-rally-final.xml`: `total=214 passed=214 failed=0`.
-- `PlayMode-unified-rally-final.xml`: `total=3 passed=3 failed=0`.
-- `PlayMode-unified-rally-final.log`: `RESULT score=15:2 contacts=30 blocks=1 nonSetterSets=1 defenderAttacks=1`.
+- `EditMode-block-impact-final.xml`: `total=216 passed=216 failed=0`.
+- `PlayMode-block-impact-final.xml`: `total=3 passed=3 failed=0`.
+- `PlayMode-block-impact-final.log`: `block-contact ... effect=1`, followed by
+  `RESULT score=15:2 contacts=30 blocks=1 nonSetterSets=1 defenderAttacks=1`.
 
 ## Checkpoint Policy
 

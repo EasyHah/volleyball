@@ -114,6 +114,12 @@ contact, but it consumes zero team touches. Whichever team controls the rebound
 starts a fresh possession at zero counted touches; the remaining defenders can
 move into non-contact coverage positions.
 
+An accepted physical Block also plays a short team-colored impact core, expanding
+ring, light flash and ball-trail pulse at the swept impact center. The feedback is
+created in code and does not change the rebound or rally state. During automated
+verification, `BlockImpactEffects` must equal `PhysicalBlockContacts`, and the test
+must observe at least one frame where `BlockImpactFeedback.IsPlaying` is true.
+
 Unity world coordinates use `X` for left/right, `Y` for height and `Z` for court
 depth. Team-local tactics mirror only world `Z`; world left/right is never mirrored
 between teams. Logs expose the selected actor/action, score terms, approach quality,

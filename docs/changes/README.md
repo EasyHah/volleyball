@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260719-003 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 拦网命中反馈](2026-07-19-003-physical-block-impact-feedback.md) |
 | CHG-20260719-002 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 统一多角色回合决策](2026-07-19-002-unified-multi-role-rally-decision.md) |
 | CHG-20260719-001 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 防守候选触球池](2026-07-19-001-defensive-contact-candidates.md) |
 | CHG-20260718-007 | 2026-07-18 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 可见拦网与下撤覆盖](2026-07-18-007-visible-block-coverage.md) |
