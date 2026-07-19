@@ -16,10 +16,12 @@ namespace Volleyball.PlayModeTests
             var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
             var ball = Object.FindFirstObjectByType<SimulatedBall>();
             var cameras = Object.FindFirstObjectByType<RallyCameraController>();
+            var blockFeedback = Object.FindFirstObjectByType<BlockImpactFeedback>();
 
             Assert.That(director, Is.Not.Null);
             Assert.That(ball, Is.Not.Null);
             Assert.That(cameras, Is.Not.Null);
+            Assert.That(blockFeedback, Is.Not.Null);
             Assert.That(
                 Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None),
                 Has.Length.EqualTo(6));
@@ -28,8 +30,10 @@ namespace Volleyball.PlayModeTests
                 Has.Length.EqualTo(1));
 
             var timeout = Time.realtimeSinceStartup + 120f;
+            var sawActiveBlockFeedback = false;
             while (director.Result == null && Time.realtimeSinceStartup < timeout)
             {
+                sawActiveBlockFeedback |= blockFeedback.IsPlaying;
                 yield return null;
             }
 
@@ -44,6 +48,11 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.PhysicalBlockContacts, Is.GreaterThan(0));
+            Assert.That(sawActiveBlockFeedback, Is.True);
+            Assert.That(director.BlockImpactEffects, Is.EqualTo(director.PhysicalBlockContacts));
+            Assert.That(blockFeedback.PlayedCount, Is.EqualTo(director.PhysicalBlockContacts));
+            Assert.That(blockFeedback.LastReboundSpeed, Is.GreaterThan(0f));
+            Assert.That(blockFeedback.VisibleElementCount, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.PostBlockContinuations, Is.GreaterThan(0));
             Assert.That(director.NonSetterSetContacts, Is.GreaterThan(0));
             Assert.That(director.DefenderAttackContacts, Is.GreaterThan(0));

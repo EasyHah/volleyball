@@ -34,6 +34,7 @@ namespace Volleyball.Presentation
 
         private SimulatedBall _ball;
         private ScoreDisplay _scoreDisplay;
+        private BlockImpactFeedback _blockImpactFeedback;
         private PhysicalRallyTactics _currentTactics;
         private MatchSet _set;
         private RallyTouchState _touchState;
@@ -83,6 +84,10 @@ namespace Volleyball.Presentation
         public float TotalMovementShortfall { get; private set; }
 
         public int PhysicalBlockContacts { get; private set; }
+
+        public int BlockImpactEffects => _blockImpactFeedback == null
+            ? 0
+            : _blockImpactFeedback.PlayedCount;
 
         public int PostBlockContinuations { get; private set; }
 
@@ -135,6 +140,10 @@ namespace Volleyball.Presentation
             }
 
             _set = new MatchSet(context ?? throw new ArgumentNullException(nameof(context)), TeamSide.Home);
+            _blockImpactFeedback = GetComponentInChildren<BlockImpactFeedback>() ??
+                                   BlockImpactFeedback.Create(
+                                       transform,
+                                       _ball.GetComponent<TrailRenderer>());
             ApplyTactics(_tacticPlanner.Create(_tacticRevision), true);
             RenderScore();
 
@@ -690,6 +699,13 @@ namespace Volleyball.Presentation
             _pendingCrossingTeam = null;
             PhysicalBlockContacts++;
             BlockSupportActivations++;
+            _blockImpactFeedback.Play(
+                blocker.Team,
+                ToUnity(contact.Hit.ImpactCenter),
+                ToUnity(contact.Hit.Normal),
+                contact.TechniqueResponse.FinalOutgoing.Magnitude);
+            _status = $"{blocker.Team} {blocker.Role} BLOCK  " +
+                      $"speed {contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} m/s";
 
             var reboundTeam = contact.TechniqueResponse.FinalOutgoing.Z < -0.01f
                 ? TeamId.Blue
@@ -699,7 +715,8 @@ namespace Volleyball.Presentation
             PostBlockContinuations++;
             Debug.Log(
                 $"[Physical3v3] block-contact team={blocker.Team} actor={blocker.Role} " +
-                $"rebound={reboundTeam} speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
+                $"rebound={reboundTeam} speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} " +
+                $"effect={BlockImpactEffects}");
             BeginPossession(reboundTeam, ReceiveLeadTime());
         }
 
