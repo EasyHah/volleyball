@@ -8,8 +8,8 @@
 - Branch: `codex/blocking-roles`
 - Feature spec: `docs/superpowers/specs/2026-07-19-unified-multi-role-rally-decision-design.md`
 - Implementation plan: `docs/superpowers/plans/2026-07-19-unified-multi-role-rally-decision.md`
-- Current implementation head: `c444dcc fix: validate smooth rally decision outputs`
-- Current phase: Task 3 is implemented and spec-reviewed. Its final code-quality review was in progress when this checkpoint was written; rerun it before starting Task 4 if no review result is available in the active conversation.
+- Current implementation head before delivery documentation: `33e6dc2 feat: use dynamic multi-role rally decisions`
+- Current phase: Tasks 1-7 are implemented and fully verified. No implementation step remains; the branch is ready for review and merge.
 
 ## User-Confirmed Rules
 
@@ -35,6 +35,9 @@
 | `f6fb878` | Net interception, tactical weights, multi-role planner | Focused tests passed |
 | `d3f21fc` | Future attack set target and reachable approach quality | Focused tests passed |
 | `c444dcc` | Smooth approach curve and decision-output validation | Focused tests passed |
+| `e0a558e` | Pre-physics contact eligibility and ordered same-step events | EditMode 14/14 passed |
+| `1d33c7b` | Physical block windows and bounded attack approaches | EditMode 19/19 passed |
+| `33e6dc2` | Dynamic possession orchestration and real role attribution | EditMode 17/17 and PlayMode 1/1 passed |
 
 ## Current Capabilities
 
@@ -45,14 +48,17 @@
 - Organize decisions target a future tactic attack contact point, not the current ball depth.
 - Attack approach quality is based on post-reaction, reachable player-to-approach-start-to-takeoff distance and uses a smooth capped curve.
 - `RallyTacticalWeights` is a local, bounded seam for a future MenShen integration; no live gateway call exists in the rally runtime.
+- `SimulatedBall` resolves Ignore / Accept / Fault before applying a player response and preserves player, net, ground and net-plane event order inside one fixed step.
+- `PrototypePlayerAgent` has dedicated physical block windows, bounded retargeting, continuous attack approaches and planned-contact previews that match the actual jump quality.
+- `ThreeVsThreeRallyDirector` is a possession orchestrator. It records the actual actor and movement, supports non-setter sets and defender attacks, and starts a zero-count possession after a real block.
 
-## Next Work
+## Completion State
 
-1. Obtain or rerun Task 3 code-quality review for `f6fb878..c444dcc`.
-2. Execute Task 4 from the implementation plan: add `SimulatedBall` pre-physics candidate resolution (`Ignore` / `Accept` / `Fault`), player-rejection events, and same-step player/net/ground/net-plane event ordering.
-3. Execute Task 5: add dedicated physical block contact windows and consume attack approach plans in `PrototypePlayerAgent` while retaining visual-only support actions.
-4. Execute Task 6: replace the director's fixed `Defender -> Setter -> Attacker` sequence with dynamic possession planning and actual player attribution.
-5. Execute Task 7: update Match change records and run complete EditMode and PlayMode XML-backed regressions.
+- No feature implementation task remains.
+- `CHG-20260719-002` records the Match-only boundary, behavior, verification paths, risk and rollback order.
+- Full EditMode passed `214/214`; full PlayMode passed `3/3` on Unity `6000.0.43f1`.
+- Physical3v3Rally evidence includes a non-setter Set, Defender Attack, real Block, post-block zero-touch possession and final `RESULT`.
+- Review and merge `codex/blocking-roles`; handle the unrelated ProjectSettings change only as a separate user decision.
 
 Each task must follow test-first red/green development, have a spec-compliance review, then a code-quality review before the next task starts.
 
@@ -83,6 +89,12 @@ rg -n 'test-run|total=|failed=|result=' \
   "$PWD/TestResults/EditMode-unified-rally-final.xml" \
   "$PWD/TestResults/PlayMode-unified-rally-final.xml"
 ```
+
+Verified outputs on 2026-07-19:
+
+- `EditMode-unified-rally-final.xml`: `total=214 passed=214 failed=0`.
+- `PlayMode-unified-rally-final.xml`: `total=3 passed=3 failed=0`.
+- `PlayMode-unified-rally-final.log`: `RESULT score=15:2 contacts=30 blocks=1 nonSetterSets=1 defenderAttacks=1`.
 
 ## Checkpoint Policy
 

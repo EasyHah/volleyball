@@ -95,8 +95,11 @@ six-player physical rally director pass their own acceptance tests.
 ## Physical 3v3 cooperative loop
 
 Open `Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity` and enter Play Mode.
-One simulated ball continuously follows blue receive-set-spike, orange
-receive-set-spike rallies until one team reaches 15 points with a two-point lead.
+One simulated ball runs position-aware possessions until one team reaches 15 points
+with a two-point lead. All three players are evaluated for receive, set and attack
+from their actual world positions, available time and abilities. Defender, setter
+and attacker are scoring preferences rather than action locks, so a reachable
+non-setter can organize and a reachable defender can attack.
 The scene then stops and displays `RESULT READY`; `ThreeVsThreeRallyDirector.Result`
 contains one `MatchResultV1` with all six player statistics. A legal opponent-court
 landing after the final touch scores, while an own-court landing, out-of-bounds
@@ -104,11 +107,17 @@ opponent-court landing, antenna fault or contact timeout gives the point away.
 Net contact itself is legal when the ball later crosses the net inside the antenna
 interval and above net height.
 
-The defending team now shows visible block coverage on attacks. The attacker is
-the primary blocker for wide lanes; the setter can block middle lanes while the
-attacker drops into coverage. These support actions are visual only in this pass:
-they move players and play Block/Receive poses, but they do not register ball
-contacts, alter the ball path, consume touches or change scoring.
+Receive, Set and Attack consume the current team's normal three-touch allowance.
+The fourth counted touch and same-player consecutive counted contact are rejected
+before the ball response is applied. A scheduled Block is a real physical palm
+contact, but it consumes zero team touches. Whichever team controls the rebound
+starts a fresh possession at zero counted touches; the remaining defenders can
+move into non-contact coverage positions.
+
+Unity world coordinates use `X` for left/right, `Y` for height and `Z` for court
+depth. Team-local tactics mirror only world `Z`; world left/right is never mirrored
+between teams. Logs expose the selected actor/action, score terms, approach quality,
+block assignment/contact, post-block possession and complete result for review.
 
 Switch views with `1` for the tactical overhead camera, `2` for the sideline
 broadcast camera, `3` for the smooth ball-follow camera, or `C` to cycle them.

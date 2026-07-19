@@ -44,7 +44,7 @@ Unity must generate and retain .meta files for every created Asset. Do not hand-
 - Modify: Assets/Volleyball/Match/Runtime/AI/PhysicalRallyTacticPlanner.cs
 - Modify: Assets/Volleyball/Match/Tests/EditMode/PhysicalRallyTacticPlannerTests.cs
 
-- [ ] **Step 1: Write failing coordinate tests**
+- [x] **Step 1: Write failing coordinate tests**
 
 Create TeamCourtFrameTests.cs:
 
@@ -91,7 +91,7 @@ public void ToLocalDepth_MapsOwnCourtToNegativeZ(
 
 Add a PhysicalRallyTacticPlannerTests assertion that the existing TeamId overload produces negative Blue world Z and positive Orange world Z.
 
-- [ ] **Step 2: Run the focused suite and verify red**
+- [x] **Step 2: Run the focused suite and verify red**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -103,7 +103,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because TeamCourtFrame does not exist.
 
-- [ ] **Step 3: Implement the Domain frame and compatibility overload**
+- [x] **Step 3: Implement the Domain frame and compatibility overload**
 
 Create TeamCourtFrame.cs with this complete public API:
 
@@ -169,7 +169,7 @@ namespace Volleyball.Domain.Prototype
 
 Add PlanBlockCoverage(CourtPoint opponentAttackPosition, TeamId defendingTeam) in PhysicalRallyTacticPlanner. Derive the sign through new TeamCourtFrame(defendingTeam).WorldDepthSign. Retain the existing TeamSideSign overload as a forwarder to TeamId, so no existing public AI caller or current test changes behavior.
 
-- [ ] **Step 4: Run green and commit**
+- [x] **Step 4: Run green and commit**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -192,7 +192,7 @@ Expected: both test classes pass; Unity creates the new .meta files.
 - Create: Assets/Volleyball/Match/Runtime/Domain/Prototype/RallyTouchState.cs
 - Create: Assets/Volleyball/Match/Tests/EditMode/RallyTouchStateTests.cs
 
-- [ ] **Step 1: Write failing legality tests**
+- [x] **Step 1: Write failing legality tests**
 
 Create tests covering a normal three-touch sequence, the fourth-touch fault, consecutive actor fault, stale candidate ignore, and block reset:
 
@@ -263,7 +263,7 @@ public void Accept_BlockConsumesNoTouchAndReboundPossessionStartsAtZero(TeamId r
 
 Add wrong-team, wrong-action, and expired-window cases that return Ignore and retain state.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -275,7 +275,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because the state and evaluation types do not exist.
 
-- [ ] **Step 3: Implement immutable windows and pure evaluation**
+- [x] **Step 3: Implement immutable windows and pure evaluation**
 
 Implement the following Domain types:
 
@@ -329,7 +329,7 @@ public void OpenWindow(RallyContactWindow window);
 
 Evaluate never mutates. Accept calls Evaluate and mutates only for Accept. Normal Receive, Set, and Attack increment the count and set LastCountedActor. Block only sets LastPhysicalTouch. Wrong window candidates Ignore; a same counted actor or fourth counted touch Faults before physics. BeginPossession resets count and LastCountedActor but retains LastPhysicalTouch for referee attribution.
 
-- [ ] **Step 4: Run green and commit**
+- [x] **Step 4: Run green and commit**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -356,7 +356,7 @@ Expected: all state and existing LLM protocol tests pass.
 - Create: Assets/Volleyball/Match/Tests/EditMode/RallyTacticalWeightsTests.cs
 - Create: Assets/Volleyball/Match/Tests/EditMode/TeamRallyDecisionPlannerTests.cs
 
-- [ ] **Step 1: Write failing interception, tactical-boundary, and planner tests**
+- [x] **Step 1: Write failing interception, tactical-boundary, and planner tests**
 
 Use these representative tests:
 
@@ -435,7 +435,7 @@ public void Plan_ApproachQualityCapsAndAnglePenaltyGrows()
 
 Also test planner determinism, last-counted-actor exclusion, non-setter organization when setter is infeasible, all candidates unreachable, and Orange output round-tripping to correct world Z.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -447,7 +447,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because the new Domain and AI types do not exist.
 
-- [ ] **Step 3: Implement interception and backward-compatible net-crossing fraction**
+- [x] **Step 3: Implement interception and backward-compatible net-crossing fraction**
 
 Create:
 
@@ -496,7 +496,7 @@ public static bool TryNetPlaneCrossing(
 }
 ~~~
 
-- [ ] **Step 4: Implement tactical weights and multi-role ranking**
+- [x] **Step 4: Implement tactical weights and multi-role ranking**
 
 RallyTacticalWeightProposal contains only four finite, bounded scalar preferences: role preference, reachability, approach distance, and direction tolerance. RallyTacticalWeights.ResolveOrDefault rejects invalid proposals and returns Default. It does not call MenShen and cannot contain a transform or velocity.
 
@@ -554,7 +554,7 @@ Candidates with a negative margin are infeasible. Exclude LastCountedActor for n
 
 For attack, use TeamCourtFrame to calculate an approach start and takeoff in local Z, then convert both to world coordinates. Calculate a capped smooth distance quality and a direction-angle penalty. Return AttackApproachPlan with world-space points, distance, jump quality, and penalty. Generate world-space route landing targets with X based on SpikeRoute instead of hard-coding X = 0.
 
-- [ ] **Step 5: Run green and commit**
+- [x] **Step 5: Run green and commit**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -581,7 +581,7 @@ Expected: planner tests show both role preferences and feasible role overrides.
 - Modify: Assets/Volleyball/Match/Runtime/Presentation/SimulatedBall.cs
 - Modify: Assets/Volleyball/Match/Tests/EditMode/SimulatedBallTests.cs
 
-- [ ] **Step 1: Write failing pre-response resolver tests**
+- [x] **Step 1: Write failing pre-response resolver tests**
 
 Add sources with two swept player candidates. The earlier candidate is rejected and the later one accepted:
 
@@ -636,7 +636,7 @@ public void AdvanceSimulation_FaultsBeforeAnyVelocityResponse()
 
 Add a block-at-net candidate test asserting a valid block at or before the crossing fraction suppresses NetPlaneCrossed. Add a legal crossing-first subscriber that calls ConsumeRemainingStep and prove no later player or environment response fires.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -648,7 +648,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because BallContactResolution and the resolver/event APIs do not exist.
 
-- [ ] **Step 3: Implement Ignore / Accept / Fault and ordered events**
+- [x] **Step 3: Implement Ignore / Accept / Fault and ordered events**
 
 Add these Presentation values near BallContactCandidate:
 
@@ -717,7 +717,7 @@ Refactor StepSimulation in this order:
 
 A null resolver means Accept, preserving PhysicsContactTraining and existing unfiltered sources.
 
-- [ ] **Step 4: Run green and commit**
+- [x] **Step 4: Run green and commit**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -738,7 +738,7 @@ Expected: the fault path never changes velocity or registers a contact group, wh
 - Modify: Assets/Volleyball/Match/Runtime/Presentation/PrototypePlayerAgent.cs
 - Modify: Assets/Volleyball/Match/Tests/EditMode/PrototypePlayerContactSourceTests.cs
 
-- [ ] **Step 1: Write failing agent tests**
+- [x] **Step 1: Write failing agent tests**
 
 Retain SupportAction_AdvancesFromSimulationTimeWithoutAddingContactCandidates. It protects the visual-only support API. Add distinct physical-block tests:
 
@@ -803,7 +803,7 @@ public void RetargetBlockContact_ClampsLargeLateCorrection()
 
 Add an attack approach test that samples a planned attack across movement, contact, and recovery. Assert continuous non-teleporting movement, jump height scales with JumpQuality, and the root returns to ground.
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -815,7 +815,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because physical block APIs and the approach-plan overload do not exist.
 
-- [ ] **Step 3: Implement dedicated paths**
+- [x] **Step 3: Implement dedicated paths**
 
 Keep ScheduleSupportAction unchanged and visual-only. Add:
 
@@ -843,7 +843,7 @@ The block path uses an ActionTimeline, existing support ground movement, and Eva
 
 Add an optional AttackApproachPlan argument to ScheduleContact. For an attack plan, move to the world-space approach start under existing movement speed limits, then interpolate continuously to the reachable takeoff. Multiply the existing attack jump curve by AttackApproachPlan.JumpQuality. Never set transform.position to an unreachable takeoff; keep existing behavior when the optional plan is absent.
 
-- [ ] **Step 4: Run green and commit**
+- [x] **Step 4: Run green and commit**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -864,7 +864,7 @@ Expected: generic support remains non-contacting; the dedicated block window cre
 - Modify: Assets/Volleyball/Match/Runtime/Presentation/ThreeVsThreeRallyDirector.cs
 - Modify: Assets/Volleyball/Match/Tests/PlayMode/ThreeVsThreeRallyPlayModeTests.cs
 
-- [ ] **Step 1: Add failing PlayMode diagnostics assertions**
+- [x] **Step 1: Add failing PlayMode diagnostics assertions**
 
 Add these assertions while retaining all existing result, camera, and finite-state checks:
 
@@ -877,7 +877,7 @@ Assert.That(director.IllegalContactFaults, Is.GreaterThanOrEqualTo(0));
 Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(0.70f));
 ~~~
 
-- [ ] **Step 2: Run red**
+- [x] **Step 2: Run red**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -889,7 +889,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because the new diagnostics do not exist.
 
-- [ ] **Step 3: Implement possession orchestration**
+- [x] **Step 3: Implement possession orchestration**
 
 Remove _sequence, _contactCenters, _rootTargets, _expectedIndex, ExpectedAction, and pending tactic promotion. Add:
 
@@ -946,7 +946,7 @@ Before an attack's contact, schedule approximate block movement from the planned
 
 On legal crossing, begin zero-touch possession for the receiving team and schedule Receive. On a crossing antenna fault, ConsumeRemainingStep before resolving the rally. Resolve ground and net outcomes from _touchState.LastPhysicalTouch, never a nominal expected player. Generate a new tactic revision only after ResolveRally; the attack and its block therefore share a frozen tactic revision.
 
-- [ ] **Step 4: Run PlayMode green and inspect evidence**
+- [x] **Step 4: Run PlayMode green and inspect evidence**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -962,7 +962,7 @@ rg -n '\[Physical3v3\].*(block|contact|decision|fault|RESULT)' \
 
 Expected: XML exists with failed="0"; logs include a real block contact, post-block continuation, non-setter set, defender attack, and RESULT READY.
 
-- [ ] **Step 5: Commit dynamic orchestration**
+- [x] **Step 5: Commit dynamic orchestration**
 
 ~~~bash
 git add Assets/Volleyball/Match/Runtime/Presentation/ThreeVsThreeRallyDirector.cs \
@@ -977,13 +977,13 @@ git commit -m "feat: use dynamic multi-role rally decisions"
 - Modify: docs/changes/README.md
 - Modify: docs/development.md
 
-- [ ] **Step 1: Write the Match-only change record**
+- [x] **Step 1: Write the Match-only change record**
 
 Create CHG-20260719-002 from docs/changes/TEMPLATE.md. Mark it Match / Docs and module-internal. State explicitly that Shared, Career, Bootstrap, scene paths, assembly references, and MatchResultV1 did not change. Record the coordinate contract, RallyTouchState, local deterministic planner, pre-physics resolver, physical blocks, diagnostics, rollback order, and XML-backed verification paths. Add it as the first row of docs/changes/README.md.
 
 Update docs/development.md so Physical3v3Rally documents dynamic roles, real blocks not consuming a team touch, and Unity X/Y/Z naming.
 
-- [ ] **Step 2: Run full EditMode regression**
+- [x] **Step 2: Run full EditMode regression**
 
 ~~~bash
 git diff --check
@@ -997,7 +997,7 @@ rg -n 'test-run|total=|failed=|result=' \
 
 Expected: diff check has no output; result XML exists and reports zero failures.
 
-- [ ] **Step 3: Run full PlayMode regression and inspect logs**
+- [x] **Step 3: Run full PlayMode regression and inspect logs**
 
 ~~~bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -1012,7 +1012,7 @@ rg -n '\[Physical3v3\].*(block|contact|decision|fault|RESULT)' \
 
 Expected: XML exists with zero failures; logs demonstrate dynamic roles and physical block continuation during a complete set.
 
-- [ ] **Step 4: Check Unity metadata and commit delivery records**
+- [x] **Step 4: Check Unity metadata and commit delivery records**
 
 ~~~bash
 git status --short
