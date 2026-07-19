@@ -404,6 +404,116 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ScheduledBlockContact_EmitsTwoActivePalmsOnlyInsideItsWindow()
+        {
+            var player = CreatePlayer("PhysicalBlocker", TeamId.Orange, PlayerRole.Attacker);
+            try
+            {
+                player.ScheduleBlockContact(
+                    10f,
+                    new Vector3(1f, 0f, 0.28f),
+                    9f,
+                    new SimVector3(0f, 2f, -8f),
+                    701);
+
+                var before = Collect(player, 9.5f);
+                var atContact = Collect(player, 10f);
+
+                Assert.That(before, Is.Empty);
+                Assert.That(atContact, Has.Count.EqualTo(2));
+                Assert.That(atContact, Has.All.Matches<BallContactCandidate>(candidate =>
+                    candidate.Action == TechniqueAction.Block &&
+                    candidate.Actor.HasValue && candidate.Actor.Value.Equals(player.Id) &&
+                    candidate.Surface.ContactGroupId == 701 &&
+                    candidate.Surface.Active));
+                Assert.That(player.transform.position.y, Is.GreaterThan(0.2f));
+                Assert.That(player.PhysicalBlockContactAssignments, Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void RetargetBlockContact_ClampsLargeLateCorrection()
+        {
+            var player = CreatePlayer("RetargetedBlocker", TeamId.Blue, PlayerRole.Setter);
+            try
+            {
+                player.ScheduleBlockContact(
+                    8f,
+                    Vector3.zero,
+                    7f,
+                    new SimVector3(0f, 2f, 8f),
+                    702);
+
+                Assert.That(player.RetargetBlockContact(
+                    8.8f,
+                    new Vector3(10f, 0f, -10f),
+                    new SimVector3(0f, 2f, 8f)), Is.True);
+                Assert.That(player.BlockRetargetDistance, Is.LessThanOrEqualTo(0.55f));
+                Assert.That(player.BlockRetargetTimeShift, Is.LessThanOrEqualTo(0.12f));
+                Assert.That(player.ScheduledMovementTarget.magnitude, Is.LessThanOrEqualTo(0.55f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledAttackApproach_MovesContinuouslyScalesJumpAndReturnsToGround()
+        {
+            var low = CreatePlayer("LowApproachAttacker", TeamId.Blue, PlayerRole.Defender);
+            var high = CreatePlayer("HighApproachAttacker", TeamId.Blue, PlayerRole.Defender);
+            try
+            {
+                var lowApproach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, 0f),
+                    new SimVector3(0f, 0f, 1.2f),
+                    1.2f,
+                    0.35f,
+                    0.1f);
+                var highApproach = new AttackApproachPlan(
+                    lowApproach.ApproachStart,
+                    lowApproach.Takeoff,
+                    lowApproach.Distance,
+                    0.9f,
+                    lowApproach.AnglePenalty);
+                ScheduleApproach(low, lowApproach);
+                ScheduleApproach(high, highApproach);
+
+                var previous = low.transform.position;
+                foreach (var sampleTime in new[] { 4.1f, 4.3f, 4.5f, 4.62f, 4.8f, 5f })
+                {
+                    Collect(low, sampleTime);
+                    Assert.That(
+                        Vector3.Distance(previous, low.transform.position),
+                        Is.LessThan(1.5f),
+                        "Approach root motion must remain continuous.");
+                    previous = low.transform.position;
+                }
+
+                Collect(high, 5f);
+                var lowContactHeight = low.transform.position.y;
+                var highContactHeight = high.transform.position.y;
+                Collect(low, 5.7f);
+                Collect(high, 5.7f);
+
+                Assert.That(low.transform.position.z, Is.EqualTo(1.2f).Within(0.05f));
+                Assert.That(highContactHeight, Is.GreaterThan(lowContactHeight + 0.2f));
+                Assert.That(low.transform.position.y, Is.EqualTo(0f).Within(0.001f));
+                Assert.That(high.transform.position.y, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(low.gameObject);
+                Object.DestroyImmediate(high.gameObject);
+            }
+        }
+
+        [Test]
         public void EmergencyReceiveWindow_AddsReceiveCandidateWithoutScheduledContact()
         {
             var playerObject = new GameObject("EmergencyDigSetter");
@@ -487,6 +597,41 @@ namespace Volleyball.EditModeTests
                 1f,
                 SimVector3.Zero,
                 1f);
+        }
+
+        private static PrototypePlayerAgent CreatePlayer(
+            string name,
+            TeamId team,
+            PlayerRole role)
+        {
+            var playerObject = new GameObject(name);
+            var player = playerObject.AddComponent<PrototypePlayerAgent>();
+            player.Initialize(new PlayerId(team, role), team == TeamId.Blue ? Color.blue : Color.red, "1");
+            return player;
+        }
+
+        private static List<BallContactCandidate> Collect(
+            PrototypePlayerAgent player,
+            float simulationTime)
+        {
+            var contacts = new List<BallContactCandidate>();
+            player.CollectContacts(simulationTime, 1f / 120f, contacts);
+            return contacts;
+        }
+
+        private static void ScheduleApproach(
+            PrototypePlayerAgent player,
+            AttackApproachPlan approach)
+        {
+            player.transform.position = new Vector3(0f, 0f, -1f);
+            player.ScheduleContact(
+                TechniqueAction.Attack,
+                5f,
+                new SimVector3(0f, -4f, 14f),
+                NoExecutionError(),
+                703,
+                movementStartSimulationTime: 4f,
+                attackApproach: approach);
         }
     }
 }
