@@ -222,8 +222,8 @@ namespace Volleyball.AI
             var orangeAttack = AttackPosition(orangeSet, 1f);
             var blueDefense = DefensePosition(orangeSpike, orangeAttack, -1f);
             var orangeDefense = DefensePosition(blueSpike, blueAttack, 1f);
-            var blueBlockCoverage = PlanBlockCoverage(orangeAttack, TeamSideSign.Blue);
-            var orangeBlockCoverage = PlanBlockCoverage(blueAttack, TeamSideSign.Orange);
+            var blueBlockCoverage = PlanBlockCoverage(orangeAttack, TeamId.Blue);
+            var orangeBlockCoverage = PlanBlockCoverage(blueAttack, TeamId.Orange);
 
             return new PhysicalRallyTactics(
                 CreateTeam(blueSet, blueSpike, blueAttack, blueDefense, blueBlockCoverage, -1f),
@@ -232,14 +232,9 @@ namespace Volleyball.AI
 
         public static BlockCoveragePlan PlanBlockCoverage(
             CourtPoint opponentAttackPosition,
-            TeamSideSign defendingSide)
+            TeamId defendingTeam)
         {
-            if (!Enum.IsDefined(typeof(TeamSideSign), defendingSide))
-            {
-                throw new ArgumentOutOfRangeException(nameof(defendingSide));
-            }
-
-            var sideSign = (float)defendingSide;
+            var sideSign = new TeamCourtFrame(defendingTeam).WorldDepthSign;
             var laneX = Clamp(opponentAttackPosition.X, -3.55f, 3.55f);
             var attackerHomeX = sideSign > 0f ? -2.1f : 2.1f;
             var setterHomeX = 0f;
@@ -260,6 +255,21 @@ namespace Volleyball.AI
                 new CourtPoint(laneX, sideSign * 0.65f),
                 coverReceiver,
                 new CourtPoint(coverX, sideSign * 4.15f));
+        }
+
+        public static BlockCoveragePlan PlanBlockCoverage(
+            CourtPoint opponentAttackPosition,
+            TeamSideSign defendingSide)
+        {
+            if (!Enum.IsDefined(typeof(TeamSideSign), defendingSide))
+            {
+                throw new ArgumentOutOfRangeException(nameof(defendingSide));
+            }
+
+            var defendingTeam = defendingSide == TeamSideSign.Blue
+                ? TeamId.Blue
+                : TeamId.Orange;
+            return PlanBlockCoverage(opponentAttackPosition, defendingTeam);
         }
 
         private static TeamRallyTactic CreateTeam(

@@ -174,6 +174,25 @@ namespace Volleyball.EditModeTests
             Assert.That(plan.CoverPosition.Z, Is.LessThan(-3.0f));
         }
 
+        [TestCase(TeamId.Blue)]
+        [TestCase(TeamId.Orange)]
+        public void PlanBlockCoverage_WithTeamIdPlacesBlockOnDefendingCourt(TeamId defendingTeam)
+        {
+            var plan = PhysicalRallyTacticPlanner.PlanBlockCoverage(
+                new CourtPoint(1.75f, 2.4f),
+                defendingTeam);
+
+            Assert.That(plan.BlockPosition.X, Is.EqualTo(1.75f).Within(0.01f));
+            if (defendingTeam == TeamId.Blue)
+            {
+                Assert.That(plan.BlockPosition.Z, Is.LessThan(0f));
+            }
+            else
+            {
+                Assert.That(plan.BlockPosition.Z, Is.GreaterThan(0f));
+            }
+        }
+
         private static void AssertInside(TeamRallyTactic tactic)
         {
             Assert.That(tactic.SetterPosition.X, Is.InRange(-4.5f, 4.5f));
