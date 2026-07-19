@@ -43,6 +43,8 @@ namespace Volleyball.Presentation
                                           (_ring != null ? 1 : 0) +
                                           (_flash != null ? 1 : 0);
 
+        public bool IsInitialized => _coreRenderer != null && _ring != null && _flash != null;
+
         public static BlockImpactFeedback Create(Transform parent, TrailRenderer ballTrail)
         {
             if (parent == null)
@@ -83,6 +85,11 @@ namespace Volleyball.Presentation
                 throw new ArgumentOutOfRangeException(nameof(reboundSpeed));
             }
 
+            if (!IsInitialized)
+            {
+                throw new InvalidOperationException("Block impact feedback must be initialized before use.");
+            }
+
             LastBlockingTeam = blockingTeam;
             LastImpactPoint = impactPoint;
             LastReboundSpeed = reboundSpeed;
@@ -105,7 +112,30 @@ namespace Volleyball.Presentation
             RenderFrame(0f);
         }
 
-        private void Initialize(TrailRenderer ballTrail)
+        public void Initialize(TrailRenderer ballTrail)
+        {
+            if (IsInitialized)
+            {
+                if (_ballTrail != ballTrail)
+                {
+                    RestoreTrail();
+                    CaptureTrailDefaults(ballTrail);
+                }
+
+                return;
+            }
+
+            CaptureTrailDefaults(ballTrail);
+            CreateCore();
+            CreateRing();
+            CreateFlash();
+            _coreRenderer.enabled = false;
+            _ring.enabled = false;
+            _flash.enabled = false;
+            enabled = false;
+        }
+
+        private void CaptureTrailDefaults(TrailRenderer ballTrail)
         {
             _ballTrail = ballTrail;
             if (_ballTrail != null)
@@ -115,14 +145,6 @@ namespace Volleyball.Presentation
                 _baseTrailStartWidth = _ballTrail.startWidth;
                 _baseTrailEndWidth = _ballTrail.endWidth;
             }
-
-            CreateCore();
-            CreateRing();
-            CreateFlash();
-            _coreRenderer.enabled = false;
-            _ring.enabled = false;
-            _flash.enabled = false;
-            enabled = false;
         }
 
         private void CreateCore()
@@ -242,10 +264,23 @@ namespace Volleyball.Presentation
 
         private void OnDisable()
         {
-            if (!IsPlaying)
+            IsPlaying = false;
+            if (_coreRenderer != null)
             {
-                RestoreTrail();
+                _coreRenderer.enabled = false;
             }
+
+            if (_ring != null)
+            {
+                _ring.enabled = false;
+            }
+
+            if (_flash != null)
+            {
+                _flash.enabled = false;
+            }
+
+            RestoreTrail();
         }
 
         private void OnDestroy()

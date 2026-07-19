@@ -39,5 +39,35 @@ namespace Volleyball.EditModeTests
             Assert.That(aboveRange, Is.EqualTo(RallyTacticalWeights.Default));
             Assert.That(negative, Is.EqualTo(RallyTacticalWeights.Default));
         }
+
+        [Test]
+        public void TryResolve_InvalidProposalLetsTheCallerKeepItsLocalFallback()
+        {
+            var resolved = RallyTacticalWeights.TryResolve(
+                new RallyTacticalWeightProposal(1f, float.PositiveInfinity, 1f, 1f),
+                out _);
+
+            Assert.That(resolved, Is.False);
+        }
+
+        [Test]
+        public void TacticalWeightRequest_PreservesSimulationContext()
+        {
+            var request = new RallyTacticalWeightRequest(
+                Volleyball.Domain.Prototype.TeamId.Orange,
+                RallyDecisionStage.Receive,
+                tacticRevision: 4,
+                requestSequence: 9,
+                countedTeamTouches: 0,
+                availableSimulationSeconds: 0.65f,
+                new Volleyball.Domain.Simulation.SimVector3(1f, 2f, 3f),
+                new Volleyball.Domain.Simulation.SimVector3(4f, 5f, 6f));
+
+            Assert.That(request.Team, Is.EqualTo(Volleyball.Domain.Prototype.TeamId.Orange));
+            Assert.That(request.TacticRevision, Is.EqualTo(4));
+            Assert.That(request.RequestSequence, Is.EqualTo(9));
+            Assert.That(request.AvailableSimulationSeconds, Is.EqualTo(0.65f));
+            Assert.That(request.BallVelocity.Z, Is.EqualTo(6f));
+        }
     }
 }

@@ -35,6 +35,7 @@ namespace Volleyball.Presentation
         private SimulatedBall _ball;
         private ScoreDisplay _scoreDisplay;
         private BlockImpactFeedback _blockImpactFeedback;
+        private AiDecisionTimeController _aiDecisionTimeController;
         private PhysicalRallyTactics _currentTactics;
         private MatchSet _set;
         private RallyTouchState _touchState;
@@ -50,7 +51,10 @@ namespace Volleyball.Presentation
         private bool _lastTouchWasBackSetAttack;
         private int _tacticRevision;
         private int _decisionIndex;
+        private int _aiDecisionRequestVersion;
+        private int _aiRequestSequence;
         private int _contactGroupSequence = 3000;
+        private RallyTacticalWeights _activeTacticalWeights;
         private string _status = "Preparing dynamic physical 3v3";
 
         public int CompletedCycles { get; private set; }
@@ -95,7 +99,22 @@ namespace Volleyball.Presentation
 
         public int DefenderAttackContacts { get; private set; }
 
+        public int BlueAttackContacts { get; private set; }
+
+        public int OrangeAttackContacts { get; private set; }
+
         public int IllegalContactFaults { get; private set; }
+
+        public bool IsWaitingForAi => _aiDecisionTimeController != null &&
+                                      _aiDecisionTimeController.IsWaiting;
+
+        public int AiDecisionRequests => _aiDecisionTimeController == null
+            ? 0
+            : _aiDecisionTimeController.RequestCount;
+
+        public int AiDecisionFallbacks => _aiDecisionTimeController == null
+            ? 0
+            : _aiDecisionTimeController.FallbackCount;
 
         public float MaximumAppliedMovementCorrection { get; private set; }
 
@@ -115,7 +134,8 @@ namespace Volleyball.Presentation
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
             MatchContextV1 context,
-            ScoreDisplay scoreDisplay)
+            ScoreDisplay scoreDisplay,
+            IRallyTacticalWeightSource tacticalWeightSource = null)
         {
             _ball = ball != null ? ball : throw new ArgumentNullException(nameof(ball));
             _scoreDisplay = scoreDisplay ?? throw new ArgumentNullException(nameof(scoreDisplay));
@@ -140,10 +160,21 @@ namespace Volleyball.Presentation
             }
 
             _set = new MatchSet(context ?? throw new ArgumentNullException(nameof(context)), TeamSide.Home);
-            _blockImpactFeedback = GetComponentInChildren<BlockImpactFeedback>() ??
-                                   BlockImpactFeedback.Create(
-                                       transform,
-                                       _ball.GetComponent<TrailRenderer>());
+            _activeTacticalWeights = LocalTacticalWeights();
+            if (tacticalWeightSource != null)
+            {
+                ConfigureAiDecisionSource(tacticalWeightSource);
+            }
+            var ballTrail = _ball.GetComponent<TrailRenderer>();
+            _blockImpactFeedback = GetComponentInChildren<BlockImpactFeedback>();
+            if (_blockImpactFeedback == null)
+            {
+                _blockImpactFeedback = BlockImpactFeedback.Create(transform, ballTrail);
+            }
+            else
+            {
+                _blockImpactFeedback.Initialize(ballTrail);
+            }
             ApplyTactics(_tacticPlanner.Create(_tacticRevision), true);
             RenderScore();
 
@@ -155,8 +186,30 @@ namespace Volleyball.Presentation
             StartCoroutine(StartInitialLoop(0.35f));
         }
 
+        public void ConfigureAiDecisionSource(
+            IRallyTacticalWeightSource source,
+            float realTimeTimeoutSeconds = AiDecisionTimeController.DefaultRealTimeTimeoutSeconds,
+            float minimumTimeScaleFactor = AiDecisionTimeController.DefaultMinimumTimeScaleFactor,
+            float safetyReserveSeconds = AiDecisionTimeController.DefaultSafetyReserveSeconds,
+            float restoreDurationSeconds = AiDecisionTimeController.DefaultRestoreDurationSeconds,
+            float minimumSimulationWindowSeconds =
+                AiDecisionTimeController.DefaultMinimumSimulationWindowSeconds)
+        {
+            _aiDecisionTimeController = GetComponent<AiDecisionTimeController>() ??
+                                        gameObject.AddComponent<AiDecisionTimeController>();
+            _aiDecisionTimeController.Configure(
+                source,
+                realTimeTimeoutSeconds,
+                minimumTimeScaleFactor,
+                safetyReserveSeconds,
+                restoreDurationSeconds,
+                minimumSimulationWindowSeconds);
+        }
+
         private void OnDestroy()
         {
+            _aiDecisionRequestVersion++;
+            _aiDecisionTimeController?.CancelPending();
             if (_ball == null)
             {
                 return;
@@ -220,11 +273,9 @@ namespace Volleyball.Presentation
             _rallyActive = false;
             yield return new WaitForSeconds(delay);
 
-            foreach (var player in _players.Values)
+            foreach (var pair in _players)
             {
-                var grounded = player.transform.position;
-                grounded.y = 0f;
-                player.PrepareForTraining(grounded);
+                pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
             }
 
             var receivingTeam = FromSide(_set.ReceivingSide);
@@ -256,9 +307,7 @@ namespace Volleyball.Presentation
             _rallyActive = true;
             _restartScheduled = false;
 
-            var decision = PlanDecision(receivingTeam, RallyDecisionStage.Receive, initialFlightSeconds);
-            ScheduleDecision(decision, initialFlightSeconds);
-            _status = $"Serve to {receivingTeam.ToString().ToUpperInvariant()} possession";
+            BeginPossessionDecision(receivingTeam, initialFlightSeconds);
         }
 
         private void BeginPossession(TeamId team, float availableSeconds)
@@ -273,11 +322,106 @@ namespace Volleyball.Presentation
             DisablePhysicalBlockWindows();
             _touchState.BeginPossession(team);
             _plannedAttackDecision = null;
-            var decision = PlanDecision(team, RallyDecisionStage.Receive, availableSeconds);
-            ScheduleDecision(decision, availableSeconds);
+            BeginPossessionDecision(team, availableSeconds);
             Debug.Log(
                 $"[Physical3v3] possession team={team} touches=0 " +
                 $"available={availableSeconds:0.00}");
+        }
+
+        private void BeginPossessionDecision(TeamId team, float availableSeconds)
+        {
+            _activeTacticalWeights = LocalTacticalWeights();
+            var requestVersion = ++_aiDecisionRequestVersion;
+            if (_aiDecisionTimeController != null &&
+                _aiDecisionTimeController.CanRequest(availableSeconds))
+            {
+                var requestSimulationTime = _ball.SimulationTime;
+                var request = new RallyTacticalWeightRequest(
+                    team,
+                    RallyDecisionStage.Receive,
+                    _tacticRevision,
+                    _aiRequestSequence++,
+                    _touchState.CountedTeamTouches,
+                    availableSeconds,
+                    _ball.State.Position,
+                    _ball.State.Velocity);
+                _status = $"{team} AI THINKING";
+                var requested = _aiDecisionTimeController.TryRequestWeights(
+                    request,
+                    _activeTacticalWeights,
+                    (weights, status) => CompletePossessionDecision(
+                        team,
+                        availableSeconds,
+                        requestSimulationTime,
+                        requestVersion,
+                        weights,
+                        status));
+                if (requested)
+                {
+                    if (_aiDecisionTimeController.IsWaiting)
+                    {
+                        _status = $"{team} AI THINKING  time x" +
+                                  $"{_aiDecisionTimeController.LastTargetTimeScale:0.00}";
+                    }
+                    Debug.Log(
+                        $"[Physical3v3] ai-wait team={team} available={availableSeconds:0.00} " +
+                        $"scale={_aiDecisionTimeController.LastTargetTimeScale:0.00}");
+                    return;
+                }
+            }
+
+            ScheduleReceiveDecision(team, availableSeconds);
+        }
+
+        private void CompletePossessionDecision(
+            TeamId team,
+            float originalAvailableSeconds,
+            float requestSimulationTime,
+            int requestVersion,
+            RallyTacticalWeights weights,
+            AiDecisionWaitStatus status)
+        {
+            if (requestVersion != _aiDecisionRequestVersion ||
+                !_rallyActive ||
+                _restartScheduled ||
+                Result != null ||
+                _touchState == null ||
+                _touchState.PossessionTeam != team)
+            {
+                return;
+            }
+
+            _activeTacticalWeights = weights;
+            var elapsedSimulationSeconds = Mathf.Max(
+                0f,
+                _ball.SimulationTime - requestSimulationTime);
+            var remainingSimulationSeconds = Mathf.Max(
+                0.10f,
+                originalAvailableSeconds - elapsedSimulationSeconds);
+            ScheduleReceiveDecision(team, remainingSimulationSeconds);
+            _status = status == AiDecisionWaitStatus.Success
+                ? $"{team} AI READY  restoring match speed"
+                : $"{team} LOCAL FALLBACK  {status}";
+            Debug.Log(
+                $"[Physical3v3] ai-ready team={team} status={status} " +
+                $"wait={_aiDecisionTimeController.LastRealWaitSeconds:0.00}s " +
+                $"remaining={remainingSimulationSeconds:0.00}");
+        }
+
+        private void ScheduleReceiveDecision(TeamId team, float availableSeconds)
+        {
+            var decision = PlanDecision(team, RallyDecisionStage.Receive, availableSeconds);
+            ScheduleDecision(decision, availableSeconds);
+            if (_tacticRevision == 0 && SuccessfulContacts == 0)
+            {
+                _status = $"Serve to {team.ToString().ToUpperInvariant()} possession";
+            }
+        }
+
+        private RallyTacticalWeights LocalTacticalWeights()
+        {
+            var rolePreference = _tacticRevision % 4 == 3 ? 0.35f : 1f;
+            return new RallyTacticalWeights(rolePreference, 1.15f, 1f, 1f);
         }
 
         private TeamRallyDecision PlanDecision(
@@ -326,8 +470,6 @@ namespace Volleyball.Presentation
                     player.Ability));
             }
 
-            var rolePreference = _tacticRevision % 4 == 3 ? 0.35f : 1f;
-            var weights = new RallyTacticalWeights(rolePreference, 1.15f, 1f, 1f);
             var input = new TeamRallyDecisionInput(
                 team,
                 TacticFor(team),
@@ -340,7 +482,7 @@ namespace Volleyball.Presentation
                 _tacticRevision,
                 _decisionIndex++,
                 stage,
-                weights);
+                _activeTacticalWeights);
             var decision = _decisionPlanner.Plan(input);
             if (!decision.HasDecision)
             {
@@ -552,6 +694,17 @@ namespace Volleyball.Presentation
             if (contact.Candidate.Action == TechniqueAction.Attack && actorId.Role == PlayerRole.Defender)
             {
                 DefenderAttackContacts++;
+            }
+            if (contact.Candidate.Action == TechniqueAction.Attack)
+            {
+                if (actorId.Team == TeamId.Blue)
+                {
+                    BlueAttackContacts++;
+                }
+                else
+                {
+                    OrangeAttackContacts++;
+                }
             }
 
             var style = contact.Candidate.Action == TechniqueAction.Set
@@ -820,6 +973,8 @@ namespace Volleyball.Presentation
 
             _restartScheduled = true;
             _rallyActive = false;
+            _aiDecisionRequestVersion++;
+            _aiDecisionTimeController?.CancelPending();
             _contactDeadlineActive = false;
             _pendingCrossingTeam = null;
             _scheduledDecision = null;
@@ -984,7 +1139,9 @@ namespace Volleyball.Presentation
 
         private static Vector3 BlockRootTarget(TeamId team, SimVector3 intercept)
         {
-            var worldDepth = team == TeamId.Blue ? -0.28f : 0.28f;
+            var worldDepth = team == TeamId.Blue
+                ? -PrototypePlayerAgent.NetClearance
+                : PrototypePlayerAgent.NetClearance;
             return new Vector3(Mathf.Clamp(intercept.X, -4.1f, 4.1f), 0f, worldDepth);
         }
 

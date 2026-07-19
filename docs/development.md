@@ -125,6 +125,20 @@ depth. Team-local tactics mirror only world `Z`; world left/right is never mirro
 between teams. Logs expose the selected actor/action, score terms, approach quality,
 block assignment/contact, post-block possession and complete result for review.
 
+Player roots are clamped to their own court with a small net and sideline margin,
+and all six tactical roots are reset at the start of every rally. Arms may still
+reach across the net during a legal spike or block; the player root may not cross.
+Blue and Orange use the same role ability profiles, while seeded execution error
+continues to model ordinary imperfect contacts without a team-specific advantage.
+
+The default scene uses only the immediate deterministic planner. A runtime adapter
+may implement `IRallyTacticalWeightSource` and be passed to
+`ThreeVsThreeRallyDirector.Initialize` or `ConfigureAiDecisionSource`. While that
+optional request is pending, `AiDecisionTimeController` slows global simulation,
+uses a real-time deadline, and restores the previous `Time.timeScale` and
+`Time.fixedDeltaTime` after success or local fallback. Remote output remains limited
+to bounded tactical weights; all legality and physics stay local.
+
 Switch views with `1` for the tactical overhead camera, `2` for the sideline
 broadcast camera, `3` for the smooth ball-follow camera, or `C` to cycle them.
 

@@ -68,5 +68,33 @@ namespace Volleyball.EditModeTests
                 UnityEngine.Object.DestroyImmediate(root);
             }
         }
+
+        [Test]
+        public void Initialize_PreparesASceneAuthoredComponentForReuse()
+        {
+            var root = new GameObject("SceneAuthoredBlockImpactTest");
+            var ball = new GameObject("SceneAuthoredBallTrail");
+            try
+            {
+                var trail = ball.AddComponent<TrailRenderer>();
+                trail.startWidth = 0.065f;
+                var feedbackObject = new GameObject("ExistingBlockImpactFeedback");
+                feedbackObject.transform.SetParent(root.transform, false);
+                var feedback = feedbackObject.AddComponent<BlockImpactFeedback>();
+
+                feedback.Initialize(trail);
+                feedback.Play(TeamId.Blue, Vector3.one, Vector3.forward, 10f);
+
+                Assert.That(feedback.IsInitialized, Is.True);
+                Assert.That(feedback.IsPlaying, Is.True);
+                Assert.That(feedback.VisibleElementCount, Is.GreaterThanOrEqualTo(3));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                UnityEngine.Object.DestroyImmediate(ball);
+            }
+        }
+
     }
 }

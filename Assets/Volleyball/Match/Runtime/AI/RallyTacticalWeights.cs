@@ -59,16 +59,28 @@ namespace Volleyball.AI
 
         public static RallyTacticalWeights ResolveOrDefault(RallyTacticalWeightProposal proposal)
         {
-            return IsBounded(proposal.RolePreference) &&
-                   IsBounded(proposal.Reachability) &&
-                   IsBounded(proposal.ApproachDistance) &&
-                   IsBounded(proposal.DirectionTolerance)
-                ? new RallyTacticalWeights(
-                    proposal.RolePreference,
-                    proposal.Reachability,
-                    proposal.ApproachDistance,
-                    proposal.DirectionTolerance)
-                : Default;
+            return TryResolve(proposal, out var resolved) ? resolved : Default;
+        }
+
+        public static bool TryResolve(
+            RallyTacticalWeightProposal proposal,
+            out RallyTacticalWeights resolved)
+        {
+            if (!IsBounded(proposal.RolePreference) ||
+                !IsBounded(proposal.Reachability) ||
+                !IsBounded(proposal.ApproachDistance) ||
+                !IsBounded(proposal.DirectionTolerance))
+            {
+                resolved = default;
+                return false;
+            }
+
+            resolved = new RallyTacticalWeights(
+                proposal.RolePreference,
+                proposal.Reachability,
+                proposal.ApproachDistance,
+                proposal.DirectionTolerance);
+            return true;
         }
 
         public bool Equals(RallyTacticalWeights other)

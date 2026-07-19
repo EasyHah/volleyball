@@ -11,6 +11,9 @@ namespace Volleyball.Presentation
 {
     public sealed class PrototypePlayerAgent : MonoBehaviour, IBallContactSource
     {
+        public const float NetClearance = 0.45f;
+        public const float BoundaryClearance = 0.25f;
+
         [SerializeField]
         private float _moveSpeed = 7f;
 
@@ -43,6 +46,8 @@ namespace Volleyball.Presentation
         public float PhysicalBlockContactTime { get; private set; }
 
         public float MaximumAppliedContactCorrection { get; private set; }
+
+        public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
 
@@ -261,7 +266,7 @@ namespace Volleyball.Presentation
             var previousTarget = _supportTargetPosition;
             _supportTargetPosition = Vector3.MoveTowards(
                 previousTarget,
-                GroundPosition(movementTarget),
+                ConstrainGroundPosition(movementTarget),
                 0.55f);
             BlockRetargetDistance = Vector3.Distance(previousTarget, _supportTargetPosition);
             _supportEndSimulationTime = Mathf.Max(
@@ -289,7 +294,7 @@ namespace Volleyball.Presentation
         {
             _supportAction = action;
             _supportTimeline = new ActionTimeline(action, scheduledSimulationTime);
-            _supportStartPosition = GroundPosition(transform.position);
+            _supportStartPosition = ConstrainGroundPosition(transform.position);
             _supportStartSimulationTime = movementStartSimulationTime;
             _supportEndSimulationTime = Mathf.Max(
                 _supportStartSimulationTime + 0.01f,
@@ -298,15 +303,16 @@ namespace Volleyball.Presentation
             var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
             _supportTargetPosition = Vector3.MoveTowards(
                 _supportStartPosition,
-                GroundPosition(movementTarget),
+                ConstrainGroundPosition(movementTarget),
                 maximumSpeed * availableSeconds);
         }
 
         public void PrepareForTraining(Vector3 worldPosition)
         {
             CancelScheduledContact();
-            transform.position = worldPosition;
-            _motionOrigin = worldPosition;
+            var constrained = ConstrainToOwnCourt(worldPosition);
+            transform.position = constrained;
+            _motionOrigin = constrained;
             Rig.SetPose(StickFigurePose.Ready, 1f);
         }
 
@@ -341,7 +347,7 @@ namespace Volleyball.Presentation
             var savedRotations = Rig.CaptureLocalRotations();
             try
             {
-                transform.position = worldPosition;
+                transform.position = ConstrainToOwnCourt(worldPosition);
                 Rig.SetPose(ContactPoseFor(action), 1f);
                 var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
                     .Capture(action, true, 0);
@@ -370,6 +376,8 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            transform.position = ConstrainToOwnCourt(transform.position);
+
             if (_hasPhysicalBlockContact && !_hasScheduledContact)
             {
                 CollectPhysicalBlockContacts(simulationTime, deltaSeconds, contacts);
@@ -396,6 +404,7 @@ namespace Volleyball.Presentation
             ApplyScheduledRootMotion(sample, simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample);
+            transform.position = ConstrainToOwnCourt(transform.position);
             var surfaces = ContactSurfaces.Capture(
                 _scheduledAction,
                 sample.SurfaceActive,
@@ -442,7 +451,7 @@ namespace Volleyball.Presentation
             ICollection<BallContactCandidate> contacts)
         {
             var sample = _supportTimeline.Sample(simulationTime);
-            transform.position = EvaluateSupportPosition(simulationTime);
+            transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
             var pose = sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete
                 ? StickFigurePose.Ready
                 : StickFigurePose.Block;
@@ -484,7 +493,7 @@ namespace Volleyball.Presentation
 
             if (sample.Phase == ActionPhase.Complete)
             {
-                transform.position = _supportTargetPosition;
+                transform.position = ConstrainToOwnCourt(_supportTargetPosition);
                 DisableBlockContactWindow();
             }
         }
@@ -538,7 +547,7 @@ namespace Volleyball.Presentation
         private void ApplySupportAction(float simulationTime, float deltaSeconds)
         {
             var sample = _supportTimeline.Sample(simulationTime);
-            transform.position = EvaluateSupportPosition(simulationTime);
+            transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
             if (!_supportActionActivated &&
                 (sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact))
             {
@@ -564,7 +573,7 @@ namespace Volleyball.Presentation
                 _hasSupportAction = false;
                 _supportTimeline = null;
                 _supportActionActivated = false;
-                transform.position = _supportTargetPosition;
+                transform.position = ConstrainToOwnCourt(_supportTargetPosition);
             }
         }
 
@@ -738,7 +747,7 @@ namespace Volleyball.Presentation
             {
                 if (_hasScheduledMovement)
                 {
-                    transform.position = movementPosition;
+                    transform.position = ConstrainToOwnCourt(movementPosition);
                 }
 
                 return;
@@ -750,7 +759,7 @@ namespace Volleyball.Presentation
                 position.y = _motionOrigin.y;
             }
 
-            transform.position = position;
+            transform.position = ConstrainToOwnCourt(position);
         }
 
         private void ApplyLimitedContactAlignment(ActionTimelineSample sample)
@@ -797,7 +806,8 @@ namespace Volleyball.Presentation
             MaximumAppliedContactCorrection = Mathf.Max(
                 MaximumAppliedContactCorrection,
                 correction.Magnitude);
-            transform.position += new Vector3(correction.X, correction.Y, correction.Z);
+            transform.position = ConstrainToOwnCourt(
+                transform.position + new Vector3(correction.X, correction.Y, correction.Z));
         }
 
         private Vector3 EvaluateAttackPosition(float simulationTime, Vector3 movementPosition)
@@ -840,7 +850,7 @@ namespace Volleyball.Presentation
         private void ConfigureAttackApproach(AttackApproachPlan approach)
         {
             var approachStart = _movementTargetPosition;
-            var requestedTakeoff = GroundPosition(ToUnity(approach.Takeoff));
+            var requestedTakeoff = ConstrainGroundPosition(ToUnity(approach.Takeoff));
             var takeoffTime = Mathf.Max(
                 _movementEndSimulationTime + 0.01f,
                 _actionTimeline.ActualContactTime - 0.38f);
@@ -861,7 +871,7 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             float? movementLeadOverride = null)
         {
-            _movementStartPosition = GroundPosition(transform.position);
+            _movementStartPosition = ConstrainGroundPosition(transform.position);
             _movementStartSimulationTime = movementStartSimulationTime;
             var movementLead = movementLeadOverride ?? (action == TechniqueAction.Attack ? 0.32f : 0.10f);
             _movementEndSimulationTime = Mathf.Max(
@@ -872,7 +882,7 @@ namespace Volleyball.Presentation
             var maximumDistance = maximumSpeed * availableSeconds;
             _movementTargetPosition = Vector3.MoveTowards(
                 _movementStartPosition,
-                GroundPosition(requestedTarget),
+                ConstrainGroundPosition(requestedTarget),
                 maximumDistance);
             ScheduledMovementDistance = Vector3.Distance(
                 _movementStartPosition,
@@ -946,10 +956,44 @@ namespace Volleyball.Presentation
             return jumpHeight * 4f * jumpProgress * (1f - jumpProgress);
         }
 
-        private static Vector3 GroundPosition(Vector3 position)
+        private Vector3 ConstrainGroundPosition(Vector3 position)
         {
             position.y = 0f;
+            return ConstrainToOwnCourt(position);
+        }
+
+        private Vector3 ConstrainToOwnCourt(Vector3 position)
+        {
+            position.x = Mathf.Clamp(
+                position.x,
+                -CourtBuilder.HalfWidth + BoundaryClearance,
+                CourtBuilder.HalfWidth - BoundaryClearance);
+            position.z = Id.Team == TeamId.Blue
+                ? Mathf.Clamp(
+                    position.z,
+                    -CourtBuilder.HalfLength + BoundaryClearance,
+                    -NetClearance)
+                : Mathf.Clamp(
+                    position.z,
+                    NetClearance,
+                    CourtBuilder.HalfLength - BoundaryClearance);
             return position;
+        }
+
+        private bool IsWithinOwnCourtBounds(Vector3 position)
+        {
+            const float tolerance = 0.0001f;
+            if (position.x < -CourtBuilder.HalfWidth + BoundaryClearance - tolerance ||
+                position.x > CourtBuilder.HalfWidth - BoundaryClearance + tolerance ||
+                position.z < -CourtBuilder.HalfLength + BoundaryClearance - tolerance ||
+                position.z > CourtBuilder.HalfLength - BoundaryClearance + tolerance)
+            {
+                return false;
+            }
+
+            return Id.Team == TeamId.Blue
+                ? position.z <= -NetClearance + tolerance
+                : position.z >= NetClearance - tolerance;
         }
 
         private static Vector3 ToUnity(SimVector3 value)
@@ -1033,6 +1077,7 @@ namespace Volleyball.Presentation
 
         public IEnumerator MoveTo(Vector3 destination)
         {
+            destination = ConstrainGroundPosition(destination);
             var speed = 0f;
             const float acceleration = 24f;
             while ((transform.position - destination).sqrMagnitude > 0.01f)
@@ -1042,11 +1087,12 @@ namespace Volleyball.Presentation
                 var brakingSpeed = Mathf.Sqrt(2f * acceleration * distance);
                 var targetSpeed = Mathf.Min(_moveSpeed * (0.65f + (Ability.Mobility * 0.5f)), brakingSpeed);
                 speed = Mathf.MoveTowards(speed, targetSpeed, acceleration * Time.deltaTime);
-                transform.position = Vector3.MoveTowards(transform.position, destination, speed * Time.deltaTime);
+                transform.position = ConstrainToOwnCourt(
+                    Vector3.MoveTowards(transform.position, destination, speed * Time.deltaTime));
                 yield return null;
             }
 
-            transform.position = destination;
+            transform.position = ConstrainToOwnCourt(destination);
             Rig.SetPose(StickFigurePose.Ready, 0.25f);
         }
     }

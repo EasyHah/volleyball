@@ -210,11 +210,40 @@ namespace Volleyball.EditModeTests
                 Assert.That(palmBeforeContact, Is.GreaterThan(palmAtContact));
                 Assert.That(palmAfterContact, Is.LessThan(palmAtContact));
                 Assert.That(player.transform.position.y, Is.EqualTo(0f).Within(0.001f));
-                Assert.That(player.transform.position.z, Is.GreaterThan(0.4f));
+                Assert.That(player.transform.position.z, Is.LessThanOrEqualTo(-PrototypePlayerAgent.NetClearance));
+                Assert.That(player.IsWithinOwnCourt, Is.True);
             }
             finally
             {
                 Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void PrepareForTraining_ClampsPlayersInsideTheirOwnCourt()
+        {
+            var blue = CreatePlayer("BlueBoundaryPlayer", TeamId.Blue, PlayerRole.Defender);
+            var orange = CreatePlayer("OrangeBoundaryPlayer", TeamId.Orange, PlayerRole.Defender);
+            try
+            {
+                blue.PrepareForTraining(new Vector3(20f, 0f, 3f));
+                orange.PrepareForTraining(new Vector3(-20f, 0f, -3f));
+
+                Assert.That(blue.transform.position.x, Is.EqualTo(
+                    CourtBuilder.HalfWidth - PrototypePlayerAgent.BoundaryClearance).Within(0.001f));
+                Assert.That(blue.transform.position.z, Is.EqualTo(
+                    -PrototypePlayerAgent.NetClearance).Within(0.001f));
+                Assert.That(orange.transform.position.x, Is.EqualTo(
+                    -CourtBuilder.HalfWidth + PrototypePlayerAgent.BoundaryClearance).Within(0.001f));
+                Assert.That(orange.transform.position.z, Is.EqualTo(
+                    PrototypePlayerAgent.NetClearance).Within(0.001f));
+                Assert.That(blue.IsWithinOwnCourt, Is.True);
+                Assert.That(orange.IsWithinOwnCourt, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(blue.gameObject);
+                Object.DestroyImmediate(orange.gameObject);
             }
         }
 
@@ -226,6 +255,8 @@ namespace Volleyball.EditModeTests
             {
                 var player = playerObject.AddComponent<PrototypePlayerAgent>();
                 player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Attacker), Color.blue, "2");
+                var rootPosition = new Vector3(0f, 0f, -2.5f);
+                player.PrepareForTraining(rootPosition);
 
                 var setFrames = player.PreviewContactFrames(TechniqueAction.Set);
                 var attackFrames = player.PreviewContactFrames(TechniqueAction.Attack);
@@ -237,9 +268,9 @@ namespace Volleyball.EditModeTests
                     (setFrames[0].Origin - setFrames[1].Origin).Magnitude,
                     Is.LessThan(0.28f));
                 Assert.That(attackFrames[0].Origin.Y, Is.GreaterThan(3f));
-                Assert.That(attackBallCenter.Z, Is.GreaterThan(0.95f));
+                Assert.That(attackBallCenter.Z, Is.GreaterThan(rootPosition.z + 0.95f));
                 Assert.That(Mathf.Abs(attackBallCenter.X), Is.LessThan(0.4f));
-                Assert.That(player.transform.position, Is.EqualTo(Vector3.zero));
+                Assert.That(player.transform.position, Is.EqualTo(rootPosition));
             }
             finally
             {
@@ -484,6 +515,7 @@ namespace Volleyball.EditModeTests
                     7f,
                     new SimVector3(0f, 2f, 8f),
                     702);
+                var previousTarget = player.ScheduledMovementTarget;
 
                 Assert.That(player.RetargetBlockContact(
                     8.8f,
@@ -491,7 +523,9 @@ namespace Volleyball.EditModeTests
                     new SimVector3(0f, 2f, 8f)), Is.True);
                 Assert.That(player.BlockRetargetDistance, Is.LessThanOrEqualTo(0.55f));
                 Assert.That(player.BlockRetargetTimeShift, Is.LessThanOrEqualTo(0.12f));
-                Assert.That(player.ScheduledMovementTarget.magnitude, Is.LessThanOrEqualTo(0.55f));
+                Assert.That(
+                    Vector3.Distance(previousTarget, player.ScheduledMovementTarget),
+                    Is.LessThanOrEqualTo(0.55f));
             }
             finally
             {
@@ -507,8 +541,8 @@ namespace Volleyball.EditModeTests
             try
             {
                 var lowApproach = new AttackApproachPlan(
-                    new SimVector3(0f, 0f, 0f),
-                    new SimVector3(0f, 0f, 1.2f),
+                    new SimVector3(0f, 0f, -2.4f),
+                    new SimVector3(0f, 0f, -1.2f),
                     1.2f,
                     0.35f,
                     0.1f);
@@ -538,7 +572,9 @@ namespace Volleyball.EditModeTests
                 Collect(low, 5.7f);
                 Collect(high, 5.7f);
 
-                Assert.That(low.transform.position.z, Is.EqualTo(1.2f).Within(0.05f));
+                Assert.That(low.transform.position.z, Is.EqualTo(-1.2f).Within(0.05f));
+                Assert.That(low.IsWithinOwnCourt, Is.True);
+                Assert.That(high.IsWithinOwnCourt, Is.True);
                 Assert.That(highContactHeight, Is.GreaterThan(lowContactHeight + 0.2f));
                 Assert.That(low.transform.position.y, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(high.transform.position.y, Is.EqualTo(0f).Within(0.001f));
@@ -660,7 +696,7 @@ namespace Volleyball.EditModeTests
             PrototypePlayerAgent player,
             AttackApproachPlan approach)
         {
-            player.transform.position = new Vector3(0f, 0f, -1f);
+            player.transform.position = new Vector3(0f, 0f, -2.4f);
             player.ScheduleContact(
                 TechniqueAction.Attack,
                 5f,

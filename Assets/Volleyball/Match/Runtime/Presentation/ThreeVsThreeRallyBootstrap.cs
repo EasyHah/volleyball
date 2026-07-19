@@ -88,39 +88,38 @@ namespace Volleyball.Presentation
 
             var agent = playerObject.AddComponent<PrototypePlayerAgent>();
             agent.Initialize(new PlayerId(team, role), color, jerseyNumber);
-            agent.SetAbility(AbilityFor(team, role));
+            agent.SetAbility(AbilityFor(role));
             agents.Add(agent);
         }
 
-        private static PlayerAbilityProfile AbilityFor(TeamId team, PlayerRole role)
+        private static PlayerAbilityProfile AbilityFor(PlayerRole role)
         {
-            var teamAdjustment = team == TeamId.Blue ? 0.01f : 0f;
             return role switch
             {
                 PlayerRole.Defender => new PlayerAbilityProfile(
-                    0.88f + teamAdjustment,
-                    0.91f + teamAdjustment,
+                    0.88f,
+                    0.91f,
                     0.78f,
-                    0.94f + teamAdjustment,
+                    0.94f,
                     0.74f,
                     0.70f,
                     0.68f),
                 PlayerRole.Setter => new PlayerAbilityProfile(
-                    0.90f + teamAdjustment,
-                    0.93f + teamAdjustment,
+                    0.90f,
+                    0.93f,
                     0.80f,
                     0.80f,
-                    0.95f + teamAdjustment,
+                    0.95f,
                     0.74f,
                     0.70f),
                 PlayerRole.Attacker => new PlayerAbilityProfile(
-                    0.91f + teamAdjustment,
-                    0.89f + teamAdjustment,
+                    0.91f,
+                    0.89f,
                     0.94f,
                     0.72f,
                     0.72f,
-                    0.93f + teamAdjustment,
-                    0.92f + teamAdjustment),
+                    0.93f,
+                    0.92f),
                 _ => PlayerAbilityProfile.Default
             };
         }
