@@ -61,6 +61,43 @@ namespace Volleyball.Presentation
         public ContactResponseParameters ResponseParameters { get; }
     }
 
+    public enum BallContactDisposition
+    {
+        Ignore,
+        Accept,
+        Fault
+    }
+
+    public readonly struct BallContactResolution
+    {
+        private BallContactResolution(BallContactDisposition disposition, string reason)
+        {
+            Disposition = disposition;
+            Reason = reason;
+        }
+
+        public BallContactDisposition Disposition { get; }
+
+        public string Reason { get; }
+
+        public static BallContactResolution Ignore()
+        {
+            return new BallContactResolution(BallContactDisposition.Ignore, string.Empty);
+        }
+
+        public static BallContactResolution Accept()
+        {
+            return new BallContactResolution(BallContactDisposition.Accept, string.Empty);
+        }
+
+        public static BallContactResolution Fault(string reason)
+        {
+            return new BallContactResolution(
+                BallContactDisposition.Fault,
+                string.IsNullOrWhiteSpace(reason) ? "illegal player contact" : reason);
+        }
+    }
+
     public interface IBallContactSource
     {
         void CollectContacts(float simulationTime, float deltaSeconds, ICollection<BallContactCandidate> contacts);
@@ -71,11 +108,13 @@ namespace Volleyball.Presentation
         public PlayerBallContactEvent(
             BallContactCandidate candidate,
             SweptBallHit hit,
+            float contactSimulationTime,
             ContactResponseResult physicalResponse,
             TechniqueControlResult techniqueResponse)
         {
             Candidate = candidate;
             Hit = hit;
+            ContactSimulationTime = contactSimulationTime;
             PhysicalResponse = physicalResponse;
             TechniqueResponse = techniqueResponse;
         }
@@ -84,12 +123,37 @@ namespace Volleyball.Presentation
 
         public SweptBallHit Hit { get; }
 
+        public float ContactSimulationTime { get; }
+
         public ContactResponseResult PhysicalResponse { get; }
 
         public TechniqueControlResult TechniqueResponse { get; }
     }
 
-    public readonly struct NetPlaneCrossingEvent
+    public readonly struct PlayerContactRejectedEvent
+    {
+        public PlayerContactRejectedEvent(
+            BallContactCandidate candidate,
+            SweptBallHit hit,
+            float contactSimulationTime,
+            string reason)
+        {
+            Candidate = candidate;
+            Hit = hit;
+            ContactSimulationTime = contactSimulationTime;
+            Reason = string.IsNullOrWhiteSpace(reason) ? "illegal player contact" : reason;
+        }
+
+        public BallContactCandidate Candidate { get; }
+
+        public SweptBallHit Hit { get; }
+
+        public float ContactSimulationTime { get; }
+
+        public string Reason { get; }
+    }
+
+    public sealed class NetPlaneCrossingEvent
     {
         public NetPlaneCrossingEvent(SimVector3 point)
         {
@@ -97,6 +161,13 @@ namespace Volleyball.Presentation
         }
 
         public SimVector3 Point { get; }
+
+        public bool IsRemainingStepConsumed { get; private set; }
+
+        public void ConsumeRemainingStep()
+        {
+            IsRemainingStepConsumed = true;
+        }
     }
 
     public readonly struct BallSimulationDiagnostics
@@ -169,7 +240,12 @@ namespace Volleyball.Presentation
 
         public event Action<PlayerBallContactEvent> PlayerContact;
 
+        public event Action<PlayerContactRejectedEvent> PlayerContactRejected;
+
         public event Action<NetPlaneCrossingEvent> NetPlaneCrossed;
+
+        public Func<BallContactCandidate, SweptBallHit, float, BallContactResolution>
+            ContactCandidateResolver { get; set; }
 
         public BallState State { get; private set; }
 
@@ -274,6 +350,7 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            var stepStartTime = _simulationTime;
             BallIntegrator.Step(State, deltaSeconds, _parameters);
             _completedSteps++;
             _simulationTime += deltaSeconds;
@@ -284,19 +361,49 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            if (TryNetPlaneCrossing(State.PreviousPosition, State.Position, out var crossing))
-            {
-                NetPlaneCrossed?.Invoke(new NetPlaneCrossingEvent(crossing));
-            }
-
             var hasGround = EnvironmentCollision.TryGround(State, _groundHeight, out var groundHit);
             var hasNet = EnvironmentCollision.TryNet(State, _net, out var netHit);
-            var hasPlayer = TryFindEarliestPlayerContact(deltaSeconds, out var playerCandidate, out var playerHit);
+            var hasCrossing = TryNetPlaneCrossing(
+                State.PreviousPosition,
+                State.Position,
+                out var crossing,
+                out var crossingFraction);
+            var hasPlayer = TryFindEarliestPlayerContact(
+                deltaSeconds,
+                stepStartTime,
+                out var playerCandidate,
+                out var playerHit,
+                out var playerResolution,
+                out var contactSimulationTime);
             var environmentFraction = hasGround && (!hasNet || groundHit.TimeFraction <= netHit.TimeFraction)
                 ? groundHit.TimeFraction
                 : hasNet ? netHit.TimeFraction : float.PositiveInfinity;
+            var playerFraction = hasPlayer ? playerHit.TimeFraction : float.PositiveInfinity;
+            var physicalFraction = Math.Min(environmentFraction, playerFraction);
+            if (hasCrossing && crossingFraction < physicalFraction)
+            {
+                var crossingEvent = new NetPlaneCrossingEvent(crossing);
+                NetPlaneCrossed?.Invoke(crossingEvent);
+                if (crossingEvent.IsRemainingStepConsumed)
+                {
+                    UpdateMaximumSpeed();
+                    return;
+                }
+            }
+
             if (hasPlayer && playerHit.TimeFraction <= environmentFraction)
             {
+                if (playerResolution.Disposition == BallContactDisposition.Fault)
+                {
+                    PlayerContactRejected?.Invoke(new PlayerContactRejectedEvent(
+                        playerCandidate,
+                        playerHit,
+                        contactSimulationTime,
+                        playerResolution.Reason));
+                    UpdateMaximumSpeed();
+                    return;
+                }
+
                 var physical = ContactResponse.Apply(State, playerHit, playerCandidate.ResponseParameters);
                 var technique = TechniqueControlPolicy.Apply(new TechniqueControlInput(
                     playerCandidate.Action,
@@ -306,7 +413,12 @@ namespace Volleyball.Presentation
                     playerCandidate.PlayerTechnique,
                     playerHit.Centeredness));
                 ContactResponse.ApplyTechniqueVelocity(State, playerHit, technique.FinalOutgoing);
-                PlayerContact?.Invoke(new PlayerBallContactEvent(playerCandidate, playerHit, physical, technique));
+                PlayerContact?.Invoke(new PlayerBallContactEvent(
+                    playerCandidate,
+                    playerHit,
+                    contactSimulationTime,
+                    physical,
+                    technique));
             }
             else if (hasGround && (!hasNet || groundHit.TimeFraction <= netHit.TimeFraction))
             {
@@ -322,13 +434,16 @@ namespace Volleyball.Presentation
                 EnvironmentContact?.Invoke(netHit);
             }
 
-            _maximumSpeed = Math.Max(_maximumSpeed, State.Velocity.Magnitude);
+            UpdateMaximumSpeed();
         }
 
         private bool TryFindEarliestPlayerContact(
             float deltaSeconds,
+            float stepStartTime,
             out BallContactCandidate earliestCandidate,
-            out SweptBallHit earliestHit)
+            out SweptBallHit earliestHit,
+            out BallContactResolution earliestResolution,
+            out float earliestContactSimulationTime)
         {
             _contactCandidates.Clear();
             foreach (var source in _contactSources)
@@ -338,10 +453,20 @@ namespace Volleyball.Presentation
 
             earliestCandidate = default;
             earliestHit = default;
+            earliestResolution = default;
+            earliestContactSimulationTime = 0f;
             var found = false;
             foreach (var candidate in _contactCandidates)
             {
-                if (!SweptBallCollision.TryFindContact(State, candidate.Surface, deltaSeconds, out var hit) ||
+                if (!SweptBallCollision.TryFindContact(State, candidate.Surface, deltaSeconds, out var hit))
+                {
+                    continue;
+                }
+
+                var contactSimulationTime = stepStartTime + (deltaSeconds * hit.TimeFraction);
+                var resolution = ContactCandidateResolver?.Invoke(candidate, hit, contactSimulationTime) ??
+                                 BallContactResolution.Accept();
+                if (resolution.Disposition == BallContactDisposition.Ignore ||
                     found && hit.TimeFraction >= earliestHit.TimeFraction)
                 {
                     continue;
@@ -350,9 +475,16 @@ namespace Volleyball.Presentation
                 found = true;
                 earliestCandidate = candidate;
                 earliestHit = hit;
+                earliestResolution = resolution;
+                earliestContactSimulationTime = contactSimulationTime;
             }
 
             return found;
+        }
+
+        private void UpdateMaximumSpeed()
+        {
+            _maximumSpeed = Math.Max(_maximumSpeed, State.Velocity.Magnitude);
         }
 
         public static bool TryNetPlaneCrossing(
