@@ -154,10 +154,17 @@ namespace Volleyball.Domain.Replay
             }
 
             Required(SourceScene, nameof(SourceScene));
-            if (!DateTime.TryParse(CapturedAtUtc, CultureInfo.InvariantCulture,
-                    DateTimeStyles.RoundtripKind, out _))
+            if (!DateTime.TryParseExact(
+                    CapturedAtUtc,
+                    "O",
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.RoundtripKind,
+                    out var capturedAtUtc) ||
+                capturedAtUtc.Kind != DateTimeKind.Utc ||
+                !CapturedAtUtc.EndsWith("Z", StringComparison.Ordinal))
             {
-                throw new MatchReplayValidationException("CapturedAtUtc must be an ISO-8601 timestamp.");
+                throw new MatchReplayValidationException(
+                    "CapturedAtUtc must be a UTC ISO-8601 round-trip timestamp ending in Z.");
             }
 
             Finite(SampleIntervalSecondsValue, nameof(SampleIntervalSecondsValue));
@@ -253,7 +260,6 @@ namespace Volleyball.Domain.Replay
 
             var previousTime = float.NegativeInfinity;
             var previousSnapshotIndex = -1;
-            var previousSnapshotEventSequence = -1;
             for (var index = 0; index < Events.Count; index++)
             {
                 var replayEvent = Events[index] ?? throw new MatchReplayValidationException("Events cannot contain null.");
@@ -277,16 +283,8 @@ namespace Volleyball.Domain.Replay
                         "Same-time events must advance snapshot order.");
                 }
 
-                if (replayEvent.SimulationTimeSeconds == previousTime &&
-                    eventSnapshot.EventSequence <= previousSnapshotEventSequence)
-                {
-                    throw new MatchReplayValidationException(
-                        "Same-time events must advance referenced snapshot EventSequence.");
-                }
-
                 previousTime = replayEvent.SimulationTimeSeconds;
                 previousSnapshotIndex = replayEvent.SnapshotIndex;
-                previousSnapshotEventSequence = eventSnapshot.EventSequence;
             }
         }
 

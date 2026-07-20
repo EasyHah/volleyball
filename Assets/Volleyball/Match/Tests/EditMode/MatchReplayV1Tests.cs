@@ -113,25 +113,30 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Validate_RejectsSameTimeEventsWhoseSnapshotsAreInReverseEventSequence()
+        public void Validate_RejectsSameTimeSnapshotsWhoseEventSequenceIsReversed()
         {
             var replay = ReplayFixture.CreateValid();
             replay.Snapshots.Add(ReplayFixture.CreateSnapshot(0f, eventSequence: 2));
-            replay.Events.Add(new MatchReplayEventV1
-            {
-                Kind = "Serve",
-                SimulationTimeSeconds = 0f,
-                SnapshotIndex = 1,
-                Team = "Blue"
-            });
             replay.Snapshots[0].EventSequence = 3;
-            replay.Events[0].SnapshotIndex = 0;
-            replay.Events[1].SnapshotIndex = 1;
 
             Assert.That(
                 () => replay.Seal(),
                 Throws.TypeOf<MatchReplayValidationException>()
                     .With.Message.Contains("EventSequence"));
+        }
+
+        [TestCase("2026-07-20T00:00:00")]
+        [TestCase("2026-07-20T00:00:00+00:00")]
+        [TestCase("07/20/2026 00:00:00Z")]
+        public void Seal_RejectsCapturedAtUtcThatIsNotCanonicalUtcRoundTrip(string capturedAtUtc)
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.CapturedAtUtc = capturedAtUtc;
+
+            Assert.That(
+                () => replay.Seal(),
+                Throws.TypeOf<MatchReplayValidationException>()
+                    .With.Message.Contains("UTC ISO-8601"));
         }
 
         [Test]
