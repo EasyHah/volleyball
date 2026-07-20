@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Runtime.Serialization;
 using System.Security.Cryptography;
 using System.Text;
@@ -28,6 +29,9 @@ namespace Volleyball.Domain.Replay
 
         [DataMember(Name = "formatVersion", Order = 1)]
         private int _formatVersion = FormatVersion;
+
+        [IgnoreDataMember]
+        private bool _hasFormatVersion = true;
 
         [DataMember(Name = "sourceScene", Order = 2)]
         public string SourceScene { get; set; }
@@ -64,6 +68,19 @@ namespace Volleyball.Domain.Replay
 
         public int ReplayFormatVersion => _formatVersion;
 
+        [OnDeserializing]
+        private void OnDeserializing(StreamingContext context)
+        {
+            _formatVersion = 0;
+            _hasFormatVersion = false;
+        }
+
+        [OnDeserialized]
+        private void OnDeserialized(StreamingContext context)
+        {
+            _hasFormatVersion = _formatVersion != 0;
+        }
+
         public void Seal()
         {
             ValidatePayload();
@@ -87,6 +104,12 @@ namespace Volleyball.Domain.Replay
 
         internal string CanonicalPayloadJson()
         {
+            var canonicalEvents = new List<MatchReplayEventV1>(Events.Count);
+            for (var index = 0; index < Events.Count; index++)
+            {
+                canonicalEvents.Add(Events[index].CanonicalCopy());
+            }
+
             return MatchReplayJson.SerializeCanonicalPayload(new MatchReplayCanonicalPayloadV1
             {
                 FormatVersion = _formatVersion,
@@ -98,7 +121,7 @@ namespace Volleyball.Domain.Replay
                 Players = Players,
                 InitialState = InitialState,
                 Snapshots = Snapshots,
-                Events = Events,
+                Events = canonicalEvents,
                 IsComplete = IsComplete
             });
         }
@@ -119,6 +142,11 @@ namespace Volleyball.Domain.Replay
 
         private void ValidatePayload()
         {
+            if (!_hasFormatVersion)
+            {
+                throw new MatchReplayValidationException("formatVersion is required.");
+            }
+
             if (_formatVersion != FormatVersion)
             {
                 throw new MatchReplayValidationException(
@@ -215,6 +243,7 @@ namespace Volleyball.Domain.Replay
             }
 
             var previousTime = float.NegativeInfinity;
+            var previousSnapshotIndex = -1;
             for (var index = 0; index < Events.Count; index++)
             {
                 var replayEvent = Events[index] ?? throw new MatchReplayValidationException("Events cannot contain null.");
@@ -224,7 +253,22 @@ namespace Volleyball.Domain.Replay
                     throw new MatchReplayValidationException("Event simulation times must be monotonic.");
                 }
 
+                var eventSnapshot = Snapshots[replayEvent.SnapshotIndex];
+                if (replayEvent.SimulationTimeSeconds != eventSnapshot.SimulationTimeSeconds)
+                {
+                    throw new MatchReplayValidationException(
+                        "Event must reference a snapshot at the same simulation time.");
+                }
+
+                if (replayEvent.SimulationTimeSeconds == previousTime &&
+                    replayEvent.SnapshotIndex <= previousSnapshotIndex)
+                {
+                    throw new MatchReplayValidationException(
+                        "Same-time events must advance snapshot order.");
+                }
+
                 previousTime = replayEvent.SimulationTimeSeconds;
+                previousSnapshotIndex = replayEvent.SnapshotIndex;
             }
         }
 
@@ -575,6 +619,28 @@ namespace Volleyball.Domain.Replay
                 }
             }
         }
+
+        internal MatchReplayDecisionV1 CanonicalCopy()
+        {
+            var weights = new Dictionary<string, float>(StringComparer.Ordinal);
+            foreach (var weight in Weights.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                weights.Add(weight.Key, weight.Value);
+            }
+
+            return new MatchReplayDecisionV1
+            {
+                Stage = Stage,
+                Team = Team,
+                Action = Action,
+                PredictedBallTarget = PredictedBallTarget,
+                AvailableSeconds = AvailableSeconds,
+                Weights = weights,
+                SelectedPlayerId = SelectedPlayerId,
+                SelectedAction = SelectedAction,
+                Candidates = Candidates
+            };
+        }
     }
 
     [DataContract]
@@ -602,6 +668,19 @@ namespace Volleyball.Domain.Replay
             {
                 Decision.Validate(playerIds);
             }
+        }
+
+        internal MatchReplayEventV1 CanonicalCopy()
+        {
+            return new MatchReplayEventV1
+            {
+                Kind = Kind,
+                SimulationTimeSeconds = SimulationTimeSeconds,
+                SnapshotIndex = SnapshotIndex,
+                Team = Team,
+                PlayerId = PlayerId,
+                Decision = Decision == null ? null : Decision.CanonicalCopy()
+            };
         }
     }
 }
