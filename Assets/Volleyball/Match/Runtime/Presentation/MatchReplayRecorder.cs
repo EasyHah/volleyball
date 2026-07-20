@@ -15,6 +15,7 @@ namespace Volleyball.Presentation
         private SimulatedBall _ball;
         private List<PrototypePlayerAgent> _players;
         private MatchReplayV1 _replay;
+        private float _captureStartTime;
         private int _nextSampleIndex;
         private int _eventSequence;
         private bool _capturing;
@@ -49,6 +50,7 @@ namespace Volleyball.Presentation
             }
 
             _replay = CreateReplay();
+            _captureStartTime = _ball.SimulationTime;
             _nextSampleIndex = 1;
             _eventSequence = 0;
             IsComplete = false;
@@ -113,13 +115,7 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            var scheduledTime = _nextSampleIndex * MatchReplayV1.SampleIntervalSeconds;
-            while (simulationTime >= scheduledTime)
-            {
-                CaptureSnapshot(scheduledTime);
-                _nextSampleIndex++;
-                scheduledTime = _nextSampleIndex * MatchReplayV1.SampleIntervalSeconds;
-            }
+            CaptureScheduledSamplesThrough(simulationTime);
         }
 
         private MatchReplayV1 CreateReplay()
@@ -173,6 +169,7 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            CaptureScheduledSamplesThrough(replayEvent.SimulationTimeSeconds);
             var snapshotIndex = ForceSnapshot(replayEvent.SimulationTimeSeconds);
             _replay.Events.Add(new MatchReplayEventV1
             {
@@ -222,6 +219,7 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            CaptureScheduledSamplesThrough(simulationTime);
             var snapshotIndex = ForceSnapshot(simulationTime);
             _replay.Events.Add(new MatchReplayEventV1
             {
@@ -241,6 +239,23 @@ namespace Volleyball.Presentation
         private int ForceSnapshot(float simulationTime)
         {
             return CaptureSnapshot(simulationTime);
+        }
+
+        private void CaptureScheduledSamplesThrough(float simulationTime)
+        {
+            var scheduledTime = ScheduledSampleTime(_nextSampleIndex);
+            while (scheduledTime <= simulationTime)
+            {
+                CaptureSnapshot(scheduledTime);
+                _nextSampleIndex++;
+                scheduledTime = ScheduledSampleTime(_nextSampleIndex);
+            }
+        }
+
+        private float ScheduledSampleTime(int sampleIndex)
+        {
+            return (float)(_captureStartTime +
+                (sampleIndex * (double)MatchReplayV1.SampleIntervalSeconds));
         }
 
         private int CaptureSnapshot(float simulationTime)

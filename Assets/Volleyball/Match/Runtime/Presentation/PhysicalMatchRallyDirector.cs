@@ -966,7 +966,7 @@ namespace Volleyball.Presentation
                 ReplayContactAccepted,
                 new ReplayContactEvent(
                     contact.Candidate.Action == TechniqueAction.Block ? "Block" : "Contact",
-                    _ball.SimulationTime,
+                    contact.ContactSimulationTime,
                     actorId.Team,
                     StableId(actorId),
                     contact.Candidate.Action));

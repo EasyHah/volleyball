@@ -37,7 +37,9 @@ namespace Volleyball.PlayModeTests
             Assert.That(replay.Players, Has.Count.EqualTo(12));
             Assert.That(replay.Players.Select(player => player.PlayerId).Distinct().Count(), Is.EqualTo(12));
             Assert.That(replay.Snapshots, Has.Count.GreaterThanOrEqualTo(2));
+            Assert.That(replay.Events.First().Kind, Is.EqualTo("Serve"));
             Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Serve"));
+            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Contact"));
             var decisions = replay.Events.Where(replayEvent => replayEvent.Kind == "Decision").ToList();
             Assert.That(decisions, Is.Not.Empty);
             Assert.That(decisions, Has.All.Matches<MatchReplayEventV1>(replayEvent =>
@@ -63,6 +65,10 @@ namespace Volleyball.PlayModeTests
             var sawExcludedCandidate = false;
             foreach (var decisionEvent in decisions)
             {
+                Assert.That(decisionEvent.Decision.SelectedPlayerId, Is.EqualTo(decisionEvent.PlayerId));
+                Assert.That(decisionEvent.Decision.Candidates,
+                    Has.Some.Matches<MatchReplayCandidateScoreV1>(candidate =>
+                        candidate.PlayerId == decisionEvent.Decision.SelectedPlayerId && candidate.IsFeasible));
                 foreach (var candidate in decisionEvent.Decision.Candidates)
                 {
                     var ability = abilities[candidate.PlayerId];
