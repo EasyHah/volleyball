@@ -14,6 +14,108 @@ using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
+    public sealed class ReplayDecisionEvent
+    {
+        private ReplayDecisionEvent(
+            float simulationTimeSeconds,
+            RallyDecisionStage stage,
+            TeamId team,
+            float availableSeconds,
+            SimVector3 predictedBallTarget,
+            RallyTacticalWeights weights,
+            TeamRallyDecision decision)
+        {
+            SimulationTimeSeconds = simulationTimeSeconds;
+            Stage = stage;
+            Team = team;
+            AvailableSeconds = availableSeconds;
+            PredictedBallTarget = predictedBallTarget;
+            Weights = weights;
+            SelectedPlayer = decision.Actor;
+            SelectedAction = decision.Action;
+            Candidates = new List<RallyDecisionCandidate>(decision.Candidates).AsReadOnly();
+        }
+
+        public float SimulationTimeSeconds { get; }
+        public RallyDecisionStage Stage { get; }
+        public TeamId Team { get; }
+        public float AvailableSeconds { get; }
+        public SimVector3 PredictedBallTarget { get; }
+        public RallyTacticalWeights Weights { get; }
+        public PlayerId SelectedPlayer { get; }
+        public TechniqueAction SelectedAction { get; }
+        public IReadOnlyList<RallyDecisionCandidate> Candidates { get; }
+
+        internal static ReplayDecisionEvent Create(
+            float simulationTimeSeconds,
+            RallyDecisionStage stage,
+            TeamId team,
+            float availableSeconds,
+            SimVector3 predictedBallTarget,
+            RallyTacticalWeights weights,
+            TeamRallyDecision decision)
+        {
+            return new ReplayDecisionEvent(
+                simulationTimeSeconds,
+                stage,
+                team,
+                availableSeconds,
+                predictedBallTarget,
+                weights,
+                decision);
+        }
+    }
+
+    public class ReplaySimpleEvent
+    {
+        public ReplaySimpleEvent(string kind, float simulationTimeSeconds, TeamId team, StablePlayerId? playerId)
+        {
+            Kind = kind;
+            SimulationTimeSeconds = simulationTimeSeconds;
+            Team = team;
+            PlayerId = playerId;
+        }
+
+        public string Kind { get; }
+        public float SimulationTimeSeconds { get; }
+        public TeamId Team { get; }
+        public StablePlayerId? PlayerId { get; }
+    }
+
+    public sealed class ReplayContactEvent : ReplaySimpleEvent
+    {
+        public ReplayContactEvent(
+            string kind,
+            float simulationTimeSeconds,
+            TeamId team,
+            StablePlayerId? playerId,
+            TechniqueAction action)
+            : base(kind, simulationTimeSeconds, team, playerId)
+        {
+            Action = action;
+        }
+
+        public TechniqueAction Action { get; }
+    }
+
+    public sealed class ReplayRallyResolvedEvent : ReplaySimpleEvent
+    {
+        public ReplayRallyResolvedEvent(
+            float simulationTimeSeconds,
+            TeamId winningTeam,
+            StablePlayerId? scorerId,
+            StablePlayerId? errorPlayerId,
+            string reason)
+            : base("RallyResolved", simulationTimeSeconds, winningTeam, scorerId)
+        {
+            ErrorPlayerId = errorPlayerId;
+            Reason = reason;
+        }
+
+        public StablePlayerId? ErrorPlayerId { get; }
+        public string Reason { get; }
+    }
+
     public class PhysicalMatchRallyDirector : MonoBehaviour
     {
         private const float BaseMovementSpeed = 7f;
@@ -142,6 +244,34 @@ namespace Volleyball.Presentation
         public float CourtHalfLength => _configuration?.CourtHalfLength ?? CourtBuilder.HalfLength;
 
         public StablePlayerId CurrentServer => _set.ServerFor(_set.ServingSide);
+
+        public int HomeScore => _set == null ? 0 : _set.HomeScore;
+
+        public int AwayScore => _set == null ? 0 : _set.AwayScore;
+
+        public TeamId ServingTeam => _set == null ? TeamId.Blue : FromSide(_set.ServingSide);
+
+        public TeamId? PossessionTeam => _touchState?.PossessionTeam;
+
+        public StablePlayerId? LastTouchPlayer => _touchState?.LastPhysicalTouch.HasValue == true
+            ? StableId(_touchState.LastPhysicalTouch.Value)
+            : null;
+
+        public string ReplayRallyPhase => _restartScheduled
+            ? "Resolved"
+            : _touchState?.ContactWindow?.Action.ToString() ?? "Preparing";
+
+        public event Action<ReplayDecisionEvent> ReplayDecisionPlanned;
+
+        public event Action<ReplayContactEvent> ReplayContactAccepted;
+
+        public event Action<ReplaySimpleEvent> ReplayServeStarted;
+
+        public event Action<ReplaySimpleEvent> ReplayNetCrossed;
+
+        public event Action<ReplaySimpleEvent> ReplayGroundContact;
+
+        public event Action<ReplayRallyResolvedEvent> ReplayRallyResolved;
 
         public int HomeRotationOffset => _set == null ? 0 : _set.RotationOffsetFor(TeamSide.Home);
 
@@ -390,9 +520,9 @@ namespace Volleyball.Presentation
                 SimulationParameters);
             _ball.ResetBall(ToUnity(launch.StartPosition));
             _ball.Launch(ToUnity(launch.InitialVelocity));
+            var stableServer = _set.ServerFor(_set.ServingSide);
             if (_configuration.RosterSize == 6)
             {
-                var stableServer = _set.ServerFor(_set.ServingSide);
                 FindPlayer(stableServer).Rig.SetPose(StickFigurePose.Serve, 1f);
                 _set.RecordContact(stableServer, 0f);
                 _status = $"{stableServer.Value} SERVE to {receivingTeam}";
@@ -400,6 +530,9 @@ namespace Volleyball.Presentation
             _rallyActive = true;
             _restartScheduled = false;
 
+            NotifyReplay(
+                ReplayServeStarted,
+                new ReplaySimpleEvent("Serve", _ball.SimulationTime, FromSide(_set.ServingSide), stableServer));
             BeginPossessionDecision(receivingTeam, initialFlightSeconds);
         }
 
@@ -595,6 +728,16 @@ namespace Volleyball.Presentation
                 $"score={decision.Score.Total:0.00} reach={decision.Score.Reachability:0.00} " +
                 $"role={decision.Score.NominalRole:0.00} approach={decision.Score.Approach:0.00} " +
                 $"angle={decision.Score.Angle:0.00}");
+            NotifyReplay(
+                ReplayDecisionPlanned,
+                ReplayDecisionEvent.Create(
+                    _ball.SimulationTime,
+                    stage,
+                    team,
+                    availableSeconds,
+                    predictedBallCenter,
+                    _activeTacticalWeights,
+                    decision));
             return decision;
         }
 
@@ -819,6 +962,14 @@ namespace Volleyball.Presentation
                 $"actor={actorId.Role} action={contact.Candidate.Action} style={style} " +
                 $"touches={_touchState.CountedTeamTouches} quality={contact.Hit.Centeredness:0.00} " +
                 $"speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
+            NotifyReplay(
+                ReplayContactAccepted,
+                new ReplayContactEvent(
+                    contact.Candidate.Action == TechniqueAction.Block ? "Block" : "Contact",
+                    _ball.SimulationTime,
+                    actorId.Team,
+                    StableId(actorId),
+                    contact.Candidate.Action));
 
             switch (contact.Candidate.Action)
             {
@@ -982,6 +1133,13 @@ namespace Volleyball.Presentation
             }
 
             var last = _touchState?.LastPhysicalTouch;
+            NotifyReplay(
+                ReplayGroundContact,
+                new ReplaySimpleEvent(
+                    "GroundContact",
+                    _ball.SimulationTime,
+                    last.HasValue ? last.Value.Team : _touchState?.PossessionTeam ?? TeamId.Blue,
+                    last.HasValue ? StableId(last.Value) : null));
             if (!last.HasValue)
             {
                 var loser = _touchState?.PossessionTeam ?? FromSide(_set.ReceivingSide);
@@ -1045,6 +1203,9 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            NotifyReplay(
+                ReplayNetCrossed,
+                new ReplaySimpleEvent("NetCrossing", _ball.SimulationTime, receivingTeam, StableId(last)));
             BeginPossession(receivingTeam, ReceiveLeadTime());
         }
 
@@ -1095,6 +1256,14 @@ namespace Volleyball.Presentation
                 errorPlayer.HasValue ? StableId(errorPlayer.Value) : null);
             RenderScore();
             _status = $"{reason}  {_set.HomeScore}:{_set.AwayScore}";
+            NotifyReplay(
+                ReplayRallyResolved,
+                new ReplayRallyResolvedEvent(
+                    _ball.SimulationTime,
+                    FromSide(outcome.Winner),
+                    scorer.HasValue ? StableId(scorer.Value) : null,
+                    errorPlayer.HasValue ? StableId(errorPlayer.Value) : null,
+                    reason));
             Debug.Log(
                 $"[{_configuration.LogTag}] rally={reason} winner={outcome.Winner} " +
                 $"score={_set.HomeScore}:{_set.AwayScore}");
@@ -1428,6 +1597,11 @@ namespace Volleyball.Presentation
         private int NextContactGroup()
         {
             return _contactGroupSequence++;
+        }
+
+        private static void NotifyReplay<T>(Action<T> handler, T payload)
+        {
+            handler?.Invoke(payload);
         }
 
         private static int StablePlayerNumber(PlayerId player)

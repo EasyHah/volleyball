@@ -36,6 +36,14 @@ namespace Volleyball.Presentation
             ? _supportTargetPosition
             : _movementTargetPosition;
 
+        public string ReplayScheduledAction => _hasPhysicalBlockContact
+            ? TechniqueAction.Block.ToString()
+            : _hasSupportAction
+                ? _supportAction.ToString()
+                : _hasScheduledContact
+                    ? _scheduledAction.ToString()
+                    : "Ready";
+
         public float MovementShortfall { get; private set; }
 
         public float ScheduledMovementDistance { get; private set; }
