@@ -1,5 +1,7 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -16,9 +18,9 @@ namespace Volleyball.PlayModeTests
         public IEnumerator Recorder_CapturesOneFormalRally()
         {
             yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
-            var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
-            var ball = Object.FindFirstObjectByType<SimulatedBall>();
-            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
             Assert.That(director, Is.Not.Null);
             Assert.That(ball, Is.Not.Null);
             Assert.That(players, Has.Length.EqualTo(12));
@@ -55,6 +57,24 @@ namespace Volleyball.PlayModeTests
                 Is.EqualTo(replay.InitialState.HomeScore + replay.InitialState.AwayScore + 1));
             Assert.That(resolvedSnapshot.ServingTeam, Is.EqualTo(resolved.Team));
             Assert.DoesNotThrow(() => replay.Validate());
+
+            var outputDirectory = Path.Combine(
+                Path.GetDirectoryName(Application.dataPath),
+                "TestResults",
+                "decision-replay",
+                Guid.NewGuid().ToString("N"));
+            MatchReplayArtifactWriter.Write(outputDirectory, replay);
+            var jsonPath = Path.Combine(outputDirectory, "replay.json");
+            var htmlPath = Path.Combine(outputDirectory, "index.html");
+            Assert.That(File.Exists(jsonPath), Is.True);
+            Assert.That(File.Exists(htmlPath), Is.True);
+            Assert.DoesNotThrow(() => MatchReplayJson.Deserialize(File.ReadAllText(jsonPath)).Validate());
+            var html = File.ReadAllText(htmlPath);
+            Assert.That(html, Does.Contain("MatchReplayV1"));
+            Assert.That(html, Does.Contain("timeline"));
+            Assert.That(html, Does.Contain("score-panel"));
+            Assert.That(html, Does.Contain("event-marker"));
+            Assert.That(html, Does.Contain("replay.json"));
         }
 
         private static void AssertCandidateScores(
