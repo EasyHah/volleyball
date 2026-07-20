@@ -101,6 +101,40 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Validate_RejectsSameTimeSnapshotsWithEqualEventSequence()
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.Snapshots.Add(ReplayFixture.CreateSnapshot(0f, eventSequence: 0));
+
+            Assert.That(
+                () => replay.Seal(),
+                Throws.TypeOf<MatchReplayValidationException>()
+                    .With.Message.Contains("EventSequence"));
+        }
+
+        [Test]
+        public void Validate_RejectsSameTimeEventsWhoseSnapshotsAreInReverseEventSequence()
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.Snapshots.Add(ReplayFixture.CreateSnapshot(0f, eventSequence: 2));
+            replay.Events.Add(new MatchReplayEventV1
+            {
+                Kind = "Serve",
+                SimulationTimeSeconds = 0f,
+                SnapshotIndex = 1,
+                Team = "Blue"
+            });
+            replay.Snapshots[0].EventSequence = 3;
+            replay.Events[0].SnapshotIndex = 0;
+            replay.Events[1].SnapshotIndex = 1;
+
+            Assert.That(
+                () => replay.Seal(),
+                Throws.TypeOf<MatchReplayValidationException>()
+                    .With.Message.Contains("EventSequence"));
+        }
+
+        [Test]
         public void Seal_UsesTheSameChecksumWhenDecisionWeightsHaveDifferentInsertionOrder()
         {
             var first = ReplayFixture.CreateValidWithDecisionWeights("attack", "reachability");
