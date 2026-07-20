@@ -28,7 +28,7 @@
 - Create `Assets/Volleyball/Match/Runtime/Domain/Replay/MatchReplayJson.cs`
 - Create `Assets/Volleyball/Match/Tests/EditMode/MatchReplayV1Tests.cs`
 
-- [ ] **Step 1: Write failing tests for the contract**
+- [x] **Step 1: Write failing tests for the contract**
 
 Create a fixture with twelve distinct player records, one snapshot and one `RallyResolved` event. Test JSON round-trip, tampered checksum, non-monotonic event time and nonexistent event snapshot index.
 
@@ -49,7 +49,7 @@ public void Validate_RejectsAnEventWhoseSnapshotDoesNotExist()
 }
 ```
 
-- [ ] **Step 2: Verify the tests fail**
+- [x] **Step 2: Verify the tests fail**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -61,7 +61,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compile failure because replay contract types do not exist.
 
-- [ ] **Step 3: Implement the smallest valid contract**
+- [x] **Step 3: Implement the smallest valid contract**
 
 Define `[DataContract]` classes for metadata, players, snapshots, ball/player state, event, decision and candidate score. `MatchReplayV1.FormatVersion` is `1`; `SampleIntervalSeconds` is `0.1f`. `Validate()` rejects unsupported versions, non-finite values, missing/duplicate player IDs, non-monotonic times, invalid snapshot indexes, unknown event players and checksum mismatch. `Seal()` computes SHA-256 over canonical UTF-8 payload without the checksum. `MatchReplayJson` uses `DataContractJsonSerializer` like `Assets/Volleyball/Shared/Runtime/ContractJson.cs`.
 
@@ -81,11 +81,11 @@ public static class MatchReplayJson
 }
 ```
 
-- [ ] **Step 4: Verify green**
+- [x] **Step 4: Verify green**
 
 Run Step 2 command. Expected: XML reports every added replay contract test with `failed="0"`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/Domain/Replay Assets/Volleyball/Match/Tests/EditMode/MatchReplayV1Tests.cs
@@ -99,7 +99,7 @@ git commit -m "feat: add match replay v1 contract"
 - Create `Assets/Volleyball/Match/Runtime/Presentation/MatchReplayRecorder.cs`
 - Create `Assets/Volleyball/Match/Tests/PlayMode/FormalSixVsSixReplayPlayModeTests.cs`
 
-- [ ] **Step 1: Write the failing recorder test**
+- [x] **Step 1: Write the failing recorder test**
 
 Load `FormalIndoor6v6`, attach a recorder before serve, wait for its completion, then assert it contains 12 players, 10 Hz snapshots, a serve, a decision with six candidates and `RallyResolved`.
 
@@ -117,7 +117,7 @@ public IEnumerator Recorder_CapturesOneFormalRally()
 }
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -129,7 +129,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compile failure because recorder and replay events do not exist.
 
-- [ ] **Step 3: Add read-only director boundaries**
+- [x] **Step 3: Add read-only director boundaries**
 
 Add immutable payloads and events after existing behavior accepts a decision, contact, crossing, ground event, serve start and rally resolution. Add score, server, rotation and possession read-only accessors. Keep `DecisionPlanned` unchanged. Never change planner result, ball response, scoring, scheduling or time scale.
 
@@ -141,11 +141,11 @@ public int HomeScore => _set.HomeScore;
 public int AwayScore => _set.AwayScore;
 ```
 
-- [ ] **Step 4: Implement `MatchReplayRecorder`**
+- [x] **Step 4: Implement `MatchReplayRecorder`**
 
 Subscribe to the new events. Force an initial snapshot, then in `Update()` sample whenever ball simulation time reaches the next 0.1-second boundary. Before each event, force a snapshot. Include ball position/velocity, twelve player transform position/yaw/action/movement target, score/server/rotation/possession. At a decision, copy predicted target, available seconds, weights, selected actor/action and all candidates. Mark `ConsecutiveTouch` when infeasible despite nonnegative reachability, otherwise `Unreachable` when negative. On resolution write final event/snapshot and complete.
 
-- [ ] **Step 5: Verify green and commit**
+- [x] **Step 5: Verify green and commit**
 
 Run Step 2 command. Expected: XML reports `total="1" passed="1" failed="0"`.
 
@@ -162,7 +162,7 @@ git commit -m "feat: capture formal rally replay state"
 - Create `Assets/Volleyball/Match/Runtime/Presentation/MatchReplayHtmlWriter.cs`
 - Modify `Assets/Volleyball/Match/Tests/PlayMode/FormalSixVsSixReplayPlayModeTests.cs`
 
-- [ ] **Step 1: Write a failing artifact test**
+- [x] **Step 1: Write a failing artifact test**
 
 After capture, write output to a unique ignored `TestResults/decision-replay/` child. Assert `replay.json` and `index.html` exist; assert HTML contains `MatchReplayV1`, `timeline`, `score-panel`, `event-marker` and `replay.json`.
 
@@ -172,19 +172,19 @@ Assert.That(File.Exists(Path.Combine(outputDirectory, "replay.json")), Is.True);
 Assert.That(File.ReadAllText(Path.Combine(outputDirectory, "index.html")), Does.Contain("score-panel"));
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run Task 2's command. Expected: compile failure because `MatchReplayArtifactWriter` does not exist.
 
-- [ ] **Step 3: Implement the viewer writer**
+- [x] **Step 3: Implement the viewer writer**
 
 Write `replay.json` with `MatchReplayJson.Serialize`. Generate one HTML file with inline CSS/JavaScript that loads sibling JSON, rejects other format versions, renders a 9x18m top-down SVG court and 12 labels (`BLUE/ORANGE P1-P6 ROLE`), ball and facing vectors. Render score, server, rotation, phase and time. Implement play/pause, 0.5x/1x/2x, range timeline, prior/next event and event markers. Interpolate only between ordinary snapshots. At a decision event, pause and show all candidates with component scores and selected/unreachable/consecutive-touch status.
 
-- [ ] **Step 4: Verify green and manually inspect**
+- [x] **Step 4: Verify green and manually inspect**
 
 Run Task 2's command. Expected: XML `failed="0"` and `TestResults/decision-replay/<run>/` contains JSON/HTML. Open HTML locally and compare one decision table to the JSON event; confirm 12 labels, event pause and score display.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/Presentation/MatchReplayHtmlWriter.cs \
@@ -199,15 +199,15 @@ git commit -m "feat: add interactive match replay viewer"
 - Modify `docs/changes/README.md`
 - Modify `docs/development.md`
 
-- [ ] **Step 1: Document the Match-only change**
+- [x] **Step 1: Document the Match-only change**
 
 Record V1 compatibility, ignored artifact location, 10 Hz/event sampling, HTML controls, no Shared/Career/Bootstrap change, and deferred full-set capture/future Unity consumer.
 
-- [ ] **Step 2: Document execution**
+- [x] **Step 2: Document execution**
 
 Add formal replay PlayMode command and local HTML path to development docs. State `TestResults/` remains diagnostic and ignored.
 
-- [ ] **Step 3: Run focused verification**
+- [x] **Step 3: Run focused verification**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -224,7 +224,7 @@ rg -n 'test-run|total=|passed=|failed=|result=' "$PWD/TestResults/MatchReplayV1-
 
 Expected: both XML files report `failed="0"`.
 
-- [ ] **Step 4: Run full suite and commit docs**
+- [x] **Step 4: Run full suite and commit docs**
 
 Run full EditMode and PlayMode commands with separate XML outputs; inspect both for `failed="0"`. Then:
 

@@ -172,6 +172,38 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
   -logFile "$PWD/TestResults/Formal6v6.log"
 ```
 
+## Match Replay V1 artifacts
+
+The formal 6v6 replay test captures its first completed rally as validated
+`MatchReplayV1` JSON and writes an interactive viewer beside it under the ignored
+`TestResults/decision-replay/<run>/` directory. Sampling uses simulation time at
+10 Hz plus an exact snapshot for each recorded event. These files are local
+diagnostics; do not commit `TestResults/` or treat it as a save-game location.
+
+Run the replay contract and artifact checks with Unity `6000.0.43f1`:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+mkdir -p TestResults
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
+  -testFilter "Volleyball.EditModeTests.MatchReplayV1Tests" \
+  -testResults "$PWD/TestResults/MatchReplayV1.xml" \
+  -logFile "$PWD/TestResults/MatchReplayV1.log"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testFilter "Volleyball.PlayModeTests.FormalSixVsSixReplayPlayModeTests" \
+  -testResults "$PWD/TestResults/FormalReplay.xml" \
+  -logFile "$PWD/TestResults/FormalReplay.log"
+find "$PWD/TestResults/decision-replay" -mindepth 2 -maxdepth 2 \
+  -name index.html -print
+```
+
+Open one printed `index.html` path in a browser. The page loads its sibling
+`replay.json`; direct local-file viewing also has an embedded fallback. Confirm
+twelve player labels, score/server/rotation state, event navigation, decision
+auto-pause and the six-row candidate table. Readers reject any format version
+other than `1`; a future contract change must add a new version rather than
+silently changing V1 semantics.
+
 ## Physics-contact upgrade baseline
 
 The controlled-arc prototype remains the comparison baseline while the physical

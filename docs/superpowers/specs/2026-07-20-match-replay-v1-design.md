@@ -1,7 +1,7 @@
 # Match Replay V1 Design
 
 **Date:** 2026-07-20
-**Status:** Proposed
+**Status:** Implemented
 
 ## Goal
 
