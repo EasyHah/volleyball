@@ -26,6 +26,10 @@
 - `contextHash` 的 SHA-256 小写十六进制校验；
 - 当前只接受 `contractVersion == 1`。
 
+`origin/main@4bf9e4b` 的 `FormalIndoor6v6` 已经用双方各六人的 V1 上下文跑完 25 分单局，并为 12 名
+球员创建结果统计；3v3 与 6v6 共用 `PhysicalMatchRallyDirector`。这证明现有身份、比分和结果列表可作为
+升级起点，但不增加任何 V1 字段或持久化保证。
+
 当前 `MatchContextV1` 的哈希实现是该 V1 自身的固定实现：包含显示名、数值枚举和 IEEE `float` 的 round-trip 文本。当前 `PlayerAbilitySnapshotV1` 和 `PlayerMatchStatsV1.Workload` 也使用 `float`。这些是现状，不等于本文第 10 节的正式规范哈希已经实现。
 
 ### 2.2 不得假设当前 V1 已有的字段
@@ -33,6 +37,12 @@
 当前 `MatchContextV1` **没有**以下字段：`contentVersion`、`rulesetVersion`、`matchSimulationVersion`、`matchRandomAlgorithmVersion`、直接比赛/快速模拟模式、赛制、赛事与轮次、比赛重要性、体能、伤病限制、首发状态、战术职责、轮转、赛前重点。
 
 当前 `MatchResultV1` **没有** `resultHash`、结束状态（含 `abandoned`）、逐局比分、上场时间、回合数、移动/起跳/落地负荷、结构化伤病观察、战术/轮转/关键分信号或结构化关键事件。
+
+当前 `FormalSixVsSixRallyBootstrap` 还会在场景内创建硬编码沙盒上下文，并按位置模板覆盖上下文中的
+能力值；它不接受已持久化的 `PendingMatch`，也没有跨场景异步 runner。能够全 AI 自动完成 6v6 单局
+不等于已经支持 Career 数值、玩家控制、恢复或结算。当前物理 Director 还固定以 `7351` 构造 AI
+planner：物理战术 planner 会消费这个固定值，团队决策 planner 尚未使用；两者均不读取已序列化的
+`MatchContextV1.seed`，因此该上下文 seed 没有实际驱动物理 AI。
 
 `PlayerId`、`TeamId` 只保证字符串格式与值相等；稳定 ID 的注册、不可复用、tombstone 和内容资产校验仍待实现。Match 原型里的场上槽位 ID 不得直接写入生涯存档。
 
@@ -54,11 +64,15 @@ Shared V1 并同步返回结果。这些类型只代表原型，不得写入正�
 2. 定义包含 `resultHash`、结束状态、逐局与结构化负荷事实的新版 `MatchResult`。
 3. 将跨模块数值改为带明确量纲的定点整数，例如毫米、毫秒、0–10000 能力基点和整数负荷；禁止在正式规范哈希载荷中使用浮点数。
 4. 实现第 10 节的规范 JSON、golden bytes 和 golden hashes。
-5. 为 Career 与 FakeMatch 提供双方读取的同一组 fixture；未来直接比赛与快速模拟必须复用同一结构，
-   各自在首次接入时新增自身 fixture 和适用版本。
+5. 为 Career 与 FakeMatch 提供双方读取的 6v6 fixture，冻结双方各六人并返回 12 人事实；同时保留一组
+   3v3 契约回归 fixture。未来直接比赛与快速模拟必须复用同一结构，各自在首次接入时新增自身 fixture
+   和适用版本。
 6. 明确 V1 兼容策略。若 V1 已被持久化或被外部调用方使用，不能原地改字段语义，必须新增契约版本和显式迁移/只读解析器；若在任何可分发存档产生前废弃 V1，也必须以变更文档、fixture 更新和双方模块联合测试记录该决定。
 
 门槛完成前，Career 可以实现与测试本地档案、通用快照、CAS 仓储和不依赖正式比赛 DTO 的周状态，但不得声称比赛恢复与幂等结算闭环已经完成。
+
+12 人 fixture 只改变固定契约数据的基数，不引入物理比赛或快速模拟算法；它用于避免首闭环完成后因
+正式生涯 6v6 阵容而立刻迁移 `PendingMatch`、结果哈希和回执结构，不视为扩大首里程碑玩法范围。
 
 ## 3. 本地身份、多生涯索引与磁盘布局
 
@@ -383,7 +397,9 @@ Domain 只通过 `IDeterministicRandom` 请求随机数，禁止直接使用时�
 `System.Random` 或无序集合迭代结果。
 
 生涯为每场比赛派生并冻结独立 `matchSeed`。确定性承诺覆盖生涯领域计算、由相同正式契约驱动的快速
-模拟，以及相同 `MatchResult` 下的生涯结算；不承诺 Unity 物理直接比赛逐帧重放。
+模拟，以及相同 `MatchResult` 下的生涯结算。未来物理接入必须让所有使用随机性的 AI planner 消费由
+该 seed 派生的子种子，纯确定性 planner 则删除无效参数，以锁定相同输入下的纯 AI 决策序列；不承诺
+Unity 物理直接比赛逐帧或最终比分重放。
 
 事件首次生成时立即持久化 `occurrenceId`、内容业务 ID、已解析参数和随机版本。恢复时复用这些值，不因内容顺序或配置更新重新抽取。插入无关事件、重排、重启和删除后重建不能扰动其他事件结果。
 
@@ -417,7 +433,7 @@ outcomeSummary
 - 完整、可反序列化的正式版 `MatchContext`，不是重新构建它所需的引用；
 - `sessionId`、创建它的 `operationId`、创建 `lineageId/revision`；
 - 全部适用版本轴及 `contextHash`；
-- 首个里程碑适用的 FakeMatch fixture ID 与 fixture 版本；
+- 首个里程碑适用的 6v6 FakeMatch fixture ID 与 fixture 版本，以及双方各六人的冻结身份；
 - 按方向聚合后的 `trainingEmphasis` 定点整数映射，以及独立的 `preMatchPriority`；
 - 本场已解析的具体数值和来源稳定 ID；
 - 对应赛程项 ID、槽位 ID和允许的执行模式。
@@ -672,7 +688,8 @@ Windows 文件测试至少覆盖首次创建、覆盖替换、杀死子进程后
 4. 启动扫描、替换异常裁决、隔离与孤儿重挂；
 5. 周状态机、键控随机和 `OperationReceipt`；
 6. 完成 Shared 升级门槛、`Career.MatchIntegration` DTO 映射和异步比赛端口；
-7. `PendingMatch`、`SettlementReceipt` 与 FakeMatch 联合闭环；真实直接比赛和快速模拟是后续消费者；
+7. `PendingMatch`、`SettlementReceipt` 与 12 人 6v6 FakeMatch 联合闭环；现有 `FormalIndoor6v6` 直接
+   runner 和快速模拟是后续消费者；
 8. 迁移器、恢复 UI、日志隐私和完整失败注入矩阵。
 
 ### 16.2 “已完成”的最低证据

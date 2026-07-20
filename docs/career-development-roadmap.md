@@ -3,6 +3,7 @@
 - 状态：待双方评审
 - 适用范围：离线首版的首个一周技术闭环
 - Unity 基线目标：`6000.3.20f1`
+- 已同步上游基线：`origin/main@4bf9e4b`（2026-07-19 正式室内 6v6 单局）
 - 发布日期：无硬性日期；完成存档模型与本地持久化后再依据实际速度估算
 
 ## 1. 文档职责
@@ -43,6 +44,7 @@
                                       -> Input System 独立基线
                                           -> career-ui-vertical-slice
                                               -> career-recovery-build
+                                                  -> （里程碑完成后）career-formal-6v6-integration
 ```
 
 URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责人主导。它不阻塞纯 C# 的 Career Domain、Application 与 Persistence 工作，但必须在依赖 URP 的比赛场景或最终集成构建验收前完成。NavMesh 只有在 Match AI 出现真实调用方时才立项。
@@ -71,9 +73,12 @@ URP 必须在 Unity 升级完成后使用独立分支迁移，由 Match 负责�
 
 Unity 升级合并后，将该分支变基到最新 `main`，直接删除 `Academics`、`Social` 枚举值，并把相关测试
 改为只接受专项训练、力量训练、团队合练、休息和系统预留的比赛。该分支尚未形成需要兼容的正式存档，
-因此不保留“可反序列化但在领域入口拒绝”的旧枚举值。`CHG-005` 必须
-同步记录这次需求对齐；之后使用 `6000.3.20f1` 重跑完整 EditMode。只有代码、测试、变更记录和新基线
-证据全部一致才能合并，不得把旧枚举保留为“以后可能使用”的无调用方占位。
+因此不保留“可反序列化但在领域入口拒绝”的旧枚举值。该分支原有
+`CHG-20260717-005` 已与主线的 Match 完局记录发生编号冲突；变基时必须把文件、标题和索引统一重编号为
+变基当时尚未使用的唯一编号，并记录需求对齐与新基线提交；文档不通过文字“预留”尚未落盘的编号。
+之后使用 `6000.3.20f1` 重跑
+完整 EditMode。只有代码、测试、变更记录和新基线证据全部一致才能合并，不得把旧枚举保留为“以后
+可能使用”的无调用方占位。
 
 ### 3.3 当前 Career 耦合与目标程序集依赖
 
@@ -103,6 +108,30 @@ Career Domain 建立自有的八项 `0–10000` 整数能力模型；Shared 比�
 实现 Career 端口；Bootstrap 只组装实现，不复制映射规则。正式流程调用前必须已经耐久提交
 `PendingMatch`；取消或场景加载失败只返回错误并保留待处理比赛，不能伪造比赛结果。
 
+### 3.4 搭档最新 Match 基线与仍缺的接入条件
+
+截至 `origin/main@4bf9e4b`，Match 已经完成可结束的 3v3 单局、统一多角色 AI、触球合法性、物理拦网，
+以及 `FormalIndoor6v6` 的 25 分且领先 2 分单局。6v6 使用双方各六名球员的 `MatchContextV1`，并为全部
+12 人产生 `MatchResultV1` 统计；`PhysicalMatchRallyDirector` 已成为 3v3/6v6 共用的场景适配器。这些
+实现可以作为后续生涯正式比赛的真实生产者基线，不再把“是否能跑完 6v6 单局”列为 Career 风险。
+
+但当前 `FormalSixVsSixRallyBootstrap` 仍创建硬编码沙盒上下文：它保留上下文的稳定 `PlayerId` 和位置，
+却用 `AbilityFor(position)` 覆盖 `PlayerSnapshotV1.Ability`，因此生涯养成能力尚不会进入物理表现。当前
+3v3/6v6 还是全 AI 自动单局，运行时输入只覆盖相机切换；回合内的异步 AI 权重请求也不是整场
+`IMatchRunnerV*`。物理 Director 还以固定值 `7351` 构造双方 planner：`PhysicalRallyTacticPlanner` 会消费
+该固定值，`TeamRallyDecisionPlanner` 则尚未使用；二者都没有读取 `MatchContextV1.seed`。Match 只输出 V1
+的 `points/contacts/errors/workload`，Shared 没有 `resultHash` 或详细
+技术事实，也没有证明从 Career 的 `PendingMatch` 跨场景启动并返回结果。当前 6v6 自动化验证还是
+macOS、Unity `6000.0.43f1`；Windows x64 实机输入与性能尚未完成。因此“比赛玩法已存在”不等于 Shared
+门禁或 Career 接入已经完成，首个一周闭环仍先使用 12 人 6v6 fixture 的 FakeMatch。
+
+这里把原先的 3v3 固定结果样例调整为 12 人 6v6 数据形状，只增加 fixture 中的阵容与事实条目，不增加
+物理比赛、快速模拟算法、多局制或 UI 玩法；目的是让首次正式 Shared 契约直接覆盖最终生涯比赛阵容，
+避免闭环完成后立刻重做上下文、存档与幂等回执。3v3 仍作为兼容回归 fixture 保留。
+
+搭档新增的 MenShen 决策基准和 Newtonsoft 依赖只属于 Editor 工具。Career 不调用该网络客户端，Player
+构建不得包含 API key 或实时模型依赖；规范存档/契约哈希也不能直接改用 Newtonsoft 默认序列化。
+
 ## 4. 实施阶段
 
 ### 阶段 0A：锁定 Unity Editor
@@ -110,7 +139,8 @@ Career Domain 建立自有的八项 `0–10000` 整数能力模型；Shared 比�
 - 建议分支：`chore/unity-6000.3.20f1`
 - 负责人：双方共同确认，一人执行
 
-进入条件：路线文档已合并；两台开发机可安装精确版本；当前 `main` 的测试基线已记录。
+进入条件：路线文档已合并；两台开发机可安装精确版本；以 `main@4bf9e4b` 或其更新后继提交为唯一升级
+起点，当前 Match 基线的测试证据已记录。
 
 范围：只升级 Editor、必要的项目设置、包锁与兼容修复。不得同时迁移 URP、引入 Input System、修改玩法、调整 Shared 契约或批量整理资源。
 
@@ -121,7 +151,9 @@ Career Domain 建立自有的八项 `0–10000` 整数能力模型；Shared 比�
 
 - `ProjectVersion.txt` 精确锁定 `6000.3.20f1`，README、开发命令和变更记录一致；
 - 项目完成重导入且不存在由升级造成的编译错误；
-- 完整 EditMode、PlayMode 与 Windows x64 开发构建通过；
+- 完整 EditMode、PlayMode 与 Windows x64 开发构建通过；重点回归 3v3、`FormalIndoor6v6`、12 人结果
+  校验和 Editor-only MenShen 程序集边界。上游记录的 `224/224` EditMode、`11/11` PlayMode 只作为
+  升级前参考，测试数下降必须解释，不能把未运行误报为通过；
 - 两位负责人确认场景、Prefab 与包锁中的变化都是升级所必需。
 
 ### 阶段 0B：协作基础设施基线
@@ -142,7 +174,8 @@ CI。当前仓库只有最小 `.gitattributes`，Unity Windows workflow 整个 j
 - `.unity`、`.prefab`、`.asset` 配置 UnityYAMLMerge，并在两台开发机验证相同的 merge driver；大型二进制
   资源进入 Git LFS，需要独占编辑的源资产标记 `lockable`，YAML 资产不进入 LFS；
 - 启用独立、非 `if: false` 的无许可证 CI job，至少执行变更记录检查、`.meta` 配对、asmdef JSON/依赖方向、
-  禁止业务代码落入 `Assembly-CSharp` 和 `git diff --check`；
+  禁止业务代码落入 `Assembly-CSharp` 和 `git diff --check`；检查器必须识别现有 Editor-only
+  `Volleyball.Match.AI.Editor`、`Unity.Newtonsoft.Json`、测试程序集和预编译引用，不能误报合法工具依赖；
 - 两位负责人验证分支保护所需检查名称，并把本地安装/锁文件规则写入 `docs/development.md`。
 
 ### 阶段 1：正式存档模型
@@ -232,17 +265,29 @@ CI。当前仓库只有最小 `.gitattributes`，Unity Windows workflow 整个 j
 - 建议分支：独立的跨模块 `feature/shared-match-career-contract`
 - 负责人：双方
 
-进入条件：前四个 Career 阶段不再依赖猜测性比赛字段；Career 提供真实消费需求，Match 提供可生成事实。
+进入条件：前四个 Career 阶段不再依赖猜测性比赛字段；Career 提供真实消费需求；Match 以现有
+`MatchSet`/`PhysicalMatchRallyDirector` 和 12 人 6v6 结果作为可生成事实的生产者基线。
 
 范围：集中确认并升级一次 Shared 契约、版本、冻结上下文、比赛统计、规范哈希、固定 fixture 和
-`IMatchRunnerV*` 异步执行契约，并建立 `Career.MatchIntegration` 的双向 DTO 映射及适配器。Career 与
-Match 均不得在各自功能分支里私自追加 Shared 字段。本阶段只做适配器/fixture 级验证，不从生涯流程
-启动比赛。
+`IMatchRunnerV*` 异步执行契约，并建立 `Career.MatchIntegration` 的双向 DTO 映射及适配器。fixture 固定
+为双方各六人、包含主角稳定 `PlayerId` 的正式 6v6 单局；Match 必须从真实计分/触球事件增加领域规则第
+7 节所需的技术事实，不能从 V1 的 `points/contacts/errors/workload` 反推或伪造。Career 与 Match 均不得
+在各自功能分支里私自追加 Shared 字段。本阶段只做生产者、适配器和 fixture 级验证，不从生涯流程启动
+物理场景。
 
 退出条件：
 
 - 两位负责人共同批准字段定义、计数口径和兼容策略；
-- 两个模块分别读取同一组 golden fixture 并通过契约与哈希测试；
+- 两个模块分别读取同一组 golden fixture 并通过契约与哈希测试；fixture 至少包含一组 3v3 V1/兼容
+  回归和一组新版 6v6、12 人结果；
+- 3v3 和 6v6 的 V1 兼容回归继续通过；新版 6v6 fixture 包含 12 个不重号的稳定球员 ID，主角事实能
+  唯一映射回 Career 自有类型；
+- 能力转换分属两个适配器：`Career.MatchIntegration` 只负责 Career 八项属性到 Shared 能力 DTO，Match
+  自有适配器再负责 Shared DTO 到内部 `PlayerAbilityProfile`，前者不得引用 Match Domain；跨模块定向测试
+  组合验证两段映射，两个不同冻结上下文都必须进入内部能力，禁止继续被位置模板静默覆盖；
+- 新版上下文的 `matchSeed` 必须传入所有使用随机性的 AI planner；相同输入与 seed 的纯 AI 决策序列
+  可复现，随机路径有不同 seed 的定向差异测试。纯确定性 planner 应删除无效 seed 参数，不得人为加入
+  随机性。该门禁不要求 Unity 物理逐帧或最终比分确定性；
 - FakeMatch runner 的 fixture 结果能经适配器转换为 Career 自有事实，但尚不由生涯流程调用；同步
   `IMatchGateway.Play` 已在阶段 1 删除；
 - Career 只准备输入和计算长期后果，Match 只执行比赛/快速模拟并报告事实；
@@ -253,10 +298,10 @@ Match 均不得在各自功能分支里私自追加 Shared 字段。本阶段只
 - 建议分支：`feature/career-fake-match`
 - 负责人：Career；契约行为由双方复核
 
-进入条件：Shared 契约升级已合并；固定上下文与结果 fixture 可用。
+进入条件：Shared 契约升级已合并；双方各六人的固定上下文与 12 人结果 fixture 可用。
 
 范围：以显式 schema 升级加入正式 `PendingMatch` 和 `SettlementReceipt`，并完成赛前重点、
-FakeMatch 固定事实、结果哈希校验、回执查询和从比赛前重试。只有 `PendingMatch` 成功提交后，生涯流程
+FakeMatch 固定 6v6 单局事实、结果哈希校验、回执查询和从比赛前重试。只有 `PendingMatch` 成功提交后，生涯流程
 才首次通过 Career 异步端口调用 FakeMatch runner。第一周的比赛结算、全部周末后果与
 第二周初始化必须生成同一版下一快照并一次原子提交。FakeMatch 是可替换的开发期 runner 实现，不包含
 真实物理或快速模拟算法。
@@ -314,8 +359,27 @@ FakeMatch 固定事实、结果哈希校验、回执查询和从比赛前重试�
 - EditMode、相关 PlayMode、契约 fixture 与程序集边界检查全部通过；
 - 强制中断覆盖新建、临时写入、原子替换、比赛待处理和结算后的关键窗口；
 - Windows 10/11 x64 实机完成两次独立闭环试玩（两位负责人各一次）；
+- 完整 Match 回归仍覆盖现有 3v3 与 `FormalIndoor6v6`，Career 变更不得降低搭档已建立的测试基线；
 - 1920×1080 的菜单交互无明显停顿，自动保存不会无提示冻结界面；
 - 所有测试版本、结果和已知限制写入变更记录，失败门禁不得标记为完成。
+
+### 阶段 10：现有 FormalIndoor6v6 生涯接入（首里程碑完成后的后续阶段）
+
+- 建议分支：`feature/career-formal-6v6-integration`
+- 负责人：双方；Match 提供场景 runner，Career/Bootstrap 提供生命周期接线
+
+进入条件：阶段 9 已完成；Shared runner 与 12 人事实契约稳定；上下文能力已真实绑定到物理球员；Match
+已明确主角控制模式并完成 Windows x64 基本输入/性能验证。当前按位置覆盖能力、自动运行的沙盒 6v6
+不满足这些条件。
+
+范围：让现有 `FormalIndoor6v6` 从已提交的 `PendingMatch` 接收外部上下文，移除正式入口中的硬编码
+沙盒创建，通过同一 `IMatchRunnerV*` 返回结果，并验证取消、场景加载失败、从赛前重试与成功结算。
+runner 必须把冻结的 `matchSeed` 派生并传入所有使用随机性的 AI planner，不能继续使用固定 `7351`；
+纯确定性 planner 删除未使用的 seed 参数。主角控制启用时，必须保证该球员不会同时收到 AI 决策。
+仍只覆盖单局，不在该分支加入多局制、换人、自由人替换程序或比赛中途存档。
+
+退出条件：FakeMatch 与物理 6v6 可在不改 Career Domain 规则的情况下替换；12 名球员身份、能力和主角
+统计往返一致；物理比赛退出/崩溃只回到赛前并复用原上下文；两位负责人完成 Windows 构建实机验收。
 
 ## 5. 独立基础设施迁移
 
@@ -338,8 +402,9 @@ CI 暂不可用不等于测试门禁可跳过；只能用可复现的本地/固�
 ### Windows 性能基线
 
 正式 Windows 性能基线为 Windows 10/11 x64、16 GB 内存、GTX 1650 级独立显卡、`1920×1080`，
-真实比赛目标 `60 FPS`。首个里程碑只包含 FakeMatch，因此当前只验证菜单交互和保存不出现明显停顿；
-`60 FPS` 在真实比赛首次接入时才成为硬门禁。4K、超宽屏和低端集成显卡专项优化留待后续。
+真实比赛目标 `60 FPS`。现有 `FormalIndoor6v6` 已能自动完成单局，但首个 Career 里程碑只包含 FakeMatch，
+因此当前只验证菜单交互和保存不出现明显停顿；`60 FPS` 在阶段 10 的物理 6v6 生涯接入时才成为硬门禁。
+4K、超宽屏和低端集成显卡专项优化留待后续。
 
 ## 6. 所有权与合并规则
 
@@ -378,7 +443,7 @@ CI 暂不可用不等于测试门禁可跳过；只能用可复现的本地/固�
 ## 9. 本里程碑非目标
 
 - 6 周玩法验证的具体首发竞争、赛程与事件内容；
-- 完整 6v6、真实比赛接入或完整快速模拟；
+- 把现有 `FormalIndoor6v6` 接入 Career、主角实时控制、完整快速模拟、多局制、换人或自由人替换程序；
 - 完整六赛季、伤病、合同、转会、球探和退役结算；
 - 复杂潜力揭示、逐项隐藏上限、完整打法评价与培养方向切换；
 - 正式美术、外观编辑、按键重绑定、超宽屏和 4K 专项适配；

@@ -35,9 +35,11 @@ Assets/Volleyball/
     Scenes/                  Boot、MainMenu、Loading
 ```
 
-根目录只保留一套 `Packages/` 和 `ProjectSettings/`，并继续固定 Unity
-`6000.0.43f1`。截至 2026-07-17，现有比赛代码、场景和测试已经机械迁移到 `Match/`，
-Career 与 Bootstrap 的程序集骨架也已建立；迁移没有同时修改比赛玩法。
+根目录只保留一套 `Packages/` 和 `ProjectSettings/`，当前主线仍固定 Unity
+`6000.0.43f1`，目标升级版本为 `6000.3.20f1`。截至 `origin/main@4bf9e4b`，比赛代码、场景和测试已经
+迁移到 `Match/`，Career 与 Bootstrap 的程序集骨架也已建立；Match 随后完成了可完局的 3v3、共用物理
+Director 和正式室内 6v6 单局，但 Career/Bootstrap 往返仍未接线。详细当前顺序以
+`docs/career-development-roadmap.md` 为准。
 
 ## 模块职责
 
@@ -97,7 +99,8 @@ Boot -> MainMenu -> CareerHome -> MatchLoading -> Match -> MatchSummary -> Caree
 ```
 
 `Boot` 是唯一进入点，持有跨场景的应用状态。生涯和比赛场景均可卸载；存档服务、音频和
-加载遮罩由 Bootstrap 管理。开发期间保留 `Physical3v3Rally` 作为可直接运行的比赛沙盒。
+加载遮罩由 Bootstrap 管理。开发期间保留 `Physical3v3Rally` 和 `FormalIndoor6v6` 作为可直接运行的
+比赛沙盒；后者当前仍创建硬编码上下文，不是 Career 的正式入口。
 
 ## 存档与可重放性
 
@@ -137,9 +140,15 @@ Boot -> MainMenu -> CareerHome -> MatchLoading -> Match -> MatchSummary -> Caree
 
 ## 第一批验收标准
 
-- 从 CareerHome 选择阵容后可以进入现有 3v3 场景。
+首个 Career 一周技术闭环先使用与正式 6v6 相同的 12 人 fixture 完成 FakeMatch、存档和幂等结算；该
+闭环完成后的物理场景接入再满足以下跨模块验收：
+
+- 从 CareerHome 选择双方各六人的阵容后可以进入现有 `FormalIndoor6v6` 场景。
+- 场景使用上下文中的稳定身份和能力，不按位置模板覆盖生涯映射值；主角控制权与 AI 边界明确。
 - 比赛结束返回 MatchSummary，再回到 CareerHome，不重启应用。
-- 同一个 `MatchContext + seed` 可复现相同 AI 决策序列。
+- 物理接入前，`MatchContext.seed` 必须派生并传入所有使用随机性的 AI planner；纯确定性 planner 删除
+  未使用的 seed 参数。相同输入与 seed 可复现相同纯 AI 决策序列，随机路径至少有一组不同 seed 的
+  定向差异测试。该承诺不扩展为 Unity 物理逐帧或最终比分复现。
 - Career 只根据 `MatchResult` 更新长期状态，Match 不写生涯存档。
 - 退出并重新进入后，球队、赛程、成长和疲劳保持一致。
 - Match 与 Career 的纯 Domain 测试均无需加载 Unity 场景。
