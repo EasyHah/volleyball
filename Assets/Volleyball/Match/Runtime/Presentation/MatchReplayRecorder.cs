@@ -15,7 +15,7 @@ namespace Volleyball.Presentation
         private SimulatedBall _ball;
         private List<PrototypePlayerAgent> _players;
         private MatchReplayV1 _replay;
-        private float _nextSampleTime;
+        private int _nextSampleIndex;
         private int _eventSequence;
         private bool _capturing;
 
@@ -49,7 +49,7 @@ namespace Volleyball.Presentation
             }
 
             _replay = CreateReplay();
-            _nextSampleTime = _ball.SimulationTime + MatchReplayV1.SampleIntervalSeconds;
+            _nextSampleIndex = 1;
             _eventSequence = 0;
             IsComplete = false;
             _capturing = true;
@@ -87,20 +87,7 @@ namespace Volleyball.Presentation
             _director.ReplayNetCrossed += RecordSimpleEvent;
             _director.ReplayGroundContact += RecordSimpleEvent;
             _director.ReplayRallyResolved += RecordResolution;
-        }
-
-        private void Update()
-        {
-            if (!_capturing || IsComplete)
-            {
-                return;
-            }
-
-            while (_ball.SimulationTime >= _nextSampleTime)
-            {
-                CaptureSnapshot(_ball.SimulationTime);
-                _nextSampleTime += MatchReplayV1.SampleIntervalSeconds;
-            }
+            _ball.SimulationStepped += CaptureRegularSamples;
         }
 
         private void OnDestroy()
@@ -116,6 +103,23 @@ namespace Volleyball.Presentation
             _director.ReplayNetCrossed -= RecordSimpleEvent;
             _director.ReplayGroundContact -= RecordSimpleEvent;
             _director.ReplayRallyResolved -= RecordResolution;
+            _ball.SimulationStepped -= CaptureRegularSamples;
+        }
+
+        private void CaptureRegularSamples(float simulationTime)
+        {
+            if (!_capturing || IsComplete)
+            {
+                return;
+            }
+
+            var scheduledTime = _nextSampleIndex * MatchReplayV1.SampleIntervalSeconds;
+            while (simulationTime >= scheduledTime)
+            {
+                CaptureSnapshot(scheduledTime);
+                _nextSampleIndex++;
+                scheduledTime = _nextSampleIndex * MatchReplayV1.SampleIntervalSeconds;
+            }
         }
 
         private MatchReplayV1 CreateReplay()
@@ -169,11 +173,11 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            var snapshotIndex = ForceSnapshot();
+            var snapshotIndex = ForceSnapshot(replayEvent.SimulationTimeSeconds);
             _replay.Events.Add(new MatchReplayEventV1
             {
                 Kind = "Decision",
-                SimulationTimeSeconds = _ball.SimulationTime,
+                SimulationTimeSeconds = replayEvent.SimulationTimeSeconds,
                 SnapshotIndex = snapshotIndex,
                 Team = replayEvent.Team.ToString(),
                 PlayerId = StableId(replayEvent.SelectedPlayer),
@@ -218,7 +222,7 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            var snapshotIndex = ForceSnapshot();
+            var snapshotIndex = ForceSnapshot(simulationTime);
             _replay.Events.Add(new MatchReplayEventV1
             {
                 Kind = kind,
@@ -232,6 +236,11 @@ namespace Volleyball.Presentation
         private int ForceSnapshot()
         {
             return CaptureSnapshot(_ball.SimulationTime);
+        }
+
+        private int ForceSnapshot(float simulationTime)
+        {
+            return CaptureSnapshot(simulationTime);
         }
 
         private int CaptureSnapshot(float simulationTime)
@@ -316,7 +325,7 @@ namespace Volleyball.Presentation
                     NominalRole = candidate.Score.NominalRole,
                     Approach = candidate.Score.Approach,
                     Angle = candidate.Score.Angle,
-                    Technique = 0f,
+                    Technique = TechniqueFor(candidate.Actor, replayEvent.SelectedAction),
                     Total = candidate.Score.Total
                 });
             }
@@ -335,6 +344,23 @@ namespace Volleyball.Presentation
                 Serve = ability.AttackPower,
                 Speed = ability.Mobility
             };
+        }
+
+        private float TechniqueFor(PlayerId playerId, TechniqueAction action)
+        {
+            foreach (var player in _players)
+            {
+                if (!player.Id.Equals(playerId))
+                {
+                    continue;
+                }
+
+                return action == TechniqueAction.Attack
+                    ? player.Ability.AttackPower * player.Ability.AttackTechnique
+                    : player.Ability.TechniqueFor(action);
+            }
+
+            throw new InvalidOperationException("Replay decision references an unknown player.");
         }
 
         private static MatchReplayVector3V1 ToReplayVector(Vector3 value)

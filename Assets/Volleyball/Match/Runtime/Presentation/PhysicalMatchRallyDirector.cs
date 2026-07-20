@@ -1179,6 +1179,10 @@ namespace Volleyball.Presentation
             }
 
             var last = _touchState.LastPhysicalTouch.Value;
+            var receivingTeam = _ball.State.Velocity.Z >= 0f ? TeamId.Orange : TeamId.Blue;
+            NotifyReplay(
+                ReplayNetCrossed,
+                new ReplaySimpleEvent("NetCrossing", _ball.SimulationTime, receivingTeam, StableId(last)));
             var outcome = MatchRallyReferee.ResolveNetCrossing(
                 ToSide(last.Team),
                 crossing.Point,
@@ -1195,7 +1199,6 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            var receivingTeam = _ball.State.Velocity.Z >= 0f ? TeamId.Orange : TeamId.Blue;
             if (_touchState.ContactWindow != null &&
                 _touchState.ContactWindow.Action == TechniqueAction.Block)
             {
@@ -1203,9 +1206,6 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            NotifyReplay(
-                ReplayNetCrossed,
-                new ReplaySimpleEvent("NetCrossing", _ball.SimulationTime, receivingTeam, StableId(last)));
             BeginPossession(receivingTeam, ReceiveLeadTime());
         }
 

@@ -244,6 +244,9 @@ namespace Volleyball.Presentation
 
         public event Action<NetPlaneCrossingEvent> NetPlaneCrossed;
 
+        // Observers use this fixed-step boundary to capture state with its exact simulation time.
+        public event Action<float> SimulationStepped;
+
         public Func<BallContactCandidate, SweptBallHit, float, BallContactResolution>
             ContactCandidateResolver { get; set; }
 
@@ -387,6 +390,7 @@ namespace Volleyball.Presentation
                 if (crossingEvent.IsRemainingStepConsumed)
                 {
                     UpdateMaximumSpeed();
+                    SimulationStepped?.Invoke(_simulationTime);
                     return;
                 }
             }
@@ -435,6 +439,7 @@ namespace Volleyball.Presentation
             }
 
             UpdateMaximumSpeed();
+            SimulationStepped?.Invoke(_simulationTime);
         }
 
         private bool TryFindEarliestPlayerContact(

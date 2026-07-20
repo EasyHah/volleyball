@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -33,12 +35,95 @@ namespace Volleyball.PlayModeTests
             Assert.That(recorder.IsComplete, Is.True, "The first formal rally did not resolve in real time.");
             var replay = recorder.Complete();
             Assert.That(replay.Players, Has.Count.EqualTo(12));
+            Assert.That(replay.Players.Select(player => player.PlayerId).Distinct().Count(), Is.EqualTo(12));
             Assert.That(replay.Snapshots, Has.Count.GreaterThanOrEqualTo(2));
             Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Serve"));
-            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent =>
-                replayEvent.Kind == "Decision" && replayEvent.Decision.Candidates.Count == 6));
-            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "RallyResolved"));
+            var decisions = replay.Events.Where(replayEvent => replayEvent.Kind == "Decision").ToList();
+            Assert.That(decisions, Is.Not.Empty);
+            Assert.That(decisions, Has.All.Matches<MatchReplayEventV1>(replayEvent =>
+                replayEvent.Decision.Candidates.Count == 6));
+            AssertCandidateScores(replay, decisions);
+            AssertReplayOrdering(replay);
+            AssertRegularCadence(replay);
+
+            var resolved = replay.Events.Last(replayEvent => replayEvent.Kind == "RallyResolved");
+            var resolvedSnapshot = replay.Snapshots[resolved.SnapshotIndex];
+            Assert.That(resolved, Is.SameAs(replay.Events.Last()));
+            Assert.That(resolvedSnapshot.HomeScore + resolvedSnapshot.AwayScore,
+                Is.EqualTo(replay.InitialState.HomeScore + replay.InitialState.AwayScore + 1));
+            Assert.That(resolvedSnapshot.ServingTeam, Is.EqualTo(resolved.Team));
             Assert.DoesNotThrow(() => replay.Validate());
+        }
+
+        private static void AssertCandidateScores(
+            MatchReplayV1 replay,
+            IEnumerable<MatchReplayEventV1> decisions)
+        {
+            var abilities = replay.Players.ToDictionary(player => player.PlayerId, player => player.Ability);
+            var sawExcludedCandidate = false;
+            foreach (var decisionEvent in decisions)
+            {
+                foreach (var candidate in decisionEvent.Decision.Candidates)
+                {
+                    var ability = abilities[candidate.PlayerId];
+                    var expectedTechnique = decisionEvent.Decision.Action == "Attack"
+                        ? ability.Serve * ability.Attack
+                        : decisionEvent.Decision.Action == "Receive"
+                            ? ability.Receive
+                            : ability.Set;
+                    Assert.That(candidate.Technique, Is.EqualTo(expectedTechnique).Within(0.0001f));
+                    if (!candidate.IsFeasible)
+                    {
+                        sawExcludedCandidate = true;
+                        Assert.That(candidate.ExclusionReason,
+                            Is.EqualTo(candidate.Reachability >= 0f ? "ConsecutiveTouch" : "Unreachable"));
+                    }
+                }
+            }
+
+            Assert.That(sawExcludedCandidate, Is.True);
+        }
+
+        private static void AssertReplayOrdering(MatchReplayV1 replay)
+        {
+            for (var index = 1; index < replay.Snapshots.Count; index++)
+            {
+                var previous = replay.Snapshots[index - 1];
+                var current = replay.Snapshots[index];
+                Assert.That(current.SimulationTimeSeconds, Is.GreaterThanOrEqualTo(previous.SimulationTimeSeconds));
+                if (Mathf.Approximately(current.SimulationTimeSeconds, previous.SimulationTimeSeconds))
+                {
+                    Assert.That(current.EventSequence, Is.GreaterThan(previous.EventSequence));
+                }
+            }
+
+            for (var index = 0; index < replay.Events.Count; index++)
+            {
+                var replayEvent = replay.Events[index];
+                Assert.That(replayEvent.SnapshotIndex, Is.InRange(0, replay.Snapshots.Count - 1));
+                Assert.That(replay.Snapshots[replayEvent.SnapshotIndex].SimulationTimeSeconds,
+                    Is.EqualTo(replayEvent.SimulationTimeSeconds).Within(0.00001f));
+                if (index > 0)
+                {
+                    Assert.That(replayEvent.SimulationTimeSeconds,
+                        Is.GreaterThanOrEqualTo(replay.Events[index - 1].SimulationTimeSeconds));
+                }
+            }
+        }
+
+        private static void AssertRegularCadence(MatchReplayV1 replay)
+        {
+            var eventSnapshots = new HashSet<int>(replay.Events.Select(replayEvent => replayEvent.SnapshotIndex));
+            var regularSnapshots = replay.Snapshots
+                .Where((snapshot, index) => !eventSnapshots.Contains(index))
+                .ToList();
+            Assert.That(regularSnapshots, Has.Count.GreaterThanOrEqualTo(2));
+            for (var index = 1; index < regularSnapshots.Count; index++)
+            {
+                Assert.That(
+                    regularSnapshots[index].SimulationTimeSeconds - regularSnapshots[index - 1].SimulationTimeSeconds,
+                    Is.EqualTo(MatchReplayV1.SampleIntervalSeconds).Within(0.00001f));
+            }
         }
     }
 }
