@@ -129,8 +129,11 @@ macOS、Unity `6000.0.43f1`；Windows x64 实机输入与性能尚未完成。�
 物理比赛、快速模拟算法、多局制或 UI 玩法；目的是让首次正式 Shared 契约直接覆盖最终生涯比赛阵容，
 避免闭环完成后立刻重做上下文、存档与幂等回执。3v3 仍作为兼容回归 fixture 保留。
 
-搭档新增的 MenShen 决策基准和 Newtonsoft 依赖只属于 Editor 工具。Career 不调用该网络客户端，Player
-构建不得包含 API key 或实时模型依赖；规范存档/契约哈希也不能直接改用 Newtonsoft 默认序列化。
+搭档新增的 MenShen 客户端、命令和凭据只属于 Editor 工具。当前全局 UPM 包会让
+`Newtonsoft.Json.dll` 进入 Mono Player，即使 `Volleyball.Match.AI.Editor` 本身不会进入；Career 不得据此
+调用网络客户端或依赖默认 JSON 序列化。Player 构建不得包含 API key、网关地址字面量或实时模型依赖；
+规范存档/契约哈希也不能直接改用 Newtonsoft 默认序列化。若以后要从 Player 剔除 DLL，应另立包边界
+变更并验证 MenShen Editor 工具，不在 Unity 升级中强行处理。
 
 ## 4. 实施阶段
 

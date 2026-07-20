@@ -35,10 +35,10 @@ Assets/Volleyball/
     Scenes/                  Boot、MainMenu、Loading
 ```
 
-根目录只保留一套 `Packages/` 和 `ProjectSettings/`，当前主线仍固定 Unity
-`6000.0.43f1`，目标升级版本为 `6000.3.20f1`。截至 `origin/main@4bf9e4b`，比赛代码、场景和测试已经
-迁移到 `Match/`，Career 与 Bootstrap 的程序集骨架也已建立；Match 随后完成了可完局的 3v3、共用物理
-Director 和正式室内 6v6 单局，但 Career/Bootstrap 往返仍未接线。详细当前顺序以
+根目录只保留一套 `Packages/` 和 `ProjectSettings/`，实施基线锁定 Unity `6000.3.20f1`；
+`origin/main@4bf9e4b` 只作为升级前的代码与测试审计锚点。截至该锚点，比赛代码、场景和测试已经迁移到
+`Match/`，Career 与 Bootstrap 的程序集骨架也已建立；Match 随后完成了可完局的 3v3、共用物理 Director
+和正式室内 6v6 单局，但 Career/Bootstrap 往返仍未接线。详细当前顺序以
 `docs/career-development-roadmap.md` 为准。
 
 ## 模块职责

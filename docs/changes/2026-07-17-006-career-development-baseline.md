@@ -36,7 +36,8 @@ Shared DTO。
 产出 12 人 V1 统计；首个 Career fixture 相应调整为双方各六人。同时保留 FakeMatch 优先顺序，因为
 V1 仍缺详细技术事实、`resultHash`、异步 runner 和 `PendingMatch` 场景往返。现有物理 6v6 接入列为
 首里程碑完成后的独立阶段；同时记录能力仍被位置模板覆盖、全 AI 运行以及上下文 seed 尚未进入 AI
-决策的接入缺口。MenShen/Newtonsoft 继续限定为 Editor 工具边界。
+决策的接入缺口。MenShen 客户端与凭据继续限定为 Editor 工具边界；全局 Newtonsoft 包程序集当前仍会
+进入 Mono Player，这一包边界债务不成为 Career 的运行时依赖。
 
 ## 具体变更
 

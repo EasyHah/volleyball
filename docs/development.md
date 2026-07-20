@@ -18,25 +18,26 @@ one review; direct push, force push and branch deletion must be disabled.
 
 ## Testing
 
-Write pure rule, scoring, rotation and statistics tests as EditMode tests. Use
-PlayMode tests for one full 3v3 rally with Unity scene integration. Use a fixed
-random seed for deterministic simulation tests. Record the Unity editor and package
-lock versions used to reproduce each test run.
+Write pure rule, scoring, rotation and statistics tests as EditMode tests. Keep
+PlayMode regression coverage for complete 3v3 and formal 6v6 sets with Unity scene
+integration. Use a fixed random seed for deterministic simulation tests. Record
+the Unity editor and package lock versions used to reproduce each test run.
 
 ## Windows delivery
 
-Windows x64 is the release platform. The committed workflow is intentionally
-disabled until Unity `6000.0.43f1` has generated complete `ProjectSettings` and
-`Packages/packages-lock.json` files on a Windows x64 development machine. Then pin
-a matching Unity Windows runner or self-hosted runner, configure Unity activation
-as a repository secret, add the verified batch-mode build command, and enable the job.
+Windows x64 is the release platform. Unity `6000.3.20f1` has generated the committed
+`ProjectSettings` and `Packages/packages-lock.json` baseline on a Windows x64
+development machine. The Unity workflow remains intentionally disabled until a
+matching runner and activation are configured and a dedicated build entry point
+explicitly selects Standalone Windows x64, IL2CPP and Development options before
+checking its `BuildReport`.
 CI artifacts do not replace regular testing on real Windows x64 hardware for
 keyboard, controller, graphics and performance checks.
 
 ## All-AI prototype verification
 
 Open `Assets/Volleyball/Match/Scenes/AiRallyPrototype.unity` with Unity
-`6000.0.43f1`, enter Play Mode, and observe at least ten completed rallies.
+`6000.3.20f1`, enter Play Mode, and observe at least ten completed rallies.
 Confirm that every rally has a serve, receive, set, spike and defensive
 response; the tactical camera retains all players and the ball; score advances
 once per rally; and the next rally begins automatically.
@@ -64,7 +65,7 @@ It reads `MENSHEN_API_KEY` from the current process environment, writes local
 reports under ignored `TestResults/MenShen/`, and must not be wired into Unity
 player builds.
 
-Run it from the repository root with Unity `6000.0.43f1`:
+Run it from the repository root with Unity `6000.3.20f1`:
 
 ```bash
 source "$HOME/.zshrc"
