@@ -76,6 +76,19 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlayerAbilityProfile_ProjectsV1ToDeterministicSafeReachAndPreservesV2Reach()
+        {
+            var legacy = new PlayerAbilityProfile(new PlayerAbilitySnapshotV1(
+                0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f));
+            var v2 = new PlayerAbilityProfile(new PlayerAbilitySnapshotV2(
+                0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 3.42f));
+
+            Assert.That(legacy.MaxAttackReach, Is.EqualTo(3.20f));
+            Assert.That(v2.MaxAttackReach, Is.EqualTo(3.42f));
+            Assert.That(v2.ToSnapshotV2().MaxAttackReach, Is.EqualTo(3.42f));
+        }
+
+        [Test]
         public void MatchPlayerBinding_RejectsInvalidPrototypeSlot()
         {
             var snapshot = new PlayerAbilitySnapshotV1(

@@ -44,6 +44,42 @@ namespace Volleyball.Shared.Contracts
             return result;
         }
 
+        public static string SerializeV2(MatchContextV2 context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            context.Validate();
+            return SerializeValue(context);
+        }
+
+        public static string SerializeV2(MatchResultV2 result)
+        {
+            if (result == null)
+            {
+                throw new ArgumentNullException(nameof(result));
+            }
+
+            result.Validate();
+            return SerializeValue(result);
+        }
+
+        public static MatchContextV2 DeserializeContextV2(string json)
+        {
+            var context = DeserializeValue<MatchContextV2>(json);
+            context.Validate();
+            return context;
+        }
+
+        public static MatchResultV2 DeserializeResultV2(string json)
+        {
+            var result = DeserializeValue<MatchResultV2>(json);
+            result.Validate();
+            return result;
+        }
+
         private static string SerializeValue<T>(T value)
         {
             try
