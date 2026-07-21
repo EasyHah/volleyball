@@ -29,6 +29,10 @@ namespace Volleyball.PlayModeTests
             Assert.That(cameras, Is.Not.Null);
             Assert.That(blockFeedback, Is.Not.Null);
             Assert.That(players, Has.Length.EqualTo(6));
+            Assert.That(director.MatchContextV2, Is.Not.Null);
+            Assert.That(director.MatchContext, Is.Null);
+            Assert.That(players, Has.Some.Matches<PrototypePlayerAgent>(
+                player => player.Id.Role == PlayerRole.Attacker && player.Ability.MaxAttackReach == 3.42f));
             Assert.That(
                 Object.FindObjectsByType<SimulatedBall>(FindObjectsSortMode.None),
                 Has.Length.EqualTo(1));
@@ -43,7 +47,7 @@ namespace Volleyball.PlayModeTests
             var timeout = Time.realtimeSinceStartup + 120f;
             var sawActiveBlockFeedback = false;
             var sawPlayerOutsideOwnCourt = false;
-            while (director.Result == null && Time.realtimeSinceStartup < timeout)
+            while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
             {
                 sawActiveBlockFeedback |= blockFeedback.IsPlaying;
                 foreach (var player in players)
@@ -53,17 +57,18 @@ namespace Volleyball.PlayModeTests
                 yield return null;
             }
 
-            Assert.That(director.Result, Is.Not.Null);
+            Assert.That(director.ResultV2, Is.Not.Null);
             Assert.That(
-                Mathf.Max(director.Result.HomeScore, director.Result.AwayScore),
+                Mathf.Max(director.ResultV2.HomeScore, director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(15));
             Assert.That(
-                Mathf.Abs(director.Result.HomeScore - director.Result.AwayScore),
+                Mathf.Abs(director.ResultV2.HomeScore - director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(2));
             Assert.That(
-                Mathf.Min(director.Result.HomeScore, director.Result.AwayScore),
+                Mathf.Min(director.ResultV2.HomeScore, director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(5));
-            Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(6));
+            Assert.That(director.ResultV2.PlayerStats, Has.Count.EqualTo(6));
+            Assert.DoesNotThrow(() => director.ResultV2.ValidateAgainst(director.MatchContextV2));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.PhysicalBlockContacts, Is.GreaterThan(0));

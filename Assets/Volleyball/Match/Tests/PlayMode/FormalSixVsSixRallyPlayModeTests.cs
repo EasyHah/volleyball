@@ -31,6 +31,10 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.RosterSize, Is.EqualTo(6));
             Assert.That(director.TargetScore, Is.EqualTo(25));
             Assert.That(director.CourtHalfLength, Is.EqualTo(9f));
+            Assert.That(director.MatchContextV2, Is.Not.Null);
+            Assert.That(director.MatchContext, Is.Null);
+            Assert.That(players, Has.Some.Matches<PrototypePlayerAgent>(
+                player => player.Id.Role == PlayerRole.MiddleBlocker && player.Ability.MaxAttackReach == 3.48f));
             AssertRoster(players, director);
 
             var initialServer = director.CurrentServer;
@@ -47,7 +51,7 @@ namespace Volleyball.PlayModeTests
             var timeout = Time.realtimeSinceStartup + 300f;
             var sawOutsideOwnCourt = false;
             var minimumSameTeamSeparation = float.PositiveInfinity;
-            while (director.Result == null && Time.realtimeSinceStartup < timeout)
+            while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
             {
                 foreach (var player in players)
                 {
@@ -60,13 +64,13 @@ namespace Volleyball.PlayModeTests
                 yield return null;
             }
 
-            Assert.That(director.Result, Is.Not.Null, "Formal 6v6 set did not complete in real time.");
-            Assert.That(Mathf.Max(director.Result.HomeScore, director.Result.AwayScore),
+            Assert.That(director.ResultV2, Is.Not.Null, "Formal 6v6 set did not complete in real time.");
+            Assert.That(Mathf.Max(director.ResultV2.HomeScore, director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(25));
-            Assert.That(Mathf.Abs(director.Result.HomeScore - director.Result.AwayScore),
+            Assert.That(Mathf.Abs(director.ResultV2.HomeScore - director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(2));
-            Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(12));
-            Assert.DoesNotThrow(() => director.Result.ValidateAgainst(director.MatchContext));
+            Assert.That(director.ResultV2.PlayerStats, Has.Count.EqualTo(12));
+            Assert.DoesNotThrow(() => director.ResultV2.ValidateAgainst(director.MatchContextV2));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.BlueAttackContacts, Is.GreaterThan(0));

@@ -56,7 +56,7 @@ var restored = ContractJson.DeserializeContextV2(ContractJson.Serialize(CreateCo
 Assert.That(restored.Home.Players[0].Ability.MaxAttackReach, Is.EqualTo(3.42f));
 Assert.That(new PlayerAbilityProfile(ability).MaxAttackReach, Is.EqualTo(3.42f));
 Assert.That(() => new PlayerAbilitySnapshotV2(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 3.19f),
-    Throws.TypeOf<ArgumentOutOfRangeException>());
+    Throws.TypeOf<ContractValidationException>());
 ```
 
 - [ ] **Step 2: Run the focused tests and verify red.**

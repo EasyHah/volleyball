@@ -3,13 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
-using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
-using PlayerAbilitySnapshotV1 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV1;
+using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
+using PlayerAbilitySnapshotV2 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV2;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
-using PlayerSnapshotV1 = Volleyball.Shared.Contracts.PlayerSnapshotV1;
+using PlayerSnapshotV2 = Volleyball.Shared.Contracts.PlayerSnapshotV2;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
-using TeamSnapshotV1 = Volleyball.Shared.Contracts.TeamSnapshotV1;
+using TeamSnapshotV2 = Volleyball.Shared.Contracts.TeamSnapshotV2;
 
 namespace Volleyball.Presentation
 {
@@ -69,7 +69,7 @@ namespace Volleyball.Presentation
             return ballObject.AddComponent<SimulatedBall>();
         }
 
-        private List<PrototypePlayerAgent> CreateRoster(MatchContextV1 context)
+        private List<PrototypePlayerAgent> CreateRoster(MatchContextV2 context)
         {
             var agents = new List<PrototypePlayerAgent>(12);
             CreateTeamAgents(agents, TeamId.Blue, context.Home, BlueColor);
@@ -80,7 +80,7 @@ namespace Volleyball.Presentation
         private void CreateTeamAgents(
             ICollection<PrototypePlayerAgent> agents,
             TeamId team,
-            TeamSnapshotV1 snapshot,
+            TeamSnapshotV2 snapshot,
             Color color)
         {
             for (var index = 0; index < snapshot.Players.Count; index++)
@@ -101,7 +101,7 @@ namespace Volleyball.Presentation
                     player.PlayerId,
                     color,
                     player.JerseyNumber.ToString());
-                agent.SetAbility(AbilityFor(player.Position));
+                agent.SetAbility(new PlayerAbilityProfile(player.Ability));
                 agent.SetCourtHalfLength(Configuration.CourtHalfLength);
                 agents.Add(agent);
             }
@@ -138,22 +138,22 @@ namespace Volleyball.Presentation
             };
         }
 
-        private static MatchContextV1 CreateSandboxContext()
+        private static MatchContextV2 CreateSandboxContext()
         {
-            return MatchContextV1.Create(
+            return MatchContextV2.Create(
                 Guid.Parse("66666666-2222-6666-2222-666666666666"),
                 7351,
                 CreateTeam("formal-home", "Blue", TeamSide.Home, "home"),
                 CreateTeam("formal-away", "Orange", TeamSide.Away, "away"));
         }
 
-        private static TeamSnapshotV1 CreateTeam(
+        private static TeamSnapshotV2 CreateTeam(
             string id,
             string name,
             TeamSide side,
             string prefix)
         {
-            return new TeamSnapshotV1(
+            return new TeamSnapshotV2(
                 new Volleyball.Shared.Contracts.TeamId(id),
                 name,
                 side,
@@ -168,26 +168,38 @@ namespace Volleyball.Presentation
                 });
         }
 
-        private static PlayerSnapshotV1 CreatePlayer(
+        private static PlayerSnapshotV2 CreatePlayer(
             string id,
             string name,
             int number,
             PlayerPosition position)
         {
             var ability = AbilityFor(position);
-            return new PlayerSnapshotV1(
+            return new PlayerSnapshotV2(
                 new StablePlayerId(id),
                 name,
                 number,
                 position,
-                new PlayerAbilitySnapshotV1(
+                new PlayerAbilitySnapshotV2(
                     ability.Mobility,
                     ability.Reaction,
                     ability.Jump,
                     ability.ReceiveTechnique,
                     ability.SetTechnique,
                     ability.AttackTechnique,
-                    ability.AttackPower));
+                    ability.AttackPower,
+                    ReachFor(position)));
+        }
+
+        private static float ReachFor(PlayerPosition position)
+        {
+            return position switch
+            {
+                PlayerPosition.MiddleBlocker => 3.48f,
+                PlayerPosition.OutsideHitter => 3.42f,
+                PlayerPosition.Opposite => 3.42f,
+                _ => 3.20f
+            };
         }
     }
 }

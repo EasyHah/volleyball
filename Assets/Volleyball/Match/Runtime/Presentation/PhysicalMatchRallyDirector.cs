@@ -8,7 +8,9 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
+using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
 using MatchResultV1 = Volleyball.Shared.Contracts.MatchResultV1;
+using MatchResultV2 = Volleyball.Shared.Contracts.MatchResultV2;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
@@ -235,6 +237,10 @@ namespace Volleyball.Presentation
 
         public MatchResultV1 Result { get; private set; }
 
+        public MatchResultV2 ResultV2 { get; private set; }
+
+        private bool HasResult => Result != null || ResultV2 != null;
+
         public int PlayerCount => _players.Count;
 
         public int RosterSize => _configuration == null ? 0 : _configuration.RosterSize;
@@ -279,6 +285,8 @@ namespace Volleyball.Presentation
 
         public MatchContextV1 MatchContext => _set?.Context;
 
+        public MatchContextV2 MatchContextV2 => _set?.ContextV2;
+
         public bool IsFrontRow(PlayerId player)
         {
             return _set != null && _set.IsFrontRow(StableId(player));
@@ -296,6 +304,48 @@ namespace Volleyball.Presentation
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
             PhysicalMatchConfiguration configuration = null)
+        {
+            var matchContext = context ?? throw new ArgumentNullException(nameof(context));
+            InitializeCore(
+                ball,
+                agents,
+                scoreDisplay,
+                tacticalWeightSource,
+                configuration,
+                matchContext.Home.Players.Count,
+                matchContext.Away.Players.Count,
+                () => new MatchSet(matchContext, TeamSide.Home, _configuration.SetRules));
+        }
+
+        public void Initialize(
+            SimulatedBall ball,
+            IEnumerable<PrototypePlayerAgent> agents,
+            MatchContextV2 context,
+            ScoreDisplay scoreDisplay,
+            IRallyTacticalWeightSource tacticalWeightSource = null,
+            PhysicalMatchConfiguration configuration = null)
+        {
+            var matchContext = context ?? throw new ArgumentNullException(nameof(context));
+            InitializeCore(
+                ball,
+                agents,
+                scoreDisplay,
+                tacticalWeightSource,
+                configuration,
+                matchContext.Home.Players.Count,
+                matchContext.Away.Players.Count,
+                () => new MatchSet(matchContext, TeamSide.Home, _configuration.SetRules));
+        }
+
+        private void InitializeCore(
+            SimulatedBall ball,
+            IEnumerable<PrototypePlayerAgent> agents,
+            ScoreDisplay scoreDisplay,
+            IRallyTacticalWeightSource tacticalWeightSource,
+            PhysicalMatchConfiguration configuration,
+            int homeRosterSize,
+            int awayRosterSize,
+            Func<MatchSet> createSet)
         {
             _configuration = configuration ?? PhysicalMatchConfiguration.ThreeVsThree;
             _ball = ball != null ? ball : throw new ArgumentNullException(nameof(ball));
@@ -323,14 +373,13 @@ namespace Volleyball.Presentation
                     nameof(agents));
             }
 
-            var matchContext = context ?? throw new ArgumentNullException(nameof(context));
-            if (matchContext.Home.Players.Count != _configuration.RosterSize ||
-                matchContext.Away.Players.Count != _configuration.RosterSize)
+            if (homeRosterSize != _configuration.RosterSize ||
+                awayRosterSize != _configuration.RosterSize)
             {
-                throw new ArgumentException("The context roster size does not match the match configuration.", nameof(context));
+                throw new ArgumentException("The context roster size does not match the match configuration.", nameof(createSet));
             }
 
-            _set = new MatchSet(matchContext, TeamSide.Home, _configuration.SetRules);
+            _set = (createSet ?? throw new ArgumentNullException(nameof(createSet)))();
             _activeTacticalWeights = LocalTacticalWeights();
             _aiDecisionTimeController = GetComponent<AiDecisionTimeController>() ??
                                         gameObject.AddComponent<AiDecisionTimeController>();
@@ -404,7 +453,7 @@ namespace Volleyball.Presentation
 
         private void Update()
         {
-            if (!_rallyActive || _restartScheduled || Result != null)
+            if (!_rallyActive || _restartScheduled || HasResult)
             {
                 return;
             }
@@ -610,7 +659,7 @@ namespace Volleyball.Presentation
             if (requestVersion != _aiDecisionRequestVersion ||
                 !_rallyActive ||
                 _restartScheduled ||
-                Result != null ||
+                HasResult ||
                 _touchState == null ||
                 _touchState.PossessionTeam != team)
             {
@@ -858,7 +907,7 @@ namespace Volleyball.Presentation
                 return BallContactResolution.Accept();
             }
 
-            if (!_rallyActive || _restartScheduled || Result != null || _touchState == null)
+            if (!_rallyActive || _restartScheduled || HasResult || _touchState == null)
             {
                 return BallContactResolution.Ignore();
             }
@@ -897,7 +946,7 @@ namespace Volleyball.Presentation
 
         private void HandlePlayerContact(PlayerBallContactEvent contact)
         {
-            if (!_rallyActive || _restartScheduled || Result != null || !contact.Candidate.Actor.HasValue)
+            if (!_rallyActive || _restartScheduled || HasResult || !contact.Candidate.Actor.HasValue)
             {
                 return;
             }
@@ -1127,7 +1176,7 @@ namespace Volleyball.Presentation
 
         private void HandleEnvironmentContact(EnvironmentCollisionHit hit)
         {
-            if (!_rallyActive || _restartScheduled || Result != null || hit.Kind == EnvironmentContactKind.Net)
+            if (!_rallyActive || _restartScheduled || HasResult || hit.Kind == EnvironmentContactKind.Net)
             {
                 return;
             }
@@ -1172,7 +1221,7 @@ namespace Volleyball.Presentation
 
         private void HandleNetPlaneCrossing(NetPlaneCrossingEvent crossing)
         {
-            if (!_rallyActive || _restartScheduled || Result != null ||
+            if (!_rallyActive || _restartScheduled || HasResult ||
                 _touchState == null || !_touchState.LastPhysicalTouch.HasValue)
             {
                 return;
@@ -1228,7 +1277,7 @@ namespace Volleyball.Presentation
             PlayerId? errorPlayer,
             string reason)
         {
-            if (_restartScheduled || Result != null)
+            if (_restartScheduled || HasResult)
             {
                 return;
             }
@@ -1269,7 +1318,14 @@ namespace Volleyball.Presentation
                 $"score={_set.HomeScore}:{_set.AwayScore}");
             if (_set.IsComplete)
             {
-                Result = _set.CreateResult();
+                if (_set.ContextV2 != null)
+                {
+                    ResultV2 = _set.CreateResultV2();
+                }
+                else
+                {
+                    Result = _set.CreateResult();
+                }
                 _ball.Stop();
                 _status = $"RESULT READY  {_set.HomeScore}:{_set.AwayScore}";
                 RenderScore();

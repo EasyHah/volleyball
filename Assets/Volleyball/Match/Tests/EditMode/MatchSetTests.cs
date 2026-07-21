@@ -137,6 +137,21 @@ namespace Volleyball.EditModeTests
             Assert.That(set.CreateResult().PlayerStats, Has.Count.EqualTo(12));
         }
 
+        [Test]
+        public void V2Context_ProducesAV2ResultWithTheSameContextIdentity()
+        {
+            var context = MatchContextV2.UpgradeFromV1(CreateContext());
+            var set = new MatchSet(context, TeamSide.Home);
+            Resolve(set, TeamSide.Home, 15);
+
+            var result = set.CreateResultV2();
+
+            Assert.That(set.Context, Is.Null);
+            Assert.That(set.ContextV2, Is.SameAs(context));
+            Assert.That(result.ContractVersion, Is.EqualTo(ContractVersions.MatchV2));
+            Assert.DoesNotThrow(() => result.ValidateAgainst(context));
+        }
+
         private static void Resolve(MatchSet set, TeamSide winner, int count)
         {
             for (var index = 0; index < count; index++)
