@@ -48,6 +48,24 @@ namespace Volleyball.Presentation
                 CourtBuilder.FormalHalfLength,
                 MatchSetRules.FormalIndoor);
 
+        public static PhysicalMatchConfiguration CreateCalibration(
+            PhysicalMatchConfiguration source,
+            int targetScore,
+            int minimumLead)
+        {
+            if (source == null)
+            {
+                throw new ArgumentNullException(nameof(source));
+            }
+
+            return new PhysicalMatchConfiguration(
+                source.DisplayName + " CALIBRATION",
+                source.LogTag + "Calibration",
+                source.RosterSize,
+                source.CourtHalfLength,
+                new MatchSetRules(targetScore, minimumLead, Math.Max(50, targetScore)));
+        }
+
         public Vector3 PositionFor(TeamSide side, int rotationPosition)
         {
             if (rotationPosition < 1 || rotationPosition > RosterSize)

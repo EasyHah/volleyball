@@ -65,6 +65,28 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ResolveRally_AtFiftyEndsSetWithoutATwoPointLead()
+        {
+            var set = new MatchSet(
+                CreateContext(),
+                TeamSide.Home,
+                new MatchSetRules(15, 2, 50));
+            for (var point = 0; point < 49; point++)
+            {
+                set.ResolveRally(TeamSide.Home, null, null);
+                set.ResolveRally(TeamSide.Away, null, null);
+            }
+
+            Assert.That(set.IsComplete, Is.False);
+            set.ResolveRally(TeamSide.Home, null, null);
+
+            Assert.That(set.IsComplete, Is.True);
+            Assert.That(set.HomeScore, Is.EqualTo(50));
+            Assert.That(set.AwayScore, Is.EqualTo(49));
+            Assert.That(set.WinnerSide, Is.EqualTo(TeamSide.Home));
+        }
+
+        [Test]
         public void CreateResult_CompletedSet_ContainsAllSixPlayersAndValidatedStatistics()
         {
             var set = CreateSet(TeamSide.Home);

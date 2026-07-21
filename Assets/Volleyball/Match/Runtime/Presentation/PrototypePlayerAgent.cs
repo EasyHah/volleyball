@@ -60,6 +60,10 @@ namespace Volleyball.Presentation
 
         public float MaximumAppliedContactCorrection { get; private set; }
 
+        public SimVector3 LastScheduledSurfaceCenter { get; private set; }
+
+        public SimVector3 LastScheduledSurfaceNormal { get; private set; }
+
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
@@ -319,6 +323,21 @@ namespace Volleyball.Presentation
             _supportActionActivated = false;
         }
 
+        public void ScheduleAttackPreparation(
+            float scheduledSetContactTime,
+            Vector3 approachStart,
+            float movementStartSimulationTime)
+        {
+            CancelScheduledContact();
+            ConfigureSupportAction(
+                TechniqueAction.Attack,
+                scheduledSetContactTime,
+                approachStart,
+                movementStartSimulationTime);
+            _hasSupportAction = true;
+            _supportActionActivated = false;
+        }
+
         public void ScheduleBlockContact(
             float scheduledSimulationTime,
             Vector3 movementTarget,
@@ -477,6 +496,44 @@ namespace Volleyball.Presentation
                 AttackRootContactPosition(plan));
         }
 
+        public Vector3 ResolveContactRootTarget(
+            TechniqueAction action,
+            SimVector3 desiredContactCenter,
+            Vector3 nominalRootTarget)
+        {
+            if (action == TechniqueAction.Attack)
+            {
+                throw new ArgumentException(
+                    "Attack root targets must be resolved from an attack contact plan.",
+                    nameof(action));
+            }
+
+            var frames = PreviewContactFramesAt(action, nominalRootTarget);
+            var previewCenter = SimVector3.Zero;
+            if (action == TechniqueAction.Set)
+            {
+                previewCenter = frames[0].Origin +
+                                (frames[0].Normal * SimulatedBall.DefaultRadius);
+            }
+            else
+            {
+                var origin = SimVector3.Zero;
+                var normal = SimVector3.Zero;
+                foreach (var frame in frames)
+                {
+                    origin += frame.Origin;
+                    normal += frame.Normal;
+                }
+
+                previewCenter = (origin / frames.Count) +
+                                ((normal / frames.Count).Normalized * SimulatedBall.DefaultRadius);
+            }
+
+            var correction = desiredContactCenter - previewCenter;
+            return ConstrainGroundPosition(
+                nominalRootTarget + new Vector3(correction.X, 0f, correction.Z));
+        }
+
         private IReadOnlyList<ContactSurfaceFrame> PreviewContactFramesAtResolvedPosition(
             TechniqueAction action,
             Vector3 worldPosition)
@@ -554,6 +611,17 @@ namespace Volleyball.Presentation
                 sample.SurfaceActive,
                 _contactGroupId,
                 setContactHand: CurrentSetContactHand());
+            LastScheduledSurfaceCenter = SimVector3.Zero;
+            LastScheduledSurfaceNormal = SimVector3.Zero;
+            foreach (var surface in surfaces)
+            {
+                LastScheduledSurfaceCenter += surface.Current.Origin +
+                                              (surface.Current.Normal * SimulatedBall.DefaultRadius);
+                LastScheduledSurfaceNormal += surface.Current.Normal;
+            }
+
+            LastScheduledSurfaceCenter /= surfaces.Count;
+            LastScheduledSurfaceNormal = (LastScheduledSurfaceNormal / surfaces.Count).Normalized;
             var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
                 ? _targetVelocity.Normalized
                 : SimVector3.Up;
@@ -699,9 +767,12 @@ namespace Volleyball.Presentation
                 SupportActionActivated?.Invoke(this, _supportAction);
             }
 
-            var pose = _supportAction == TechniqueAction.Block
-                ? StickFigurePose.Block
-                : StickFigurePose.Receive;
+            var pose = _supportAction switch
+            {
+                TechniqueAction.Block => StickFigurePose.Block,
+                TechniqueAction.Attack => StickFigurePose.Run,
+                _ => StickFigurePose.Receive
+            };
             if (sample.Phase == ActionPhase.Prepare && _supportAction == TechniqueAction.Receive)
             {
                 pose = StickFigurePose.Run;

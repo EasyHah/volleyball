@@ -407,6 +407,34 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ResolveContactRootTarget_OffsetsReceiverRootForTheVisiblePlatform()
+        {
+            var playerObject = new GameObject("RootResolvedReceiver");
+            try
+            {
+                playerObject.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Orange, PlayerRole.Defender), Color.red, "6");
+                var desiredCenter = new SimVector3(-3f, 1.36f, 1.80f);
+                var resolvedRoot = player.ResolveContactRootTarget(
+                    TechniqueAction.Receive,
+                    desiredCenter,
+                    new Vector3(desiredCenter.X, 0f, desiredCenter.Z));
+                var frame = player.PreviewContactFramesAt(TechniqueAction.Receive, resolvedRoot)[0];
+                var actualCenter = frame.Origin +
+                                   (frame.Normal * SimulatedBall.DefaultRadius);
+
+                Assert.That(actualCenter.X, Is.EqualTo(desiredCenter.X).Within(0.001f));
+                Assert.That(actualCenter.Z, Is.EqualTo(desiredCenter.Z).Within(0.001f));
+                Assert.That(resolvedRoot.z, Is.GreaterThan(desiredCenter.Z + 0.3f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
         public void ScheduledMovement_LeavesMeasuredShortfallWhenTargetIsUnreachable()
         {
             var playerObject = new GameObject("LateDefender");
@@ -523,6 +551,40 @@ namespace Volleyball.EditModeTests
             finally
             {
                 Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void AttackPreparation_MovesTowardApproachStartWithoutAddingContactCandidates()
+        {
+            var gameObject = new GameObject("AttackPreparationPlayer");
+            try
+            {
+                var player = gameObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter),
+                    Color.blue,
+                    "4");
+                player.transform.position = new Vector3(0f, 0f, -3f);
+                var target = new Vector3(1.5f, 0f, -1.4f);
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    0.5f,
+                    new SimVector3(0f, 5f, 4f),
+                    NoExecutionError(),
+                    70);
+                player.ScheduleAttackPreparation(1f, target, 0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(0.89f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(player.ReplayScheduledAction, Is.EqualTo(TechniqueAction.Attack.ToString()));
+                Assert.That(Vector3.Distance(player.transform.position, target), Is.LessThan(0.05f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
             }
         }
 

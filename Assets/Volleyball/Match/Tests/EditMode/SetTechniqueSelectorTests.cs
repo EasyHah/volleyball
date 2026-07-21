@@ -49,6 +49,7 @@ namespace Volleyball.EditModeTests
             Assert.That(left.ExecutedStyle, Is.EqualTo(SetTechniqueStyle.SideLeftTwoHand));
             Assert.That(right.ExecutedStyle, Is.EqualTo(SetTechniqueStyle.SideRightTwoHand));
             Assert.That(back.ExecutedStyle, Is.EqualTo(SetTechniqueStyle.BackTwoHand));
+            Assert.That(back.ControlScale, Is.EqualTo(1f));
         }
 
         [Test]

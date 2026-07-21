@@ -99,6 +99,8 @@ namespace Volleyball.Domain
 
         public int MinimumWinningLead => _rules.MinimumLead;
 
+        public int MaximumScore => _rules.MaximumScore;
+
         public int RosterSize => _homeRotation.PlayerCount;
 
         public TeamSide WinnerSide
@@ -209,7 +211,9 @@ namespace Volleyball.Domain
                 Rotate(winner);
             }
 
-            IsComplete = Math.Max(HomeScore, AwayScore) >= _rules.TargetScore &&
+            var highestScore = Math.Max(HomeScore, AwayScore);
+            IsComplete = highestScore >= _rules.MaximumScore ||
+                         highestScore >= _rules.TargetScore &&
                          Math.Abs(HomeScore - AwayScore) >= _rules.MinimumLead;
         }
 
@@ -347,7 +351,7 @@ namespace Volleyball.Domain
 
         public static MatchSetRules FormalIndoor { get; } = new MatchSetRules(25, 2);
 
-        public MatchSetRules(int targetScore, int minimumLead)
+        public MatchSetRules(int targetScore, int minimumLead, int maximumScore = 50)
         {
             if (targetScore <= 0)
             {
@@ -359,13 +363,21 @@ namespace Volleyball.Domain
                 throw new ArgumentOutOfRangeException(nameof(minimumLead));
             }
 
+            if (maximumScore < targetScore)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumScore));
+            }
+
             TargetScore = targetScore;
             MinimumLead = minimumLead;
+            MaximumScore = maximumScore;
         }
 
         public int TargetScore { get; }
 
         public int MinimumLead { get; }
+
+        public int MaximumScore { get; }
 
         public static MatchSetRules ForRosterSize(int rosterSize)
         {

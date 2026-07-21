@@ -54,7 +54,10 @@ namespace Volleyball.AI
             var executed = requested == SetTechniqueStyle.BackTwoHand && setTechnique < BackSetMinimum
                 ? SetTechniqueStyle.FrontTwoHand
                 : requested;
-            var controlScale = DifficultyScale(executed, setTechnique);
+            // A prepared two-hand set is the normal route, so it receives the full
+            // technique-control budget. Difficulty scaling is reserved for emergency
+            // orientation and one-hand recovery actions.
+            var controlScale = 1f;
             if (requested != executed)
             {
                 controlScale *= 0.65f;

@@ -88,7 +88,11 @@ namespace Volleyball.AI
         public static TechniqueControlResult Apply(TechniqueControlInput input)
         {
             var profile = ProfileFor(input.Action);
-            var appliedControl = profile.MaximumControl * input.PlayerTechnique * input.ContactQuality;
+            var contactControl = input.Action == TechniqueAction.Receive ||
+                                 input.Action == TechniqueAction.Set
+                ? (float)Math.Sqrt(input.ContactQuality)
+                : input.ContactQuality;
+            var appliedControl = profile.MaximumControl * input.PlayerTechnique * contactControl;
             if (appliedControl <= 0f)
             {
                 return new TechniqueControlResult(

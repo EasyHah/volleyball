@@ -193,6 +193,8 @@ namespace Volleyball.Presentation
         private ReplaySetChainEvent _pendingReplaySetChain;
         private AttackContactOutcome _lastAttackContactOutcome;
         private bool _lastSetChainSuccessRecorded;
+        private bool _activeSetChain;
+        private bool _lastSetWasSetter;
         private int _tacticRevision;
         private int _decisionIndex;
         private int _aiDecisionRequestVersion;
@@ -262,6 +264,18 @@ namespace Volleyball.Presentation
 
         public int AdjustedAttackSuccesses { get; private set; }
 
+        public int InSystemSetterSets { get; private set; }
+
+        public int InSystemAttackableSets { get; private set; }
+
+        public int GradeASetterSets { get; private set; }
+
+        public int AGradeNoContactErrors { get; private set; }
+
+        public int NormalSideSets { get; private set; }
+
+        public string LastAGradeNoContactDiagnostic { get; private set; } = string.Empty;
+
         public float GradeASetRate => TotalSets == 0 ? 0f : (float)GradeASets / TotalSets;
 
         public float AttackableSetRate => TotalSets == 0 ? 0f : (float)AttackableSets / TotalSets;
@@ -269,6 +283,14 @@ namespace Volleyball.Presentation
         public float GradeASetAttackSuccessRate => GradeASets == 0
             ? 0f
             : (float)GradeASetAttackSuccesses / GradeASets;
+
+        public float InSystemAttackableSetRate => InSystemSetterSets == 0
+            ? 0f
+            : (float)InSystemAttackableSets / InSystemSetterSets;
+
+        public float AGradeNoContactErrorRate => GradeASetterSets == 0
+            ? 0f
+            : (float)AGradeNoContactErrors / GradeASetterSets;
 
         public SetQualityAssessment? LastSetQualityAssessment => _lastSetQualityAssessment;
 
@@ -377,7 +399,8 @@ namespace Volleyball.Presentation
             MatchContextV1 context,
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
-            PhysicalMatchConfiguration configuration = null)
+            PhysicalMatchConfiguration configuration = null,
+            TeamSide firstServingSide = TeamSide.Home)
         {
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
             InitializeCore(
@@ -388,7 +411,7 @@ namespace Volleyball.Presentation
                 configuration,
                 matchContext.Home.Players.Count,
                 matchContext.Away.Players.Count,
-                () => new MatchSet(matchContext, TeamSide.Home, _configuration.SetRules));
+                () => new MatchSet(matchContext, firstServingSide, _configuration.SetRules));
         }
 
         public void InitializeV2(
@@ -397,7 +420,8 @@ namespace Volleyball.Presentation
             MatchContextV2 context,
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
-            PhysicalMatchConfiguration configuration = null)
+            PhysicalMatchConfiguration configuration = null,
+            TeamSide firstServingSide = TeamSide.Home)
         {
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
             InitializeCore(
@@ -408,7 +432,7 @@ namespace Volleyball.Presentation
                 configuration,
                 matchContext.Home.Players.Count,
                 matchContext.Away.Players.Count,
-                () => new MatchSet(matchContext, TeamSide.Home, _configuration.SetRules));
+                () => new MatchSet(matchContext, firstServingSide, _configuration.SetRules));
         }
 
         private void InitializeCore(
@@ -625,6 +649,7 @@ namespace Volleyball.Presentation
             _contactDeadlineActive = false;
             _lastTouchWasBackSetAttack = false;
             _controlledHandlingActive = false;
+            _activeSetChain = false;
 
             const float initialFlightSeconds = 0.90f;
             var nominalReceiver = FindPlayer(
@@ -673,6 +698,7 @@ namespace Volleyball.Presentation
             _touchState.BeginPossession(team);
             _plannedAttackDecision = null;
             _controlledHandlingActive = false;
+            _activeSetChain = false;
             BeginPossessionDecision(team, availableSeconds);
             Debug.Log(
                 $"[{_configuration.LogTag}] possession team={team} touches=0 " +
@@ -943,7 +969,27 @@ namespace Volleyball.Presentation
             ExecutionErrorApplications++;
 
             _expectedContactTime = _ball.SimulationTime + flightSeconds;
+            if (decision.Action == TechniqueAction.Set &&
+                _plannedAttackDecision != null &&
+                _plannedAttackDecision.HasDecision &&
+                _plannedAttackDecision.AttackApproach.HasValue)
+            {
+                var plannedAttacker = _players[_plannedAttackDecision.Actor];
+                plannedAttacker.ScheduleAttackPreparation(
+                    _expectedContactTime,
+                    ToUnity(_plannedAttackDecision.AttackApproach.Value.ApproachStart),
+                    _ball.SimulationTime);
+                MovementAssignments++;
+            }
+
             var movementTarget = ToUnity(decision.MovementTarget);
+            if (decision.Action == TechniqueAction.Receive)
+            {
+                movementTarget = actor.ResolveContactRootTarget(
+                    decision.Action,
+                    authoritativeContactCenter,
+                    movementTarget);
+            }
             actor.ScheduleContact(
                 decision.Action,
                 _expectedContactTime,
@@ -1136,6 +1182,8 @@ namespace Volleyball.Presentation
                         ReceiveFlightSeconds);
                     break;
                 case TechniqueAction.Set:
+                    _lastSetQualityAssessment = null;
+                    _activeSetChain = false;
                     var setFlight = _scheduledSetFlightSeconds > 0f
                         ? _scheduledSetFlightSeconds
                         : SetFlightSolver.PreferredFlightSeconds(TacticFor(actorId.Team).SetRhythm);
@@ -1149,6 +1197,7 @@ namespace Volleyball.Presentation
                             setFlight);
                     }
                     ScheduleAttackFromActualSet(attackDecision, setFlight);
+                    RecordSetCalibration(actorId, actor.CurrentSetStyle, contact.Hit.Centeredness);
                     break;
                 case TechniqueAction.Attack:
                     CompletedCycles++;
@@ -1234,6 +1283,7 @@ namespace Volleyball.Presentation
             _lastSetAttackActor = provisionalDecision.Actor;
             _lastAttackContactOutcome = replan.ContactPlan.Outcome;
             _lastSetChainSuccessRecorded = false;
+            _activeSetChain = true;
             _lastAttackResponsibility = SetQualityAssessment.PrimaryResponsibility(
                 quality.Grade,
                 replan.Outcome);
@@ -1276,6 +1326,35 @@ namespace Volleyball.Presentation
                 replacement,
                 replan,
                 Mathf.Max(0.1f, actualArrival.TimeSeconds));
+        }
+
+        private void RecordSetCalibration(
+            PlayerId setter,
+            SetTechniqueStyle style,
+            float contactCenteredness)
+        {
+            const float inSystemCenteredness = 0.85f;
+            _lastSetWasSetter = setter.Role == PlayerRole.Setter &&
+                                contactCenteredness >= inSystemCenteredness;
+            if (_lastSetWasSetter && _lastSetQualityAssessment.HasValue)
+            {
+                InSystemSetterSets++;
+                if (_lastSetQualityAssessment.Value.IsAdjustable)
+                {
+                    InSystemAttackableSets++;
+                }
+
+                if (_lastSetQualityAssessment.Value.Grade == SetQualityGrade.A)
+                {
+                    GradeASetterSets++;
+                }
+            }
+
+            if (style == SetTechniqueStyle.SideLeftTwoHand ||
+                style == SetTechniqueStyle.SideRightTwoHand)
+            {
+                NormalSideSets++;
+            }
         }
 
         private static SetFlightSolution SolveSetFlightWithFallback(SetFlightRequest request)
@@ -1654,9 +1733,41 @@ namespace Volleyball.Presentation
             }
 
             MissedRallies++;
+            if (_activeSetChain && _lastSetWasSetter &&
+                _lastSetQualityAssessment?.Grade == SetQualityGrade.A &&
+                _touchState?.ContactWindow?.Action == TechniqueAction.Attack)
+            {
+                AGradeNoContactErrors++;
+                var scheduledActor = _scheduledPrimaryActor.HasValue
+                    ? _players[_scheduledPrimaryActor.Value]
+                    : null;
+                var actorLabel = _scheduledPrimaryActor.HasValue
+                    ? $"{_scheduledPrimaryActor.Value.Team}/{_scheduledPrimaryActor.Value.Role}"
+                    : "none";
+                LastAGradeNoContactDiagnostic =
+                    $"actor={actorLabel}; movementShortfall=" +
+                    $"{scheduledActor?.MovementShortfall ?? -1f:0.000}; correction=" +
+                    $"{scheduledActor?.MaximumAppliedContactCorrection ?? -1f:0.000}; " +
+                    $"root={scheduledActor?.transform.position}; surface=" +
+                    $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceCenter)}; normal=" +
+                    $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceNormal)}; actualPlan=" +
+                    $"{FormatDiagnosticVector(_lastActualAttackContactCenter)}; " +
+                    $"ball=({_ball.State.Position.X:0.000},{_ball.State.Position.Y:0.000}," +
+                    $"{_ball.State.Position.Z:0.000}); expected={_expectedContactTime:0.000}; " +
+                    $"now={_ball.SimulationTime:0.000}";
+            }
+
+            _activeSetChain = false;
             var loser = _scheduledPrimaryActor?.Team ?? _touchState.PossessionTeam;
             var outcome = new RallyOutcome(Opponent(ToSide(loser)), true, reason);
             ResolveRally(outcome, null, _scheduledPrimaryActor, reason);
+        }
+
+        private static string FormatDiagnosticVector(SimVector3? value)
+        {
+            return value.HasValue
+                ? $"({value.Value.X:0.000},{value.Value.Y:0.000},{value.Value.Z:0.000})"
+                : "none";
         }
 
         private void ResolveRally(
