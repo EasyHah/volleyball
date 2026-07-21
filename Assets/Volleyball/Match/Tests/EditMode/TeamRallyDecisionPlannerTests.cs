@@ -5,6 +5,7 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Presentation;
 
 namespace Volleyball.EditModeTests
 {
@@ -92,6 +93,23 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.BallTarget.Y, Is.GreaterThan(expectedTakeoff.Y));
             Assert.That(new TeamCourtFrame(team).ToLocal(decision.BallTarget).Z,
                 Is.EqualTo(new TeamCourtFrame(team).ToLocal(expectedTakeoff).Z).Within(0.00001f));
+        }
+
+        [Test]
+        public void SetterPreparedFacing_IsIdenticalLocallyAndMirroredInWorldDepth()
+        {
+            var blueFrame = new TeamCourtFrame(TeamId.Blue);
+            var orangeFrame = new TeamCourtFrame(TeamId.Orange);
+            var blueWorld = PrototypePlayerAgent.PreparedForwardFor(blueFrame);
+            var orangeWorld = PrototypePlayerAgent.PreparedForwardFor(orangeFrame);
+            var blueLocal = blueFrame.ToLocal(blueWorld);
+            var orangeLocal = orangeFrame.ToLocal(orangeWorld);
+
+            Assert.That(blueLocal, Is.EqualTo(orangeLocal));
+            Assert.That(blueLocal.X, Is.LessThan(0f));
+            Assert.That(blueLocal.Z, Is.GreaterThan(0f));
+            Assert.That(blueWorld.X, Is.EqualTo(orangeWorld.X).Within(0.00001f));
+            Assert.That(blueWorld.Z, Is.EqualTo(-orangeWorld.Z).Within(0.00001f));
         }
 
         [Test]

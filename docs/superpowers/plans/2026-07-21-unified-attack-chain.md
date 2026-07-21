@@ -158,7 +158,7 @@ git commit -m "feat: unify planned and physical attack contact"
 - Test: `Assets/Volleyball/Match/Tests/EditMode/SetTechniqueSelectorTests.cs`
 - Test: `Assets/Volleyball/Match/Tests/EditMode/TeamRallyDecisionPlannerTests.cs`
 
-- [ ] **Step 1: Write failing normal-style and Blue/Orange mirror tests.**
+- [x] **Step 1: Write failing normal-style and Blue/Orange mirror tests.**
 
 ```csharp
 Assert.That(SetTechniqueSelector.SelectNormal(SetRoute.LeftPin, 0.95f).ExecutedStyle,
@@ -173,13 +173,13 @@ Assert.That(SetTechniqueSelector.SelectNormal(SetRoute.BackSet, 0.95f).ExecutedS
 
 Assert a normal wide LeftPin never selects a side style. Build equal Blue/Orange requests, compare their local prepared forward vectors, then assert their world Z directions are mirror images.
 
-- [ ] **Step 2: Run red.**
+- [x] **Step 2: Run red.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.EditModeTests.SetTechniqueSelectorTests|Volleyball.EditModeTests.TeamRallyDecisionPlannerTests" -testResults "$PWD/TestResults/SetterFacing-red.xml" -logFile "$PWD/TestResults/SetterFacing-red.log"`
 
 Expected: compile failure for `SelectNormal` and prepared-facing APIs.
 
-- [ ] **Step 3: Split normal and emergency selection.**
+- [x] **Step 3: Split normal and emergency selection.**
 
 ```csharp
 public static SetTechniqueDecision SelectNormal(SetRoute route, float setTechnique) =>
@@ -191,7 +191,7 @@ public static SetTechniqueDecision SelectEmergency(
 
 Side and one-hand selection is available only through `SelectEmergency`. Add `SetPreparedFacing(TeamCourtFrame frame, SetRoute route)` to the agent. Its normal local forward faces four-position and its near-net shoulder faces the net. The director invokes it and uses `SelectNormal` for an in-system pass; it only passes the emergency selector for marked off-balance contact.
 
-- [ ] **Step 4: Run green and commit.**
+- [x] **Step 4: Run green and commit.**
 
 Run: repeat Step 2 with `SetterFacing-green` paths.
 

@@ -6,6 +6,37 @@ namespace Volleyball.EditModeTests
 {
     public sealed class SetTechniqueSelectorTests
     {
+        [TestCase(SetRoute.LeftPin, SetTechniqueStyle.FrontTwoHand)]
+        [TestCase(SetRoute.MiddleQuick, SetTechniqueStyle.FrontTwoHand)]
+        [TestCase(SetRoute.RightPin, SetTechniqueStyle.BackTwoHand)]
+        [TestCase(SetRoute.BackSet, SetTechniqueStyle.BackTwoHand)]
+        public void SelectNormal_UsesOnlyFrontOrBackTwoHandStyles(
+            SetRoute route,
+            SetTechniqueStyle expected)
+        {
+            var decision = SetTechniqueSelector.SelectNormal(route, 0.95f);
+
+            Assert.That(decision.ExecutedStyle, Is.EqualTo(expected));
+            Assert.That(decision.ExecutedStyle, Is.Not.EqualTo(SetTechniqueStyle.SideLeftTwoHand));
+            Assert.That(decision.ExecutedStyle, Is.Not.EqualTo(SetTechniqueStyle.SideRightTwoHand));
+        }
+
+        [Test]
+        public void SelectEmergency_ReservesSideAndOneHandStylesForExplicitEmergencyCalls()
+        {
+            var side = SetTechniqueSelector.SelectEmergency(
+                new SimVector3(5f, 7f, 1f),
+                0.8f,
+                false);
+            var oneHand = SetTechniqueSelector.SelectEmergency(
+                new SimVector3(-5f, 7f, 1f),
+                0.95f,
+                true);
+
+            Assert.That(side.ExecutedStyle, Is.EqualTo(SetTechniqueStyle.SideRightTwoHand));
+            Assert.That(oneHand.ExecutedStyle, Is.EqualTo(SetTechniqueStyle.OneHandLeft));
+        }
+
         [Test]
         public void Select_UsesTargetRelativeToPlayerForFrontSideAndBackSets()
         {

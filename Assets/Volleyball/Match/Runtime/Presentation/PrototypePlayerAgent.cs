@@ -32,6 +32,8 @@ namespace Volleyball.Presentation
 
         public SetTechniqueStyle RequestedSetStyle => _setDecision.RequestedStyle;
 
+        public SimVector3 PreparedForward { get; private set; }
+
         public Vector3 ScheduledMovementTarget => _hasPhysicalBlockContact || _hasSupportAction
             ? _supportTargetPosition
             : _movementTargetPosition;
@@ -153,7 +155,8 @@ namespace Volleyball.Presentation
             Vector3? movementTarget = null,
             float movementStartSimulationTime = 0f,
             AttackApproachPlan? attackApproach = null,
-            AttackContactPlan? attackContactPlan = null)
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null)
         {
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
@@ -194,10 +197,12 @@ namespace Volleyball.Presentation
                     _targetVelocity.Y,
                     _targetVelocity.Z);
                 var localTarget = transform.InverseTransformDirection(worldTarget);
-                _setDecision = SetTechniqueSelector.Select(
-                    new SimVector3(localTarget.x, localTarget.y, localTarget.z),
-                    Ability.SetTechnique,
-                    emergencyOneHand);
+                _setDecision = normalSetRoute.HasValue && !emergencyOneHand
+                    ? SetTechniqueSelector.SelectNormal(normalSetRoute.Value, Ability.SetTechnique)
+                    : SetTechniqueSelector.SelectEmergency(
+                        new SimVector3(localTarget.x, localTarget.y, localTarget.z),
+                        Ability.SetTechnique,
+                        emergencyOneHand);
             }
             _executionError = executionError;
             _contactGroupId = contactGroupId;
@@ -380,6 +385,22 @@ namespace Volleyball.Presentation
             transform.position = constrained;
             _motionOrigin = constrained;
             Rig.SetPose(StickFigurePose.Ready, 1f);
+        }
+
+        public void SetPreparedFacing(TeamCourtFrame frame, SetRoute route)
+        {
+            if (!Enum.IsDefined(typeof(SetRoute), route))
+            {
+                throw new ArgumentOutOfRangeException(nameof(route));
+            }
+
+            PreparedForward = PreparedForwardFor(frame);
+            transform.forward = new Vector3(PreparedForward.X, PreparedForward.Y, PreparedForward.Z);
+        }
+
+        public static SimVector3 PreparedForwardFor(TeamCourtFrame frame)
+        {
+            return frame.ToWorld(new SimVector3(-1f, 0f, 0.25f).Normalized);
         }
 
         public void ApplyCrowdingOffset(Vector3 worldOffset)

@@ -801,6 +801,12 @@ namespace Volleyball.Presentation
             }
 
             var actor = _players[decision.Actor];
+            if (decision.Action == TechniqueAction.Set)
+            {
+                actor.SetPreparedFacing(
+                    new TeamCourtFrame(decision.Actor.Team),
+                    TacticFor(decision.Actor.Team).SetRoute);
+            }
             var predictedContactCenter = PredictBallCenter(flightSeconds);
             if (decision.Action == TechniqueAction.Set)
             {
@@ -853,7 +859,10 @@ namespace Volleyball.Presentation
                 movementTarget: movementTarget,
                 movementStartSimulationTime: _ball.SimulationTime,
                 attackApproach: decision.AttackApproach,
-                attackContactPlan: decision.AttackContactPlan);
+                attackContactPlan: decision.AttackContactPlan,
+                normalSetRoute: decision.Action == TechniqueAction.Set
+                    ? TacticFor(decision.Actor.Team).SetRoute
+                    : (SetRoute?)null);
             _scheduledPrimaryActor = decision.Actor;
             MovementAssignments++;
             TotalMovementShortfall += actor.MovementShortfall;
