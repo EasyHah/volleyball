@@ -743,7 +743,7 @@ namespace Volleyball.EditModeTests
                     new CourtPoint(0f, sign * 0.65f),
                     PlayerRole.Setter,
                     new CourtPoint(0f, sign * 4.15f)),
-                0.8f,
+                SetRhythm.FastPin,
                 0.45f);
         }
 

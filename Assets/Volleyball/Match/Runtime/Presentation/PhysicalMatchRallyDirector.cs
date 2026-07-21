@@ -149,6 +149,7 @@ namespace Volleyball.Presentation
         private PlayerId? _scheduledBlocker;
         private TeamId? _pendingCrossingTeam;
         private float _expectedContactTime;
+        private float _scheduledSetFlightSeconds;
         private bool _contactDeadlineActive;
         private bool _rallyActive;
         private bool _restartScheduled;
@@ -810,7 +811,8 @@ namespace Volleyball.Presentation
             var predictedContactCenter = PredictBallCenter(flightSeconds);
             if (decision.Action == TechniqueAction.Set)
             {
-                var attackFlight = TacticFor(decision.Actor.Team).SetFlightSeconds;
+                var attackFlight = SetFlightSolver.PreferredFlightSeconds(
+                    TacticFor(decision.Actor.Team).SetRhythm);
                 _plannedAttackDecision = PlanDecisionAt(
                     decision.Actor.Team,
                     RallyDecisionStage.Attack,
@@ -830,13 +832,31 @@ namespace Volleyball.Presentation
             }
             var authoritativeContactCenter = decision.AttackContactPlan?.ContactCenter ?? predictedContactCenter;
             var outgoingTarget = OutgoingTargetFor(decision);
-            var outgoingFlightSeconds = OutgoingFlightSecondsFor(decision.Actor.Team, decision.Action);
-            var outgoing = ReturnVelocitySolver.Solve(
-                authoritativeContactCenter,
-                outgoingTarget,
-                outgoingFlightSeconds,
-                SimulatedBall.DefaultFixedStep,
-                SimulationParameters).InitialVelocity;
+            SimVector3 outgoing;
+            if (decision.Action == TechniqueAction.Set)
+            {
+                var readiness = _plannedAttackDecision?.AttackContactPlan?.ApproachCompletion ?? 0.5f;
+                var setSolution = SetFlightSolver.Solve(new SetFlightRequest(
+                    TacticFor(decision.Actor.Team).SetRhythm,
+                    authoritativeContactCenter,
+                    outgoingTarget,
+                    actor.Ability.SetTechnique,
+                    readiness,
+                    SimulationParameters,
+                    SimulatedBall.DefaultFixedStep));
+                outgoing = setSolution.InitialVelocity;
+                _scheduledSetFlightSeconds = setSolution.FlightSeconds;
+            }
+            else
+            {
+                var outgoingFlightSeconds = OutgoingFlightSecondsFor(decision.Actor.Team, decision.Action);
+                outgoing = ReturnVelocitySolver.Solve(
+                    authoritativeContactCenter,
+                    outgoingTarget,
+                    outgoingFlightSeconds,
+                    SimulatedBall.DefaultFixedStep,
+                    SimulationParameters).InitialVelocity;
+            }
             var execution = SkillExecutionResolver.Resolve(
                 actor.Ability,
                 decision.Action,
@@ -1039,7 +1059,9 @@ namespace Volleyball.Presentation
                         ReceiveFlightSeconds);
                     break;
                 case TechniqueAction.Set:
-                    var setFlight = TacticFor(actorId.Team).SetFlightSeconds;
+                    var setFlight = _scheduledSetFlightSeconds > 0f
+                        ? _scheduledSetFlightSeconds
+                        : SetFlightSolver.PreferredFlightSeconds(TacticFor(actorId.Team).SetRhythm);
                     var attackDecision = _plannedAttackDecision;
                     _plannedAttackDecision = null;
                     if (attackDecision == null || !attackDecision.HasDecision)
@@ -1405,7 +1427,6 @@ namespace Volleyball.Presentation
             return action switch
             {
                 TechniqueAction.Receive => ReceiveFlightSeconds,
-                TechniqueAction.Set => TacticFor(team).SetFlightSeconds,
                 TechniqueAction.Attack => TacticFor(team).AttackFlightSeconds,
                 _ => ReceiveFlightSeconds
             };

@@ -213,7 +213,7 @@ git commit -m "feat: use team-local normal setter orientation"
 - Test: `Assets/Volleyball/Match/Tests/EditMode/PhysicalRallyTacticPlannerTests.cs`
 - Test: `Assets/Volleyball/Match/Tests/EditMode/ReturnVelocitySolverTests.cs`
 
-- [ ] **Step 1: Write failing rhythm and physical replay tests.**
+- [x] **Step 1: Write failing rhythm and physical replay tests.**
 
 ```csharp
 var solution = SetFlightSolver.Solve(new SetFlightRequest(SetRhythm.FastPin,
@@ -225,13 +225,13 @@ Assert.That(solution.Apex.Y, Is.GreaterThan(solution.Target.Y));
 
 Replay the initial velocity through `BallIntegrator` for `StepCount` and assert distance below `0.0002f`. Assert the documented bounds for CloseQuick, BackQuick, FastPin, Adjustment, and HighBall. Add rejection for a target with no physically plausible apex.
 
-- [ ] **Step 2: Run red.**
+- [x] **Step 2: Run red.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.EditModeTests.SetFlightSolverTests|Volleyball.EditModeTests.PhysicalRallyTacticPlannerTests|Volleyball.EditModeTests.ReturnVelocitySolverTests" -testResults "$PWD/TestResults/SetFlight-red.xml" -logFile "$PWD/TestResults/SetFlight-red.log"`
 
 Expected: compile failure for `SetFlightSolver` and `SetRhythm`.
 
-- [ ] **Step 3: Store rhythm, enumerate fixed-step solutions, and schedule unchanged velocity.**
+- [x] **Step 3: Store rhythm, enumerate fixed-step solutions, and schedule unchanged velocity.**
 
 ```csharp
 public enum SetRhythm { CloseQuick, BackQuick, FastPin, Adjustment, HighBall }
@@ -245,7 +245,7 @@ public readonly struct SetFlightSolution {
 
 Map MiddleQuick to CloseQuick, BackSet to BackQuick, and pins to FastPin. Use Adjustment/HighBall only for degraded pass state. Enumerate whole fixed-step durations in the selected range, use `ReturnVelocitySolver.Solve`, replay each candidate to obtain its apex, and reject non-arriving or implausible arcs. Choose the feasible time nearest the readiness-adjusted rhythm midpoint. Remove `SetFlightSeconds`; call the solver at each set schedule and never rescale `InitialVelocity` after solving.
 
-- [ ] **Step 4: Run green and commit.**
+- [x] **Step 4: Run green and commit.**
 
 Run: repeat Step 2 with `SetFlight-green` paths.
 

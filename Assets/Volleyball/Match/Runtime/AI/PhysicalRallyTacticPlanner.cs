@@ -96,7 +96,7 @@ namespace Volleyball.AI
             CourtPoint attackerPosition,
             CourtPoint defenderPosition,
             BlockCoveragePlan blockCoverage,
-            float setFlightSeconds,
+            SetRhythm setRhythm,
             float attackFlightSeconds)
         {
             SetRoute = setRoute;
@@ -105,7 +105,7 @@ namespace Volleyball.AI
             AttackerPosition = attackerPosition;
             DefenderPosition = defenderPosition;
             BlockCoverage = blockCoverage;
-            SetFlightSeconds = setFlightSeconds;
+            SetRhythm = setRhythm;
             AttackFlightSeconds = attackFlightSeconds;
         }
 
@@ -129,7 +129,7 @@ namespace Volleyball.AI
 
         public CourtPoint CoverPosition => BlockCoverage.CoverPosition;
 
-        public float SetFlightSeconds { get; }
+        public SetRhythm SetRhythm { get; }
 
         public float AttackFlightSeconds { get; }
 
@@ -141,7 +141,7 @@ namespace Volleyball.AI
                    AttackerPosition.Equals(other.AttackerPosition) &&
                    DefenderPosition.Equals(other.DefenderPosition) &&
                    BlockCoverage.Equals(other.BlockCoverage) &&
-                   SetFlightSeconds.Equals(other.SetFlightSeconds) &&
+                   SetRhythm == other.SetRhythm &&
                    AttackFlightSeconds.Equals(other.AttackFlightSeconds);
         }
 
@@ -160,7 +160,7 @@ namespace Volleyball.AI
                 hashCode = (hashCode * 397) ^ AttackerPosition.GetHashCode();
                 hashCode = (hashCode * 397) ^ DefenderPosition.GetHashCode();
                 hashCode = (hashCode * 397) ^ BlockCoverage.GetHashCode();
-                hashCode = (hashCode * 397) ^ SetFlightSeconds.GetHashCode();
+                hashCode = (hashCode * 397) ^ (int)SetRhythm;
                 return (hashCode * 397) ^ AttackFlightSeconds.GetHashCode();
             }
         }
@@ -287,11 +287,11 @@ namespace Volleyball.AI
                 SetRoute.BackSet => 0.65f,
                 _ => 0f
             };
-            var setFlight = setRoute switch
+            var setRhythm = setRoute switch
             {
-                SetRoute.MiddleQuick => 0.55f,
-                SetRoute.BackSet => 0.70f,
-                _ => 0.80f
+                SetRoute.MiddleQuick => SetRhythm.CloseQuick,
+                SetRoute.BackSet => SetRhythm.BackQuick,
+                _ => SetRhythm.FastPin
             };
             var attackFlight = setRoute == SetRoute.BackSet
                 ? 0.625f
@@ -303,7 +303,7 @@ namespace Volleyball.AI
                 attackPosition,
                 defensePosition,
                 blockCoverage,
-                setFlight,
+                setRhythm,
                 attackFlight);
         }
 
