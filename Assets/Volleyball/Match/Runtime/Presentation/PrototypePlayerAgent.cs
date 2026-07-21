@@ -43,7 +43,7 @@ namespace Volleyball.Presentation
             : _hasSupportAction
                 ? _supportAction.ToString()
                 : _hasScheduledContact
-                    ? _scheduledAction.ToString()
+                    ? _isControlledHandling ? "Handling" : _scheduledAction.ToString()
                     : "Ready";
 
         public float MovementShortfall { get; private set; }
@@ -104,6 +104,7 @@ namespace Volleyball.Presentation
         private Vector3 _attackTakeoffPosition;
         private Vector3 _attackContactRootPosition;
         private bool _physicalBlockActivationLogged;
+        private bool _isControlledHandling;
         private float _courtHalfLength = CourtBuilder.HalfLength;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
@@ -234,6 +235,40 @@ namespace Volleyball.Presentation
             _supportActionActivated = false;
         }
 
+        public void ScheduleControlledHandlingContact(
+            float scheduledSimulationTime,
+            SimVector3 targetVelocity,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            AttackApproachPlan attackApproach,
+            AttackContactPlan attackContactPlan,
+            float movementStartSimulationTime)
+        {
+            if (attackContactPlan.Outcome != AttackContactOutcome.Handling)
+            {
+                throw new ArgumentException(
+                    "Controlled handling requires a handling contact plan.",
+                    nameof(attackContactPlan));
+            }
+
+            ScheduleContact(
+                TechniqueAction.Attack,
+                scheduledSimulationTime,
+                targetVelocity,
+                executionError,
+                contactGroupId,
+                attackContactPlan.ContactCenter,
+                movementTarget: ToUnity(attackApproach.ApproachStart),
+                movementStartSimulationTime: movementStartSimulationTime,
+                attackApproach: attackApproach,
+                attackContactPlan: attackContactPlan);
+            _isControlledHandling = true;
+            _targetVelocity = targetVelocity + executionError.TargetVelocityError;
+            _attackContactRootPosition = ContactRootPosition(
+                attackContactPlan,
+                TechniqueAction.Set);
+        }
+
         public void CancelScheduledContact()
         {
             _hasScheduledContact = false;
@@ -244,6 +279,7 @@ namespace Volleyball.Presentation
             _supportActionActivated = false;
             _hasAttackApproach = false;
             _hasAttackContactPlan = false;
+            _isControlledHandling = false;
             DisableBlockContactWindow();
             DisableEmergencyReceiveWindow();
         }
@@ -507,15 +543,21 @@ namespace Volleyball.Presentation
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample);
             transform.position = ConstrainToOwnCourt(transform.position);
+            var contactAction = _isControlledHandling
+                ? TechniqueAction.Receive
+                : _scheduledAction;
+            var surfaceAction = _isControlledHandling
+                ? TechniqueAction.Set
+                : _scheduledAction;
             var surfaces = ContactSurfaces.Capture(
-                _scheduledAction,
+                surfaceAction,
                 sample.SurfaceActive,
                 _contactGroupId,
                 setContactHand: CurrentSetContactHand());
             var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
                 ? _targetVelocity.Normalized
                 : SimVector3.Up;
-            var response = ResponseFor(_scheduledAction);
+            var response = ResponseFor(contactAction);
             // AI assistance resolves the physical impulse toward this action's already-imperfect
             // execution target. Ability still changes that target, reaction time, reachable position,
             // contact pose and set-style availability before technique control is applied.
@@ -533,7 +575,7 @@ namespace Volleyball.Presentation
             {
                 contacts.Add(new BallContactCandidate(
                     surface,
-                    _scheduledAction,
+                    contactAction,
                     Id,
                     playerTechnique,
                     _targetVelocity,
@@ -684,6 +726,22 @@ namespace Volleyball.Presentation
             if (_isMovingThisStep && sample.Phase == ActionPhase.Prepare)
             {
                 Rig.SetPose(StickFigurePose.Run, Mathf.Clamp01(deltaSeconds * 12f));
+                return;
+            }
+
+            if (_isControlledHandling)
+            {
+                var handlingPose = sample.Phase == ActionPhase.Recover ||
+                                   sample.Phase == ActionPhase.Complete
+                    ? StickFigurePose.Ready
+                    : StickFigurePose.Set;
+                Rig.SetPoseWithContactError(
+                    handlingPose,
+                    Mathf.Clamp01(deltaSeconds * 14f),
+                    TechniqueAction.Set,
+                    _executionError.ContactPositionError,
+                    _executionError.ContactNormalErrorDegrees,
+                    sample.SurfaceActive ? 1f : 0f);
                 return;
             }
 
@@ -874,7 +932,7 @@ namespace Volleyball.Presentation
 
             var currentFrames = new PlayerContactSurfaces(Rig, transform)
                 .Capture(
-                    _scheduledAction,
+                    _isControlledHandling ? TechniqueAction.Set : _scheduledAction,
                     true,
                     _contactGroupId,
                     setContactHand: CurrentSetContactHand());
@@ -888,7 +946,7 @@ namespace Volleyball.Presentation
             currentCenter /= currentFrames.Count;
 
             var correction = _plannedContactCenter - currentCenter;
-            var maximumCorrection = _scheduledAction switch
+            var maximumCorrection = _isControlledHandling ? 0.70f : _scheduledAction switch
             {
                 TechniqueAction.Attack => 0.70f,
                 TechniqueAction.Set => 0.30f,
@@ -1152,8 +1210,13 @@ namespace Volleyball.Presentation
 
         private Vector3 AttackRootContactPosition(AttackContactPlan plan)
         {
+            return ContactRootPosition(plan, TechniqueAction.Attack);
+        }
+
+        private Vector3 ContactRootPosition(AttackContactPlan plan, TechniqueAction surfaceAction)
+        {
             var takeoff = ToUnity(plan.Takeoff);
-            var frames = PreviewContactFramesAtResolvedPosition(TechniqueAction.Attack, takeoff);
+            var frames = PreviewContactFramesAtResolvedPosition(surfaceAction, takeoff);
             var currentCenter = SimVector3.Zero;
             foreach (var frame in frames)
             {

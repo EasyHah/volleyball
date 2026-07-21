@@ -266,7 +266,7 @@ git commit -m "feat: solve dynamic set flight rhythm"
 - Test: `Assets/Volleyball/Match/Tests/EditMode/SetQualityAssessmentTests.cs`
 - Test: `Assets/Volleyball/Match/Tests/EditMode/TeamRallyDecisionPlannerTests.cs`
 
-- [ ] **Step 1: Write failing A-E, attribution, and fallback tests.**
+- [x] **Step 1: Write failing A-E, attribution, and fallback tests.**
 
 ```csharp
 Assert.That(SetQualityAssessment.Evaluate(new SetQualityInput(0.02f, 0.03f, 0.02f, 1.1f, 0.8f)).Grade,
@@ -281,13 +281,13 @@ Assert.That(SetQualityAssessment.PrimaryResponsibility(SetQualityGrade.E, Attack
 
 Test that a B trajectory updates approach/takeoff and becomes `AdjustedAttack`; test that a D trajectory returns `Handling` and opens no spike contact window.
 
-- [ ] **Step 2: Run red.**
+- [x] **Step 2: Run red.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.EditModeTests.SetQualityAssessmentTests|Volleyball.EditModeTests.TeamRallyDecisionPlannerTests" -testResults "$PWD/TestResults/Quality-red.xml" -logFile "$PWD/TestResults/Quality-red.log"`
 
 Expected: compile failure for `SetQualityAssessment` and its grade enums.
 
-- [ ] **Step 3: Grade actual contact, replace provisional attack, or handle.**
+- [x] **Step 3: Grade actual contact, replace provisional attack, or handle.**
 
 ```csharp
 public enum SetQualityGrade { A, B, C, D, E }
@@ -305,7 +305,7 @@ public readonly struct SetQualityAssessment {
 
 At accepted Set, predict arrival/apex from the contact's actual outgoing velocity, evaluate quality against the provisional contact plan, and build a replacement `AttackContactPlan`. A/B/C cancels and replaces the provisional attack. D/E cancels it and schedules a controlled handling path with `NoNormalAttack`, not a spike timeout. Preserve all contributing causes diagnostically but select one primary stats owner: A/B attack faults are attacker; D/E inability is setter.
 
-- [ ] **Step 4: Run green and commit.**
+- [x] **Step 4: Run green and commit.**
 
 Run: repeat Step 2 with `Quality-green` paths.
 
