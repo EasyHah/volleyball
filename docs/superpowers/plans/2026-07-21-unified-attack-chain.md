@@ -13,6 +13,10 @@
 ## File Structure
 
 - `Assets/Volleyball/Shared/Runtime/PlayerAbilitySnapshotV1.cs`: serialized metre-based attack reach.
+- `Assets/Volleyball/Shared/Runtime/PlayerAbilitySnapshotV2.cs`, `PlayerSnapshotV2.cs`,
+  `TeamSnapshotV2.cs`, `MatchContextV2.cs`, and `MatchResultV2.cs`: new-match
+  V2 contracts and explicit V1 migration; V1 contracts remain byte-for-byte
+  canonical-compatible.
 - `Assets/Volleyball/Match/Runtime/Domain/Players/PlayerAbilityProfile.cs`: immutable runtime ability projection.
 - `Assets/Volleyball/Match/Runtime/AI/AttackContactPlanner.cs`: pure contact, adjustment, and handling plan.
 - `Assets/Volleyball/Match/Runtime/AI/SetFlightSolver.cs`: discrete ballistic rhythm selection.
@@ -27,10 +31,16 @@
 - EditMode tests cover pure behaviour; existing 3v3/6v6 PlayMode tests and a new calibration test cover scenes.
 - `docs/changes/2026-07-21-001-unified-attack-chain.md` documents the Shared contract migration.
 
-### Task 1: Add Maximum Attack Reach
+### Task 1: Preserve V1 And Add Explicit V2 Migration
 
 **Files:**
-- Modify: `Assets/Volleyball/Shared/Runtime/PlayerAbilitySnapshotV1.cs`
+- Create: `Assets/Volleyball/Shared/Runtime/PlayerAbilitySnapshotV2.cs`
+- Create: `Assets/Volleyball/Shared/Runtime/PlayerSnapshotV2.cs`
+- Create: `Assets/Volleyball/Shared/Runtime/TeamSnapshotV2.cs`
+- Create: `Assets/Volleyball/Shared/Runtime/MatchContextV2.cs`
+- Create: `Assets/Volleyball/Shared/Runtime/MatchResultV2.cs`
+- Modify: `Assets/Volleyball/Shared/Runtime/ContractJson.cs`
+- Modify: `Assets/Volleyball/Shared/Runtime/ContractPrimitives.cs`
 - Modify: `Assets/Volleyball/Match/Runtime/Domain/Players/PlayerAbilityProfile.cs`
 - Modify: every `PlayerAbilitySnapshotV1` and `PlayerAbilityProfile` construction site.
 - Test: `Assets/Volleyball/Shared/Tests/EditMode/MatchContractTests.cs`
@@ -39,11 +49,13 @@
 - [ ] **Step 1: Write the failing contract and projection tests.**
 
 ```csharp
-var ability = new PlayerAbilitySnapshotV1(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 3.42f);
-var restored = ContractJson.DeserializeContext(ContractJson.Serialize(CreateContextWith(ability)));
+var legacy = ContractJson.DeserializeContext(V1Fixture.Json);
+Assert.That(legacy.ContextHash, Is.EqualTo(V1Fixture.ContextHash));
+var ability = new PlayerAbilitySnapshotV2(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 3.42f);
+var restored = ContractJson.DeserializeContextV2(ContractJson.Serialize(CreateContextV2With(ability)));
 Assert.That(restored.Home.Players[0].Ability.MaxAttackReach, Is.EqualTo(3.42f));
 Assert.That(new PlayerAbilityProfile(ability).MaxAttackReach, Is.EqualTo(3.42f));
-Assert.That(() => new PlayerAbilitySnapshotV1(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 3.19f),
+Assert.That(() => new PlayerAbilitySnapshotV2(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 3.19f),
     Throws.TypeOf<ArgumentOutOfRangeException>());
 ```
 
@@ -51,18 +63,23 @@ Assert.That(() => new PlayerAbilitySnapshotV1(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.Shared.EditModeTests.MatchContractTests|Volleyball.EditModeTests.SharedBoundaryTests" -testResults "$PWD/TestResults/Reach-red.xml" -logFile "$PWD/TestResults/Reach-red.log"`
 
-Expected: compile failure for the eighth constructor argument or `MaxAttackReach`.
+Expected: compile failure for the V2 types and explicit V2 JSON methods.
 
 - [ ] **Step 3: Add the field consistently.**
 
 ```csharp
 [DataMember(Name = "maxAttackReach", Order = 8)] private float _maxAttackReach;
 public float MaxAttackReach => _maxAttackReach;
-// Constructor, equality, hash, Validate(), ToSnapshot(), and profile projection
-// use the same finite inclusive 3.20f-3.55f validation.
+// V2 constructor, equality, hash, Validate(), profile projection, and V2 context
+// hashing use the same finite inclusive 3.20f-3.55f validation.
 ```
 
-Add explicit values to every construction site: 3.20 for defensive defaults, 3.42 for normal attackers, and 3.52 for strong attackers. Do not add a positional rule to the type itself.
+Do not modify V1 classes or their canonical hash code. Add V2 context/result
+counterparts and V2-only `ContractJson` methods; retain old V1 method signatures.
+Implement `MatchContextV2.UpgradeFromV1` with deterministic migration defaults:
+3.20 for setter/libero/defender, 3.42 for outside/opposite, and 3.48 for middle.
+Use explicit V2 construction values in new 3v3/6v6 bootstraps; do not impose a
+position restriction on the V2 ability type itself.
 
 - [ ] **Step 4: Run green and commit.**
 
@@ -71,8 +88,8 @@ Run: repeat Step 2 with `Reach-green` output names.
 Expected: XML `failed="0"`.
 
 ```bash
-git add Assets/Volleyball/Shared/Runtime/PlayerAbilitySnapshotV1.cs Assets/Volleyball/Match/Runtime/Domain/Players/PlayerAbilityProfile.cs Assets/Volleyball/Shared/Tests/EditMode/MatchContractTests.cs Assets/Volleyball/Match/Tests/EditMode/SharedBoundaryTests.cs
-git commit -m "feat: add maximum attack reach ability"
+git add Assets/Volleyball/Shared/Runtime/PlayerAbilitySnapshotV2.cs Assets/Volleyball/Shared/Runtime/PlayerSnapshotV2.cs Assets/Volleyball/Shared/Runtime/TeamSnapshotV2.cs Assets/Volleyball/Shared/Runtime/MatchContextV2.cs Assets/Volleyball/Shared/Runtime/MatchResultV2.cs Assets/Volleyball/Shared/Runtime/ContractJson.cs Assets/Volleyball/Shared/Runtime/ContractPrimitives.cs Assets/Volleyball/Match/Runtime/Domain/Players/PlayerAbilityProfile.cs Assets/Volleyball/Shared/Tests/EditMode/MatchContractTests.cs Assets/Volleyball/Match/Tests/EditMode/SharedBoundaryTests.cs
+git commit -m "feat: add v2 attack reach contract"
 ```
 
 ### Task 2: Use One Planned And Physical Contact Point
@@ -416,4 +433,3 @@ git commit -m "feat: calibrate unified attack chain"
 - Spec coverage: Tasks 1-2 implement max reach and a single contact centre; Task 3 implements team-local orientation; Task 4 implements dynamic ballistic rhythm; Task 5 implements real-contact replanning, A-E quality, handling, and attribution; Task 6 records replay diagnostics and counters; Task 7 calibrates both scenes.
 - Placeholder scan: all introduced public types, files, assertions, seeds, thresholds, and verification commands are explicit.
 - Type consistency: `AttackContactPlan`, `SetFlightSolution`, `SetQualityAssessment`, `SetQualityGrade`, and `AttackResponsibility` are named consistently from creation through replay and calibration.
-

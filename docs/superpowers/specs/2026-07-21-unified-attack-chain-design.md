@@ -8,6 +8,29 @@ kinematics, orientation rules, quality classification, attribution, statistics,
 and replay diagnostics across both scenes. The scenes continue to differ only in
 court configuration, roster size, and tactical candidates.
 
+## Contract Compatibility
+
+`MatchContextV1`, its player and ability snapshots, `MatchResultV1`, and their
+canonical hash algorithm remain immutable. Existing V1 JSON must deserialize,
+validate against its original hash, and produce the same canonical hash as before.
+V1 is not extended with `MaxAttackReach`.
+
+New matches use a parallel V2 contract family: `PlayerAbilitySnapshotV2`,
+`PlayerSnapshotV2`, `TeamSnapshotV2`, `MatchContextV2`, and `MatchResultV2`.
+V2 contains the metre-based `MaxAttackReach` and computes a V2-only canonical
+hash. `ContractJson` exposes explicit V1 and V2 serialize/deserialize methods;
+it never silently treats one version as the other. Match runtime and Career
+request boundaries accept a common read-only match-context abstraction so a
+legacy V1 match can still finish while new attack-chain matches use V2.
+
+`MatchContextV2.UpgradeFromV1` is the only legacy upgrade path. It creates a new
+V2 context with a new V2 hash and assigns conservative deterministic reach
+defaults from the old declared position only because V1 has no reach data:
+setter/libero/defender 3.20m, outside/opposite 3.42m, and middle 3.48m. Those
+values are migration defaults, not position restrictions; V2 callers may set any
+valid player-specific reach. Upgrade tests retain an old V1 JSON fixture and
+verify both unchanged V1 validation and explicit V2 migration.
+
 ## Scope And Order
 
 Implementation proceeds strictly in this order:
@@ -24,7 +47,7 @@ structural tests.
 
 ## Shared Ability And Contact Point
 
-`PlayerAbilitySnapshotV1` and `PlayerAbilityProfile` gain a finite, metre-based
+`PlayerAbilitySnapshotV2` and `PlayerAbilityProfile` gain a finite, metre-based
 `MaxAttackReach` field. It is independent of position. Roster defaults give
 ordinary attackers at least 3.20 metres, while strong attackers are in the
 3.40-3.55 metre range.
