@@ -280,10 +280,10 @@ CareerCreated
 ```text
 Planning
   -> Planned(weekPlanId, slotActionIds, nextSlotIndex = 1)
-  -> ExecutingSlot(slotIndex = 1, operationId)
+  -> [ExecuteSlot(slotIndex = 1, operationId) 内存原子命令]
   -> AwaitingEventChoice(occurrenceId)
   -> Planned(..., nextSlotIndex = 2)
-  -> ExecutingSlot(slotIndex = 2, operationId)
+  -> [ExecuteSlot(slotIndex = 2, operationId) 内存原子命令]
   -> Planned(..., nextSlotIndex = 3)
   -> AwaitingMatch(sessionId)        // 仅比赛槽
   -> 下一周 Planning                 // 比赛、周末与推进同一原子提交
@@ -293,9 +293,9 @@ Planning
 `occurrenceId`、内容业务 ID、两项选项 ID、已解析参数、随机算法版本和随机键所需上下文；事件选择的
 后果、回执、`pendingEvent` 清除与恢复到 `Planned(nextSlotIndex = 2)` 属于下一次原子提交。
 
-`SettlingMatchAndWeek(operationId)` 只是在应用命令执行期间的内存阶段，不是可单独保存或恢复的权威
-状态。提交前崩溃仍为 `AwaitingMatch`；提交成功后直接是下一周 `Planning`，不存在只结算比赛或只推进
-周次的中间快照。
+`ExecuteSlot(operationId)` 与 `SettlingMatchAndWeek(operationId)` 都只是在应用命令执行期间的内存阶段，不是可单独保存或恢复的权威
+状态。普通行动提交前崩溃时仍为原 `Planned`；比赛结算提交前崩溃时仍为 `AwaitingMatch`。提交成功后直接是
+新 `Planned`/`AwaitingEventChoice` 或下一周 `Planning`，不存在只落盘部分后果的中间快照。
 
 每周固定三个槽位；正式比赛预占槽位。整周计划确认前可编辑，确认后不能回退已完成行动。
 
@@ -633,7 +633,7 @@ settlementSummary
 - `Planning` 可保存已确认进入领域状态的计划草稿；纯 UI 选择、悬停、未确认弹窗不持久化；
 - `Planned` 的正式执行由状态机驱动，不能用手动保存插入半个槽位；
 - `AwaitingMatch` 在进入比赛前已经耐久保存，手动保存命令不可用；界面可提示“已自动保存至赛前”；
-- `ExecutingSlot` 和内存中的 `SettlingMatchAndWeek` 只允许当前原子命令完成或失败回滚，不能另存部分
+- `ExecuteSlot` 命令和内存中的 `SettlingMatchAndWeek` 只允许当前原子命令完成或失败回滚，不能另存部分
   后果；
 - 手动保存也进入单写者队列、执行 CAS 并递增 revision；若与当前持久快照无业务差异，可返回“已是最新”而不制造空 revision。
 

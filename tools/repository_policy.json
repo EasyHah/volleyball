@@ -73,6 +73,11 @@
     },
     "Volleyball.Career.Application": {
       "path": "Assets/Volleyball/Career/Runtime/Application/Volleyball.Career.Application.asmdef",
+      "references": ["Volleyball.Career.Domain"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Career.Persistence": {
+      "path": "Assets/Volleyball/Career/Runtime/Persistence/Volleyball.Career.Persistence.asmdef",
       "references": ["Volleyball.Shared", "Volleyball.Career.Domain"],
       "noEngineReferences": true
     },
@@ -82,7 +87,7 @@
     },
     "Volleyball.Career.EditModeTests": {
       "path": "Assets/Volleyball/Career/Tests/EditMode/Volleyball.Career.EditModeTests.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap"],
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap"],
       "includePlatforms": ["Editor"],
       "optionalUnityReferences": ["TestAssemblies"]
     },

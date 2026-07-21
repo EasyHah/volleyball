@@ -110,7 +110,7 @@ Unity 升级与协作基线完成后，只把该分支的实现/测试补丁重�
 | `Volleyball.Shared.MatchV2` | 禁止 | 只依赖 `Volleyball.Shared` 的稳定 ID；提供 V2 DTO、规范 codec 与 `IMatchRunnerV2` |
 | `Volleyball.Career.Domain` | 禁止 | `Volleyball.Shared` 中的稳定 ID；禁止引用 `MatchContextV*`、`MatchResultV*`、`PlayerAbilitySnapshotV*` |
 | `Volleyball.Career.Application` | 禁止 | `Volleyball.Career.Domain`；定义用例、仓储端口和 Career 自有比赛端口 |
-| `Volleyball.Career.Persistence` | 禁止 | 阶段 1–4 只依赖 Career Domain/Application；阶段 5 起额外依赖 `Volleyball.Shared.MatchV2`，仅在持久化 DTO/校验层保存完整上下文与原始结果，不向 Domain/Application 暴露 V2 类型；路径由外部注入 |
+| `Volleyball.Career.Persistence` | 禁止 | 阶段 1–4 依赖 Career Domain，并仅复用 `Volleyball.Shared` 的稳定 `PlayerId/TeamId`；禁止使用 V1 比赛 DTO。阶段 5 起额外依赖 `Volleyball.Shared.MatchV2`，仅在持久化 DTO/校验层保存完整上下文与原始结果，不向 Domain/Application 暴露 V2 类型；路径由外部注入 |
 | `Volleyball.Career.Content` | 允许 | `Volleyball.Career.Domain`；只把 ScriptableObject 映射为纯 C# 配置 |
 | `Volleyball.Career.MatchIntegration` | 禁止 | Career Domain/Application、`Volleyball.Shared` 与 `Volleyball.Shared.MatchV2`；独占 Career/Shared DTO 映射并承载首里程碑 Fake runner，不引用 Match 内部 Domain |
 | `Volleyball.Career.Presentation` | 允许 | Career Domain/Application；不得直接写存档或 Shared 比赛 DTO |
@@ -227,7 +227,9 @@ CI。当前仓库只有最小 `.gitattributes`，Unity Windows workflow 整个 j
 并把 `CareerPlayerRecord` 从 `PlayerAbilitySnapshotV1` 解耦为 Career 自有八项整数属性模型。删除当前
 `CareerMatchRequest` 与同步 `IMatchGateway.Play`；若为了后续编译先建立 Career 自有异步端口，本阶段不得
 接线或调用它。
-字段只覆盖此时已有调用方的创建、Planning 和行动执行状态，但结构不得是一次性临时存档。正式
+字段只覆盖本里程碑已确认的创建、试训、Planning 和已原子提交的行动后果，但结构不得是一次性临时存档。
+`ExecutingSlot` 只是 Application 命令执行期的内存态：提交前权威快照仍为原 `Planned`，提交成功后直接变为新
+`Planned` 或 `AwaitingEventChoice`，不得持久化半个槽位。正式
 `PendingMatch` 与 `SettlementReceipt` 依赖新版 Shared 契约，在阶段 6 以显式 schema 升级加入；本阶段
 不得用原始 JSON、空接口或猜测字段提前占位。
 

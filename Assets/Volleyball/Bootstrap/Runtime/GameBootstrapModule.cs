@@ -13,7 +13,7 @@ namespace Volleyball.Bootstrap
         {
             typeof(MatchContextV1),
             typeof(ThreeVsThreeRallyBootstrap),
-            typeof(CareerMatchRequest),
+            typeof(OperationReceiptIndex),
             typeof(CareerPresentationModule)
         };
     }
