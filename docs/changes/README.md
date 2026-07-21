@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260721-002 | 2026-07-21 | 已完成 | Career.Domain / Career.EditModeTests | 模块内部 | [对齐球员生涯周行动计划领域规则](2026-07-21-002-career-week-plan-alignment.md) |
 | CHG-20260721-001 | 2026-07-21 | 已完成 | Repository / CI / Docs / Shared / Match | **跨模块（重点）** | [首里程碑单负责人协作与冻结基线](2026-07-21-001-solo-integration-and-collaboration-baseline.md) |
 | CHG-20260720-001 | 2026-07-20 | 已完成 | Project Settings / Packages / Docs / Build | **跨模块（重点）** | [升级并锁定 Unity 6000.3.20f1](2026-07-20-001-unity-6000.3.20f1-upgrade.md) |
 | CHG-20260719-005 | 2026-07-19 | 已完成 | Match / Docs / Build Settings | 模块内部 | [正式室内 6v6 单局](2026-07-19-005-formal-indoor-6v6.md) |
