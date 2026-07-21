@@ -1,18 +1,18 @@
 # CHG-20260717-006：球员生涯首个技术里程碑实施基线
 
 - 日期：2026-07-17
-- 最近修订：2026-07-20
-- 状态：进行中
-- 负责人：多方（Career 主责，Match/Shared 联合评审）
+- 最近修订：2026-07-21
+- 状态：已完成
+- 负责人：当前里程碑负责人（Career / Shared / Bootstrap / 共同模块）
 - 影响模块：Career / Shared / Match / Bootstrap / Project Settings / Docs
 - 交互级别：跨模块（重点）
 - 关联分支：`docs/career-development-roadmap`
 - 关联提交或 PR：本文件所在提交/PR；文档分支已变基到 `origin/main@4bf9e4b`
 
 > [!IMPORTANT]
-> 本次只建立实施基线，不修改运行时代码或现有 Shared 契约。后续 Shared 契约门禁将由双方在独立
-> 分支共同批准；Match 负责人需要确认输入输出统计、fixture、版本和职责边界，Unity 版本升级也必须
-> 先独立完成并由双方复核。当前 Career 原型仍耦合 Shared V1，周计划分支也仍包含已移除的
+> 本次只建立实施基线，不修改运行时代码或现有 Shared 契约。项目负责人现已授权当前负责人实现 Career
+> 与共同模块；Match 和 legacy Shared V1 以精确 tree 哈希冻结，详细 V2 由兄弟程序集与 FakeMatch 先行。
+> 当前 Career 原型仍耦合 Shared V1，周计划分支也仍包含已移除的
 > `Academics/Social` 行动；文档已把二者列为开工前必须消除的已知偏差，不能按现状直接合并。搭档新增
 > 的 `FormalIndoor6v6` 已是可完局的 Match 生产者基线，但没有升级 Shared 或实现 Career 场景生命周期，
 > 因此不能据此跳过契约门禁。
@@ -37,7 +37,11 @@ Shared DTO。
 V1 仍缺详细技术事实、`resultHash`、异步 runner 和 `PendingMatch` 场景往返。现有物理 6v6 接入列为
 首里程碑完成后的独立阶段；同时记录能力仍被位置模板覆盖、全 AI 运行以及上下文 seed 尚未进入 AI
 决策的接入缺口。MenShen 客户端与凭据继续限定为 Editor 工具边界；全局 Newtonsoft 包程序集当前仍会
-进入 Mono Player，这一包边界债务不成为 Career 的运行时依赖。
+  进入 Mono Player，这一包边界债务不成为 Career 的运行时依赖。
+
+2026-07-21 因 Match 开发者暂不可参与确认，项目负责人授权当前负责人全权完成 Career 与共同模块。
+路线因此冻结 Match/V1、以自动化和独立 agent 取代不可执行的双人门禁，并把物理 Match V2 producer 延期；
+当前里程碑 Shared 门禁只新增 `Volleyball.Shared.MatchV2`、Career.MatchIntegration 与 FakeMatch。
 
 ## 具体变更
 
@@ -52,21 +56,20 @@ V1 仍缺详细技术事实、`resultHash`、异步 runner 和 `PendingMatch` �
 
 ## 跨模块交互重点
 
-- 接口提供方：Career 提供赛前意图和长期状态；Match 提供直接比赛/快速模拟产生的事实；Shared
-  提供双方共同批准的版本化契约。
-- 接口使用方：Career / Match / Bootstrap。
-- 数据方向：`Career -> Shared -> Match -> Shared -> Career`。
-- 兼容性：本次文档兼容现有代码且不改 V1。未来 Shared 升级必须新增或明确废弃版本，不得在各自
-  功能分支私自改变字段语义；比赛生命周期字段通过显式存档 schema 升级加入。
-- 对方开发者需要做什么：评审 Unity `6000.3.20f1` 升级基线、Shared 契约门禁所需事实、计数口径、
-  3v3 兼容与 6v6/12 人 golden fixtures、异步场景生命周期、职责分界、asmdef 表和公共目录所有权；
-  本次文档合并无需改 Match 代码，后续 Shared/MatchIntegration 与物理 6v6 接入分支需要双方共同批准。
+- 接口提供方：Career 提供赛前意图和长期状态；Shared V2/FakeMatch 在本里程碑提供固定比赛事实；
+  物理 Match producer 延期。
+- 接口使用方：Career.MatchIntegration / FakeMatch / Bootstrap；冻结 Match 继续使用 V1。
+- 数据方向：当前闭环为 `Career -> Shared V2 -> FakeMatch -> Shared V2 -> Career`。
+- 兼容性：现有 V1 类型、验证器与 tree 不变；V2 使用独立兄弟程序集和命名空间，比赛生命周期字段通过
+  显式存档 schema 升级加入。
+- 消费方或后续负责人需要做什么：当前 Match 无需改代码。恢复物理接入后另行实现 V2 producer、能力
+  映射、AI seed 和详细事件，并完成独立兼容验证。
 
 ## 验证
 
 - [ ] EditMode 测试：纯文档改动，不适用；实际阶段按路线门禁分别记录。
 - [ ] PlayMode 测试：纯文档改动，不适用；UI 垂直切片阶段必须补齐。
-- [ ] 手动场景验证：纯文档改动，不适用；最终 Windows 开发构建由双方游玩验证。
+- [ ] 手动场景验证：纯文档改动，不适用；最终 Windows 开发构建由当前负责人完成闭环试玩。
 - [x] 序列化、存档或迁移验证（设计层）：已规定版本轴、CAS/原子替换、单 `.bak`、隔离恢复、
   确定性随机与幂等回执的最低验收矩阵；代码证据尚待实现。
 - [x] 文档一致性初检：四份文档统一首里程碑范围、阶段依赖、术语和非目标。
@@ -78,10 +81,11 @@ V1 仍缺详细技术事实、`resultHash`、异步 runner 和 `PendingMatch` �
 - [x] 2026-07-20 上游同步复核：文档分支已变基到 `main@4bf9e4b`，核对 3v3/6v6 实现、`224/224`
   EditMode、`11/11` PlayMode 上游记录、12 人 V1 结果、Build Settings、Newtonsoft 包锁与仍未改变的
   Shared/Career/Bootstrap 边界；本次未把上游历史测试冒充为目标 Unity/Windows 新验证。
-- [ ] Career/Match 双方人工评审与批准。
+- [x] 项目负责人确认临时单负责人授权、Match/V1 冻结范围与自动化/agent 验收机制。
 
-没有运行 Unity 测试，因为该分支只新增 Markdown。当前工程仍为 Unity `6000.0.43f1`；目标版本
-`6000.3.20f1` 必须在独立升级分支完成编译、EditMode、PlayMode 和 Windows x64 构建验证。
+本基线最初为纯 Markdown，后续独立升级提交 `d603219` 已把工程锁定 Unity `6000.3.20f1`，并完成
+`224/224` EditMode、`11/11` PlayMode、Windows x64 Mono Development 构建与短时 D3D11/null-graphics
+Player 冒烟；未验证项仍以升级变更记录为准。
 
 ## 回滚与风险
 

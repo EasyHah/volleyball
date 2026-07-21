@@ -56,18 +56,27 @@ Shared V1 并同步返回结果。这些类型只代表原型，不得写入正�
 `Career.MatchIntegration` 映射。正式比赛端口为可取消的异步 `ExecuteAsync`，且取消/加载失败保留
 `PendingMatch`，不生成伪结果。
 
-### 2.4 Shared 升级门槛
+### 2.4 Shared/FakeMatch 升级门槛
 
-在 Career 可以正式创建 `PendingMatch` 或结算 FakeMatch 前，必须完成一次受控 Shared 契约升级：
+在 Career 可以正式创建 `PendingMatch` 或结算 FakeMatch 前，必须完成一次受控的增量契约升级。现有
+`Volleyball.Shared` Runtime tree `61c7a928f2bf4740defea34c67e5cb108f6dfe76`、全部 V1 类型和
+`ContractVersions.SupportsMatch` 行为保持冻结；新版放在兄弟程序集 `Volleyball.Shared.MatchV2` 与
+`Volleyball.Shared.Contracts.V2` 命名空间：
+
+完整 V2 上下文和原始结果由 `Volleyball.Career.Persistence` 的持久化 DTO 层拥有；该程序集从阶段 5
+开始可依赖 `Shared.MatchV2` 来执行 codec 与语义验证，但只向 Application 的仓储端口映射 Career 自有
+状态和不透明规范载荷，V2 类型不得进入 Career Domain/Application。`Career.MatchIntegration` 负责把该
+载荷解码为 V2 runner 输入并把 V2 结果映射回 Career facts。这样既保存完整正式载荷，也不复制跨模块 DTO。
 
 1. 定义包含第 9 节全部冻结输入的新版 `MatchContext`，并加入所有比赛相关版本轴。
 2. 定义包含 `resultHash`、结束状态、逐局与结构化负荷事实的新版 `MatchResult`。
 3. 将跨模块数值改为带明确量纲的定点整数，例如毫米、毫秒、0–10000 能力基点和整数负荷；禁止在正式规范哈希载荷中使用浮点数。
 4. 实现第 10 节的规范 JSON、golden bytes 和 golden hashes。
-5. 为 Career 与 FakeMatch 提供双方读取的 6v6 fixture，冻结双方各六人并返回 12 人事实；同时保留一组
+5. 为 Shared、Career.MatchIntegration 与 FakeMatch 提供共同读取的 6v6 fixture，冻结双方各六人并返回 12 人事实；同时保留一组
    3v3 契约回归 fixture。未来直接比赛与快速模拟必须复用同一结构，各自在首次接入时新增自身 fixture
    和适用版本。
-6. 明确 V1 兼容策略。若 V1 已被持久化或被外部调用方使用，不能原地改字段语义，必须新增契约版本和显式迁移/只读解析器；若在任何可分发存档产生前废弃 V1，也必须以变更文档、fixture 更新和双方模块联合测试记录该决定。
+6. V1 保持兼容且不接受 V2；`ContractVersions.SupportsMatch(2)` 继续返回 `false`。V2 使用独立检查器，
+   并以 V1 精确 JSON/hash、3v3/6v6 回归及 V2 golden bytes/hashes 共同证明隔离边界。
 
 门槛完成前，Career 可以实现与测试本地档案、通用快照、CAS 仓储和不依赖正式比赛 DTO 的周状态，但不得声称比赛恢复与幂等结算闭环已经完成。
 
@@ -698,7 +707,8 @@ Windows 文件测试至少覆盖首次创建、覆盖替换、杀死子进程后
 
 - 对应 DTO、仓储和状态机代码存在且模块边界正确；
 - EditMode/PlayMode、golden fixture、Windows 文件恢复测试通过；
-- Shared 新契约由 Career 与 Match 两端共同消费，版本/哈希不匹配会拒绝；
+- Shared V2 由 Career.MatchIntegration 与 FakeMatch 共同消费，版本/哈希不匹配会拒绝；冻结 Match 继续
+  通过 V1 回归，物理 V2 producer 不属于本里程碑；
 - 重复比赛结果返回既有 `SettlementReceipt`，冲突结果不会覆盖；
 - 每个周转移提交前后强制终止均不重复或丢失后果；
 - 主档损坏后保留隔离原件，并可在玩家确认后以新 lineage 从唯一已验证上一 revision 备份恢复；

@@ -1,0 +1,15 @@
+# Temporary sole-integration baseline approved for the first Career milestone.
+# @hoshisora1 owns Career and every common surface. Match remains attributed to
+# @EasyHah and is also protected by an exact frozen-tree check in CI.
+* @hoshisora1
+
+/Assets/Volleyball/Match/** @EasyHah
+/Assets/Volleyball/Match.meta @EasyHah
+/Assets/Volleyball/Career/** @hoshisora1
+/Assets/Volleyball/Shared/** @hoshisora1
+/Assets/Volleyball/Bootstrap/** @hoshisora1
+/Packages/** @hoshisora1
+/ProjectSettings/** @hoshisora1
+/.github/** @hoshisora1
+/docs/** @hoshisora1
+/tools/** @hoshisora1

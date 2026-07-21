@@ -1,6 +1,6 @@
 # 改动文档中心
 
-本目录是 Match 与 Career 两边开发者共享的改动交接入口。所有代码、资源、场景、配置、
+本目录是 Match、Career 与共同模块共享的改动交接入口。所有代码、资源、场景、配置、
 Shared 契约或模块编排改动，都必须在这里新增或更新一份改动文档，并在提交或 Pull Request
 中附上链接。
 
@@ -12,7 +12,8 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
-| CHG-20260720-001 | 2026-07-20 | 进行中 | Project Settings / Packages / Docs / Build | **跨模块（重点）** | [升级并锁定 Unity 6000.3.20f1](2026-07-20-001-unity-6000.3.20f1-upgrade.md) |
+| CHG-20260721-001 | 2026-07-21 | 已完成 | Repository / CI / Docs / Shared / Match | **跨模块（重点）** | [首里程碑单负责人协作与冻结基线](2026-07-21-001-solo-integration-and-collaboration-baseline.md) |
+| CHG-20260720-001 | 2026-07-20 | 已完成 | Project Settings / Packages / Docs / Build | **跨模块（重点）** | [升级并锁定 Unity 6000.3.20f1](2026-07-20-001-unity-6000.3.20f1-upgrade.md) |
 | CHG-20260719-005 | 2026-07-19 | 已完成 | Match / Docs / Build Settings | 模块内部 | [正式室内 6v6 单局](2026-07-19-005-formal-indoor-6v6.md) |
 | CHG-20260719-004 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [3v3 半场边界、对局平衡与 AI 等待减速](2026-07-19-004-rally-boundaries-ai-time.md) |
 | CHG-20260719-003 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 拦网命中反馈](2026-07-19-003-physical-block-impact-feedback.md) |
@@ -20,7 +21,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 | CHG-20260719-001 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 防守候选触球池](2026-07-19-001-defensive-contact-candidates.md) |
 | CHG-20260718-007 | 2026-07-18 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 可见拦网与下撤覆盖](2026-07-18-007-visible-block-coverage.md) |
 | CHG-20260718-006 | 2026-07-18 | 已完成 | Match / Docs | 模块内部 | [MenShen 排球决策基准](2026-07-18-006-menshen-decision-benchmark.md) |
-| CHG-20260717-006 | 2026-07-17 | 进行中 | Career / Shared / Match / Bootstrap / Project Settings / Docs | **跨模块（重点）** | [球员生涯首个技术里程碑实施基线](2026-07-17-006-career-development-baseline.md) |
+| CHG-20260717-006 | 2026-07-17 | 已完成 | Career / Shared / Match / Bootstrap / Project Settings / Docs | **跨模块（重点）** | [球员生涯首个技术里程碑实施基线](2026-07-17-006-career-development-baseline.md) |
 | CHG-20260717-005 | 2026-07-17 | 已完成 | Match / Shared / Career | **跨模块（重点）** | [Physical3v3Rally 可结束单局与结果产出](2026-07-17-005-match-set-completion.md) |
 | CHG-20260717-004 | 2026-07-17 | 已完成 | Match / Career / Shared / Bootstrap / Docs / Build Settings | **跨模块（重点）** | [Volleyball 全项目命名统一](2026-07-17-004-volleyball-naming-unification.md) |
 | CHG-20260717-003 | 2026-07-17 | 已完成 | Docs | 协作流程（重点） | [建立统一改动文档流程](2026-07-17-003-change-document-workflow.md) |
@@ -49,19 +50,19 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 ## 跨模块重点标注
 
-满足以下任一条件，就属于“与对方交互”的改动：
+满足以下任一条件，就属于“跨模块交互”的改动：
 
 - 修改 `Shared` 中的 DTO、ID、枚举、序列化、版本号、校验或测试夹具。
 - 修改 MatchContext、MatchResult 或比赛前后数据流。
 - 修改 Match、Career 或 Bootstrap 之间的 asmdef 引用和公开接口。
 - 修改由另一模块加载的场景、资源路径、存档字段或启动流程。
-- 要求另一边开发者同步改代码、改数据、重新生成资源或执行迁移。
+- 要求另一模块同步改代码、改数据、重新生成资源或执行迁移。
 
 这类文档必须同时做到：
 
 - 索引的“交互级别”写成 `跨模块（重点）`。
 - 正文紧接元数据放置 `> [!IMPORTANT]` 区块。
-- 明确写出接口提供方、使用方、兼容性和“对方开发者需要做什么”。
+- 明确写出接口提供方、使用方、兼容性证据，以及消费方或后续负责人需要做什么。
 - 如果没有额外动作，也必须明确写“无需改代码”，不能留空。
 
 模块内部改动的“跨模块交互重点”章节填写“无”，方便对方快速判断是否需要阅读。

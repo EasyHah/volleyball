@@ -18,7 +18,8 @@
 
 - 项目先通过独立变更升级并锁定 Unity `6000.3.20f1`。
 - 本规格已按 `origin/main@4bf9e4b` 的 Match 基线更新：现有 `FormalIndoor6v6` 可完成双方各六人的
-  25 分单局并产出 12 人 V1 统计，但还不是 Career 可调用的 runner。
+  25 分单局并产出 12 人 V1 统计，但还不是 Career 可调用的 runner；首里程碑冻结其 Match tree 为
+  `1f0bbe976355ded867dcefadba61d538f77905b9`。
 - Unity 升级后、功能分支前完成路线图阶段 0B 的 CODEOWNERS、UnityYAMLMerge/LFS 约定和无许可证 CI
   基线。
 - Editor 升级不得与本切片的功能开发、URP 迁移或 Input System 接入混为同一变更。
@@ -27,24 +28,26 @@
 ### 2.2 责任边界
 
 - Career 拥有本地档案、生涯状态、八项属性、成长、疲劳、心态、教练信任、周计划、事件和比赛后的长期后果。
-- Match 只消费冻结的比赛上下文并返回比赛事实。FakeMatch 是 Shared `IMatchRunnerV*` 的开发期实现，
+- Match 只消费冻结的比赛上下文并返回比赛事实。FakeMatch 是 `Volleyball.Shared.MatchV2` 中
+  `IMatchRunnerV2` 的开发期实现，
   不得直接修改 Career 状态；同步 `IMatchGateway.Play` 不是正式接口。
 - Bootstrap 负责场景或页面流转、模块装配和比赛前后交接。
-- Shared 只拥有稳定 ID、版本化比赛 DTO、`IMatchRunnerV*` 执行契约和跨模块值对象。
+- legacy Shared 只拥有稳定 ID 与 V1；兄弟 `Shared.MatchV2` 拥有新版 DTO、`IMatchRunnerV2` 和跨模块值对象。
 - Career UI 只能读取状态并提交应用命令，不得直接改写领域状态或存档文件。
 
-### 2.3 Shared 契约门槛
+### 2.3 Shared/FakeMatch 契约门槛
 
 仓库当前 `MatchContextV1` 已包含 `contractVersion`、`sessionId`、`seed`、双方阵容和 `contextHash`，当前
 `MatchResultV1` 已包含比分及简化球员统计。`FormalIndoor6v6` 已证明 V1 可以承载双方各六人并为 12 人
 产出结果，但入口仍创建硬编码沙盒上下文、按位置模板覆盖上下文能力，整局也由 AI 自动运行，统计只有
-`points/contacts/errors/workload`；物理 AI 还未消费 `MatchContextV1.seed`。正式实现 FakeMatch 前，双方必须通过独立的 Shared 变更确认本切片
-所需的版本字段、详细技术事实、冻结参数、结果哈希、异步 runner 和 fixture；Career 不得自行在内部
-复制或扩展跨模块 DTO。
+`points/contacts/errors/workload`；物理 AI 还未消费 `MatchContextV1.seed`。正式实现 FakeMatch 前，当前
+负责人必须通过独立 Shared 变更新增兄弟程序集 `Volleyball.Shared.MatchV2`，集中定义本切片所需的版本
+字段、详细技术事实、冻结参数、结果哈希、异步 runner 和 fixture；Career 不得自行复制跨模块 DTO，
+现有 `Volleyball.Shared` Runtime 和 V1 验证器保持冻结。
 
 契约升级至少满足：
 
-- 比赛上下文和结果可独立序列化、校验并由双方读取；
+- 比赛上下文和结果可独立序列化、校验并由 Shared、Career.MatchIntegration 与 FakeMatch 读取；
 - `sessionId`、契约版本和上下文哈希能够证明结果属于唯一的待处理比赛；
 - 结果有稳定的 `resultHash`，重复结果与冲突结果能够区分；
 - 比赛只报告事实，成长、疲劳、心态和信任后果仍由 Career 计算；
@@ -53,6 +56,8 @@
 - FakeMatch 必须校验冻结的 `matchSeed` 已参与 `contextHash` 和 fixture 匹配，错误 seed 必须拒绝；固定
   fixture runner 本身不推进随机流。未来快速模拟和物理比赛中的随机 AI planner 才消费派生 seed，
   本切片不承诺 Unity 物理逐帧或最终比分确定性。
+- `ContractVersions.SupportsMatch(2)` 必须继续返回 `false`；V2 通过自己的版本检查器解析，防止 V1
+  反序列化器误收新版载荷。
 
 ## 3. 范围
 
@@ -467,7 +472,7 @@ UI 使用统一的开发期视觉样式，不要求正式美术、角色外观�
   替换失败；
 - FakeMatch 测试覆盖契约校验、重复结果幂等和不同哈希冲突；
 - Windows x64 Development Build 能完成完整闭环并导出脱敏诊断；
-- 两名开发者分别在实体 Windows 机器上完成一次闭环试玩；
+- 当前负责人在实体 Windows 机器完成一次闭环试玩并保存构建、诊断证据；独立 agent 完成最终 diff 审计；
 - 对应变更记录列出测试命令、结果文件和已知限制。任一硬门槛失败时，不把本切片标记为完成。
 
 ## 17. 明确不包含

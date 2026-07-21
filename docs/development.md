@@ -4,17 +4,72 @@
 
 `main` is the only long-lived branch. Create short-lived
 `feature/<module>-<description>`, `fix/<module>-<description>`,
-`chore/<description>` or `docs/<description>` branches from the latest `main`.
-Merge through pull requests only, then delete the branch.
+`chore/<description>` or `docs/<description>` branches from the current verified
+integration baseline. Merge through pull requests only, then delete the branch.
+
+For the first Career milestone, the project owner has temporarily authorized one
+integrator to own Career and the common surfaces (`Shared`, `Bootstrap`, packages,
+project settings, CI and common documentation). The partner-owned Match implementation
+is frozen at `origin/main@4bf9e4b`:
+
+- `Assets/Volleyball/Match` tree: `1f0bbe976355ded867dcefadba61d538f77905b9`;
+- `Assets/Volleyball/Match.meta` blob: `23d5e66a3e4158bd421c4d3ee573e0d4e7339627`;
+- legacy `Assets/Volleyball/Shared/Runtime` V1 tree:
+  `61c7a928f2bf4740defea34c67e5cb108f6dfe76`;
+- `Assets/Volleyball/Shared/Runtime.meta` blob:
+  `9085d85a3a423a82a6303df4ca3fe3819d8d30ea`.
+
+Fetch remote state before each stage, but do not automatically merge a newer Match
+tree. Audit a new partner upload separately before changing either frozen hash.
 
 Every code, resource, scene, configuration or contract change must add or update
 a record under `docs/changes/` and link it from `docs/changes/README.md`. Start
 from `docs/changes/TEMPLATE.md`. If Match and Career interact through Shared,
 Bootstrap, a scene path, a save field or a public interface, mark the record as
-`跨模块（重点）` and state what the other developer must do before merge.
+`跨模块（重点）` and state the provider, consumers, compatibility evidence and
+any deferred consumer work. An unavailable developer's approval is not a current
+merge gate; changing the frozen Match tree is prohibited instead.
 
-The future remote `main` branch must require CI, up-to-date branches and at least
-one review; direct push, force push and branch deletion must be disabled.
+The repository owner should eventually require the two `Repository Validation`
+matrix checks, up-to-date branches and at least one review on remote `main`; direct
+push, force push and branch deletion should be disabled. The authenticated current
+integrator has write but not admin permission, and the repository currently exposes
+no ruleset, so this remote setting is an explicit non-blocking owner action rather
+than a control that this milestone can claim is already enforced.
+
+## Repository validation and merge tooling
+
+Run the no-license checks from the repository root before Unity tests or a commit:
+
+```powershell
+python -B -m unittest discover -s tools/tests -p "test_*.py" -v
+python -B tools/validate_repository.py --base HEAD~1
+git diff --check HEAD~1 HEAD
+```
+
+The GitHub workflow runs the same checks on Ubuntu and Windows. Its required check
+names are `repository-validation (ubuntu-latest)` and
+`repository-validation (windows-latest)`. The validator checks `.meta` pairing and
+GUID uniqueness, exact asmdef boundaries, CHG indexing, Unity/package lock agreement,
+Git attributes/LFS pointers, the frozen trees and folder metadata relative to the
+PR base, and that C# files do not fall into
+`Assembly-CSharp`.
+
+Install Git LFS, then configure Unity Smart Merge in the repository-local Git config:
+
+```powershell
+python -B tools/configure_unity_yaml_merge.py `
+  --unity "E:\UnityEditor\6000.3.20f1\Editor\Unity.exe"
+python -B tools/configure_unity_yaml_merge.py `
+  --unity "E:\UnityEditor\6000.3.20f1\Editor\Unity.exe" --check
+```
+
+Only `.unity`, `.prefab` and `.asset` use `UnityYAMLMerge`. `.meta` files stay plain
+text because their GUID conflicts must be resolved deliberately. Binary authoring
+formats use Git LFS and are `lockable`; exported runtime media uses LFS without a
+mandatory lock. Case-insensitive extension patterns cover mixed-case Windows asset
+names, and validation rejects a tracked raw blob where an LFS pointer is required.
+Never track `Library/`, `TestResults/`, Python caches or build output.
 
 ## Testing
 
