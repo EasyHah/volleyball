@@ -317,7 +317,7 @@ namespace Volleyball.Presentation
                 () => new MatchSet(matchContext, TeamSide.Home, _configuration.SetRules));
         }
 
-        public void Initialize(
+        public void InitializeV2(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
             MatchContextV2 context,

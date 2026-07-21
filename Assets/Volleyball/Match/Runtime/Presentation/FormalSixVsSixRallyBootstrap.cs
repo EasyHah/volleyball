@@ -29,7 +29,7 @@ namespace Volleyball.Presentation
             var agents = CreateRoster(context);
             var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<FormalSixVsSixRallyDirector>();
-            director.Initialize(
+            director.InitializeV2(
                 ball,
                 agents,
                 context,

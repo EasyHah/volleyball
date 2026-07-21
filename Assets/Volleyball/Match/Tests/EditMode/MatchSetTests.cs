@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using Volleyball.Domain;
 using Volleyball.Shared.Contracts;
+using Volleyball.Presentation;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.EditModeTests
@@ -150,6 +151,30 @@ namespace Volleyball.EditModeTests
             Assert.That(set.ContextV2, Is.SameAs(context));
             Assert.That(result.ContractVersion, Is.EqualTo(ContractVersions.MatchV2));
             Assert.DoesNotThrow(() => result.ValidateAgainst(context));
+        }
+
+        [Test]
+        public void PhysicalDirector_ExposesOnlyTheLegacyInitializeSignature()
+        {
+            var initializeMethods = typeof(PhysicalMatchRallyDirector).GetMethods();
+            var v1Overloads = 0;
+            foreach (var method in initializeMethods)
+            {
+                if (method.Name == "Initialize" && method.GetParameters().Length >= 3 &&
+                    method.GetParameters()[2].ParameterType == typeof(MatchContextV1))
+                {
+                    v1Overloads++;
+                }
+
+                Assert.That(
+                    method.Name == "Initialize" && method.GetParameters().Length >= 3 &&
+                    method.GetParameters()[2].ParameterType == typeof(MatchContextV2),
+                    Is.False,
+                    "V2 initialization must not overload the V1 API because literal null becomes ambiguous.");
+            }
+
+            Assert.That(v1Overloads, Is.EqualTo(1));
+            Assert.That(typeof(PhysicalMatchRallyDirector).GetMethod("InitializeV2"), Is.Not.Null);
         }
 
         private static void Resolve(MatchSet set, TeamSide winner, int count)

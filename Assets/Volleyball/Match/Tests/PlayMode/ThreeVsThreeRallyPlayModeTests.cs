@@ -9,6 +9,14 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Presentation;
+using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
+using PlayerAbilitySnapshotV1 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV1;
+using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
+using PlayerSnapshotV1 = Volleyball.Shared.Contracts.PlayerSnapshotV1;
+using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using StableTeamId = Volleyball.Shared.Contracts.TeamId;
+using TeamSide = Volleyball.Shared.Contracts.TeamSide;
+using TeamSnapshotV1 = Volleyball.Shared.Contracts.TeamSnapshotV1;
 
 namespace Volleyball.PlayModeTests
 {
@@ -108,6 +116,41 @@ namespace Volleyball.PlayModeTests
 
         }
 
+        [UnityTest]
+        public IEnumerator LegacyV1Context_InitializesAndProducesAV1Result()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var v2Director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            var ball = Object.FindFirstObjectByType<SimulatedBall>();
+            var scoreDisplay = Object.FindFirstObjectByType<ScoreDisplay>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+
+            Assert.That(v2Director, Is.Not.Null);
+            var directorObject = v2Director.gameObject;
+            Object.Destroy(v2Director);
+            yield return null;
+
+            var director = directorObject.AddComponent<ThreeVsThreeRallyDirector>();
+            director.Initialize(
+                ball,
+                players,
+                CreateLegacyContext(),
+                scoreDisplay,
+                new ImmediateLocalWeightSource());
+
+            var timeout = Time.realtimeSinceStartup + 120f;
+            while (director.Result == null && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(director.Result, Is.Not.Null);
+            Assert.That(director.ResultV2, Is.Null);
+            Assert.That(director.MatchContext, Is.Not.Null);
+            Assert.That(director.MatchContextV2, Is.Null);
+            Assert.DoesNotThrow(() => director.Result.ValidateAgainst(director.MatchContext));
+        }
+
         private sealed class ImmediateLocalWeightSource : IRallyTacticalWeightSource
         {
             public int RequestCount { get; private set; }
@@ -121,6 +164,47 @@ namespace Volleyball.PlayModeTests
                 return Task.FromResult(
                     new RallyTacticalWeightProposal(rolePreference, 1.15f, 1f, 1f));
             }
+        }
+
+        private static MatchContextV1 CreateLegacyContext()
+        {
+            return MatchContextV1.Create(
+                new System.Guid("11111111-2222-3333-4444-555555555555"),
+                7351,
+                CreateLegacyTeam("legacy-home", "Blue", TeamSide.Home, "home"),
+                CreateLegacyTeam("legacy-away", "Orange", TeamSide.Away, "away"));
+        }
+
+        private static TeamSnapshotV1 CreateLegacyTeam(
+            string id,
+            string name,
+            TeamSide side,
+            string prefix)
+        {
+            return new TeamSnapshotV1(
+                new StableTeamId(id),
+                name,
+                side,
+                new[]
+                {
+                    CreateLegacyPlayer(prefix + "-setter", "Setter", 1, PlayerPosition.Setter),
+                    CreateLegacyPlayer(prefix + "-attacker", "Attacker", 2, PlayerPosition.OutsideHitter),
+                    CreateLegacyPlayer(prefix + "-defender", "Defender", 3, PlayerPosition.Defender)
+                });
+        }
+
+        private static PlayerSnapshotV1 CreateLegacyPlayer(
+            string id,
+            string name,
+            int number,
+            PlayerPosition position)
+        {
+            return new PlayerSnapshotV1(
+                new StablePlayerId(id),
+                name,
+                number,
+                position,
+                new PlayerAbilitySnapshotV1(0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f));
         }
 
         private static void AssertMirroredRoleAbilities(PrototypePlayerAgent[] players)

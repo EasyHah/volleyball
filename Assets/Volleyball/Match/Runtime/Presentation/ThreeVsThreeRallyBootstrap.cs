@@ -26,7 +26,7 @@ namespace Volleyball.Presentation
             var agents = CreateSixAgents(context);
             var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<ThreeVsThreeRallyDirector>();
-            director.Initialize(ball, agents, context, scoreDisplay);
+            director.InitializeV2(ball, agents, context, scoreDisplay);
             var cameras = gameObject.AddComponent<RallyCameraController>();
             cameras.Initialize(ball);
         }
