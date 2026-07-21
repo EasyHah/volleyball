@@ -822,10 +822,11 @@ namespace Volleyball.Presentation
                         $"{_plannedAttackDecision.MovementTarget.Z:0.00})");
                 }
             }
+            var authoritativeContactCenter = decision.AttackContactPlan?.ContactCenter ?? predictedContactCenter;
             var outgoingTarget = OutgoingTargetFor(decision);
             var outgoingFlightSeconds = OutgoingFlightSecondsFor(decision.Actor.Team, decision.Action);
             var outgoing = ReturnVelocitySolver.Solve(
-                predictedContactCenter,
+                authoritativeContactCenter,
                 outgoingTarget,
                 outgoingFlightSeconds,
                 SimulatedBall.DefaultFixedStep,
@@ -848,10 +849,11 @@ namespace Volleyball.Presentation
                 outgoing,
                 execution,
                 NextContactGroup(),
-                predictedContactCenter,
+                authoritativeContactCenter,
                 movementTarget: movementTarget,
                 movementStartSimulationTime: _ball.SimulationTime,
-                attackApproach: decision.AttackApproach);
+                attackApproach: decision.AttackApproach,
+                attackContactPlan: decision.AttackContactPlan);
             _scheduledPrimaryActor = decision.Actor;
             MovementAssignments++;
             TotalMovementShortfall += actor.MovementShortfall;
@@ -891,7 +893,7 @@ namespace Volleyball.Presentation
             {
                 PreparePhysicalBlock(
                     decision.Actor.Team,
-                    predictedContactCenter,
+                    authoritativeContactCenter,
                     outgoing,
                     _expectedContactTime);
             }
@@ -1352,15 +1354,12 @@ namespace Volleyball.Presentation
             {
                 if (_plannedAttackDecision != null && _plannedAttackDecision.HasDecision)
                 {
-                    var plannedAttacker = _players[_plannedAttackDecision.Actor];
-                    if (_plannedAttackDecision.AttackApproach.HasValue)
+                    if (_plannedAttackDecision.AttackContactPlan.HasValue)
                     {
-                        return ContactCenter(
-                            plannedAttacker.PreviewAttackContactFramesAt(
-                                _plannedAttackDecision.AttackApproach.Value),
-                            TechniqueAction.Attack);
+                        return _plannedAttackDecision.AttackContactPlan.Value.ContactCenter;
                     }
 
+                    var plannedAttacker = _players[_plannedAttackDecision.Actor];
                     return ContactCenter(
                         plannedAttacker.PreviewContactFramesAt(
                             TechniqueAction.Attack,

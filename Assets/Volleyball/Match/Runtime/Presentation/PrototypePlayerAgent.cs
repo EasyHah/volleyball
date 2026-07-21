@@ -97,7 +97,10 @@ namespace Volleyball.Presentation
         private int _physicalBlockContactGroupId;
         private bool _hasAttackApproach;
         private AttackApproachPlan _attackApproach;
+        private bool _hasAttackContactPlan;
+        private AttackContactPlan _attackContactPlan;
         private Vector3 _attackTakeoffPosition;
+        private Vector3 _attackContactRootPosition;
         private bool _physicalBlockActivationLogged;
         private float _courtHalfLength = CourtBuilder.HalfLength;
 
@@ -149,11 +152,33 @@ namespace Volleyball.Presentation
             bool emergencyOneHand = false,
             Vector3? movementTarget = null,
             float movementStartSimulationTime = 0f,
-            AttackApproachPlan? attackApproach = null)
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null)
         {
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
                 throw new ArgumentException("Only attack contacts may include an approach plan.", nameof(attackApproach));
+            }
+
+            if (attackContactPlan.HasValue && action != TechniqueAction.Attack)
+            {
+                throw new ArgumentException("Only attack contacts may include a contact plan.", nameof(attackContactPlan));
+            }
+
+            if (attackContactPlan.HasValue && !attackApproach.HasValue)
+            {
+                throw new ArgumentException("A contact plan requires an attack approach.", nameof(attackApproach));
+            }
+
+            if (attackContactPlan.HasValue && attackApproach.HasValue &&
+                !attackContactPlan.Value.Takeoff.Equals(attackApproach.Value.Takeoff))
+            {
+                throw new ArgumentException("Attack approach and contact plan must use the same takeoff.", nameof(attackContactPlan));
+            }
+
+            if (attackContactPlan.HasValue)
+            {
+                attackContactPlan.Value.Validate();
             }
 
             DisableBlockContactWindow();
@@ -179,6 +204,8 @@ namespace Volleyball.Presentation
             _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
             _hasAttackApproach = attackApproach.HasValue;
             _attackApproach = attackApproach.GetValueOrDefault();
+            _hasAttackContactPlan = attackContactPlan.HasValue;
+            _attackContactPlan = attackContactPlan.GetValueOrDefault();
             var requestedMovementTarget = attackApproach.HasValue
                 ? ToUnity(attackApproach.Value.ApproachStart)
                 : movementTarget.GetValueOrDefault(transform.position);
@@ -194,8 +221,9 @@ namespace Volleyball.Presentation
             }
             _motionOrigin = _movementTargetPosition;
             _motionForward = transform.forward;
-            _hasPlannedContactCenter = plannedContactCenter.HasValue;
-            _plannedContactCenter = plannedContactCenter.GetValueOrDefault();
+            var authoritativeContactCenter = attackContactPlan?.ContactCenter ?? plannedContactCenter;
+            _hasPlannedContactCenter = authoritativeContactCenter.HasValue;
+            _plannedContactCenter = authoritativeContactCenter.GetValueOrDefault();
             _hasScheduledContact = true;
             _hasSupportAction = false;
             _supportActionActivated = false;
@@ -210,6 +238,7 @@ namespace Volleyball.Presentation
             _supportTimeline = null;
             _supportActionActivated = false;
             _hasAttackApproach = false;
+            _hasAttackContactPlan = false;
             DisableBlockContactWindow();
             DisableEmergencyReceiveWindow();
         }
@@ -380,6 +409,15 @@ namespace Volleyball.Presentation
             return PreviewContactFramesAtResolvedPosition(
                 TechniqueAction.Attack,
                 EvaluatePlannedAttackContactPosition(approach));
+        }
+
+        public IReadOnlyList<ContactSurfaceFrame> PreviewAttackContactFramesAt(
+            AttackContactPlan plan)
+        {
+            plan.Validate();
+            return PreviewContactFramesAtResolvedPosition(
+                TechniqueAction.Attack,
+                AttackRootContactPosition(plan));
         }
 
         private IReadOnlyList<ContactSurfaceFrame> PreviewContactFramesAtResolvedPosition(
@@ -876,10 +914,33 @@ namespace Volleyball.Presentation
         private Vector3 EvaluatePlannedAttackPosition(float simulationTime, Vector3 movementPosition)
         {
             var approachStartTime = _movementEndSimulationTime;
-            var takeoffTime = Mathf.Max(approachStartTime + 0.01f, _actionTimeline.ActualContactTime - 0.38f);
+            var jumpLead = _hasAttackContactPlan
+                ? Mathf.Lerp(0.24f, 0.38f, _attackContactPlan.JumpTiming)
+                : 0.38f;
+            var takeoffTime = Mathf.Max(
+                approachStartTime + 0.01f,
+                _actionTimeline.ActualContactTime - jumpLead);
             var approachProgress = Mathf.InverseLerp(approachStartTime, takeoffTime, simulationTime);
             approachProgress = approachProgress * approachProgress * (3f - (2f * approachProgress));
             var position = Vector3.Lerp(movementPosition, _attackTakeoffPosition, approachProgress);
+
+            if (_hasAttackContactPlan)
+            {
+                if (simulationTime <= _actionTimeline.ActualContactTime)
+                {
+                    var ascent = Mathf.InverseLerp(takeoffTime, _actionTimeline.ActualContactTime, simulationTime);
+                    ascent = ascent * ascent * (3f - (2f * ascent));
+                    return Vector3.Lerp(_attackTakeoffPosition, _attackContactRootPosition, ascent);
+                }
+
+                const float plannedLandingSeconds = 0.45f;
+                var descent = Mathf.Clamp01(
+                    (simulationTime - _actionTimeline.ActualContactTime) / plannedLandingSeconds);
+                descent = descent * descent * (3f - (2f * descent));
+                var landed = _attackContactRootPosition;
+                landed.y = _motionOrigin.y;
+                return Vector3.Lerp(_attackContactRootPosition, landed, descent);
+            }
 
             var landingTime = _actionTimeline.ActualContactTime + 0.45f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
@@ -903,6 +964,10 @@ namespace Volleyball.Presentation
                 approachStart,
                 requestedTakeoff,
                 maximumSpeed * availableSeconds);
+            if (_hasAttackContactPlan)
+            {
+                _attackContactRootPosition = AttackRootContactPosition(_attackContactPlan);
+            }
             ScheduledMovementDistance += Vector3.Distance(approachStart, _attackTakeoffPosition);
             MovementShortfall += Vector3.Distance(_attackTakeoffPosition, requestedTakeoff);
         }
@@ -1062,6 +1127,21 @@ namespace Volleyball.Presentation
                           approach.JumpQuality *
                           4f * jumpProgress * (1f - jumpProgress);
             return position;
+        }
+
+        private Vector3 AttackRootContactPosition(AttackContactPlan plan)
+        {
+            var takeoff = ToUnity(plan.Takeoff);
+            var frames = PreviewContactFramesAtResolvedPosition(TechniqueAction.Attack, takeoff);
+            var currentCenter = SimVector3.Zero;
+            foreach (var frame in frames)
+            {
+                currentCenter += frame.Origin + (frame.Normal * SimulatedBall.DefaultRadius);
+            }
+
+            currentCenter /= frames.Count;
+            var correction = plan.ContactCenter - currentCenter;
+            return ConstrainToOwnCourt(takeoff + new Vector3(correction.X, correction.Y, correction.Z));
         }
 
         private static StickFigurePose ContactPoseFor(TechniqueAction action)

@@ -46,7 +46,7 @@
 - Test: `Assets/Volleyball/Shared/Tests/EditMode/MatchContractTests.cs`
 - Test: `Assets/Volleyball/Match/Tests/EditMode/SharedBoundaryTests.cs`
 
-- [ ] **Step 1: Write the failing contract and projection tests.**
+- [x] **Step 1: Write the failing contract and projection tests.**
 
 ```csharp
 var legacy = ContractJson.DeserializeContext(V1Fixture.Json);
@@ -59,13 +59,13 @@ Assert.That(() => new PlayerAbilitySnapshotV2(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f
     Throws.TypeOf<ContractValidationException>());
 ```
 
-- [ ] **Step 2: Run the focused tests and verify red.**
+- [x] **Step 2: Run the focused tests and verify red.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.Shared.EditModeTests.MatchContractTests|Volleyball.EditModeTests.SharedBoundaryTests" -testResults "$PWD/TestResults/Reach-red.xml" -logFile "$PWD/TestResults/Reach-red.log"`
 
 Expected: compile failure for the V2 types and explicit V2 JSON methods.
 
-- [ ] **Step 3: Add the field consistently.**
+- [x] **Step 3: Add the field consistently.**
 
 ```csharp
 [DataMember(Name = "maxAttackReach", Order = 8)] private float _maxAttackReach;
@@ -81,7 +81,7 @@ Implement `MatchContextV2.UpgradeFromV1` with deterministic migration defaults:
 Use explicit V2 construction values in new 3v3/6v6 bootstraps; do not impose a
 position restriction on the V2 ability type itself.
 
-- [ ] **Step 4: Run green and commit.**
+- [x] **Step 4: Run green and commit.**
 
 Run: repeat Step 2 with `Reach-green` output names.
 
@@ -102,7 +102,7 @@ git commit -m "feat: add v2 attack reach contract"
 - Test: `Assets/Volleyball/Match/Tests/EditMode/AttackContactPlannerTests.cs`
 - Test: `Assets/Volleyball/Match/Tests/EditMode/PrototypePlayerContactSourceTests.cs`
 
-- [ ] **Step 1: Write the failing contact-plan and palm-alignment tests.**
+- [x] **Step 1: Write the failing contact-plan and palm-alignment tests.**
 
 ```csharp
 var plan = AttackContactPlanner.Plan(new AttackContactInput(
@@ -117,13 +117,13 @@ Assert.That(adjusted.ContactCenter.Y, Is.InRange(3.20f, 3.50f));
 
 Add an agent preview assertion that `AttackPalm` centre is within 0.05 metres of `plan.ContactCenter`.
 
-- [ ] **Step 2: Run red.**
+- [x] **Step 2: Run red.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.EditModeTests.AttackContactPlannerTests|Volleyball.EditModeTests.PrototypePlayerContactSourceTests" -testResults "$PWD/TestResults/ContactPlan-red.xml" -logFile "$PWD/TestResults/ContactPlan-red.log"`
 
 Expected: compile failure for `AttackContactPlanner`.
 
-- [ ] **Step 3: Implement the immutable plan and route it everywhere.**
+- [x] **Step 3: Implement the immutable plan and route it everywhere.**
 
 ```csharp
 public enum AttackContactOutcome { FullAttack, AdjustedAttack, Handling }
@@ -138,7 +138,7 @@ public readonly struct AttackContactPlan {
 
 The planner derives contact height from maximum reach, approach completion, jump timing, and quality. Clamp to `[3.20f, MaxAttackReach]`; return `Handling` when time cannot reach the minimum. Replace the fixed `AttackContactHeight` in the decision planner. Add `AttackContactPlan` to attack decisions, use its contact centre for set targeting, and make the agent's jump and palm preview use it instead of the previous jump-height formula.
 
-- [ ] **Step 4: Run green and commit.**
+- [x] **Step 4: Run green and commit.**
 
 Run: repeat Step 2 with `ContactPlan-green` paths.
 

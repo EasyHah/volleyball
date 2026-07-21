@@ -315,6 +315,61 @@ namespace Volleyball.EditModeTests
             }
         }
 
+        [TestCase(TeamId.Blue)]
+        [TestCase(TeamId.Orange)]
+        public void PlannedAttack_UsesTheSameContactCenterForPreviewAndScheduledPalm(TeamId team)
+        {
+            var player = CreatePlayer("UnifiedAttackContact", team, PlayerRole.Attacker);
+            try
+            {
+                var depthSign = new TeamCourtFrame(team).WorldDepthSign;
+                player.transform.rotation = Quaternion.Euler(0f, team == TeamId.Orange ? 180f : 0f, 0f);
+                player.SetAbility(new PlayerAbilityProfile(
+                    0.9f, 0.9f, 0.9f, 0.8f, 0.8f, 0.9f, 0.9f, 3.50f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(1f, 0f, depthSign * 3.65f),
+                    new SimVector3(1f, 0f, depthSign * 2.45f),
+                    1.2f,
+                    1f,
+                    0f);
+                var plan = AttackContactPlanner.Plan(new AttackContactInput(
+                    player.Ability.MaxAttackReach,
+                    1f,
+                    1f,
+                    SetQualityGrade.A,
+                    approach.Takeoff,
+                    0.8f,
+                    1.1f));
+
+                var preview = player.PreviewAttackContactFramesAt(plan);
+                var previewCenter = preview[0].Origin +
+                                    (preview[0].Normal * SimulatedBall.DefaultRadius);
+                player.transform.position = new Vector3(1f, 0f, depthSign * 3.65f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    5f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    705,
+                    plan.ContactCenter,
+                    movementStartSimulationTime: 3.8f,
+                    attackApproach: approach,
+                    attackContactPlan: plan);
+
+                var contacts = Collect(player, 5f);
+                var scheduledCenter = contacts[0].Surface.Current.Origin +
+                                      (contacts[0].Surface.Current.Normal * SimulatedBall.DefaultRadius);
+
+                Assert.That((previewCenter - plan.ContactCenter).Magnitude, Is.LessThan(0.05f));
+                Assert.That((scheduledCenter - plan.ContactCenter).Magnitude, Is.LessThan(0.05f));
+                Assert.That((scheduledCenter - previewCenter).Magnitude, Is.LessThan(0.01f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
         [Test]
         public void ScheduledMovement_ReachesNearbyTacticalPositionBeforeContact()
         {

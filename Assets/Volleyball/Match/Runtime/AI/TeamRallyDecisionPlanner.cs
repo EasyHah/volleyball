@@ -251,7 +251,8 @@ namespace Volleyball.AI
             SimVector3 ballTarget,
             RallyDecisionScore score,
             IEnumerable<RallyDecisionCandidate> candidates,
-            AttackApproachPlan? attackApproach)
+            AttackApproachPlan? attackApproach,
+            AttackContactPlan? attackContactPlan = null)
         {
             RallyDecisionCandidate.ValidatePlayerId(actor, nameof(actor));
             ValidateAction(action, nameof(action));
@@ -271,9 +272,30 @@ namespace Volleyball.AI
                 throw new ArgumentException("Attack decisions require an approach plan.", nameof(attackApproach));
             }
 
+            if (action == TechniqueAction.Attack && !attackContactPlan.HasValue)
+            {
+                throw new ArgumentException("Attack decisions require a contact plan.", nameof(attackContactPlan));
+            }
+
             if (action != TechniqueAction.Attack && attackApproach.HasValue)
             {
                 throw new ArgumentException("Only attack decisions may include an approach plan.", nameof(attackApproach));
+            }
+
+            if (action != TechniqueAction.Attack && attackContactPlan.HasValue)
+            {
+                throw new ArgumentException("Only attack decisions may include a contact plan.", nameof(attackContactPlan));
+            }
+
+            if (attackApproach.HasValue && attackContactPlan.HasValue &&
+                !attackApproach.Value.Takeoff.Equals(attackContactPlan.Value.Takeoff))
+            {
+                throw new ArgumentException("Attack approach and contact plan must use the same takeoff.", nameof(attackContactPlan));
+            }
+
+            if (attackContactPlan.HasValue)
+            {
+                attackContactPlan.Value.Validate();
             }
 
             var candidateCopy = CopyAndValidateCandidates(candidates, actor);
@@ -287,6 +309,7 @@ namespace Volleyball.AI
             Score = score;
             Candidates = candidateCopy;
             AttackApproach = attackApproach;
+            AttackContactPlan = attackContactPlan;
         }
 
         public bool HasDecision { get; }
@@ -306,6 +329,8 @@ namespace Volleyball.AI
         public IReadOnlyList<RallyDecisionCandidate> Candidates { get; }
 
         public AttackApproachPlan? AttackApproach { get; }
+
+        public AttackContactPlan? AttackContactPlan { get; }
 
         private static IReadOnlyList<RallyDecisionCandidate> CopyAndValidateCandidates(
             IEnumerable<RallyDecisionCandidate> candidates,
@@ -483,8 +508,8 @@ namespace Volleyball.AI
     public sealed class TeamRallyDecisionPlanner
     {
         private const float ReactionSeconds = 0.22f;
-        private const float AttackContactHeight = 2.7f;
         private const float AttackContactPreparationSeconds = 0.2f;
+        private const float FullJumpPreparationSeconds = 0.38f;
         private const float MaximumApproachDistance = 2f;
         private const float FullJumpApproachDistance = 1.5f;
         private readonly int _seed;
@@ -534,15 +559,19 @@ namespace Volleyball.AI
             var winningApproach = input.Stage == RallyDecisionStage.Attack
                 ? CreateAttackApproach(input, winner, targets.Takeoff, targets.BallTarget)
                 : (AttackApproachPlan?)null;
+            var winningContactPlan = winningApproach.HasValue
+                ? CreateAttackContactPlan(input, winner, winningApproach.Value)
+                : (AttackContactPlan?)null;
             return new TeamRallyDecision(
                 winner.Id,
                 targets.Action,
-                targets.ContactTarget,
+                winningContactPlan?.ContactCenter ?? targets.ContactTarget,
                 targets.MovementTarget,
                 targets.BallTarget,
                 candidates[bestIndex].Score,
                 candidates,
-                winningApproach);
+                winningApproach,
+                winningContactPlan);
         }
 
         private static bool ExcludesActor(TeamRallyDecisionInput input, PlayerId actor)
@@ -641,7 +670,7 @@ namespace Volleyball.AI
             {
                 var organizeFrame = new TeamCourtFrame(input.Team);
                 var organizeTakeoff = AttackTakeoff(input.Tactic, organizeFrame);
-                var futureContact = new SimVector3(organizeTakeoff.X, AttackContactHeight, organizeTakeoff.Z);
+                var futureContact = ProvisionalAttackContact(input, organizeTakeoff);
                 return new DecisionTargets(
                     TechniqueAction.Set,
                     input.PredictedBallCenter,
@@ -710,6 +739,58 @@ namespace Volleyball.AI
             var tolerance = Clamp(input.Weights.DirectionTolerance * 0.5f, 0f, 1f);
             var anglePenalty = Clamp(rawPenalty * (1f - tolerance), 0f, 1f);
             return new AttackApproachPlan(frame.ToWorld(localStart), takeoff, distance, jumpQuality, anglePenalty);
+        }
+
+        private static SimVector3 ProvisionalAttackContact(
+            TeamRallyDecisionInput input,
+            SimVector3 takeoff)
+        {
+            RallyPlayerSnapshot? provisional = null;
+            var bestRole = float.MinValue;
+            foreach (var player in input.Players)
+            {
+                if (input.LastCountedActor.HasValue && input.LastCountedActor.Value.Equals(player.Id))
+                {
+                    continue;
+                }
+
+                var role = NominalRole(RallyDecisionStage.Attack, player.Id.Role);
+                if (!provisional.HasValue || role > bestRole ||
+                    role.Equals(bestRole) && player.Ability.MaxAttackReach > provisional.Value.Ability.MaxAttackReach)
+                {
+                    provisional = player;
+                    bestRole = role;
+                }
+            }
+
+            if (!provisional.HasValue)
+            {
+                return new SimVector3(takeoff.X, AttackContactPlanner.MinimumAttackReach, takeoff.Z);
+            }
+
+            var landing = LandingTarget(input.Tactic, new TeamCourtFrame(input.Team));
+            var approach = CreateAttackApproach(input, provisional.Value, takeoff, landing);
+            return CreateAttackContactPlan(input, provisional.Value, approach).ContactCenter;
+        }
+
+        private static AttackContactPlan CreateAttackContactPlan(
+            TeamRallyDecisionInput input,
+            RallyPlayerSnapshot player,
+            AttackApproachPlan approach)
+        {
+            var availableSeconds = EffectiveSeconds(input, player);
+            var movementSpeed = MovementSpeed(input, player);
+            var requiredSeconds = AttackContactPreparationSeconds +
+                                  (movementSpeed <= 0f ? 0f : approach.Distance / movementSpeed);
+            var jumpTiming = Clamp(availableSeconds / FullJumpPreparationSeconds, 0f, 1f);
+            return AttackContactPlanner.Plan(new AttackContactInput(
+                player.Ability.MaxAttackReach,
+                approach.JumpQuality,
+                jumpTiming,
+                SetQualityGrade.A,
+                approach.Takeoff,
+                requiredSeconds,
+                availableSeconds));
         }
 
         private static float FindReachableApproachDistance(
