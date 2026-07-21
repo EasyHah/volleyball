@@ -149,6 +149,34 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Json_RoundTripsAValidatedSetChain()
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.Events[0].SetChain = ReplayFixture.CreateSetChain();
+            replay.Seal();
+
+            var restored = MatchReplayJson.Deserialize(MatchReplayJson.Serialize(replay));
+
+            Assert.That(restored.Events[0].SetChain.QualityGrade, Is.EqualTo("A"));
+            Assert.That(restored.Events[0].SetChain.ActualAttackContactCenter.X,
+                Is.EqualTo(1.1f));
+            Assert.DoesNotThrow(() => restored.Validate());
+        }
+
+        [Test]
+        public void Validate_RejectsSetChainWithoutAQualityGrade()
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.Events[0].SetChain = ReplayFixture.CreateSetChain();
+            replay.Events[0].SetChain.QualityGrade = null;
+
+            Assert.That(
+                () => replay.Seal(),
+                Throws.TypeOf<MatchReplayValidationException>()
+                    .With.Message.Contains("QualityGrade"));
+        }
+
+        [Test]
         public void Deserialize_RejectsJsonMissingFormatVersion()
         {
             var json = MatchReplayJson.Serialize(ReplayFixture.CreateValid());
@@ -250,6 +278,21 @@ namespace Volleyball.EditModeTests
                 replay.Events[0].Decision.Weights.Add(secondWeight, WeightValue(secondWeight));
                 replay.Seal();
                 return replay;
+            }
+
+            public static MatchReplaySetChainV1 CreateSetChain()
+            {
+                return new MatchReplaySetChainV1
+                {
+                    PlannedAttackContactCenter = new MatchReplayVector3V1
+                        { X = 1f, Y = 3.4f, Z = -2f },
+                    ActualAttackContactCenter = new MatchReplayVector3V1
+                        { X = 1.1f, Y = 3.35f, Z = -2.1f },
+                    QualityGrade = "A",
+                    ReplanOutcome = "FullAttack",
+                    PrimaryResponsibility = "None",
+                    Reason = "all errors within A thresholds"
+                };
             }
 
             public static MatchReplaySnapshotV1 CreateSnapshot(float simulationTimeSeconds, int eventSequence)

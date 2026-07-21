@@ -660,6 +660,57 @@ namespace Volleyball.Domain.Replay
     }
 
     [DataContract]
+    public sealed class MatchReplaySetChainV1
+    {
+        [DataMember(Name = "plannedAttackContactCenter", Order = 1)]
+        public MatchReplayVector3V1 PlannedAttackContactCenter { get; set; }
+
+        [DataMember(Name = "actualAttackContactCenter", Order = 2)]
+        public MatchReplayVector3V1 ActualAttackContactCenter { get; set; }
+
+        [DataMember(Name = "qualityGrade", Order = 3)] public string QualityGrade { get; set; }
+        [DataMember(Name = "replanOutcome", Order = 4)] public string ReplanOutcome { get; set; }
+        [DataMember(Name = "primaryResponsibility", Order = 5)] public string PrimaryResponsibility { get; set; }
+        [DataMember(Name = "reason", Order = 6)] public string Reason { get; set; }
+
+        internal void Validate()
+        {
+            if (PlannedAttackContactCenter == null || ActualAttackContactCenter == null)
+            {
+                throw new MatchReplayValidationException(
+                    "Set-chain planned and actual attack contact centers are required.");
+            }
+
+            PlannedAttackContactCenter.Validate(nameof(PlannedAttackContactCenter));
+            ActualAttackContactCenter.Validate(nameof(ActualAttackContactCenter));
+            MatchReplayV1.Required(QualityGrade, nameof(QualityGrade));
+            MatchReplayV1.Required(ReplanOutcome, nameof(ReplanOutcome));
+            MatchReplayV1.Required(PrimaryResponsibility, nameof(PrimaryResponsibility));
+            MatchReplayV1.Required(Reason, nameof(Reason));
+        }
+
+        internal MatchReplaySetChainV1 CanonicalCopy()
+        {
+            return new MatchReplaySetChainV1
+            {
+                PlannedAttackContactCenter = Copy(PlannedAttackContactCenter),
+                ActualAttackContactCenter = Copy(ActualAttackContactCenter),
+                QualityGrade = QualityGrade,
+                ReplanOutcome = ReplanOutcome,
+                PrimaryResponsibility = PrimaryResponsibility,
+                Reason = Reason
+            };
+        }
+
+        private static MatchReplayVector3V1 Copy(MatchReplayVector3V1 value)
+        {
+            return value == null
+                ? null
+                : new MatchReplayVector3V1 { X = value.X, Y = value.Y, Z = value.Z };
+        }
+    }
+
+    [DataContract]
     public sealed class MatchReplayEventV1
     {
         [DataMember(Name = "kind", Order = 1)] public string Kind { get; set; }
@@ -668,6 +719,7 @@ namespace Volleyball.Domain.Replay
         [DataMember(Name = "team", Order = 4)] public string Team { get; set; }
         [DataMember(Name = "playerId", Order = 5)] public string PlayerId { get; set; }
         [DataMember(Name = "decision", Order = 6)] public MatchReplayDecisionV1 Decision { get; set; }
+        [DataMember(Name = "setChain", Order = 7)] public MatchReplaySetChainV1 SetChain { get; set; }
 
         internal void Validate(ISet<string> playerIds, int snapshotCount)
         {
@@ -684,6 +736,8 @@ namespace Volleyball.Domain.Replay
             {
                 Decision.Validate(playerIds);
             }
+
+            SetChain?.Validate();
         }
 
         internal MatchReplayEventV1 CanonicalCopy()
@@ -695,7 +749,8 @@ namespace Volleyball.Domain.Replay
                 SnapshotIndex = SnapshotIndex,
                 Team = Team,
                 PlayerId = PlayerId,
-                Decision = Decision == null ? null : Decision.CanonicalCopy()
+                Decision = Decision == null ? null : Decision.CanonicalCopy(),
+                SetChain = SetChain == null ? null : SetChain.CanonicalCopy()
             };
         }
     }

@@ -326,7 +326,7 @@ git commit -m "feat: replan attacks from set quality"
 - Test: `Assets/Volleyball/Match/Tests/EditMode/MatchReplayV1Tests.cs`
 - Test: `Assets/Volleyball/Match/Tests/PlayMode/FormalSixVsSixReplayPlayModeTests.cs`
 
-- [ ] **Step 1: Write failing replay and counter tests.**
+- [x] **Step 1: Write failing replay and counter tests.**
 
 ```csharp
 Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(e =>
@@ -338,13 +338,13 @@ Assert.That(html, Does.Contain("set-quality"));
 
 Create a fixture where `SetChain.QualityGrade` is missing and assert `Validate()` throws `MatchReplayValidationException`.
 
-- [ ] **Step 2: Run red.**
+- [x] **Step 2: Run red.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.EditModeTests.MatchReplayV1Tests" -testResults "$PWD/TestResults/ReplayChain-red.xml" -logFile "$PWD/TestResults/ReplayChain-red.log"`
 
 Expected: compile failure for `SetChain`.
 
-- [ ] **Step 3: Extend replay; do not create a second reporter.**
+- [x] **Step 3: Extend replay; do not create a second reporter.**
 
 ```csharp
 [DataContract]
@@ -360,7 +360,7 @@ public sealed class MatchReplaySetChainV1 {
 
 Attach this optional object to the actual set-contact event. Validate finite vectors and non-empty strings when present; canonical-copy it; map it in the recorder; render it below decision candidates. Add zero-safe director counters: total sets, A sets, A/B/C attackable sets, D/E direct set errors, A-set attack successes, and adjusted attack successes. Increment only at actual set contact or rally outcome.
 
-- [ ] **Step 4: Run green EditMode and formal replay tests, then commit.**
+- [x] **Step 4: Run green EditMode and formal replay tests, then commit.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testFilter "Volleyball.EditModeTests.MatchReplayV1Tests" -testResults "$PWD/TestResults/ReplayChain-green.xml" -logFile "$PWD/TestResults/ReplayChain-green.log"`
 

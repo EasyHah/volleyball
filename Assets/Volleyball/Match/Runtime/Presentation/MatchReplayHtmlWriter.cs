@@ -81,6 +81,10 @@ tr.selected { background:rgba(89,217,255,.12); }
 .status-selected { color:var(--accent); font-weight:800; }
 .status-unreachable,.status-consecutive { color:var(--danger); }
 .empty { padding:28px 15px; color:var(--muted); text-align:center; }
+.set-quality-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:13px 15px; }
+.set-quality-grid div { padding:8px; border:1px solid #20364d; border-radius:8px; }
+.set-quality-grid span { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; }
+.set-quality-reason { grid-column:1/-1; }
 .player-label { fill:#fff; font-size:13px; font-weight:800; paint-order:stroke; stroke:#08111d; stroke-width:3px; stroke-linejoin:round; }
 .court-note { fill:#a9c7df; font-size:12px; letter-spacing:.12em; }
 @media (max-width:900px) { .workspace { grid-template-columns:1fr; } .scoreboard { grid-template-columns:repeat(3,1fr); } #court { max-height:none; } }
@@ -117,6 +121,10 @@ tr.selected { background:rgba(89,217,255,.12); }
         <div class='panel-head'><h2>Decision candidates</h2><div id='decision-summary'></div></div>
         <div id='candidate-content' class='empty'>Move to a Decision event to inspect its ranking.</div>
       </div>
+      <div id='set-quality' class='card'>
+        <div class='panel-head'><h2>Set quality</h2><div id='set-quality-summary'></div></div>
+        <div id='set-quality-content' class='empty'>Move to a set-contact event to inspect its attack chain.</div>
+      </div>
     </div>
   </section>
 </main>
@@ -131,7 +139,8 @@ const ui={
   play:document.querySelector('#play'), speed:document.querySelector('#speed'), timeline:document.querySelector('#timeline'),
   markers:document.querySelector('#event-markers'), caption:document.querySelector('#event-caption'),
   previous:document.querySelector('#previous-event'), next:document.querySelector('#next-event'),
-  summary:document.querySelector('#decision-summary'), candidates:document.querySelector('#candidate-content')
+  summary:document.querySelector('#decision-summary'), candidates:document.querySelector('#candidate-content'),
+  setQualitySummary:document.querySelector('#set-quality-summary'), setQuality:document.querySelector('#set-quality-content')
 };
 let replay=null;
 let playing=false;
@@ -274,6 +283,20 @@ function renderDecision(event){
   ui.candidates.innerHTML=`<table><thead><tr><th>Player</th><th>Status</th><th>Reach</th><th>Role</th><th>Approach</th><th>Angle</th><th>Technique</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+function renderSetQuality(event){
+  if(!event || !event.setChain){
+    ui.setQualitySummary.textContent='';
+    ui.setQuality.className='empty';
+    ui.setQuality.textContent='Move to a set-contact event to inspect its attack chain.';
+    return;
+  }
+  const chain=event.setChain;
+  const vector=value=>`(${value.x.toFixed(2)}, ${value.y.toFixed(2)}, ${value.z.toFixed(2)})`;
+  ui.setQualitySummary.textContent=`Grade ${chain.qualityGrade}`;
+  ui.setQuality.className='set-quality-grid';
+  ui.setQuality.innerHTML=`<div><span>Planned contact</span>${vector(chain.plannedAttackContactCenter)}</div><div><span>Actual contact</span>${vector(chain.actualAttackContactCenter)}</div><div><span>Replan</span>${escapeHtml(chain.replanOutcome)}</div><div><span>Responsibility</span>${escapeHtml(chain.primaryResponsibility)}</div><div class='set-quality-reason'><span>Reason</span>${escapeHtml(chain.reason)}</div>`;
+}
+
 function render(time,preferredSnapshotIndex=null,eventIndex=null){
   currentTime=Math.max(Number(ui.timeline.min),Math.min(Number(ui.timeline.max),time));
   activeEventIndex=eventIndex===null ? activeEventAt(currentTime) : eventIndex;
@@ -290,6 +313,7 @@ function render(time,preferredSnapshotIndex=null,eventIndex=null){
   ui.caption.textContent=event ? `${event.kind} · ${event.team}${event.playerId?' · '+event.playerId:''}` : 'Between recorded events';
   renderCourt(snapshot,decision);
   renderDecision(event);
+  renderSetQuality(event);
 }
 
 function setPlaying(value){ playing=value; ui.play.textContent=playing?'Pause':'Play'; lastFrame=performance.now(); }

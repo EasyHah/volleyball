@@ -91,13 +91,42 @@ namespace Volleyball.Presentation
             float simulationTimeSeconds,
             TeamId team,
             StablePlayerId? playerId,
-            TechniqueAction action)
+            TechniqueAction action,
+            ReplaySetChainEvent setChain = null)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
             Action = action;
+            SetChain = setChain;
         }
 
         public TechniqueAction Action { get; }
+        public ReplaySetChainEvent SetChain { get; }
+    }
+
+    public sealed class ReplaySetChainEvent
+    {
+        public ReplaySetChainEvent(
+            SimVector3 plannedAttackContactCenter,
+            SimVector3 actualAttackContactCenter,
+            SetQualityGrade qualityGrade,
+            AttackContactOutcome replanOutcome,
+            AttackResponsibility primaryResponsibility,
+            string reason)
+        {
+            PlannedAttackContactCenter = plannedAttackContactCenter;
+            ActualAttackContactCenter = actualAttackContactCenter;
+            QualityGrade = qualityGrade;
+            ReplanOutcome = replanOutcome;
+            PrimaryResponsibility = primaryResponsibility;
+            Reason = reason;
+        }
+
+        public SimVector3 PlannedAttackContactCenter { get; }
+        public SimVector3 ActualAttackContactCenter { get; }
+        public SetQualityGrade QualityGrade { get; }
+        public AttackContactOutcome ReplanOutcome { get; }
+        public AttackResponsibility PrimaryResponsibility { get; }
+        public string Reason { get; }
     }
 
     public sealed class ReplayRallyResolvedEvent : ReplaySimpleEvent
@@ -161,6 +190,9 @@ namespace Volleyball.Presentation
         private AttackOutcome _lastSetReplanOutcome;
         private AttackResponsibility _lastAttackResponsibility;
         private PlayerId? _lastSetAttackActor;
+        private ReplaySetChainEvent _pendingReplaySetChain;
+        private AttackContactOutcome _lastAttackContactOutcome;
+        private bool _lastSetChainSuccessRecorded;
         private int _tacticRevision;
         private int _decisionIndex;
         private int _aiDecisionRequestVersion;
@@ -217,6 +249,26 @@ namespace Volleyball.Presentation
         public int OrangeAttackContacts { get; private set; }
 
         public int IllegalContactFaults { get; private set; }
+
+        public int TotalSets { get; private set; }
+
+        public int GradeASets { get; private set; }
+
+        public int AttackableSets { get; private set; }
+
+        public int DirectSetErrors { get; private set; }
+
+        public int GradeASetAttackSuccesses { get; private set; }
+
+        public int AdjustedAttackSuccesses { get; private set; }
+
+        public float GradeASetRate => TotalSets == 0 ? 0f : (float)GradeASets / TotalSets;
+
+        public float AttackableSetRate => TotalSets == 0 ? 0f : (float)AttackableSets / TotalSets;
+
+        public float GradeASetAttackSuccessRate => GradeASets == 0
+            ? 0f
+            : (float)GradeASetAttackSuccesses / GradeASets;
 
         public SetQualityAssessment? LastSetQualityAssessment => _lastSetQualityAssessment;
 
@@ -1065,14 +1117,7 @@ namespace Volleyball.Presentation
                 $"actor={actorId.Role} action={contact.Candidate.Action} style={style} " +
                 $"touches={_touchState.CountedTeamTouches} quality={contact.Hit.Centeredness:0.00} " +
                 $"speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
-            NotifyReplay(
-                ReplayContactAccepted,
-                new ReplayContactEvent(
-                    contact.Candidate.Action == TechniqueAction.Block ? "Block" : "Contact",
-                    contact.ContactSimulationTime,
-                    actorId.Team,
-                    StableId(actorId),
-                    contact.Candidate.Action));
+            _pendingReplaySetChain = null;
 
             switch (contact.Candidate.Action)
             {
@@ -1118,6 +1163,16 @@ namespace Volleyball.Presentation
                     HandleAcceptedBlock(contact);
                     break;
             }
+
+            NotifyReplay(
+                ReplayContactAccepted,
+                new ReplayContactEvent(
+                    contact.Candidate.Action == TechniqueAction.Block ? "Block" : "Contact",
+                    contact.ContactSimulationTime,
+                    actorId.Team,
+                    StableId(actorId),
+                    contact.Candidate.Action,
+                    _pendingReplaySetChain));
         }
 
         private void ScheduleAttackFromActualSet(
@@ -1177,9 +1232,33 @@ namespace Volleyball.Presentation
             _lastActualAttackContactCenter = replan.ContactPlan.ContactCenter;
             _lastSetReplanOutcome = replan.Outcome;
             _lastSetAttackActor = provisionalDecision.Actor;
+            _lastAttackContactOutcome = replan.ContactPlan.Outcome;
+            _lastSetChainSuccessRecorded = false;
             _lastAttackResponsibility = SetQualityAssessment.PrimaryResponsibility(
                 quality.Grade,
                 replan.Outcome);
+            TotalSets++;
+            if (quality.Grade == SetQualityGrade.A)
+            {
+                GradeASets++;
+            }
+
+            if (quality.IsAdjustable)
+            {
+                AttackableSets++;
+            }
+            else
+            {
+                DirectSetErrors++;
+            }
+
+            _pendingReplaySetChain = new ReplaySetChainEvent(
+                plannedContact.ContactCenter,
+                replan.ContactPlan.ContactCenter,
+                quality.Grade,
+                replan.ContactPlan.Outcome,
+                _lastAttackResponsibility,
+                quality.Reason);
             Debug.Log(
                 $"[{_configuration.LogTag}] set-quality team={provisionalDecision.Actor.Team} " +
                 $"grade={quality.Grade} replan={replan.ContactPlan.Outcome} " +
@@ -1591,6 +1670,8 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            RecordSetChainSuccess(scorer);
+
             _restartScheduled = true;
             _rallyActive = false;
             _aiDecisionRequestVersion++;
@@ -1648,6 +1729,28 @@ namespace Volleyball.Presentation
             _tacticRevision++;
             ApplyTactics(_tacticPlanner.Create(_tacticRevision), false);
             StartCoroutine(StartInitialLoop(0.55f));
+        }
+
+        private void RecordSetChainSuccess(PlayerId? scorer)
+        {
+            if (_lastSetChainSuccessRecorded || !scorer.HasValue ||
+                !_lastSetAttackActor.HasValue ||
+                !_lastSetAttackActor.Value.Equals(scorer.Value) ||
+                !_lastSetQualityAssessment.HasValue)
+            {
+                return;
+            }
+
+            _lastSetChainSuccessRecorded = true;
+            if (_lastSetQualityAssessment.Value.Grade == SetQualityGrade.A)
+            {
+                GradeASetAttackSuccesses++;
+            }
+
+            if (_lastAttackContactOutcome == AttackContactOutcome.AdjustedAttack)
+            {
+                AdjustedAttackSuccesses++;
+            }
         }
 
         private SimVector3 OutgoingTargetFor(TeamRallyDecision decision)
