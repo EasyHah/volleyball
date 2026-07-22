@@ -38,7 +38,7 @@
 - Modify: `Assets/Volleyball/Match/Tests/EditMode/PhysicalRallyTacticPlannerTests.cs`
 - Modify: `docs/rules.md`
 
-- [ ] **Step 1: Write the failing deterministic-baseline test**
+- [x] **Step 1: Write the failing deterministic-baseline test**
 
 Replace the random-route coverage test with the following test in `PhysicalRallyTacticPlannerTests.cs`:
 
@@ -59,7 +59,7 @@ public void Create_UsesTheSameStateDerivedBaselineForEveryRevision()
 }
 ```
 
-- [ ] **Step 2: Run the focused EditMode test and confirm RED**
+- [x] **Step 2: Run the focused EditMode test and confirm RED**
 
 Run:
 
@@ -73,7 +73,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: FAIL because `Create(57)` uses `Random` and returns a different tactic.
 
-- [ ] **Step 3: Replace the random tactic selection with the explicit baseline**
+- [x] **Step 3: Replace the random tactic selection with the explicit baseline**
 
 In `PhysicalRallyTacticPlanner.Create`, remove the `Random` construction and the four `random.Next` calls. Begin the method body after validation with:
 
@@ -86,17 +86,17 @@ var orangeSpike = SpikeRoute.CrossCourt;
 
 Keep `revision` validated because the director still supplies it for diagnostics, but do not use it to create an artificial tactical variation. Delete the unused `_seed` field and constructor assignment while retaining the constructor signature for compatibility.
 
-- [ ] **Step 4: Run the focused EditMode test and confirm GREEN**
+- [x] **Step 4: Run the focused EditMode test and confirm GREEN**
 
 Run the command from Step 2 with result file `TestResults/tactic-baseline-green.xml`.
 
 Expected: PASS.
 
-- [ ] **Step 5: Update the rule compliance list**
+- [x] **Step 5: Update the rule compliance list**
 
 Remove the `PhysicalRallyTacticPlanner` `Random` row from `docs/rules.md` and add `PhysicalRallyTacticPlannerTests` to the R-GOV/R-OFF validation mapping.
 
-- [ ] **Step 6: Run the planner test fixture**
+- [x] **Step 6: Run the planner test fixture**
 
 Run:
 
@@ -110,7 +110,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: PASS. Update or remove earlier tests that required 32 revisions to cover every random route; they contradict R-GOV-001.
 
-- [ ] **Step 7: Commit the deterministic baseline**
+- [x] **Step 7: Commit the deterministic baseline**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/AI/PhysicalRallyTacticPlanner.cs Assets/Volleyball/Match/Tests/EditMode/PhysicalRallyTacticPlannerTests.cs docs/rules.md
@@ -125,7 +125,7 @@ git commit -m "fix: remove random rally tactics"
 - Modify: `Assets/Volleyball/Match/Runtime/AI/SetQualityAssessment.cs`
 - Modify: `Assets/Volleyball/Match/Tests/EditMode/SetQualityAssessmentTests.cs`
 
-- [ ] **Step 1: Write failing band-policy tests**
+- [x] **Step 1: Write failing band-policy tests**
 
 Create `AttackBandPolicyTests.cs` with these behaviors:
 
@@ -164,13 +164,13 @@ public void ConstrainTakeoff_PreservesBandDepthWhileAcceptingTheActualSetLateral
 }
 ```
 
-- [ ] **Step 2: Run the new fixture and confirm RED**
+- [x] **Step 2: Run the new fixture and confirm RED**
 
 Run the Unity EditMode command from Task 1 with test filter `Volleyball.EditModeTests.AttackBandPolicyTests`.
 
 Expected: compilation failure because `AttackBandPolicy` does not exist.
 
-- [ ] **Step 3: Implement the minimal pure policy**
+- [x] **Step 3: Implement the minimal pure policy**
 
 Create `AttackBandPolicy.cs` with a validated `AttackBand` value type and these public members:
 
@@ -191,13 +191,13 @@ public static class AttackBandPolicy
 
 Use `TeamCourtFrame` to convert to local coordinates. Use `excess = Math.Max(0f, setterDepthFromNet - 4f)` and `shift = Math.Min(1.5f, excess * 0.5f)`. For roles other than middle blocker, use `(0.75f + shift, 1.50f + shift)`; middle blocker uses `(0.50f + shift, 0.75f + shift)`.
 
-- [ ] **Step 4: Run the new fixture and confirm GREEN**
+- [x] **Step 4: Run the new fixture and confirm GREEN**
 
 Run the Task 2 focused command again.
 
 Expected: PASS.
 
-- [ ] **Step 5: Write the failing actual-set replan test**
+- [x] **Step 5: Write the failing actual-set replan test**
 
 Replace `Replan_BTrajectoryMovesTakeoffAndCreatesAdjustedAttack` with a test that calls an overload accepting `PlayerRole` and setter depth, then asserts:
 
@@ -209,13 +209,13 @@ Assert.That(replan.ContactPlan.ContactCenter.Z, Is.InRange(-1.50f, -0.75f));
 
 Use `actualCenter = new SimVector3(0.16f, 3.40f, -3.80f)`, `PlayerRole.Attacker`, `TeamId.Blue`, and `setterDepthFromNet: 1f` to prove an off-target deep set does not create a 3.8m takeoff.
 
-- [ ] **Step 6: Run the focused replan test and confirm RED**
+- [x] **Step 6: Run the focused replan test and confirm RED**
 
 Run the Unity EditMode command with test filter `Volleyball.EditModeTests.SetQualityAssessmentTests.Replan_BTrajectoryKeepsAttackerInNearNetBand`.
 
 Expected: compilation failure until the replan API accepts attack-band context, or assertion failure because current code assigns `actualCenter.Z` to takeoff.
 
-- [ ] **Step 7: Replan against the attack band instead of actual ball depth**
+- [x] **Step 7: Replan against the attack band instead of actual ball depth**
 
 Add the following parameters to `SetAttackReplanner.Replan` after `maxAttackReach`:
 
@@ -234,13 +234,13 @@ var takeoff = band.ConstrainTakeoff(attackingTeam, actualContactCenter);
 
 Build the reachable contact center from `takeoff.X` and `takeoff.Z`, while retaining the clamped real height. Update every existing call site and test to pass the role, team, and setter depth measured in team-local coordinates.
 
-- [ ] **Step 8: Run the full set-quality fixture and confirm GREEN**
+- [x] **Step 8: Run the full set-quality fixture and confirm GREEN**
 
 Run the Unity EditMode command with test filter `Volleyball.EditModeTests.SetQualityAssessmentTests`.
 
 Expected: PASS, including handling behavior for D/E-quality sets.
 
-- [ ] **Step 9: Commit the band policy and replan correction**
+- [x] **Step 9: Commit the band policy and replan correction**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/AI/AttackBandPolicy.cs Assets/Volleyball/Match/Runtime/AI/SetQualityAssessment.cs Assets/Volleyball/Match/Tests/EditMode/AttackBandPolicyTests.cs Assets/Volleyball/Match/Tests/EditMode/SetQualityAssessmentTests.cs
@@ -255,7 +255,7 @@ git commit -m "fix: keep attack replans in near-net bands"
 - Modify: `Assets/Volleyball/Match/Tests/EditMode/PrototypePlayerContactSourceTests.cs`
 - Modify: `Assets/Volleyball/Match/Tests/PlayMode/AttackChainCalibrationPlayModeTests.cs`
 
-- [ ] **Step 1: Write the failing prepared-approach test**
+- [x] **Step 1: Write the failing prepared-approach test**
 
 Add a test to `PrototypePlayerContactSourceTests.cs` that schedules `ScheduleAttackPreparation`, advances contact collection to the preparation end, then schedules the actual attack with an approach whose takeoff is closer to the net. Assert that the actor's new `ScheduledMovementDistance` is the remaining distance only and that its world Z never moves farther from the net after the second schedule.
 
@@ -270,13 +270,13 @@ var contact = AttackContactPlanner.Plan(new AttackContactInput(
 
 The assertion must fail under the old reset-to-approach-start scheduling path.
 
-- [ ] **Step 2: Run the focused test and confirm RED**
+- [x] **Step 2: Run the focused test and confirm RED**
 
 Run the Unity EditMode command with its fully qualified test filter.
 
 Expected: FAIL because `ScheduleContact` rebuilds `_movementStartPosition` and moves toward `AttackApproach.ApproachStart` again.
 
-- [ ] **Step 3: Add an explicit continuation scheduling path**
+- [x] **Step 3: Add an explicit continuation scheduling path**
 
 In `PrototypePlayerAgent`, add:
 
@@ -291,17 +291,17 @@ It must retain the current constrained root position as `_movementStartPosition`
 
 In `PhysicalMatchRallyDirector.ScheduleAttackFromActualSet`, call this continuation method before scheduling the contact. Construct the `resumedApproach` from the current root position only for the remaining path length; keep `replan.Approach.Takeoff` from Task 2.
 
-- [ ] **Step 4: Run the focused test and confirm GREEN**
+- [x] **Step 4: Run the focused test and confirm GREEN**
 
 Run the Task 3 focused command again.
 
 Expected: PASS.
 
-- [ ] **Step 5: Add a PlayMode invariant for normal sets**
+- [x] **Step 5: Add a PlayMode invariant for normal sets**
 
 Extend `AttackChainCalibrationPlayModeTests` to record each A/B/C set's replay set-chain and expose a director counter `NearNetAttackPlans`. Assert that all normal attack plans use a takeoff depth in the role's resolved band and that `AGradeNoContactErrorRate` remains below the existing threshold.
 
-- [ ] **Step 6: Run focused calibration and commit**
+- [x] **Step 6: Run focused calibration and commit**
 
 Run:
 
@@ -319,6 +319,18 @@ Expected: PASS for both 3v3 and 6v6 calibration cases.
 git add Assets/Volleyball/Match/Runtime/Presentation/PrototypePlayerAgent.cs Assets/Volleyball/Match/Runtime/Presentation/PhysicalMatchRallyDirector.cs Assets/Volleyball/Match/Tests/EditMode/PrototypePlayerContactSourceTests.cs Assets/Volleyball/Match/Tests/PlayMode/AttackChainCalibrationPlayModeTests.cs
 git commit -m "fix: preserve attack approach through set replans"
 ```
+
+**Current status saved 2026-07-22:** Tasks 1--3 are complete on branch
+`codex/geometric-counterplay`.
+
+- Task 1 commits: `d5391ab`, `2c3d871`.
+- Task 2 commits: `a21a350`, follow-up `7c9e580`.
+- Task 3 commit: `e62008b`.
+- Latest verification: `Volleyball.EditModeTests.PrototypePlayerContactSourceTests`
+  28/28 passed; full EditMode 324/324 passed; `Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests`
+  3/3 passed with 3v3 and 6v6 `nearNetAttackPlans=100/100` and
+  `AGradeNoContactErrorRate=0.000`.
+- Next task to execute: Task 4, starting at `SetTargetSelectorTests`.
 
 ## Task 4: Select Best Set Targets and Geometry-Driven Attack Routes
 
