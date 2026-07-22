@@ -20,12 +20,16 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
         private const string V2ResultHash = "3fbb03380ce766a7695c7ad7d0697c5c631893d714b229abcf8c7c1017182d98";
         private const string V2ContextFileHash = "a33aefaef5860e68803fa0d3910638da661e777704d9981e3ffd910719126b93";
         private const string V2ResultFileHash = "301df25404a1358f7a56fdc22008f9f7515b3954e75296c3cf5ffe92a959ad12";
+        private const string V1Manifest = "{\"fixtureId\":\"physical-3v3-v1\",\"contractVersion\":1,\"contextFile\":\"context.json\",\"resultFile\":\"result.json\",\"canonicalContextBytes\":1665,\"canonicalResultBytes\":711,\"contextHash\":\"c15741e3e6509130e9249a6ccaf9f9ef05f9593403571c6feb57b33f6e9291da\",\"contextFileSha256\":\"c042a2af98d9dbcaa5b455924e9e8bb1ca6ea2b9a46a06a4c86efe890bd4d646\",\"resultFileSha256\":\"f1de13c7e040fd454875cbcef6545d1c40f242dd0063f64682a190a2fa23af8a\"}";
+        private const string V2Manifest = "{\"fixtureId\":\"fixture.career.u1w1.6v6\",\"fixtureVersion\":1,\"contractVersion\":2,\"contextFile\":\"golden-context.json\",\"resultFile\":\"golden-result.json\",\"canonicalContextBytes\":4820,\"canonicalResultBytes\":8082,\"contextHash\":\"da570cff972d280acb9307edb715bcef88a0f958e75ea615072a5be25edf0527\",\"resultHash\":\"3fbb03380ce766a7695c7ad7d0697c5c631893d714b229abcf8c7c1017182d98\",\"contextFileSha256\":\"a33aefaef5860e68803fa0d3910638da661e777704d9981e3ffd910719126b93\",\"resultFileSha256\":\"301df25404a1358f7a56fdc22008f9f7515b3954e75296c3cf5ffe92a959ad12\"}";
 
         [Test]
         public void LegacyPhysical3v3Fixture_RoundTripsWithFrozenV1Only()
         {
             var contextBytes = CanonicalFixture(V1 + "/context.json");
             var resultBytes = CanonicalFixture(V1 + "/result.json");
+            Assert.That(contextBytes, Is.EqualTo(MatchV2GoldenBytes.LegacyContext));
+            Assert.That(resultBytes, Is.EqualTo(MatchV2GoldenBytes.LegacyResult));
             Assert.That(contextBytes, Has.Length.EqualTo(1665));
             Assert.That(resultBytes, Has.Length.EqualTo(711));
             Assert.That(Hash(contextBytes), Is.EqualTo(V1ContextFileHash));
@@ -47,7 +51,16 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                 Is.EqualTo(new[] { "home-setter", "home-attacker", "home-defender" }));
             Assert.That(context.Away.Players.Select(player => player.PlayerId.Value),
                 Is.EqualTo(new[] { "away-setter", "away-attacker", "away-defender" }));
-            Assert.That(context.Home.Players.All(player => player.Ability.AttackPower == 0.85f), Is.True);
+            foreach (var player in context.Home.Players.Concat(context.Away.Players))
+            {
+                Assert.That(player.Ability.Mobility, Is.EqualTo(0.85f));
+                Assert.That(player.Ability.Reaction, Is.EqualTo(0.85f));
+                Assert.That(player.Ability.Jump, Is.EqualTo(0.85f));
+                Assert.That(player.Ability.ReceiveTechnique, Is.EqualTo(0.85f));
+                Assert.That(player.Ability.SetTechnique, Is.EqualTo(0.85f));
+                Assert.That(player.Ability.AttackTechnique, Is.EqualTo(0.85f));
+                Assert.That(player.Ability.AttackPower, Is.EqualTo(0.85f));
+            }
             Assert.DoesNotThrow(() => result.ValidateAgainst(context));
             Assert.That(ContractVersions.SupportsMatch(2), Is.False);
         }
@@ -57,6 +70,8 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
         {
             var contextBytes = CanonicalFixture(V2 + "/golden-context.json");
             var resultBytes = CanonicalFixture(V2 + "/golden-result.json");
+            Assert.That(contextBytes, Is.EqualTo(MatchV2GoldenBytes.V2Context));
+            Assert.That(resultBytes, Is.EqualTo(MatchV2GoldenBytes.V2Result));
             Assert.That(contextBytes, Has.Length.EqualTo(4820));
             Assert.That(resultBytes, Has.Length.EqualTo(8082));
             Assert.That(Hash(contextBytes), Is.EqualTo(V2ContextFileHash));
@@ -88,15 +103,29 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
             Assert.That(protagonist.Stability.ErrorStreakEpisodes, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Manifests_AreExactAndDescribeTheCommittedPayloadBytes()
+        {
+            var v1ManifestBytes = File.ReadAllBytes(Path.Combine(
+                Directory.GetCurrentDirectory(), V1 + "/manifest.json"));
+            var v2ManifestBytes = File.ReadAllBytes(Path.Combine(
+                Directory.GetCurrentDirectory(), V2 + "/manifest.json"));
+            Assert.That(v1ManifestBytes, Is.EqualTo(Encoding.UTF8.GetBytes(V1Manifest + "\n")));
+            Assert.That(v2ManifestBytes, Is.EqualTo(Encoding.UTF8.GetBytes(V2Manifest + "\n")));
+
+            Assert.That(Hash(File.ReadAllBytes(Path.Combine(
+                Directory.GetCurrentDirectory(), V1 + "/context.json"))), Is.EqualTo(V1ContextFileHash));
+            Assert.That(Hash(File.ReadAllBytes(Path.Combine(
+                Directory.GetCurrentDirectory(), V1 + "/result.json"))), Is.EqualTo(V1ResultFileHash));
+            Assert.That(Hash(File.ReadAllBytes(Path.Combine(
+                Directory.GetCurrentDirectory(), V2 + "/golden-context.json"))), Is.EqualTo(V2ContextFileHash));
+            Assert.That(Hash(File.ReadAllBytes(Path.Combine(
+                Directory.GetCurrentDirectory(), V2 + "/golden-result.json"))), Is.EqualTo(V2ResultFileHash));
+        }
+
         internal static byte[] CanonicalFixture(string relativePath)
         {
-            var bytes = File.ReadAllBytes(Path.Combine(Directory.GetCurrentDirectory(), relativePath));
-            Assert.That(bytes, Is.Not.Empty);
-            Assert.That(bytes[bytes.Length - 1], Is.EqualTo((byte)'\n'), "Repository text carrier must have exactly one LF terminator.");
-            Assert.That(bytes.Length < 2 || bytes[bytes.Length - 2] != (byte)'\r');
-            var canonical = new byte[bytes.Length - 1];
-            Buffer.BlockCopy(bytes, 0, canonical, 0, canonical.Length);
-            return canonical;
+            return File.ReadAllBytes(Path.Combine(Directory.GetCurrentDirectory(), relativePath));
         }
 
         internal static string Hash(byte[] bytes)

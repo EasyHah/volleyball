@@ -124,5 +124,110 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                     new TeamId("team.invalid.positions"), TeamSideV2.Home, players),
                 Throws.TypeOf<MatchV2ContractException>().With.Message.Contains("topology"));
         }
+
+        [TestCase(0)]
+        [TestCase(100)]
+        public void Player_RejectsJerseyOutsideOneToNinetyNine(int jersey)
+        {
+            Assert.That(() => new MatchPlayerSnapshotV2(
+                    new PlayerId("player.invalid.jersey"), jersey, PlayerPositionV2.Opposite,
+                    1, 9000, MatchV2TestFactory.Abilities(5000)),
+                Throws.TypeOf<MatchV2ContractException>());
+        }
+
+        [Test]
+        public void Team_RejectsDuplicateJerseyNumbers()
+        {
+            var players = MatchV2TestFactory.CreateTeams()[0].Players.ToArray();
+            players[1] = new MatchPlayerSnapshotV2(
+                players[1].PlayerId, players[0].JerseyNumber, players[1].Position,
+                players[1].RotationSlot, players[1].FitnessBasisPoints, players[1].Abilities);
+            Assert.That(() => new MatchTeamSnapshotV2(
+                    new TeamId("team.invalid.jerseys"), TeamSideV2.Home, players),
+                Throws.TypeOf<MatchV2ContractException>().With.Message.Contains("jersey"));
+        }
+
+        [Test]
+        public void TeamAndContext_DefensivelyCopyInputCollections()
+        {
+            var players = MatchV2TestFactory.CreateTeams()[0].Players.ToArray();
+            var team = new MatchTeamSnapshotV2(new TeamId("team.copy.home"), TeamSideV2.Home, players);
+            var originalFirst = team.Players[0];
+            players[0] = players[1];
+            Assert.That(team.Players[0], Is.SameAs(originalFirst));
+
+            var teams = new[] { team, MatchV2TestFactory.CreateTeams()[1] };
+            var context = MatchV2TestFactory.CreateContext(teams);
+            teams[0] = teams[1];
+            Assert.That(context.Teams[0], Is.SameAs(team));
+        }
+
+        [Test]
+        public void Context_AcceptsEveryCompleteModeVersionPairing()
+        {
+            Assert.DoesNotThrow(() => MatchV2TestFactory.CreateContext(MatchV2TestFactory.CreateTeams()));
+            Assert.DoesNotThrow(() => MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), MatchExecutionModeV2.Direct,
+                null, null, null, null));
+            Assert.DoesNotThrow(() => MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), MatchExecutionModeV2.QuickSimulation,
+                null, null, 1, 1));
+        }
+
+        [Test]
+        public void Context_RejectsEveryIncompleteModeVersionPairing()
+        {
+            var teams = MatchV2TestFactory.CreateTeams();
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                teams, MatchExecutionModeV2.Fixture, "fixture.career.u1w1.6v6", 1, 1, 1),
+                Throws.TypeOf<MatchV2ContractException>());
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                teams, MatchExecutionModeV2.Direct, null, null, 1, null),
+                Throws.TypeOf<MatchV2ContractException>());
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                teams, MatchExecutionModeV2.Direct, null, null, null, 1),
+                Throws.TypeOf<MatchV2ContractException>());
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                teams, MatchExecutionModeV2.QuickSimulation, null, null, 1, null),
+                Throws.TypeOf<MatchV2ContractException>());
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                teams, MatchExecutionModeV2.QuickSimulation, null, null, null, 1),
+                Throws.TypeOf<MatchV2ContractException>());
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                teams, MatchExecutionModeV2.QuickSimulation, "fixture.career.u1w1.6v6", 1, 1, 1),
+                Throws.TypeOf<MatchV2ContractException>());
+        }
+
+        [Test]
+        public void PublicBoundaries_RejectNullCollectionsAndMembers()
+        {
+            Assert.That(() => new MatchPlayerSnapshotV2(
+                    new PlayerId("player.null.abilities"), 1, PlayerPositionV2.Opposite,
+                    1, 9000, null),
+                Throws.TypeOf<ArgumentNullException>());
+            Assert.That(() => new MatchTeamSnapshotV2(
+                    new TeamId("team.null.players"), TeamSideV2.Home, null),
+                Throws.TypeOf<ArgumentNullException>());
+            Assert.That(() => MatchV2TestFactory.CreateContext(null),
+                Throws.TypeOf<ArgumentNullException>());
+
+            var players = MatchV2TestFactory.CreateTeams()[0].Players.ToArray();
+            players[0] = null;
+            Assert.That(() => new MatchTeamSnapshotV2(
+                    new TeamId("team.null.member"), TeamSideV2.Home, players),
+                Throws.TypeOf<MatchV2ContractException>());
+        }
+
+        [Test]
+        public void Context_AcceptsBothUint32SeedBoundaries()
+        {
+            var zero = MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), matchSeed: 0u);
+            var maximum = MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), matchSeed: uint.MaxValue);
+            Assert.That(zero.MatchSeed, Is.Zero);
+            Assert.That(maximum.MatchSeed, Is.EqualTo(uint.MaxValue));
+            Assert.That(zero.ContextHash, Is.Not.EqualTo(maximum.ContextHash));
+        }
     }
 }

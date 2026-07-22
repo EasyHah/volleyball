@@ -132,8 +132,8 @@ namespace Volleyball.Shared.Contracts.V2
             int rotationSlot, int fitnessBasisPoints, MatchAbilitySnapshotV2 abilities)
         {
             MatchV2Guard.StableId(playerId.Value, nameof(playerId));
-            if (jerseyNumber < 0 || jerseyNumber > 99)
-                throw new MatchV2ContractException("jerseyNumber must be in [0,99].");
+            if (jerseyNumber < 1 || jerseyNumber > 99)
+                throw new MatchV2ContractException("jerseyNumber must be in [1,99].");
             MatchV2Guard.Enum(position, nameof(position));
             if (rotationSlot < 1 || rotationSlot > 6)
                 throw new MatchV2ContractException("rotationSlot must be in [1,6].");
@@ -177,6 +177,7 @@ namespace Volleyball.Shared.Contracts.V2
             if (players.Count != 6)
                 throw new MatchV2ContractException("A V2 team must contain exactly six players.");
             var ids = new HashSet<PlayerId>();
+            var jerseys = new HashSet<int>();
             var slots = new HashSet<int>();
             var positions = new Dictionary<PlayerPositionV2, int>();
             for (var index = 0; index < players.Count; index++)
@@ -186,6 +187,8 @@ namespace Volleyball.Shared.Contracts.V2
                     throw new MatchV2ContractException("Players must use ascending unique rotation slots 1-6.");
                 if (!ids.Add(player.PlayerId))
                     throw new MatchV2ContractException("Player IDs must be unique inside a team.");
+                if (!jerseys.Add(player.JerseyNumber))
+                    throw new MatchV2ContractException("jerseyNumber values must be unique inside a team.");
                 positions.TryGetValue(player.Position, out var count);
                 positions[player.Position] = count + 1;
             }

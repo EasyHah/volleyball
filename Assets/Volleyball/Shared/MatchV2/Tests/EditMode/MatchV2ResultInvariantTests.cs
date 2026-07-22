@@ -86,6 +86,74 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
         }
 
         [Test]
+        public void CompletedResult_RejectsAwayTechnicalPointsAboveAwayScore()
+        {
+            var context = MatchV2TestFactory.CreateContext(MatchV2TestFactory.CreateTeams());
+            var facts = MatchV2TestFactory.ZeroFacts(context);
+            facts[6] = new MatchPlayerFactsV2(facts[6].PlayerId,
+                new SpikeFactsV2(22, 22, 0), facts[6].Serve, facts[6].Reception,
+                facts[6].Defense, facts[6].Block, facts[6].Load, facts[6].Stability);
+
+            Assert.That(() => MatchResultV2.CreateCompleted(context, context.Teams[0].TeamId,
+                    new[] { new SetScoreV2(1, 25, 21, true) }, 46, facts),
+                Throws.TypeOf<MatchV2ContractException>().With.Message.Contains("technical"));
+        }
+
+        [Test]
+        public void AbandonedResult_AcceptsOnlyZeroSetsOrOneGenuinelyIncompleteSet()
+        {
+            var context = MatchV2TestFactory.CreateContext(MatchV2TestFactory.CreateTeams());
+
+            Assert.DoesNotThrow(() => MatchResultV2.CreateAbandoned(
+                context, Array.Empty<SetScoreV2>(), 0, MatchV2TestFactory.ZeroFacts(context)));
+            Assert.DoesNotThrow(() => MatchResultV2.CreateAbandoned(
+                context, new[] { new SetScoreV2(1, 4, 3, false) }, 7,
+                MatchV2TestFactory.ZeroFacts(context)));
+
+            TestDelegate[] invalidResults =
+            {
+                () => MatchResultV2.CreateAbandoned(
+                    context, Array.Empty<SetScoreV2>(), 1, MatchV2TestFactory.ZeroFacts(context)),
+                () => MatchResultV2.CreateAbandoned(
+                    context, new[] { new SetScoreV2(1, 4, 3, false) }, 6,
+                    MatchV2TestFactory.ZeroFacts(context)),
+                () => MatchResultV2.CreateAbandoned(
+                    context, new[] { new SetScoreV2(1, 25, 21, true) }, 46,
+                    MatchV2TestFactory.ZeroFacts(context)),
+                () => MatchResultV2.CreateAbandoned(
+                    context, new[]
+                    {
+                        new SetScoreV2(1, 4, 3, false),
+                        new SetScoreV2(2, 1, 0, false)
+                    }, 8, MatchV2TestFactory.ZeroFacts(context)),
+                () => MatchResultV2.CreateAbandoned(
+                    context, new[] { new SetScoreV2(1, 25, 21, false) }, 46,
+                    MatchV2TestFactory.ZeroFacts(context))
+            };
+
+            foreach (var invalid in invalidResults)
+                Assert.That(invalid, Throws.TypeOf<MatchV2ContractException>());
+        }
+
+        [Test]
+        public void Result_DefensivelyCopiesSetAndFactCollections()
+        {
+            var context = MatchV2TestFactory.CreateContext(MatchV2TestFactory.CreateTeams());
+            var originalSet = new SetScoreV2(1, 25, 21, true);
+            var sets = new[] { originalSet };
+            var facts = MatchV2TestFactory.ZeroFacts(context);
+            var originalFact = facts[0];
+            var result = MatchResultV2.CreateCompleted(
+                context, context.Teams[0].TeamId, sets, 46, facts);
+
+            sets[0] = new SetScoreV2(1, 1, 0, false);
+            facts[0] = facts[1];
+
+            Assert.That(result.Sets[0], Is.SameAs(originalSet));
+            Assert.That(result.PlayerFacts[0], Is.SameAs(originalFact));
+        }
+
+        [Test]
         public void Load_RejectsUnsafeIntegerAndNormalizedRangeOverflow()
         {
             Assert.That(() => new MatchLoadFactsV2(0, 9007199254740992L, 0, 0, 0, 0, 0),

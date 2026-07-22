@@ -285,10 +285,25 @@ namespace Volleyball.Shared.Contracts.V2
                     (awayWinner && (awayWins != context.Format.SetsToWin || homeWins >= awayWins)))
                     throw new MatchV2ContractException("winnerTeamId is inconsistent with completed set wins.");
             }
-            else if (WinnerTeamId.HasValue || _sets.Length > 1 ||
-                     (_sets.Length == 1 && _sets[0].IsComplete))
+            else if (WinnerTeamId.HasValue || _sets.Length > 1)
             {
                 throw new MatchV2ContractException("An abandoned result has no winner and at most one incomplete set.");
+            }
+            else if (_sets.Length == 0)
+            {
+                if (RallyCount != 0)
+                    throw new MatchV2ContractException("An abandoned result without a set must have zero rallies.");
+            }
+            else
+            {
+                var set = _sets[0];
+                var higher = Math.Max(set.HomePoints, set.AwayPoints);
+                var reachedWinningScore = higher >= context.Format.SetTargetPoints &&
+                                          Math.Abs(set.HomePoints - set.AwayPoints) >=
+                                          context.Format.MinimumLeadPoints;
+                if (set.IsComplete || reachedWinningScore || RallyCount != homePoints + awayPoints)
+                    throw new MatchV2ContractException(
+                        "An abandoned result requires one genuinely incomplete set and exact rallyCount.");
             }
 
             long homeTechnical = 0;

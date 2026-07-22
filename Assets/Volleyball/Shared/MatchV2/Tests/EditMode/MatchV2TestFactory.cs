@@ -34,7 +34,8 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
             string fixtureId = "fixture.career.u1w1.6v6",
             int? fixtureVersion = 1,
             int? simulationVersion = null,
-            int? randomVersion = null)
+            int? randomVersion = null,
+            uint matchSeed = 25649701u)
         {
             return MatchContextV2.Create(
                 Versions(simulationVersion, randomVersion),
@@ -42,7 +43,7 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                 mode,
                 fixtureId,
                 fixtureVersion,
-                25649701u,
+                matchSeed,
                 "competition.university.v1",
                 "schedule.u1w1.match.01",
                 7500,

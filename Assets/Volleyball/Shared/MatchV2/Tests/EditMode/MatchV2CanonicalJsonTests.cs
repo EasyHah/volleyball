@@ -37,6 +37,31 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
             Assert.That(Encoding.UTF8.GetString(decomposed), Is.EqualTo("{\"v\":\"é\"}"));
         }
 
+        [Test]
+        public void Writer_UsesTheLockedEscapeForEveryControlCharacter()
+        {
+            var expectedEscapes = new[]
+            {
+                "\\u0000", "\\u0001", "\\u0002", "\\u0003",
+                "\\u0004", "\\u0005", "\\u0006", "\\u0007",
+                "\\b", "\\t", "\\n", "\\u000b", "\\f", "\\r",
+                "\\u000e", "\\u000f", "\\u0010", "\\u0011",
+                "\\u0012", "\\u0013", "\\u0014", "\\u0015",
+                "\\u0016", "\\u0017", "\\u0018", "\\u0019",
+                "\\u001a", "\\u001b", "\\u001c", "\\u001d",
+                "\\u001e", "\\u001f"
+            };
+
+            for (var value = 0; value < expectedEscapes.Length; value++)
+            {
+                var writer = new MatchV2CanonicalJsonWriter();
+                writer.String(((char)value).ToString());
+                Assert.That(Encoding.UTF8.GetString(writer.Bytes()),
+                    Is.EqualTo("\"" + expectedEscapes[value] + "\""),
+                    "U+" + value.ToString("X4"));
+            }
+        }
+
         [TestCase("duplicate")]
         [TestCase("unknown")]
         [TestCase("missing")]
@@ -49,7 +74,10 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
         [TestCase("illegal_escape")]
         [TestCase("lone_surrogate")]
         [TestCase("uppercase_uuid")]
+        [TestCase("empty_uuid")]
         [TestCase("uppercase_hash")]
+        [TestCase("negative_seed")]
+        [TestCase("overflow_seed")]
         [TestCase("tampered_payload")]
         public void ContextDeserializer_RejectsNoncanonicalAndTamperedBytes(string vector)
         {
@@ -76,7 +104,10 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                 case "illegal_escape": text = text.Replace("competition.university.v1", "competition\\xuniversity"); bytes = Encoding.UTF8.GetBytes(text); break;
                 case "lone_surrogate": text = text.Replace("competition.university.v1", "competition\\ud800"); bytes = Encoding.UTF8.GetBytes(text); break;
                 case "uppercase_uuid": text = text.Replace("55555555-5555-5555-5555-555555555555", "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"); bytes = Encoding.UTF8.GetBytes(text); break;
+                case "empty_uuid": text = text.Replace("55555555-5555-5555-5555-555555555555", "00000000-0000-0000-0000-000000000000"); bytes = Encoding.UTF8.GetBytes(text); break;
                 case "uppercase_hash": text = text.Replace("da570cff", "DA570CFF"); bytes = Encoding.UTF8.GetBytes(text); break;
+                case "negative_seed": text = text.Replace("\"matchSeed\":25649701", "\"matchSeed\":-1"); bytes = Encoding.UTF8.GetBytes(text); break;
+                case "overflow_seed": text = text.Replace("\"matchSeed\":25649701", "\"matchSeed\":4294967296"); bytes = Encoding.UTF8.GetBytes(text); break;
                 default: text = text.Replace("\"matchSeed\":25649701", "\"matchSeed\":25649702"); bytes = Encoding.UTF8.GetBytes(text); break;
             }
             Assert.That(() => MatchContractV2Json.DeserializeContext(bytes),
@@ -100,6 +131,8 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
         [TestCase("player_order")]
         [TestCase("foreign_player")]
         [TestCase("duplicate_player")]
+        [TestCase("contract_version")]
+        [TestCase("content_version")]
         [TestCase("result_hash")]
         public void ResultDeserializer_RejectsMismatchedOrTamperedIdentity(string vector)
         {
@@ -115,6 +148,8 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                 case "player_order": text = text.Replace("player.home.opposite", "player.swap.marker").Replace("player.career.protagonist", "player.home.opposite").Replace("player.swap.marker", "player.career.protagonist"); break;
                 case "foreign_player": text = text.Replace("player.home.opposite", "player.foreign"); break;
                 case "duplicate_player": text = text.Replace("player.career.protagonist", "player.home.opposite"); break;
+                case "contract_version": text = text.Replace("\"contractVersion\":2", "\"contractVersion\":3"); break;
+                case "content_version": text = text.Replace("\"contentVersion\":1", "\"contentVersion\":2"); break;
                 default: text = text.Replace("3fbb0338", "4fbb0338"); break;
             }
             Assert.That(() => MatchContractV2Json.DeserializeResult(Encoding.UTF8.GetBytes(text), context),

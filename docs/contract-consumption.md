@@ -35,10 +35,12 @@ contracts release; do not hand-edit copied data.
 
 ## Result responsibility
 
-V1 reports scores and coarse per-player statistics only. V2 will report the detailed
-performance, workload, injury-observation and structured event facts required by
-Career. No match result calculates progression, fatigue persistence, injury duration,
-trust, offers or transfers.
+V1 reports scores and coarse per-player statistics only. The current V2 reports the
+detailed performance, workload and stability facts required by the first Career
+consumer. It deliberately does not contain injury observations. Those observations
+and their event semantics are deferred to a later contract version once a concrete
+consumer exists. No match result calculates progression, fatigue persistence, injury
+state or duration, trust, offers or transfers.
 
 `MatchContextV1` is hash-validated when deserialized. `MatchResultV1` must be
 validated against the exact context before Career applies it; its version,
