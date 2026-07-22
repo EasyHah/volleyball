@@ -318,6 +318,12 @@ namespace Volleyball.Career.Persistence
                     return Result(PersistenceResultKind.VersionConflict);
                 }
 
+                var fixedBackup = ReadCandidate(_paths.ProfileBackupPath(profileId), profileId);
+                if (fixedBackup.Kind == CandidateKind.Unsupported)
+                {
+                    return Result(PersistenceResultKind.UnsupportedVersion);
+                }
+
                 var temporaryPath = _paths.ProfileTemporaryPath(profileId, operationId);
                 var operationBackupPath = _paths.ProfileReplaceBackupPath(profileId, operationId);
                 if (_fileSystem.FileExists(temporaryPath) ||
@@ -574,6 +580,11 @@ namespace Volleyball.Career.Persistence
                 }
             }
 
+            if (!TryCleanNonAuthoritativeOperationFiles(profileId))
+            {
+                return Result(PersistenceResultKind.AmbiguousReplaceState);
+            }
+
             var main = ReadCandidate(_paths.ProfilePath(profileId), profileId);
             if (main.Kind == CandidateKind.Valid)
             {
@@ -804,6 +815,15 @@ namespace Volleyball.Career.Persistence
                 }
 
                 var versions = versionsValue.ObjectValue;
+                if (versions.ContainsUnknownProperty(
+                        "schemaVersion",
+                        "contentVersion",
+                        "rulesetVersion",
+                        "careerRandomAlgorithmVersion"))
+                {
+                    return true;
+                }
+
                 return VersionInteger(versions.Get("schemaVersion")) !=
                        CareerSaveVersions.Current.SchemaVersion ||
                        VersionInteger(versions.Get("contentVersion")) !=
@@ -927,6 +947,24 @@ namespace Volleyball.Career.Persistence
             }
 
             return matches.AsReadOnly();
+        }
+
+        private bool TryCleanNonAuthoritativeOperationFiles(ProfileId profileId)
+        {
+            var temporaryFiles = FindProfileCandidates(profileId, "profile.tmp.");
+            var repairFiles = FindProfileCandidates(profileId, "profile.repair.tmp.");
+            for (var index = 0; index < temporaryFiles.Count; index++)
+            {
+                TryDelete(temporaryFiles[index]);
+            }
+
+            for (var index = 0; index < repairFiles.Count; index++)
+            {
+                TryDelete(repairFiles[index]);
+            }
+
+            return FindProfileCandidates(profileId, "profile.tmp.").Count == 0 &&
+                   FindProfileCandidates(profileId, "profile.repair.tmp.").Count == 0;
         }
 
         private ProfilePersistenceResult TryAcquireLock(

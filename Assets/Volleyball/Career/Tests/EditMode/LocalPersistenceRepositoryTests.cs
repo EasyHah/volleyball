@@ -199,6 +199,31 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void CareerRepository_CommitPreservesAndRejectsUnsupportedFixedBackup()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var initial = CreateCareer(repository);
+            var mainPath = _paths.CareerPath(initial.Identity.ProfileId, initial.Identity.SaveId);
+            var backupPath = _paths.CareerBackupPath(initial.Identity.ProfileId, initial.Identity.SaveId);
+            var mainBytes = _system.ReadAllBytes(mainPath);
+            var unsupportedBackupBytes = System.Text.Encoding.UTF8.GetBytes(
+                System.Text.Encoding.UTF8.GetString(mainBytes)
+                    .Replace("\"schemaVersion\":1", "\"schemaVersion\":2"));
+            _system.CreateFileDurably(backupPath, unsupportedBackupBytes);
+
+            var result = repository.Commit(
+                initial.Identity.ProfileId,
+                initial.Identity.SaveId,
+                initial.Identity.VersionToken,
+                CareerPersistenceTestData.AfterFirstTryoutStage(initial),
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(unsupportedBackupBytes));
+        }
+
+        [Test]
         public void CareerRepository_CreateMoveThrowAfterPublishUsesRescan()
         {
             var faults = new FaultInjectingAtomicFileSystem(_system)
@@ -308,6 +333,81 @@ namespace Volleyball.Career.EditModeTests
                     initial.Identity.SaveId,
                     new OperationId(Guid.NewGuid())),
                 new byte[] { (byte)'{', (byte)'}' });
+
+            var result = repository.Create(initial, new OperationId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousRestoreState));
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerPath(initial.Identity.ProfileId, initial.Identity.SaveId)),
+                Is.False);
+        }
+
+        [Test]
+        public void CareerRepository_CreateWithBackupConvergenceDoesNotPublishNewAuthority()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var initial = CareerPersistenceTestData.CreatedSnapshot(
+                new ProfileId(Guid.NewGuid()),
+                new SaveId(Guid.NewGuid()),
+                new LineageId(Guid.NewGuid()));
+            Directory.CreateDirectory(_paths.CareersDirectory(initial.Identity.ProfileId));
+            _system.CreateFileDurably(
+                _paths.CareerBackupConvergencePath(
+                    initial.Identity.ProfileId,
+                    initial.Identity.SaveId,
+                    new OperationId(Guid.NewGuid())),
+                CareerSaveJsonCodec.Serialize(CareerSaveJsonCodec.Seal(initial)));
+
+            var result = repository.Create(initial, new OperationId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerPath(initial.Identity.ProfileId, initial.Identity.SaveId)),
+                Is.False);
+        }
+
+        [Test]
+        public void CareerRepository_CreateWithRepairTemporaryDoesNotPublishNewAuthority()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var initial = CareerPersistenceTestData.CreatedSnapshot(
+                new ProfileId(Guid.NewGuid()),
+                new SaveId(Guid.NewGuid()),
+                new LineageId(Guid.NewGuid()));
+            Directory.CreateDirectory(_paths.CareersDirectory(initial.Identity.ProfileId));
+            _system.CreateFileDurably(
+                _paths.CareerRepairTemporaryPath(
+                    initial.Identity.ProfileId,
+                    initial.Identity.SaveId,
+                    new OperationId(Guid.NewGuid())),
+                CareerSaveJsonCodec.Serialize(CareerSaveJsonCodec.Seal(initial)));
+
+            var result = repository.Create(initial, new OperationId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerPath(initial.Identity.ProfileId, initial.Identity.SaveId)),
+                Is.False);
+        }
+
+        [Test]
+        public void CareerRepository_CreateWithRecoveryTemporaryDoesNotPublishNewAuthority()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var initial = CareerPersistenceTestData.CreatedSnapshot(
+                new ProfileId(Guid.NewGuid()),
+                new SaveId(Guid.NewGuid()),
+                new LineageId(Guid.NewGuid()));
+            Directory.CreateDirectory(_paths.CareersDirectory(initial.Identity.ProfileId));
+            _system.CreateFileDurably(
+                _paths.CareerRecoveryTemporaryPath(
+                    initial.Identity.ProfileId,
+                    initial.Identity.SaveId,
+                    new OperationId(Guid.NewGuid())),
+                CareerSaveJsonCodec.Serialize(CareerSaveJsonCodec.Seal(initial)));
 
             var result = repository.Create(initial, new OperationId(Guid.NewGuid()));
 
@@ -881,6 +981,33 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void ProfileRepository_CommitPreservesAndRejectsUnsupportedFixedBackup()
+        {
+            var repository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var created = repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var mainPath = _paths.ProfilePath(profileId);
+            var backupPath = _paths.ProfileBackupPath(profileId);
+            var mainBytes = _system.ReadAllBytes(mainPath);
+            var unsupportedBackupBytes = System.Text.Encoding.UTF8.GetBytes(
+                System.Text.Encoding.UTF8.GetString(mainBytes)
+                    .Replace("\"schemaVersion\":1", "\"schemaVersion\":2"));
+            _system.CreateFileDurably(backupPath, unsupportedBackupBytes);
+
+            var result = repository.Commit(
+                profileId,
+                created.Profile.VersionToken,
+                UpdatedProfile(created.Profile, "Must Not Replace Backup"),
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(unsupportedBackupBytes));
+        }
+
+        [Test]
         public void ProfileRepository_BackupConvergenceLostSuccessRescansFixedBackup()
         {
             var faults = new FaultInjectingAtomicFileSystem(_system);
@@ -987,6 +1114,63 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void ProfileRepository_LoadCleansOrphanTemporaryFilesBesideValidMain()
+        {
+            var repository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var created = repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var bytes = _system.ReadAllBytes(_paths.ProfilePath(profileId));
+            var temporaryPath = _paths.ProfileTemporaryPath(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+            var repairPath = _paths.ProfileRepairTemporaryPath(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+            _system.CreateFileDurably(temporaryPath, bytes);
+            _system.CreateFileDurably(repairPath, bytes);
+
+            var loaded = repository.Load(profileId);
+
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.Loaded));
+            Assert.That(loaded.Profile.VersionToken, Is.EqualTo(created.Profile.VersionToken));
+            Assert.That(_system.FileExists(temporaryPath), Is.False);
+            Assert.That(_system.FileExists(repairPath), Is.False);
+        }
+
+        [Test]
+        public void ProfileRepository_LoadCleansOnlyOrphanTemporaryFilesAndUnblocksCreate()
+        {
+            var repository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var mainPath = _paths.ProfilePath(profileId);
+            var bytes = _system.ReadAllBytes(mainPath);
+            _system.DeleteFile(mainPath);
+            var temporaryPath = _paths.ProfileTemporaryPath(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+            var repairPath = _paths.ProfileRepairTemporaryPath(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+            _system.CreateFileDurably(temporaryPath, bytes);
+            _system.CreateFileDurably(repairPath, bytes);
+
+            var loaded = repository.Load(profileId);
+            var created = repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.NotFound));
+            Assert.That(_system.FileExists(temporaryPath), Is.False);
+            Assert.That(_system.FileExists(repairPath), Is.False);
+            Assert.That(created.Kind, Is.EqualTo(PersistenceResultKind.Created));
+        }
+
+        [Test]
         public void CatalogRepository_PartialReplaceRestoresExpectedAndCleansOperationFiles()
         {
             var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
@@ -1051,6 +1235,95 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void CatalogRepository_LoadCleansForeignTemporaryAndRepairFiles()
+        {
+            var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
+            profileRepository.Create(
+                CareerPersistenceTestData.Profile(new ProfileId(Guid.NewGuid())),
+                new OperationId(Guid.NewGuid()));
+            var repository = new LocalProfileCatalogRepository(_paths, _system);
+            var current = repository.LoadOrRebuild(new OperationId(Guid.NewGuid()));
+            var bytes = _system.ReadAllBytes(_paths.ProfilesIndexPath);
+            var temporaryPath = _paths.ProfilesIndexTemporaryPath(new OperationId(Guid.NewGuid()));
+            var repairPath = _paths.ProfilesIndexRepairTemporaryPath(new OperationId(Guid.NewGuid()));
+            _system.CreateFileDurably(temporaryPath, bytes);
+            _system.CreateFileDurably(repairPath, bytes);
+
+            var loaded = repository.LoadOrRebuild(new OperationId(Guid.NewGuid()));
+
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.Loaded));
+            Assert.That(loaded.Catalog.VersionToken, Is.EqualTo(current.Catalog.VersionToken));
+            Assert.That(_system.FileExists(temporaryPath), Is.False);
+            Assert.That(_system.FileExists(repairPath), Is.False);
+        }
+
+        [Test]
+        public void CatalogRepository_CommitCleansForeignTemporaryAndRepairFiles()
+        {
+            var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
+            profileRepository.Create(
+                CareerPersistenceTestData.Profile(new ProfileId(Guid.NewGuid())),
+                new OperationId(Guid.NewGuid()));
+            var repository = new LocalProfileCatalogRepository(_paths, _system);
+            var current = repository.LoadOrRebuild(new OperationId(Guid.NewGuid()));
+            var bytes = _system.ReadAllBytes(_paths.ProfilesIndexPath);
+            var temporaryPath = _paths.ProfilesIndexTemporaryPath(new OperationId(Guid.NewGuid()));
+            var repairPath = _paths.ProfilesIndexRepairTemporaryPath(new OperationId(Guid.NewGuid()));
+            _system.CreateFileDurably(temporaryPath, bytes);
+            _system.CreateFileDurably(repairPath, bytes);
+            var next = LocalProfileJsonCodec.SealCatalog(new LocalProfileCatalog(
+                LocalProfileCatalog.CurrentSchemaVersion,
+                current.Catalog.CatalogRevision + 1,
+                CareerPersistenceTestData.Hash('0'),
+                current.Catalog.Profiles));
+
+            var committed = repository.Commit(
+                current.Catalog.VersionToken,
+                next,
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(committed.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(_system.FileExists(temporaryPath), Is.False);
+            Assert.That(_system.FileExists(repairPath), Is.False);
+        }
+
+        [Test]
+        public void CatalogRepository_CommitDoesNotBypassForeignReplaceBackup()
+        {
+            var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
+            profileRepository.Create(
+                CareerPersistenceTestData.Profile(new ProfileId(Guid.NewGuid())),
+                new OperationId(Guid.NewGuid()));
+            var repository = new LocalProfileCatalogRepository(_paths, _system);
+            var current = repository.LoadOrRebuild(new OperationId(Guid.NewGuid()));
+            var mainBytes = _system.ReadAllBytes(_paths.ProfilesIndexPath);
+            var unrelated = LocalProfileJsonCodec.SealCatalog(new LocalProfileCatalog(
+                LocalProfileCatalog.CurrentSchemaVersion,
+                current.Catalog.CatalogRevision + 5,
+                CareerPersistenceTestData.Hash('0'),
+                current.Catalog.Profiles));
+            var foreignBackupPath = _paths.ProfilesIndexReplaceBackupPath(
+                new OperationId(Guid.NewGuid()));
+            _system.CreateFileDurably(
+                foreignBackupPath,
+                LocalProfileJsonCodec.SerializeCatalog(unrelated));
+            var next = LocalProfileJsonCodec.SealCatalog(new LocalProfileCatalog(
+                LocalProfileCatalog.CurrentSchemaVersion,
+                current.Catalog.CatalogRevision + 1,
+                CareerPersistenceTestData.Hash('0'),
+                current.Catalog.Profiles));
+
+            var committed = repository.Commit(
+                current.Catalog.VersionToken,
+                next,
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(committed.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(_system.ReadAllBytes(_paths.ProfilesIndexPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.FileExists(foreignBackupPath), Is.True);
+        }
+
+        [Test]
         public void ProfileIndex_RebuildMarksMissingEntryWithoutCreatingReplacementCareer()
         {
             var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
@@ -1097,6 +1370,61 @@ namespace Volleyball.Career.EditModeTests
             var unsupportedBytes = System.Text.Encoding.UTF8.GetBytes(
                 System.Text.Encoding.UTF8.GetString(_system.ReadAllBytes(careerPath))
                     .Replace("\"schemaVersion\":1", "\"schemaVersion\":2"));
+            _system.OverwriteFileDurably(careerPath, unsupportedBytes);
+
+            var rebuilt = profileRepository.RebuildCareerIndex(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(indexed.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(rebuilt.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(careerPath), Is.EqualTo(unsupportedBytes));
+            Assert.That(_system.ReadAllBytes(_paths.ProfilePath(profileId)), Is.EqualTo(profileBytes));
+        }
+
+        [Test]
+        public void CareerRepository_LoadPreservesAndRejectsAnUnknownCareerVersionAxis()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var career = CreateCareer(repository);
+            var careerPath = _paths.CareerPath(
+                career.Identity.ProfileId,
+                career.Identity.SaveId);
+            var unsupportedBytes = System.Text.Encoding.UTF8.GetBytes(
+                System.Text.Encoding.UTF8.GetString(_system.ReadAllBytes(careerPath))
+                    .Replace(
+                        "\"careerRandomAlgorithmVersion\":1}",
+                        "\"careerRandomAlgorithmVersion\":1,\"matchSimulationVersion\":1}"));
+            _system.OverwriteFileDurably(careerPath, unsupportedBytes);
+
+            var loaded = repository.Load(
+                career.Identity.ProfileId,
+                career.Identity.SaveId);
+
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(careerPath), Is.EqualTo(unsupportedBytes));
+        }
+
+        [Test]
+        public void ProfileIndex_RebuildPreservesAndRejectsAnUnknownCareerVersionAxis()
+        {
+            var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
+            var careerRepository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            profileRepository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var career = CreateCareer(careerRepository, profileId, "Unknown Axis Career");
+            var indexed = profileRepository.RebuildCareerIndex(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+            var profileBytes = _system.ReadAllBytes(_paths.ProfilePath(profileId));
+            var careerPath = _paths.CareerPath(profileId, career.Identity.SaveId);
+            var unsupportedBytes = System.Text.Encoding.UTF8.GetBytes(
+                System.Text.Encoding.UTF8.GetString(_system.ReadAllBytes(careerPath))
+                    .Replace(
+                        "\"careerRandomAlgorithmVersion\":1}",
+                        "\"careerRandomAlgorithmVersion\":1,\"matchSimulationVersion\":1}"));
             _system.OverwriteFileDurably(careerPath, unsupportedBytes);
 
             var rebuilt = profileRepository.RebuildCareerIndex(

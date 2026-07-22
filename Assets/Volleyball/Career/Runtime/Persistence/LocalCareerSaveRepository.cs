@@ -253,13 +253,16 @@ namespace Volleyball.Career.Persistence
                     : Result(PersistenceResultKind.AlreadyExists);
             }
 
-            if (FindCandidates(profileId, saveId, ".recovery-intent.").Count != 0)
+            if (FindCandidates(profileId, saveId, ".recovery-intent.").Count != 0 ||
+                FindCandidates(profileId, saveId, ".recovery.tmp.").Count != 0)
             {
                 return Result(PersistenceResultKind.AmbiguousRestoreState);
             }
 
             if (FindCandidates(profileId, saveId, ".replace-backup.").Count != 0 ||
-                FindCandidates(profileId, saveId, ".tmp.").Count != 0)
+                FindCandidates(profileId, saveId, ".backup-convergence.").Count != 0 ||
+                FindCandidates(profileId, saveId, ".tmp.").Count != 0 ||
+                FindCandidates(profileId, saveId, ".repair.tmp.").Count != 0)
             {
                 return Result(PersistenceResultKind.AmbiguousReplaceState);
             }
@@ -356,6 +359,15 @@ namespace Volleyball.Career.Persistence
                 if (!current.Snapshot.Identity.VersionToken.Equals(expectedVersionToken))
                 {
                     return Result(PersistenceResultKind.VersionConflict);
+                }
+
+                var fixedBackup = ReadCandidate(
+                    _paths.CareerBackupPath(profileId, saveId),
+                    profileId,
+                    saveId);
+                if (fixedBackup.Kind == CandidateKind.Unsupported)
+                {
+                    return Result(PersistenceResultKind.UnsupportedVersion);
                 }
 
                 var temporaryPath = _paths.CareerTemporaryPath(profileId, saveId, operationId);
@@ -1178,6 +1190,15 @@ namespace Volleyball.Career.Persistence
                 }
 
                 var versions = versionsValue.ObjectValue;
+                if (versions.ContainsUnknownProperty(
+                        "schemaVersion",
+                        "contentVersion",
+                        "rulesetVersion",
+                        "careerRandomAlgorithmVersion"))
+                {
+                    return true;
+                }
+
                 return Integer(versions.Get("schemaVersion")) !=
                        CareerSaveVersions.Current.SchemaVersion ||
                        Integer(versions.Get("contentVersion")) !=

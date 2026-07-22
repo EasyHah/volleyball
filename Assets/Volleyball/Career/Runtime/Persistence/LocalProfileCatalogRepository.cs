@@ -126,6 +126,11 @@ namespace Volleyball.Career.Persistence
                 }
             }
 
+            if (!TryCleanNonAuthoritativeOperationFiles())
+            {
+                return Result(PersistenceResultKind.AmbiguousReplaceState);
+            }
+
             var current = ReadCandidate(_paths.ProfilesIndexPath);
             if (current.Kind == CandidateKind.Unsupported)
             {
@@ -236,6 +241,16 @@ namespace Volleyball.Career.Persistence
         {
             try
             {
+                if (FindOperationBackups().Count != 0)
+                {
+                    return Result(PersistenceResultKind.AmbiguousReplaceState);
+                }
+
+                if (!TryCleanNonAuthoritativeOperationFiles())
+                {
+                    return Result(PersistenceResultKind.AmbiguousReplaceState);
+                }
+
                 var current = ReadCandidate(_paths.ProfilesIndexPath);
                 if (current.Kind == CandidateKind.Unsupported)
                 {
@@ -589,12 +604,17 @@ namespace Volleyball.Career.Persistence
 
         private IReadOnlyList<string> FindOperationBackups()
         {
+            return FindOperationFiles("profiles-index.replace-backup.");
+        }
+
+        private IReadOnlyList<string> FindOperationFiles(string prefix)
+        {
             var result = new List<string>();
             var files = _fileSystem.EnumerateFiles(_paths.ProfilesDirectory);
             for (var index = 0; index < files.Count; index++)
             {
                 if (Path.GetFileName(files[index]).StartsWith(
-                        "profiles-index.replace-backup.",
+                        prefix,
                         StringComparison.Ordinal))
                 {
                     result.Add(files[index]);
@@ -602,6 +622,24 @@ namespace Volleyball.Career.Persistence
             }
 
             return result.AsReadOnly();
+        }
+
+        private bool TryCleanNonAuthoritativeOperationFiles()
+        {
+            var temporaryFiles = FindOperationFiles("profiles-index.tmp.");
+            var repairFiles = FindOperationFiles("profiles-index.repair.tmp.");
+            for (var index = 0; index < temporaryFiles.Count; index++)
+            {
+                TryDelete(temporaryFiles[index]);
+            }
+
+            for (var index = 0; index < repairFiles.Count; index++)
+            {
+                TryDelete(repairFiles[index]);
+            }
+
+            return FindOperationFiles("profiles-index.tmp.").Count == 0 &&
+                   FindOperationFiles("profiles-index.repair.tmp.").Count == 0;
         }
 
         private CatalogPersistenceResult TryAcquireLock(out IAtomicFileLock fileLock)

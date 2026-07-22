@@ -2138,6 +2138,32 @@ namespace Volleyball.Career.Persistence
             return _byName[propertyName];
         }
 
+        public bool ContainsUnknownProperty(params string[] propertyNames)
+        {
+            for (var propertyIndex = 0; propertyIndex < _properties.Count; propertyIndex++)
+            {
+                var known = false;
+                for (var nameIndex = 0; nameIndex < propertyNames.Length; nameIndex++)
+                {
+                    if (string.Equals(
+                            _properties[propertyIndex].Name,
+                            propertyNames[nameIndex],
+                            StringComparison.Ordinal))
+                    {
+                        known = true;
+                        break;
+                    }
+                }
+
+                if (!known)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         public void RequireExactly(string path, params string[] propertyNames)
         {
             if (_properties.Count != propertyNames.Length)
