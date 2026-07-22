@@ -300,6 +300,20 @@ namespace Volleyball.Career.EditModeTests
                 Throws.InstanceOf<ArgumentException>());
         }
 
+        [TestCase("team")]
+        [TestCase("stage")]
+        [TestCase("choice")]
+        [TestCase("output_id")]
+        [TestCase("output_order")]
+        [TestCase("output_kind")]
+        [TestCase("base_value")]
+        public void CatalogV1_RejectsEverySameVersionFixtureMutation(string mutation)
+        {
+            Assert.That(
+                () => MutatedCatalog(mutation),
+                Throws.InstanceOf<ArgumentException>());
+        }
+
         [Test]
         public void CareerPlayerRecord_HasTheDerivedFixedOutsideHitterPosition()
         {
@@ -406,6 +420,93 @@ namespace Volleyball.Career.EditModeTests
             }
 
             return result;
+        }
+
+        private static TryoutCatalog MutatedCatalog(string mutation)
+        {
+            var canonical = TryoutCatalogV1.Create();
+            var teamId = mutation == "team"
+                ? "team.university.drifted"
+                : canonical.InitialTeamStableId;
+            var stages = new TryoutStageDefinition[canonical.Stages.Count];
+            for (var index = 0; index < stages.Length; index++)
+            {
+                stages[index] = CloneStage(canonical.Stages[index]);
+            }
+
+            if (mutation == "stage")
+            {
+                stages[0] = CloneStage(stages[0], stageId: "tryout.attack.drifted");
+            }
+            else if (mutation == "choice")
+            {
+                var choices = CloneChoices(stages[0]);
+                choices[0] = new TryoutChoiceDefinition(
+                    "tryout.attack.choice.drifted",
+                    choices[0].BaseValues);
+                stages[0] = CloneStage(stages[0], choices: choices);
+            }
+            else if (mutation == "output_id")
+            {
+                var outputs = CloneOutputs(stages[0]);
+                outputs[0] = new TryoutOutputDefinition(
+                    "tryout.output.spike_drifted",
+                    outputs[0].Kind);
+                stages[0] = CloneStage(stages[0], outputs: outputs);
+            }
+            else if (mutation == "output_order")
+            {
+                var outputs = CloneOutputs(stages[0]);
+                var first = outputs[0];
+                outputs[0] = outputs[1];
+                outputs[1] = first;
+                stages[0] = CloneStage(stages[0], outputs: outputs);
+            }
+            else if (mutation == "output_kind")
+            {
+                var outputs = CloneOutputs(stages[0]);
+                outputs[0] = new TryoutOutputDefinition(
+                    outputs[0].OutputId,
+                    TryoutOutputKind.Stamina);
+                stages[0] = CloneStage(stages[0], outputs: outputs);
+            }
+            else if (mutation == "base_value")
+            {
+                var choices = CloneChoices(stages[0]);
+                var values = choices[0].BaseValues.ToArray();
+                values[0]++;
+                choices[0] = new TryoutChoiceDefinition(choices[0].ChoiceId, values);
+                stages[0] = CloneStage(stages[0], choices: choices);
+            }
+
+            return new TryoutCatalog(1, 1, teamId, stages);
+        }
+
+        private static TryoutStageDefinition CloneStage(
+            TryoutStageDefinition stage,
+            string stageId = null,
+            TryoutOutputDefinition[] outputs = null,
+            TryoutChoiceDefinition[] choices = null)
+        {
+            return new TryoutStageDefinition(
+                stage.StageNumber,
+                stageId ?? stage.StageId,
+                outputs ?? CloneOutputs(stage),
+                choices ?? CloneChoices(stage));
+        }
+
+        private static TryoutOutputDefinition[] CloneOutputs(TryoutStageDefinition stage)
+        {
+            return stage.Outputs
+                .Select(output => new TryoutOutputDefinition(output.OutputId, output.Kind))
+                .ToArray();
+        }
+
+        private static TryoutChoiceDefinition[] CloneChoices(TryoutStageDefinition stage)
+        {
+            return stage.Choices
+                .Select(choice => new TryoutChoiceDefinition(choice.ChoiceId, choice.BaseValues))
+                .ToArray();
         }
 
         private static string Hex(byte[] bytes)

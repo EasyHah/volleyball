@@ -224,10 +224,38 @@ namespace Volleyball.Career.Application
             if (committed.Kind == PersistenceResultKind.VersionConflict)
             {
                 var latest = _repository.Load(command.ProfileId, command.SaveId);
+                if (!HasSnapshot(latest))
+                {
+                    return Result(
+                        CareerApplicationStatus.PersistenceFailure,
+                        latest.Kind);
+                }
+
+                var latestLookup = new OperationReceiptIndex(
+                    latest.Snapshot.OperationReceipts).Find(
+                    command.OperationId,
+                    fingerprint);
+                if (latestLookup.Kind == OperationReceiptLookupKind.Existing)
+                {
+                    return ExistingStageResult(
+                        latest.Snapshot,
+                        latestLookup.Receipt,
+                        latest.Kind);
+                }
+
+                if (latestLookup.Kind == OperationReceiptLookupKind.Conflict)
+                {
+                    return Result(
+                        CareerApplicationStatus.OperationConflict,
+                        latest.Kind,
+                        latest.Snapshot,
+                        latestLookup.Receipt);
+                }
+
                 return Result(
                     CareerApplicationStatus.VersionConflict,
                     committed.Kind,
-                    HasSnapshot(latest) ? latest.Snapshot : null);
+                    latest.Snapshot);
             }
 
             return Result(
@@ -445,7 +473,15 @@ namespace Volleyball.Career.Application
                 CareerProgressionState.Planning(plan),
                 attributes,
                 _catalog.InitialTeamStableId,
-                Potential(attributes),
+                TryoutNumericRulesV1.DerivePotential(
+                    attributes.Spike.AbilityBasisPoints,
+                    attributes.Serve.AbilityBasisPoints,
+                    attributes.Reception.AbilityBasisPoints,
+                    attributes.Defense.AbilityBasisPoints,
+                    attributes.Block.AbilityBasisPoints,
+                    attributes.Movement.AbilityBasisPoints,
+                    attributes.Jump.AbilityBasisPoints,
+                    attributes.Stamina.AbilityBasisPoints),
                 values[TryoutOutputKind.Fatigue],
                 values[TryoutOutputKind.Mindset],
                 values[TryoutOutputKind.CoachTrust],
@@ -501,57 +537,14 @@ namespace Volleyball.Career.Application
                     throw new ArgumentException("Persisted tryout output order does not match content V1.");
                 }
 
-                var baseValue = choice.BaseValues[index];
-                var requestedDelta = AppliedDelta(definition.Kind, resolved[index].Perturbation);
-                var finalValue = IsAbility(definition.Kind)
-                    ? Clamp(baseValue + requestedDelta, 0, 10000)
-                    : Clamp(baseValue + requestedDelta, 0, 100);
-                explanations[index] = new TryoutOutputExplanation(
+                explanations[index] = TryoutNumericRulesV1.Explain(
                     stage.StageId,
-                    definition.OutputId,
-                    baseValue,
-                    finalValue - baseValue,
-                    finalValue);
+                    definition,
+                    choice.BaseValues[index],
+                    resolved[index]);
             }
 
             return explanations;
-        }
-
-        private static int AppliedDelta(TryoutOutputKind kind, int perturbation)
-        {
-            switch (kind)
-            {
-                case TryoutOutputKind.Fatigue:
-                    return perturbation / 20;
-                case TryoutOutputKind.Mindset:
-                case TryoutOutputKind.CoachTrust:
-                    return perturbation / 10;
-                default:
-                    return perturbation;
-            }
-        }
-
-        private static bool IsAbility(TryoutOutputKind kind)
-        {
-            return kind >= TryoutOutputKind.Spike && kind <= TryoutOutputKind.Stamina;
-        }
-
-        private static PotentialGrade Potential(CareerPlayerAttributes attributes)
-        {
-            var average = (
-                attributes.Spike.AbilityBasisPoints +
-                attributes.Serve.AbilityBasisPoints +
-                attributes.Reception.AbilityBasisPoints +
-                attributes.Defense.AbilityBasisPoints +
-                attributes.Block.AbilityBasisPoints +
-                attributes.Movement.AbilityBasisPoints +
-                attributes.Jump.AbilityBasisPoints +
-                attributes.Stamina.AbilityBasisPoints) / 8;
-            if (average < 4500) return PotentialGrade.D;
-            if (average < 5000) return PotentialGrade.C;
-            if (average < 5500) return PotentialGrade.B;
-            if (average < 6000) return PotentialGrade.A;
-            return PotentialGrade.S;
         }
 
         private static CareerAttributeProgress Progress(int ability)
@@ -720,12 +713,6 @@ namespace Volleyball.Career.Application
             {
                 throw new ArgumentOutOfRangeException(name);
             }
-        }
-
-        private static int Clamp(int value, int minimum, int maximum)
-        {
-            if (value < minimum) return minimum;
-            return value > maximum ? maximum : value;
         }
 
         private static bool HasSnapshot(CareerPersistenceResult result)

@@ -24,9 +24,11 @@
 - 注册随机流仅为 `tryout`、`event`、`match_seed`；本改动的业务流程只调用 `tryout`。
 - 新增 fingerprint schema V1：固定字段顺序、RFC-8785 兼容字符串转义、严格 UTF-8、UUID-D 小写、十进制不受区域设置影响、SHA-256 小写十六进制。
 - 新增不可变试训内容/规则 V1，数值明确标记为首个纵向切片调优 fixture，不代表最终平衡。
+- V1 目录构造对球队、阶段、选择、输出 ID/顺序/语义及全部基础数值执行完整闭包校验；同版本内容漂移在服务使用前即拒绝。
 - 新增结构化应用结果：`Applied`、`Existing`、`OperationConflict`、`InvalidInputOrState`、`VersionConflict`、`NotFound`、`PersistenceFailure`。
 - 创建前先验证输入并确认目标缺失，之后才消费 `ICareerSeedSource`；创建回执与 revision 1 同写。
 - 确认阶段先加载权威快照并查询回执。重试从持久化 raw perturbation 与 V1 内容重建解释，不重抽；冲突和失败不返回推测快照。
+- 提交竞争返回版本冲突时重新加载权威快照并复查原操作回执：匹配回执返回 `Existing`，同操作 ID 不同 fingerprint 返回 `OperationConflict`，仅缺少回执时保留 `VersionConflict`。
 - 第三段在 revision 4 同次提交中建立八项能力（XP 均为 0）、可见潜力/疲劳/心态/信任、固定主攻、固定大学队和仅槽位 3 为比赛的第一周计划。
 
 ### 稳定业务 ID
@@ -65,8 +67,8 @@
 
 ## 验证
 
-- [x] 新增 focused EditMode：20 passed / 0 failed / 0 skipped（Unity 6000.3.20f1，Windows batchmode；`TestResults/stage3-focused.xml`）
-- [x] 全部 Career EditMode：216 passed / 0 failed / 0 skipped（`TestResults/stage3-career.xml`）
+- [x] 新增 focused EditMode：43 passed / 0 failed / 0 skipped（Unity 6000.3.20f1，Windows batchmode；`TestResults/stage3-fix-focused.xml`）
+- [x] 全部 Career EditMode：239 passed / 0 failed / 0 skipped（`TestResults/stage3-fix-career.xml`）
 - [x] 真实本地存档创建、三段提交、schema V1 载入往返
 - [x] Python：8 passed；仓库验证器通过；`git diff --check` 通过；Match/Shared Runtime 冻结路径相对 `97e17bb` 无差异
 - [ ] PlayMode / 手动场景：不适用，本改动为纯 C# 且明确不包含 UI/场景

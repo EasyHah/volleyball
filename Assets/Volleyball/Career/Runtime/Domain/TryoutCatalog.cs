@@ -200,6 +200,16 @@ namespace Volleyball.Career.Domain
                     nameof(initialTeamStableId));
             }
 
+            if (!string.Equals(
+                initialTeamStableId,
+                "team.university.first",
+                StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Tryout content V1 requires its registered initial team ID.",
+                    nameof(initialTeamStableId));
+            }
+
             if (stages == null)
             {
                 throw new ArgumentNullException(nameof(stages));
@@ -286,7 +296,36 @@ namespace Volleyball.Career.Domain
         private static void ValidateV1StageShape(
             IReadOnlyList<TryoutStageDefinition> stages)
         {
-            var expected = new[]
+            var expectedStageIds = new[]
+            {
+                "tryout.attack",
+                "tryout.reception_defense",
+                "tryout.scrimmage"
+            };
+            var expectedOutputIds = new[]
+            {
+                new[]
+                {
+                    "tryout.output.spike",
+                    "tryout.output.serve",
+                    "tryout.output.jump"
+                },
+                new[]
+                {
+                    "tryout.output.reception",
+                    "tryout.output.defense",
+                    "tryout.output.block",
+                    "tryout.output.movement"
+                },
+                new[]
+                {
+                    "tryout.output.stamina",
+                    "tryout.output.fatigue",
+                    "tryout.output.mindset",
+                    "tryout.output.coach_trust"
+                }
+            };
+            var expectedOutputKinds = new[]
             {
                 new[]
                 {
@@ -309,11 +348,63 @@ namespace Volleyball.Career.Domain
                     TryoutOutputKind.CoachTrust
                 }
             };
+            var expectedChoiceIds = new[]
+            {
+                new[]
+                {
+                    "tryout.attack.choice.power",
+                    "tryout.attack.choice.serve",
+                    "tryout.attack.choice.approach"
+                },
+                new[]
+                {
+                    "tryout.reception_defense.choice.first_touch",
+                    "tryout.reception_defense.choice.floor_defense",
+                    "tryout.reception_defense.choice.net_read"
+                },
+                new[]
+                {
+                    "tryout.scrimmage.choice.endurance",
+                    "tryout.scrimmage.choice.composure",
+                    "tryout.scrimmage.choice.initiative"
+                }
+            };
+            var expectedBaseValues = new[]
+            {
+                new[]
+                {
+                    new[] { 5800, 4800, 5600 },
+                    new[] { 5000, 5800, 5100 },
+                    new[] { 5400, 5100, 5400 }
+                },
+                new[]
+                {
+                    new[] { 5800, 5200, 4600, 5300 },
+                    new[] { 5100, 5800, 4600, 5500 },
+                    new[] { 5000, 5100, 5700, 5400 }
+                },
+                new[]
+                {
+                    new[] { 5800, 8, 52, 48 },
+                    new[] { 5200, 10, 60, 56 },
+                    new[] { 5400, 14, 56, 60 }
+                }
+            };
             for (var stageIndex = 0; stageIndex < stages.Count; stageIndex++)
             {
                 var stage = stages[stageIndex];
+                if (!string.Equals(
+                    stage.StageId,
+                    expectedStageIds[stageIndex],
+                    StringComparison.Ordinal))
+                {
+                    throw new ArgumentException(
+                        "Tryout content V1 stage IDs must match the registered order.",
+                        nameof(stages));
+                }
+
                 if (stage.Choices.Count != 3 ||
-                    stage.Outputs.Count != expected[stageIndex].Length)
+                    stage.Outputs.Count != expectedOutputKinds[stageIndex].Length)
                 {
                     throw new ArgumentException(
                         "Tryout content V1 requires three choices and its exact output count per stage.",
@@ -322,11 +413,41 @@ namespace Volleyball.Career.Domain
 
                 for (var outputIndex = 0; outputIndex < stage.Outputs.Count; outputIndex++)
                 {
-                    if (stage.Outputs[outputIndex].Kind != expected[stageIndex][outputIndex])
+                    if (!string.Equals(
+                            stage.Outputs[outputIndex].OutputId,
+                            expectedOutputIds[stageIndex][outputIndex],
+                            StringComparison.Ordinal) ||
+                        stage.Outputs[outputIndex].Kind !=
+                        expectedOutputKinds[stageIndex][outputIndex])
                     {
                         throw new ArgumentException(
-                            "Tryout content V1 output semantics must match the registered stage order.",
+                            "Tryout content V1 output IDs and semantics must match the registered stage order.",
                             nameof(stages));
+                    }
+                }
+
+                for (var choiceIndex = 0; choiceIndex < stage.Choices.Count; choiceIndex++)
+                {
+                    var choice = stage.Choices[choiceIndex];
+                    if (!string.Equals(
+                        choice.ChoiceId,
+                        expectedChoiceIds[stageIndex][choiceIndex],
+                        StringComparison.Ordinal))
+                    {
+                        throw new ArgumentException(
+                            "Tryout content V1 choice IDs must match the registered order.",
+                            nameof(stages));
+                    }
+
+                    for (var valueIndex = 0; valueIndex < choice.BaseValues.Count; valueIndex++)
+                    {
+                        if (choice.BaseValues[valueIndex] !=
+                            expectedBaseValues[stageIndex][choiceIndex][valueIndex])
+                        {
+                            throw new ArgumentException(
+                                "Tryout content V1 base tuning must match the registered fixture.",
+                                nameof(stages));
+                        }
                     }
                 }
             }

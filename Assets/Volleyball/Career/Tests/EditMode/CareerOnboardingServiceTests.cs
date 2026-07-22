@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -194,32 +195,114 @@ namespace Volleyball.Career.EditModeTests
         {
             var firstRepository = new MemoryCareerRepository();
             var secondRepository = new MemoryCareerRepository();
-            var firstService = Service(firstRepository);
-            var secondService = Service(secondRepository);
-            var catalog = TryoutCatalogV1.Create();
-            for (var stage = catalog.Stages.Count - 1; stage >= 0; stage--)
+            var firstCatalog = TryoutCatalogV1.Create();
+            var secondCatalog = TryoutCatalogV1.Create();
+            for (var stage = 0; stage < firstCatalog.Stages.Count; stage++)
             {
-                for (var choice = catalog.Stages[stage].Choices.Count - 1; choice >= 0; choice--)
+                for (var choice = 0; choice < firstCatalog.Stages[stage].Choices.Count; choice++)
                 {
-                    Assert.That(catalog.Stages[stage].Choices[choice].ChoiceId, Is.Not.Empty);
+                    Assert.That(firstCatalog.Stages[stage].Choices[choice].ChoiceId, Is.Not.Empty);
                 }
             }
 
-            var first = CompleteOnboarding(firstService, CreateCommand());
-            var second = CompleteOnboarding(secondService, CreateCommand());
-
-            for (var stage = 0; stage < 3; stage++)
+            for (var stage = secondCatalog.Stages.Count - 1; stage >= 0; stage--)
             {
-                Assert.That(
-                    second.Onboarding.Stages[stage].ResolvedOutputs.Select(x => x.Perturbation),
-                    Is.EqualTo(first.Onboarding.Stages[stage].ResolvedOutputs.Select(x => x.Perturbation)));
+                for (var choice = secondCatalog.Stages[stage].Choices.Count - 1;
+                     choice >= 0;
+                     choice--)
+                {
+                    Assert.That(secondCatalog.Stages[stage].Choices[choice].ChoiceId, Is.Not.Empty);
+                }
             }
 
-            Assert.That(second.Player.Attributes, Is.EqualTo(first.Player.Attributes));
-            Assert.That(second.PotentialGrade, Is.EqualTo(first.PotentialGrade));
-            Assert.That(second.Fatigue, Is.EqualTo(first.Fatigue));
-            Assert.That(second.Mindset, Is.EqualTo(first.Mindset));
-            Assert.That(second.CoachTrust, Is.EqualTo(first.CoachTrust));
+            var first = RunOnboarding(
+                Service(
+                    firstRepository,
+                    random: new IrrelevantRequestRandom(false),
+                    catalog: firstCatalog),
+                CreateCommand());
+            var second = RunOnboarding(
+                Service(
+                    secondRepository,
+                    random: new IrrelevantRequestRandom(true),
+                    catalog: secondCatalog),
+                CreateCommand());
+
+            Assert.That(
+                EncodeDeterministicOutcome(second),
+                Is.EqualTo(EncodeDeterministicOutcome(first)));
+        }
+
+        [Test]
+        public void ControlledPerturbations_ProduceExactOrderedOutputsExplanationsAndPlayerValues()
+        {
+            var repository = new MemoryCareerRepository();
+            var run = RunOnboarding(
+                Service(repository, random: new ControlledPerturbationRandom()),
+                CreateCommand());
+
+            AssertStage(
+                run.StageResults[0],
+                new[]
+                {
+                    "tryout.output.spike",
+                    "tryout.output.serve",
+                    "tryout.output.jump"
+                },
+                new[] { -100, -1, 0 });
+            AssertExplanation(run.StageResults[0].Explanations[0],
+                "tryout.attack", "tryout.output.spike", 5800, -100, 5700);
+            AssertExplanation(run.StageResults[0].Explanations[1],
+                "tryout.attack", "tryout.output.serve", 4800, -1, 4799);
+            AssertExplanation(run.StageResults[0].Explanations[2],
+                "tryout.attack", "tryout.output.jump", 5600, 0, 5600);
+
+            AssertStage(
+                run.StageResults[1],
+                new[]
+                {
+                    "tryout.output.reception",
+                    "tryout.output.defense",
+                    "tryout.output.block",
+                    "tryout.output.movement"
+                },
+                new[] { 100, -100, 1, -1 });
+            AssertExplanation(run.StageResults[1].Explanations[0],
+                "tryout.reception_defense", "tryout.output.reception", 5800, 100, 5900);
+            AssertExplanation(run.StageResults[1].Explanations[1],
+                "tryout.reception_defense", "tryout.output.defense", 5200, -100, 5100);
+            AssertExplanation(run.StageResults[1].Explanations[2],
+                "tryout.reception_defense", "tryout.output.block", 4600, 1, 4601);
+            AssertExplanation(run.StageResults[1].Explanations[3],
+                "tryout.reception_defense", "tryout.output.movement", 5300, -1, 5299);
+
+            AssertStage(
+                run.StageResults[2],
+                new[]
+                {
+                    "tryout.output.stamina",
+                    "tryout.output.fatigue",
+                    "tryout.output.mindset",
+                    "tryout.output.coach_trust"
+                },
+                new[] { 100, -99, -19, 100 });
+            AssertExplanation(run.StageResults[2].Explanations[0],
+                "tryout.scrimmage", "tryout.output.stamina", 5800, 100, 5900);
+            AssertExplanation(run.StageResults[2].Explanations[1],
+                "tryout.scrimmage", "tryout.output.fatigue", 8, -4, 4);
+            AssertExplanation(run.StageResults[2].Explanations[2],
+                "tryout.scrimmage", "tryout.output.mindset", 52, -1, 51);
+            AssertExplanation(run.StageResults[2].Explanations[3],
+                "tryout.scrimmage", "tryout.output.coach_trust", 48, 10, 58);
+
+            var attributes = AllAttributes(run.Snapshot.Player).ToArray();
+            Assert.That(attributes.Select(x => x.AbilityBasisPoints),
+                Is.EqualTo(new[] { 5700, 4799, 5900, 5100, 4601, 5299, 5600, 5900 }));
+            Assert.That(attributes.All(x => x.GrowthExperience == 0), Is.True);
+            Assert.That(run.Snapshot.PotentialGrade, Is.EqualTo(PotentialGrade.B));
+            Assert.That(run.Snapshot.Fatigue, Is.EqualTo(4));
+            Assert.That(run.Snapshot.Mindset, Is.EqualTo(51));
+            Assert.That(run.Snapshot.CoachTrust, Is.EqualTo(58));
         }
 
         [Test]
@@ -374,6 +457,77 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void ConfirmTryout_CommitRaceWithMatchingWinnerReturnsExistingAuthoritativeResult()
+        {
+            var create = CreateCommand();
+            var operation = NewOperation(51);
+            var winnerRepository = new MemoryCareerRepository();
+            var winnerService = Service(winnerRepository);
+            var winnerCreated = winnerService.CreateCareer(create);
+            var command = ConfirmCommand(
+                create,
+                winnerCreated.Snapshot.Identity.VersionToken,
+                1,
+                "tryout.attack.choice.power",
+                operation);
+            var winner = winnerService.ConfirmTryoutStage(command).Snapshot;
+
+            var raceRepository = new MemoryCareerRepository();
+            var random = new CountingRandom();
+            var raceService = Service(raceRepository, random: random);
+            raceService.CreateCareer(create);
+            raceRepository.CommitRaceWinner = winner;
+
+            var result = raceService.ConfirmTryoutStage(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Existing));
+            Assert.That(result.Snapshot, Is.SameAs(winner));
+            Assert.That(result.Snapshot.Identity.VersionToken,
+                Is.EqualTo(winner.Identity.VersionToken));
+            Assert.That(result.ResolvedOutputs.Select(x => x.Perturbation),
+                Is.EqualTo(winner.Onboarding.Stages[0].ResolvedOutputs.Select(x => x.Perturbation)));
+            Assert.That(result.Explanations, Has.Count.EqualTo(3));
+            Assert.That(random.Count, Is.EqualTo(3));
+            Assert.That(raceRepository.CommitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ConfirmTryout_CommitRaceWithConflictingWinnerReturnsOldEvidence()
+        {
+            var create = CreateCommand();
+            var operation = NewOperation(52);
+            var winnerRepository = new MemoryCareerRepository();
+            var winnerService = Service(winnerRepository);
+            var winnerCreated = winnerService.CreateCareer(create);
+            var winner = winnerService.ConfirmTryoutStage(ConfirmCommand(
+                create,
+                winnerCreated.Snapshot.Identity.VersionToken,
+                1,
+                "tryout.attack.choice.serve",
+                operation)).Snapshot;
+
+            var raceRepository = new MemoryCareerRepository();
+            var random = new CountingRandom();
+            var raceService = Service(raceRepository, random: random);
+            var raceCreated = raceService.CreateCareer(create);
+            raceRepository.CommitRaceWinner = winner;
+            var result = raceService.ConfirmTryoutStage(ConfirmCommand(
+                create,
+                raceCreated.Snapshot.Identity.VersionToken,
+                1,
+                "tryout.attack.choice.power",
+                operation));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.OperationConflict));
+            Assert.That(result.Snapshot, Is.SameAs(winner));
+            Assert.That(result.ConflictingReceipt, Is.Not.Null);
+            Assert.That(result.ConflictingReceipt.Target.ChoiceId,
+                Is.EqualTo("tryout.attack.choice.serve"));
+            Assert.That(random.Count, Is.EqualTo(3));
+            Assert.That(raceRepository.CommitCount, Is.EqualTo(1));
+        }
+
+        [Test]
         public void FullOnboarding_RoundTripsThroughTheRealLocalRepositoryWithoutSchemaChange()
         {
             var root = Path.Combine(Path.GetTempPath(), "career-stage3-" + Guid.NewGuid().ToString("N"));
@@ -416,29 +570,96 @@ namespace Volleyball.Career.EditModeTests
         private static CareerOnboardingService Service(
             ICareerSaveRepository repository,
             ICareerSeedSource seeds = null,
-            IDeterministicCareerRandom random = null)
+            IDeterministicCareerRandom random = null,
+            TryoutCatalog catalog = null)
         {
             return new CareerOnboardingService(
                 repository,
                 seeds ?? new FixedSeedSource(),
                 random ?? new CareerDeterministicRandom(),
-                TryoutCatalogV1.Create());
+                catalog ?? TryoutCatalogV1.Create());
         }
 
-        private static CareerSaveSnapshot CompleteOnboarding(
+        private static OnboardingRun RunOnboarding(
             CareerOnboardingService service,
             CreateCareerCommand create)
         {
             var snapshot = service.CreateCareer(create).Snapshot;
-            snapshot = service.ConfirmTryoutStage(ConfirmCommand(
+            var results = new CareerApplicationResult[3];
+            results[0] = service.ConfirmTryoutStage(ConfirmCommand(
                 create, snapshot.Identity.VersionToken, 1,
-                "tryout.attack.choice.power", NewOperation(21))).Snapshot;
-            snapshot = service.ConfirmTryoutStage(ConfirmCommand(
+                "tryout.attack.choice.power", NewOperation(21)));
+            snapshot = results[0].Snapshot;
+            results[1] = service.ConfirmTryoutStage(ConfirmCommand(
                 create, snapshot.Identity.VersionToken, 2,
-                "tryout.reception_defense.choice.first_touch", NewOperation(22))).Snapshot;
-            return service.ConfirmTryoutStage(ConfirmCommand(
+                "tryout.reception_defense.choice.first_touch", NewOperation(22)));
+            snapshot = results[1].Snapshot;
+            results[2] = service.ConfirmTryoutStage(ConfirmCommand(
                 create, snapshot.Identity.VersionToken, 3,
-                "tryout.scrimmage.choice.endurance", NewOperation(23), Enrollment())).Snapshot;
+                "tryout.scrimmage.choice.endurance", NewOperation(23), Enrollment()));
+            return new OnboardingRun(results[2].Snapshot, results);
+        }
+
+        private static byte[] EncodeDeterministicOutcome(OnboardingRun run)
+        {
+            var builder = new StringBuilder();
+            for (var stage = 0; stage < run.Snapshot.Onboarding.Stages.Count; stage++)
+            {
+                foreach (var output in run.Snapshot.Onboarding.Stages[stage].ResolvedOutputs)
+                {
+                    builder.Append(output.OutputId).Append('=').Append(
+                        output.Perturbation.ToString(CultureInfo.InvariantCulture)).Append(';');
+                }
+            }
+
+            foreach (var attribute in AllAttributes(run.Snapshot.Player))
+            {
+                builder.Append(attribute.AbilityBasisPoints.ToString(CultureInfo.InvariantCulture))
+                    .Append(';');
+            }
+
+            builder.Append((int)run.Snapshot.PotentialGrade.Value).Append(';')
+                .Append(run.Snapshot.Fatigue.Value.ToString(CultureInfo.InvariantCulture)).Append(';')
+                .Append(run.Snapshot.Mindset.Value.ToString(CultureInfo.InvariantCulture)).Append(';')
+                .Append(run.Snapshot.CoachTrust.Value.ToString(CultureInfo.InvariantCulture)).Append(';');
+            foreach (var result in run.StageResults)
+            {
+                foreach (var explanation in result.Explanations)
+                {
+                    builder.Append(explanation.ReasonId).Append('|')
+                        .Append(explanation.OutputId).Append('|')
+                        .Append(explanation.BaseValue.ToString(CultureInfo.InvariantCulture)).Append('|')
+                        .Append(explanation.AppliedDelta.ToString(CultureInfo.InvariantCulture)).Append('|')
+                        .Append(explanation.FinalValue.ToString(CultureInfo.InvariantCulture)).Append(';');
+                }
+            }
+
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
+        private static void AssertStage(
+            CareerApplicationResult result,
+            string[] expectedIds,
+            int[] expectedPerturbations)
+        {
+            Assert.That(result.ResolvedOutputs.Select(x => x.OutputId), Is.EqualTo(expectedIds));
+            Assert.That(result.ResolvedOutputs.Select(x => x.Perturbation),
+                Is.EqualTo(expectedPerturbations));
+        }
+
+        private static void AssertExplanation(
+            TryoutOutputExplanation explanation,
+            string reason,
+            string output,
+            int baseValue,
+            int delta,
+            int finalValue)
+        {
+            Assert.That(explanation.ReasonId, Is.EqualTo(reason));
+            Assert.That(explanation.OutputId, Is.EqualTo(output));
+            Assert.That(explanation.BaseValue, Is.EqualTo(baseValue));
+            Assert.That(explanation.AppliedDelta, Is.EqualTo(delta));
+            Assert.That(explanation.FinalValue, Is.EqualTo(finalValue));
         }
 
         private static CreateCareerCommand CreateCommand(
@@ -554,6 +775,107 @@ namespace Volleyball.Career.EditModeTests
             }
         }
 
+        private sealed class ControlledPerturbationRandom : IDeterministicCareerRandom
+        {
+            public long NextInt64(
+                CareerRandomRequest request,
+                long minInclusive,
+                long maxExclusive)
+            {
+                int[] perturbations;
+                switch (request.EntityStableId)
+                {
+                    case "tryout.attack.choice.power":
+                        perturbations = new[] { -100, -1, 0 };
+                        break;
+                    case "tryout.reception_defense.choice.first_touch":
+                        perturbations = new[] { 100, -100, 1, -1 };
+                        break;
+                    case "tryout.scrimmage.choice.endurance":
+                        perturbations = new[] { 100, -99, -19, 100 };
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unexpected controlled random entity.");
+                }
+
+                return perturbations[checked((int)request.DrawIndex)] + 100L;
+            }
+        }
+
+        private sealed class IrrelevantRequestRandom : IDeterministicCareerRandom
+        {
+            private readonly bool _reverse;
+            private readonly CareerDeterministicRandom _inner = new CareerDeterministicRandom();
+
+            public IrrelevantRequestRandom(bool reverse)
+            {
+                _reverse = reverse;
+            }
+
+            public long NextInt64(
+                CareerRandomRequest request,
+                long minInclusive,
+                long maxExclusive)
+            {
+                var eventRequest = new CareerRandomRequest(
+                    1,
+                    request.Seed,
+                    "event",
+                    1,
+                    1,
+                    "event.irrelevant.option",
+                    Occurrence(90),
+                    0);
+                var matchRequest = new CareerRandomRequest(
+                    1,
+                    request.Seed,
+                    "match_seed",
+                    1,
+                    1,
+                    "schedule.irrelevant.match",
+                    Occurrence(91),
+                    0);
+                if (_reverse)
+                {
+                    _inner.NextInt64(matchRequest, 0, 4294967296L);
+                    _inner.NextInt64(eventRequest, 0, 10000);
+                    _inner.NextInt64(
+                        new CareerRandomRequest(
+                            1,
+                            request.Seed,
+                            "event",
+                            1,
+                            1,
+                            "event.second_irrelevant.option",
+                            Occurrence(92),
+                            1),
+                        0,
+                        10000);
+                }
+                else
+                {
+                    _inner.NextInt64(eventRequest, 0, 10000);
+                }
+
+                return _inner.NextInt64(request, minInclusive, maxExclusive);
+            }
+        }
+
+        private sealed class OnboardingRun
+        {
+            public OnboardingRun(
+                CareerSaveSnapshot snapshot,
+                CareerApplicationResult[] stageResults)
+            {
+                Snapshot = snapshot;
+                StageResults = stageResults;
+            }
+
+            public CareerSaveSnapshot Snapshot { get; }
+
+            public CareerApplicationResult[] StageResults { get; }
+        }
+
         private sealed class MemoryCareerRepository : ICareerSaveRepository
         {
             public CareerSaveSnapshot Snapshot { get; private set; }
@@ -562,6 +884,7 @@ namespace Volleyball.Career.EditModeTests
             public int CommitCount { get; private set; }
             public PersistenceResultKind? CreateFailure { get; set; }
             public PersistenceResultKind? CommitFailure { get; set; }
+            public CareerSaveSnapshot CommitRaceWinner { get; set; }
 
             public CareerPersistenceResult Create(CareerSaveSnapshot initialSnapshot, OperationId operationId)
             {
@@ -596,6 +919,13 @@ namespace Volleyball.Career.EditModeTests
                 OperationId operationId)
             {
                 CommitCount++;
+                if (CommitRaceWinner != null)
+                {
+                    Snapshot = CommitRaceWinner;
+                    CommitRaceWinner = null;
+                    return new CareerPersistenceResult(PersistenceResultKind.VersionConflict);
+                }
+
                 if (CommitFailure.HasValue)
                 {
                     return new CareerPersistenceResult(CommitFailure.Value);
