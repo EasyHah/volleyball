@@ -6,7 +6,7 @@
 - 影响模块：Career.Application / Career.Persistence / Career.Tests / Docs
 - 交互级别：跨模块（重点）
 - 关联分支：`feature/career-local-persistence`
-- 关联提交或 PR：`98e9535`（主体实现）→ 本记录所在的直接后继 review-fix 提交
+- 关联提交或 PR：`98e9535`（主体实现）→ `28698af`（review-fix）→ 本记录所在的后继 Critical fix 提交
 
 > [!IMPORTANT]
 > 本变更实现离线首版的本地档案和生涯文件协议。`Career.Persistence` 从本阶段起依赖
@@ -43,10 +43,11 @@
 - [x] 主档/固定备份/操作临时文件的故障注入覆盖替换前后抛错、部分替换、备份收敛失败与
   lost-success；损坏主档恢复要求确认备份令牌和主档字节指纹，并发布新 lineage。
 - [x] Profile/Catalog 索引可从权威文件重建；缺失 Career 只标记摘要，不制造替代存档，也不删除孤儿。
-- [x] Windows 实际文件语义与锁竞争通过；最终 `LocalPersistenceRepositoryTests` 为 50/50，
-  `Volleyball.Career.EditModeTests` 为 189/189，仓库工具测试为 8/8，
+- [x] Windows 实际文件语义与锁竞争通过；最终 `LocalPersistenceRepositoryTests` 为 57/57，
+  `Volleyball.Career.EditModeTests` 为 196/196，仓库工具测试为 8/8，
   `validate_repository.py --base 22745cc` 通过。
-- [x] 独立 agent 复核发现的 1 个 P1 与 4 个 P2 均经 focused RED/GREEN 修复；最终复核无剩余 P1/P2。
+- [x] 独立 agent 首轮复核发现的 1 个 P1 与 4 个 P2、后续 re-review 发现的 fixed backup
+  关系数据丢失 Critical，均经 focused RED/GREEN 修复；最终无已知未关闭 finding。
 
 阶段 2 审计新增的 TDD 证据保存在 `TestResults/stage2-red-*.xml` 与对应
 `TestResults/stage2-green-*.xml`：仅固定备份 0/1→1/1，三类创建遗留工件 22/25→25/25，三类跨
@@ -54,8 +55,9 @@ operation 提交工件 25/28→3/3；恢复 authority 0/2→2/2、Career/Profile
 0/1→1/1、Profile authority 工件 0/3→3/3、unsupported rebuild 0/2→2/2、跨 lineage convergence
 0/1→1/1。review-fix 继续覆盖 unsupported 固定备份 0/2→2/2、Career Create 遗漏的 convergence/
 repair/recovery temp 0/3→3/3、Catalog 外来 temp/repair/replace 0/3→3/3、未知 Career version axis
-0/2→2/2，以及 Profile Load 孤立 temp/repair 0/2→2/2；最终 repository fixture 50/50。测试结果目录
-不进入版本控制。
+0/2→2/2，以及 Profile Load 孤立 temp/repair 0/2→2/2。第三轮 fixed backup 关系回归 0/4→7/7：
+Career/Profile 均拒绝更新或同 revision 冲突的 Valid backup，同时允许严格前一 revision，Career 另允许
+fixed token 精确等于恢复来源；最终 repository fixture 57/57。测试结果目录不进入版本控制。
 
 ## 回滚与风险
 

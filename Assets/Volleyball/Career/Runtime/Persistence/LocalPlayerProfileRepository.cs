@@ -324,6 +324,12 @@ namespace Volleyball.Career.Persistence
                     return Result(PersistenceResultKind.UnsupportedVersion);
                 }
 
+                if (fixedBackup.Kind == CandidateKind.Valid &&
+                    fixedBackup.Profile.ProfileRevision != current.Profile.ProfileRevision - 1)
+                {
+                    return Result(PersistenceResultKind.AmbiguousReplaceState);
+                }
+
                 var temporaryPath = _paths.ProfileTemporaryPath(profileId, operationId);
                 var operationBackupPath = _paths.ProfileReplaceBackupPath(profileId, operationId);
                 if (_fileSystem.FileExists(temporaryPath) ||

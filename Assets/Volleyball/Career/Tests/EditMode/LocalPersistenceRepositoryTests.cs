@@ -224,6 +224,188 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void CareerRepository_CommitPreservesAndRejectsANewerValidFixedBackup()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var current = CreateCareer(repository);
+            var mainPath = _paths.CareerPath(current.Identity.ProfileId, current.Identity.SaveId);
+            var backupPath = _paths.CareerBackupPath(
+                current.Identity.ProfileId,
+                current.Identity.SaveId);
+            var mainBytes = _system.ReadAllBytes(mainPath);
+            var alternateCurrent = CareerPersistenceTestData.CreatedSnapshot(
+                current.Identity.ProfileId,
+                current.Identity.SaveId,
+                current.Identity.LineageId,
+                "Ahead Backup");
+            var aheadBackup = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.AfterFirstTryoutStage(alternateCurrent));
+            var backupBytes = CareerSaveJsonCodec.Serialize(aheadBackup);
+            _system.CreateFileDurably(backupPath, backupBytes);
+            var operationId = new OperationId(Guid.NewGuid());
+
+            var result = repository.Commit(
+                current.Identity.ProfileId,
+                current.Identity.SaveId,
+                current.Identity.VersionToken,
+                CareerPersistenceTestData.AfterFirstTryoutStage(current),
+                operationId);
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(backupBytes));
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerTemporaryPath(
+                        current.Identity.ProfileId,
+                        current.Identity.SaveId,
+                        operationId)),
+                Is.False);
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerReplaceBackupPath(
+                        current.Identity.ProfileId,
+                        current.Identity.SaveId,
+                        operationId)),
+                Is.False);
+        }
+
+        [Test]
+        public void CareerRepository_CommitPreservesAndRejectsAConflictingSameRevisionBackup()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var current = CreateCareer(repository);
+            var mainPath = _paths.CareerPath(current.Identity.ProfileId, current.Identity.SaveId);
+            var backupPath = _paths.CareerBackupPath(
+                current.Identity.ProfileId,
+                current.Identity.SaveId);
+            var mainBytes = _system.ReadAllBytes(mainPath);
+            var conflictingBackup = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.CreatedSnapshot(
+                    current.Identity.ProfileId,
+                    current.Identity.SaveId,
+                    new LineageId(Guid.NewGuid()),
+                    "Conflicting Backup"));
+            var backupBytes = CareerSaveJsonCodec.Serialize(conflictingBackup);
+            _system.CreateFileDurably(backupPath, backupBytes);
+            var operationId = new OperationId(Guid.NewGuid());
+
+            var result = repository.Commit(
+                current.Identity.ProfileId,
+                current.Identity.SaveId,
+                current.Identity.VersionToken,
+                CareerPersistenceTestData.AfterFirstTryoutStage(current),
+                operationId);
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(backupBytes));
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerTemporaryPath(
+                        current.Identity.ProfileId,
+                        current.Identity.SaveId,
+                        operationId)),
+                Is.False);
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerReplaceBackupPath(
+                        current.Identity.ProfileId,
+                        current.Identity.SaveId,
+                        operationId)),
+                Is.False);
+        }
+
+        [Test]
+        public void CareerRepository_CommitAllowsAStrictPreviousRevisionFixedBackup()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var lineageId = new LineageId(Guid.NewGuid());
+            var backup = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.PlanningSnapshot(
+                    profileId,
+                    saveId,
+                    lineageId,
+                    4,
+                    "Previous Backup",
+                    10));
+            var current = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.PlanningSnapshot(
+                    profileId,
+                    saveId,
+                    lineageId,
+                    5,
+                    "Current Main",
+                    11));
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            _system.CreateFileDurably(
+                _paths.CareerBackupPath(profileId, saveId),
+                CareerSaveJsonCodec.Serialize(backup));
+            _system.CreateFileDurably(
+                _paths.CareerPath(profileId, saveId),
+                CareerSaveJsonCodec.Serialize(current));
+
+            var result = repository.Commit(
+                profileId,
+                saveId,
+                current.Identity.VersionToken,
+                CareerPersistenceTestData.NextPlanningSnapshot(current),
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(
+                CareerSaveJsonCodec.Deserialize(
+                    _system.ReadAllBytes(_paths.CareerBackupPath(profileId, saveId)))
+                    .Identity.VersionToken,
+                Is.EqualTo(current.Identity.VersionToken));
+        }
+
+        [Test]
+        public void CareerRepository_CommitAllowsFixedBackupMatchingRestoreSource()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var backup = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.PlanningSnapshot(
+                    profileId,
+                    saveId,
+                    new LineageId(Guid.NewGuid()),
+                    4,
+                    "Recovery Source",
+                    10));
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            _system.CreateFileDurably(
+                _paths.CareerBackupPath(profileId, saveId),
+                CareerSaveJsonCodec.Serialize(backup));
+            var recovered = repository.RecoverFromBackup(
+                profileId,
+                saveId,
+                backup.Identity.VersionToken,
+                null,
+                new OperationId(Guid.NewGuid()),
+                11,
+                new LineageId(Guid.NewGuid()));
+
+            var result = repository.Commit(
+                profileId,
+                saveId,
+                recovered.Snapshot.Identity.VersionToken,
+                CareerPersistenceTestData.NextPlanningSnapshot(recovered.Snapshot),
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(recovered.Kind, Is.EqualTo(PersistenceResultKind.Loaded));
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(
+                CareerSaveJsonCodec.Deserialize(
+                    _system.ReadAllBytes(_paths.CareerBackupPath(profileId, saveId)))
+                    .Identity.VersionToken,
+                Is.EqualTo(recovered.Snapshot.Identity.VersionToken));
+        }
+
+        [Test]
         public void CareerRepository_CreateMoveThrowAfterPublishUsesRescan()
         {
             var faults = new FaultInjectingAtomicFileSystem(_system)
@@ -1005,6 +1187,110 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
             Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
             Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(unsupportedBackupBytes));
+        }
+
+        [Test]
+        public void ProfileRepository_CommitPreservesAndRejectsANewerValidFixedBackup()
+        {
+            var repository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var current = repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var mainPath = _paths.ProfilePath(profileId);
+            var backupPath = _paths.ProfileBackupPath(profileId);
+            var mainBytes = _system.ReadAllBytes(mainPath);
+            var aheadBackup = LocalProfileJsonCodec.SealProfile(
+                UpdatedProfile(current.Profile, "Ahead Backup"));
+            var backupBytes = LocalProfileJsonCodec.SerializeProfile(aheadBackup);
+            _system.CreateFileDurably(backupPath, backupBytes);
+            var operationId = new OperationId(Guid.NewGuid());
+
+            var result = repository.Commit(
+                profileId,
+                current.Profile.VersionToken,
+                UpdatedProfile(current.Profile, "Must Not Commit"),
+                operationId);
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(backupBytes));
+            Assert.That(
+                _system.FileExists(_paths.ProfileTemporaryPath(profileId, operationId)),
+                Is.False);
+            Assert.That(
+                _system.FileExists(_paths.ProfileReplaceBackupPath(profileId, operationId)),
+                Is.False);
+        }
+
+        [Test]
+        public void ProfileRepository_CommitPreservesAndRejectsAConflictingSameRevisionBackup()
+        {
+            var repository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var current = repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var mainPath = _paths.ProfilePath(profileId);
+            var backupPath = _paths.ProfileBackupPath(profileId);
+            var mainBytes = _system.ReadAllBytes(mainPath);
+            var conflictingBackup = LocalProfileJsonCodec.SealProfile(
+                new LocalPlayerProfile(
+                    LocalPlayerProfile.CurrentSchemaVersion,
+                    profileId,
+                    current.Profile.ProfileRevision,
+                    CareerPersistenceTestData.Hash('0'),
+                    "Conflicting Backup",
+                    current.Profile.CreatedAtUtcMs,
+                    current.Profile.UpdatedAtUtcMs + 1,
+                    current.Profile.CareerEntries));
+            var backupBytes = LocalProfileJsonCodec.SerializeProfile(conflictingBackup);
+            _system.CreateFileDurably(backupPath, backupBytes);
+            var operationId = new OperationId(Guid.NewGuid());
+
+            var result = repository.Commit(
+                profileId,
+                current.Profile.VersionToken,
+                UpdatedProfile(current.Profile, "Must Not Commit"),
+                operationId);
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.AmbiguousReplaceState));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(backupBytes));
+            Assert.That(
+                _system.FileExists(_paths.ProfileTemporaryPath(profileId, operationId)),
+                Is.False);
+            Assert.That(
+                _system.FileExists(_paths.ProfileReplaceBackupPath(profileId, operationId)),
+                Is.False);
+        }
+
+        [Test]
+        public void ProfileRepository_CommitAllowsAStrictPreviousRevisionFixedBackup()
+        {
+            var repository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var created = repository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var second = repository.Commit(
+                profileId,
+                created.Profile.VersionToken,
+                UpdatedProfile(created.Profile, "Second Revision"),
+                new OperationId(Guid.NewGuid()));
+
+            var third = repository.Commit(
+                profileId,
+                second.Profile.VersionToken,
+                UpdatedProfile(second.Profile, "Third Revision"),
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(second.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(third.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(
+                LocalProfileJsonCodec.DeserializeProfile(
+                    _system.ReadAllBytes(_paths.ProfileBackupPath(profileId))).VersionToken,
+                Is.EqualTo(second.Profile.VersionToken));
         }
 
         [Test]

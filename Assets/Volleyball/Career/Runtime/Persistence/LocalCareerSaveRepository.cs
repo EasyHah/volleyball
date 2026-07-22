@@ -370,6 +370,12 @@ namespace Volleyball.Career.Persistence
                     return Result(PersistenceResultKind.UnsupportedVersion);
                 }
 
+                if (fixedBackup.Kind == CandidateKind.Valid &&
+                    !HasSafeFixedBackupRelationship(current.Snapshot, fixedBackup.Snapshot))
+                {
+                    return Result(PersistenceResultKind.AmbiguousReplaceState);
+                }
+
                 var temporaryPath = _paths.CareerTemporaryPath(profileId, saveId, operationId);
                 var operationBackupPath = _paths.CareerReplaceBackupPath(
                     profileId,
@@ -442,6 +448,24 @@ namespace Volleyball.Career.Persistence
             }
 
             return null;
+        }
+
+        private static bool HasSafeFixedBackupRelationship(
+            CareerSaveSnapshot current,
+            CareerSaveSnapshot fixedBackup)
+        {
+            var currentIdentity = current.Identity;
+            var backupToken = fixedBackup.Identity.VersionToken;
+            var strictPreviousRevision =
+                backupToken.LineageId.Equals(currentIdentity.LineageId) &&
+                backupToken.Revision == currentIdentity.Revision - 1;
+            if (strictPreviousRevision)
+            {
+                return true;
+            }
+
+            return currentIdentity.RestoredFromVersionToken.HasValue &&
+                   backupToken.Equals(currentIdentity.RestoredFromVersionToken.Value);
         }
 
         private CareerPersistenceResult ResolveUpdateLocked(
