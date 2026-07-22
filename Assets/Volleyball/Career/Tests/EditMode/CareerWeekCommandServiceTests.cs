@@ -1256,23 +1256,166 @@ namespace Volleyball.Career.EditModeTests
                 source,
                 firstOption: source.Progression.PendingEvent.Options[0],
                 secondOption: custom);
+            var repository = new MemoryRepository(prior);
             var random = new RecordingRandom(new CareerDeterministicRandom());
 
-            var result = Service(new MemoryRepository(prior), random)
+            var result = Service(repository, random)
                 .ResolveEventChoice(ResolveCommand(prior, custom.OptionId));
 
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(1));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Serve, Is.EqualTo(2));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Reception, Is.EqualTo(3));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Defense, Is.EqualTo(4));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Block, Is.EqualTo(5));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Movement, Is.EqualTo(6));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Jump, Is.EqualTo(7));
-            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Stamina, Is.EqualTo(8));
-            Assert.That(result.OutcomeSummary.FatigueDelta, Is.EqualTo(1));
-            Assert.That(result.OutcomeSummary.MindsetDelta, Is.EqualTo(-1));
-            Assert.That(result.OutcomeSummary.CoachTrustDelta, Is.EqualTo(2));
+            var next = result.Snapshot;
+            Assert.That(next.Player.Attributes.Spike.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Spike.GrowthExperience + 1));
+            Assert.That(next.Player.Attributes.Serve.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Serve.GrowthExperience + 2));
+            Assert.That(next.Player.Attributes.Reception.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Reception.GrowthExperience + 3));
+            Assert.That(next.Player.Attributes.Defense.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Defense.GrowthExperience + 4));
+            Assert.That(next.Player.Attributes.Block.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Block.GrowthExperience + 5));
+            Assert.That(next.Player.Attributes.Movement.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Movement.GrowthExperience + 6));
+            Assert.That(next.Player.Attributes.Jump.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Jump.GrowthExperience + 7));
+            Assert.That(next.Player.Attributes.Stamina.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Stamina.GrowthExperience + 8));
+            AssertAbilityBasisPointsEqual(prior.Player.Attributes, next.Player.Attributes);
+            Assert.That(next.Fatigue.Value, Is.EqualTo(prior.Fatigue.Value + 1));
+            Assert.That(next.Mindset.Value, Is.EqualTo(prior.Mindset.Value - 1));
+            Assert.That(next.CoachTrust.Value, Is.EqualTo(prior.CoachTrust.Value + 2));
+            Assert.That(next.Progression.Kind, Is.EqualTo(CareerProgressionKind.Planned));
+            Assert.That(next.Progression.NextSlotNumber, Is.EqualTo(2));
+            Assert.That(next.Progression.PendingEvent, Is.Null);
+            Assert.That(next.TrainingEmphases.Contributions,
+                Has.Count.EqualTo(prior.TrainingEmphases.Contributions.Count));
+            for (var index = 0; index < prior.TrainingEmphases.Contributions.Count; index++)
+            {
+                AssertContributionEqual(
+                    prior.TrainingEmphases.Contributions[index],
+                    next.TrainingEmphases.Contributions[index]);
+            }
+
+            var receiptSummary = next.OperationReceipts.Last().OutcomeSummary;
+            Assert.That(receiptSummary.GrowthExperienceDelta.Spike,
+                Is.EqualTo(next.Player.Attributes.Spike.GrowthExperience -
+                           prior.Player.Attributes.Spike.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Serve,
+                Is.EqualTo(next.Player.Attributes.Serve.GrowthExperience -
+                           prior.Player.Attributes.Serve.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Reception,
+                Is.EqualTo(next.Player.Attributes.Reception.GrowthExperience -
+                           prior.Player.Attributes.Reception.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Defense,
+                Is.EqualTo(next.Player.Attributes.Defense.GrowthExperience -
+                           prior.Player.Attributes.Defense.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Block,
+                Is.EqualTo(next.Player.Attributes.Block.GrowthExperience -
+                           prior.Player.Attributes.Block.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Movement,
+                Is.EqualTo(next.Player.Attributes.Movement.GrowthExperience -
+                           prior.Player.Attributes.Movement.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Jump,
+                Is.EqualTo(next.Player.Attributes.Jump.GrowthExperience -
+                           prior.Player.Attributes.Jump.GrowthExperience));
+            Assert.That(receiptSummary.GrowthExperienceDelta.Stamina,
+                Is.EqualTo(next.Player.Attributes.Stamina.GrowthExperience -
+                           prior.Player.Attributes.Stamina.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike,
+                Is.EqualTo(next.Player.Attributes.Spike.GrowthExperience -
+                           prior.Player.Attributes.Spike.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Serve,
+                Is.EqualTo(next.Player.Attributes.Serve.GrowthExperience -
+                           prior.Player.Attributes.Serve.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Reception,
+                Is.EqualTo(next.Player.Attributes.Reception.GrowthExperience -
+                           prior.Player.Attributes.Reception.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Defense,
+                Is.EqualTo(next.Player.Attributes.Defense.GrowthExperience -
+                           prior.Player.Attributes.Defense.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Block,
+                Is.EqualTo(next.Player.Attributes.Block.GrowthExperience -
+                           prior.Player.Attributes.Block.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Movement,
+                Is.EqualTo(next.Player.Attributes.Movement.GrowthExperience -
+                           prior.Player.Attributes.Movement.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Jump,
+                Is.EqualTo(next.Player.Attributes.Jump.GrowthExperience -
+                           prior.Player.Attributes.Jump.GrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Stamina,
+                Is.EqualTo(next.Player.Attributes.Stamina.GrowthExperience -
+                           prior.Player.Attributes.Stamina.GrowthExperience));
+            Assert.That(receiptSummary.FatigueDelta,
+                Is.EqualTo(next.Fatigue.Value - prior.Fatigue.Value));
+            Assert.That(receiptSummary.MindsetDelta,
+                Is.EqualTo(next.Mindset.Value - prior.Mindset.Value));
+            Assert.That(receiptSummary.CoachTrustDelta,
+                Is.EqualTo(next.CoachTrust.Value - prior.CoachTrust.Value));
+            Assert.That(result.OutcomeSummary.FatigueDelta,
+                Is.EqualTo(next.Fatigue.Value - prior.Fatigue.Value));
+            Assert.That(result.OutcomeSummary.MindsetDelta,
+                Is.EqualTo(next.Mindset.Value - prior.Mindset.Value));
+            Assert.That(result.OutcomeSummary.CoachTrustDelta,
+                Is.EqualTo(next.CoachTrust.Value - prior.CoachTrust.Value));
+            AssertOutcomeSummary(receiptSummary, result.OutcomeSummary);
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Is.Empty);
+        }
+
+        [TestCase(CareerTrainingDirection.Spike)]
+        [TestCase(CareerTrainingDirection.Serve)]
+        [TestCase(CareerTrainingDirection.Reception)]
+        [TestCase(CareerTrainingDirection.Defense)]
+        [TestCase(CareerTrainingDirection.Block)]
+        [TestCase(CareerTrainingDirection.Movement)]
+        [TestCase(CareerTrainingDirection.Jump)]
+        [TestCase(CareerTrainingDirection.Stamina)]
+        public void ResolveEventChoice_RejectsEveryGrowthAxisOverflowBeforeCommit(
+            CareerTrainingDirection direction)
+        {
+            var source = AwaitingEventSnapshot();
+            var delta = new CareerAttributeGrowthDelta(
+                direction == CareerTrainingDirection.Spike ? 1 : 0,
+                direction == CareerTrainingDirection.Serve ? 1 : 0,
+                direction == CareerTrainingDirection.Reception ? 1 : 0,
+                direction == CareerTrainingDirection.Defense ? 1 : 0,
+                direction == CareerTrainingDirection.Block ? 1 : 0,
+                direction == CareerTrainingDirection.Movement ? 1 : 0,
+                direction == CareerTrainingDirection.Jump ? 1 : 0,
+                direction == CareerTrainingDirection.Stamina ? 1 : 0);
+            var effect = new CareerEventOptionEffect(
+                "event.team_meal.option.extra_practice",
+                delta,
+                0,
+                0,
+                0);
+            var withEffect = WithPendingEvent(source, secondOption: effect);
+            var attributes = withEffect.Player.Attributes;
+            var atMaximum = new CareerPlayerAttributes(
+                AtMaximumWhen(attributes.Spike, direction, CareerTrainingDirection.Spike),
+                AtMaximumWhen(attributes.Serve, direction, CareerTrainingDirection.Serve),
+                AtMaximumWhen(attributes.Reception, direction, CareerTrainingDirection.Reception),
+                AtMaximumWhen(attributes.Defense, direction, CareerTrainingDirection.Defense),
+                AtMaximumWhen(attributes.Block, direction, CareerTrainingDirection.Block),
+                AtMaximumWhen(attributes.Movement, direction, CareerTrainingDirection.Movement),
+                AtMaximumWhen(attributes.Jump, direction, CareerTrainingDirection.Jump),
+                AtMaximumWhen(attributes.Stamina, direction, CareerTrainingDirection.Stamina));
+            var prior = WithPlayerAttributes(withEffect, atMaximum);
+            var repository = new MemoryRepository(prior);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random)
+                .ResolveEventChoice(ResolveCommand(prior, effect.OptionId));
+
+            Assert.That(AttributeFor(prior.Player.Attributes, direction).GrowthExperience,
+                Is.EqualTo(CareerAttributeProgress.MaximumGrowthExperience));
+            AssertAbilityBasisPointsEqual(source.Player.Attributes, prior.Player.Attributes);
+            Assert.That(result.Status,
+                Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(repository.CommitCount, Is.Zero);
             Assert.That(random.Calls, Is.Empty);
         }
 
@@ -1836,6 +1979,67 @@ namespace Volleyball.Career.EditModeTests
                 source.Mindset,
                 source.CoachTrust,
                 source.OperationReceipts);
+        }
+
+        private static CareerSaveSnapshot WithPlayerAttributes(
+            CareerSaveSnapshot source,
+            CareerPlayerAttributes attributes)
+        {
+            var player = new CareerPlayerRecord(
+                source.Player.PlayerId,
+                source.Player.DisplayName,
+                source.Player.JerseyNumber,
+                attributes);
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                source.OperationReceipts);
+        }
+
+        private static CareerAttributeProgress AtMaximumWhen(
+            CareerAttributeProgress progress,
+            CareerTrainingDirection selected,
+            CareerTrainingDirection candidate)
+        {
+            return selected == candidate
+                ? new CareerAttributeProgress(
+                    progress.AbilityBasisPoints,
+                    CareerAttributeProgress.MaximumGrowthExperience)
+                : progress;
+        }
+
+        private static CareerAttributeProgress AttributeFor(
+            CareerPlayerAttributes attributes,
+            CareerTrainingDirection direction)
+        {
+            switch (direction)
+            {
+                case CareerTrainingDirection.Spike: return attributes.Spike;
+                case CareerTrainingDirection.Serve: return attributes.Serve;
+                case CareerTrainingDirection.Reception: return attributes.Reception;
+                case CareerTrainingDirection.Defense: return attributes.Defense;
+                case CareerTrainingDirection.Block: return attributes.Block;
+                case CareerTrainingDirection.Movement: return attributes.Movement;
+                case CareerTrainingDirection.Jump: return attributes.Jump;
+                case CareerTrainingDirection.Stamina: return attributes.Stamina;
+                default:
+                    throw new ArgumentOutOfRangeException(
+                        nameof(direction),
+                        direction,
+                        "Unknown training direction.");
+            }
         }
 
         private static void CorruptPendingRandomVersion(

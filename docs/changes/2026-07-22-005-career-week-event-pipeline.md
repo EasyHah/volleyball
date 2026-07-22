@@ -58,6 +58,10 @@ revision 6，只拒绝已经达到 I-JSON safe maximum、无法再创建完整 n
   persisted `CareerEventOptionEffect` 是 numeric authority。八项非负 growth delta 分别 checked-add 且不超过
   I-JSON safe maximum；八项 ability basis points 原样保留；疲劳/心态/信任使用冻结的实际 delta 做
   checked-add 并要求结果仍在 `[0,100]`，不再次 clamp 或缩放。
+- distinctive `1..8` persisted effect 测试逐轴比较 snapshot 的 `prior + frozen delta`、逐轴确认 ability
+  不变，并逐轴把 receipt/result summary 与 snapshot 实际差值互相校验；同时锁定实际 status 变化、完整
+  emphasis、事件清除与零随机。另以八个 training direction 参数化覆盖每一轴已达 storage maximum、所选
+  frozen option 对该轴 `+1` 的拒绝路径，保证漏加或错位到其他轴无法通过。
 - 只应用被选 option，完整 `TrainingEmphasisLedger` 原样保留；一次
   `CareerWeekSnapshotFactory.Advance` 清 event 并进入 `Planned(nextSlotNumber = 2)`。新回执 target 含
   plan/source slot/source occurrence/event occurrence/option，outcome 为 `EventChoiceApplied` 且摘要精确复制
@@ -119,9 +123,15 @@ revision 4  Planning
 
 ## 验证
 
-- Unity focused fingerprint/service/pipeline：`94/94` passed。
-- Unity 全部 `Volleyball.Career.EditModeTests`：`380/380` passed。
-- Unity 全项目 EditMode：`603/603` passed。
+- 有效 mutation RED：仅在验证期间临时将 production Serve 应用错接到 Reception delta，focused
+  `102` 项中 `100` passed、`2` failed；distinctive snapshot 用例报告 Serve 期望 `24`、实际 `25`，
+  Serve maximum 参数用例报告期望 `InvalidInputOrState`、实际 `Applied`。随后以 `apply_patch` 精确恢复
+  正确映射；错误 production 不进入提交。证据为
+  `TestResults/Stage4B3-Review-Fix-Mutation-Red.xml/.log`。
+- Unity service matrix：`85/85` passed。
+- Unity focused fingerprint/service/pipeline：`102/102` passed。
+- Unity 全部 `Volleyball.Career.EditModeTests`：`388/388` passed。
+- Unity 全项目 EditMode：`611/611` passed。
 - Python policy：`python -B -m unittest discover -s tools/tests -p "test_*.py" -v`，`8/8` passed。
 - repository validator：分别以 `a37f193` 与 Stage 4A base `6ef0a90` 执行，均 passed。
 - `git diff --check`、forbidden/future API search 与 frozen path diff 均 passed；提交后再次确认 clean status。
