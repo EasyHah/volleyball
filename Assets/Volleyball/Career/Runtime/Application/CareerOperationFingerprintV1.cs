@@ -1,0 +1,228 @@
+using System;
+using System.Security.Cryptography;
+using System.Text;
+using Volleyball.Career.Domain;
+
+namespace Volleyball.Career.Application
+{
+    public static class CareerOperationFingerprintV1
+    {
+        public const int SchemaVersion = 1;
+
+        public static byte[] Encode(CreateCareerCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            var builder = new StringBuilder(600);
+            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"create_career\"");
+            AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "lineageId", command.LineageId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "playerId", command.PlayerStableId);
+            AppendString(builder, "careerName", command.CareerName);
+            AppendString(builder, "playerName", command.PlayerName);
+            AppendInteger(builder, "jerseyNumber", command.JerseyNumber);
+            builder.Append(",\"tryoutOccurrenceIds\":[");
+            for (var index = 0; index < command.TryoutOccurrenceIds.Count; index++)
+            {
+                if (index != 0)
+                {
+                    builder.Append(',');
+                }
+
+                AppendJsonString(
+                    builder,
+                    command.TryoutOccurrenceIds[index].Value.ToString("D").ToLowerInvariant());
+            }
+
+            builder.Append(']');
+            AppendVersions(builder);
+            builder.Append('}');
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
+        public static byte[] Encode(
+            ConfirmTryoutStageCommand command,
+            OccurrenceId persistedTryoutOccurrenceId)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            if (persistedTryoutOccurrenceId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "A persisted tryout occurrence ID is required.",
+                    nameof(persistedTryoutOccurrenceId));
+            }
+
+            var builder = new StringBuilder(650);
+            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"confirm_tryout_stage\"");
+            AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "expectedLineageId",
+                command.ExpectedVersionToken.LineageId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "expectedRevision", command.ExpectedVersionToken.Revision);
+            AppendString(
+                builder,
+                "expectedSnapshotHash",
+                command.ExpectedVersionToken.SnapshotHash.Value);
+            AppendInteger(builder, "stageNumber", command.StageNumber);
+            AppendString(builder, "choiceId", command.ChoiceId);
+            AppendString(
+                builder,
+                "tryoutOccurrenceId",
+                persistedTryoutOccurrenceId.Value.ToString("D").ToLowerInvariant());
+            AppendNullableId(
+                builder,
+                "weekPlanId",
+                command.EnrollmentIds == null
+                    ? (Guid?)null
+                    : command.EnrollmentIds.WeekPlanId.Value);
+            AppendNullableId(
+                builder,
+                "matchSlotActionId",
+                command.EnrollmentIds == null
+                    ? (Guid?)null
+                    : command.EnrollmentIds.MatchSlotActionId.Value);
+            AppendNullableId(
+                builder,
+                "matchOccurrenceId",
+                command.EnrollmentIds == null
+                    ? (Guid?)null
+                    : command.EnrollmentIds.MatchOccurrenceId.Value);
+            AppendVersions(builder);
+            builder.Append('}');
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
+        public static Sha256Digest Hash(CreateCareerCommand command)
+        {
+            return HashBytes(Encode(command));
+        }
+
+        public static Sha256Digest Hash(
+            ConfirmTryoutStageCommand command,
+            OccurrenceId persistedTryoutOccurrenceId)
+        {
+            return HashBytes(Encode(command, persistedTryoutOccurrenceId));
+        }
+
+        private static void AppendVersions(StringBuilder builder)
+        {
+            AppendInteger(builder, "schemaVersion", CareerSaveVersions.CurrentSchemaVersion);
+            AppendInteger(builder, "contentVersion", CareerSaveVersions.CurrentContentVersion);
+            AppendInteger(builder, "rulesetVersion", CareerSaveVersions.CurrentRulesetVersion);
+            AppendInteger(
+                builder,
+                "careerRandomAlgorithmVersion",
+                CareerSaveVersions.CurrentCareerRandomAlgorithmVersion);
+        }
+
+        private static void AppendString(StringBuilder builder, string name, string value)
+        {
+            builder.Append(",\"").Append(name).Append("\":");
+            AppendJsonString(builder, value);
+        }
+
+        private static void AppendInteger(StringBuilder builder, string name, long value)
+        {
+            builder.Append(",\"").Append(name).Append("\":");
+            builder.Append(value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        private static void AppendNullableId(
+            StringBuilder builder,
+            string name,
+            Guid? value)
+        {
+            builder.Append(",\"").Append(name).Append("\":");
+            if (!value.HasValue)
+            {
+                builder.Append("null");
+                return;
+            }
+
+            AppendJsonString(builder, value.Value.ToString("D").ToLowerInvariant());
+        }
+
+        private static void AppendJsonString(StringBuilder builder, string value)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+
+            builder.Append('"');
+            for (var index = 0; index < value.Length; index++)
+            {
+                var character = value[index];
+                switch (character)
+                {
+                    case '"': builder.Append("\\\""); break;
+                    case '\\': builder.Append("\\\\"); break;
+                    case '\b': builder.Append("\\b"); break;
+                    case '\t': builder.Append("\\t"); break;
+                    case '\n': builder.Append("\\n"); break;
+                    case '\f': builder.Append("\\f"); break;
+                    case '\r': builder.Append("\\r"); break;
+                    default:
+                        if (character < 0x20)
+                        {
+                            builder.Append("\\u").Append(((int)character).ToString("x4"));
+                        }
+                        else if (char.IsHighSurrogate(character))
+                        {
+                            if (index + 1 >= value.Length || !char.IsLowSurrogate(value[index + 1]))
+                            {
+                                throw new ArgumentException(
+                                    "Canonical strings cannot contain unpaired surrogates.",
+                                    nameof(value));
+                            }
+
+                            builder.Append(character).Append(value[++index]);
+                        }
+                        else if (char.IsLowSurrogate(character))
+                        {
+                            throw new ArgumentException(
+                                "Canonical strings cannot contain unpaired surrogates.",
+                                nameof(value));
+                        }
+                        else
+                        {
+                            builder.Append(character);
+                        }
+
+                        break;
+                }
+            }
+
+            builder.Append('"');
+        }
+
+        private static Sha256Digest HashBytes(byte[] bytes)
+        {
+            byte[] digest;
+            using (var sha256 = SHA256.Create())
+            {
+                digest = sha256.ComputeHash(bytes);
+            }
+
+            var characters = new char[digest.Length * 2];
+            const string alphabet = "0123456789abcdef";
+            for (var index = 0; index < digest.Length; index++)
+            {
+                characters[index * 2] = alphabet[digest[index] >> 4];
+                characters[(index * 2) + 1] = alphabet[digest[index] & 15];
+            }
+
+            return new Sha256Digest(new string(characters));
+        }
+    }
+}

@@ -3,6 +3,11 @@ using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.Domain
 {
+    public enum CareerPlayerPosition
+    {
+        OutsideHitter = 0
+    }
+
     public sealed class CareerPlayerRecord
     {
         public CareerPlayerRecord(
@@ -42,5 +47,7 @@ namespace Volleyball.Career.Domain
         public int JerseyNumber { get; }
 
         public CareerPlayerAttributes Attributes { get; }
+
+        public CareerPlayerPosition Position => CareerPlayerPosition.OutsideHitter;
     }
 }
