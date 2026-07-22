@@ -707,6 +707,34 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PreviewBlockArmFrames_ReturnsBlockPoseWithoutMutatingPlayerState()
+        {
+            var player = CreatePlayer("PreviewBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                player.transform.position = new Vector3(-1.5f, 0f, -3f);
+                player.Rig.SetPose(StickFigurePose.Receive, 1f);
+                var savedPosition = player.transform.position;
+                var savedRotations = player.Rig.CaptureLocalRotations();
+
+                var frames = player.PreviewBlockArmFrames(
+                    4.25f,
+                    new Vector3(0.75f, 0f, -PrototypePlayerAgent.NetClearance));
+
+                Assert.That(frames.Count, Is.EqualTo(6));
+                Assert.That(player.transform.position, Is.EqualTo(savedPosition));
+                foreach (var pair in savedRotations)
+                {
+                    Assert.That(player.Rig.GetJoint(pair.Key).localRotation, Is.EqualTo(pair.Value));
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void ScheduledBlockContact_ReorientsPreviousSetFacingTowardTheNet()
         {
             var player = CreatePlayer("ReorientedBlocker", TeamId.Orange, PlayerRole.Setter);

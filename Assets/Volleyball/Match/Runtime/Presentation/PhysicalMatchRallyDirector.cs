@@ -188,6 +188,7 @@ namespace Volleyball.Presentation
         private bool _lastTouchWasBackSetAttack;
         private bool _controlledHandlingActive;
         private SetQualityAssessment? _lastSetQualityAssessment;
+        private SimVector3? _scheduledGeometricSetTarget;
         private SimVector3? _lastPlannedAttackContactCenter;
         private SimVector3? _lastActualAttackContactCenter;
         private AttackOutcome _lastSetReplanOutcome;
@@ -282,6 +283,20 @@ namespace Volleyball.Presentation
         public int NormalAttackPlans { get; private set; }
 
         public int NearNetAttackPlans { get; private set; }
+
+        public int GeometricSetTargetSelections { get; private set; }
+
+        public int GeometricAttackRouteSelections { get; private set; }
+
+        public int GeometricLineRoutes { get; private set; }
+
+        public int GeometricCrossCourtRoutes { get; private set; }
+
+        public int GeometricOverHandRoutes { get; private set; }
+
+        public int GeometricEdgeLeftRoutes { get; private set; }
+
+        public int GeometricEdgeRightRoutes { get; private set; }
 
         public string LastAGradeNoContactDiagnostic { get; private set; } = string.Empty;
 
@@ -950,6 +965,23 @@ namespace Volleyball.Presentation
             SimVector3 outgoing;
             if (decision.Action == TechniqueAction.Set)
             {
+                _scheduledGeometricSetTarget = null;
+                try
+                {
+                    outgoingTarget = SelectGeometricSetTarget(
+                        decision,
+                        outgoingTarget,
+                        _ball.SimulationTime + flightSeconds);
+                    _scheduledGeometricSetTarget = outgoingTarget;
+                    GeometricSetTargetSelections++;
+                }
+                catch (InvalidOperationException exception)
+                {
+                    Debug.Log(
+                        $"[{_configuration.LogTag}] geometric-set-fallback " +
+                        $"team={decision.Actor.Team} reason={exception.Message}");
+                }
+
                 var readiness = _plannedAttackDecision?.AttackContactPlan?.ApproachCompletion ?? 0.5f;
                 var setSolution = SolveSetFlightWithFallback(new SetFlightRequest(
                     TacticFor(decision.Actor.Team).SetRhythm,
@@ -961,6 +993,44 @@ namespace Volleyball.Presentation
                     SimulatedBall.DefaultFixedStep));
                 outgoing = setSolution.InitialVelocity;
                 _scheduledSetFlightSeconds = setSolution.FlightSeconds;
+            }
+            else if (decision.Action == TechniqueAction.Attack)
+            {
+                try
+                {
+                    var route = AttackRouteSelector.Select(new AttackRouteSelectionInput(
+                        decision.Actor.Team,
+                        authoritativeContactCenter,
+                        OutgoingFlightSecondsFor(decision.Actor.Team, decision.Action),
+                        PredictedBlockArmFrames(
+                            decision.Actor.Team,
+                            authoritativeContactCenter,
+                            _ball.SimulationTime + flightSeconds),
+                        SimulationParameters,
+                        SimulatedBall.DefaultFixedStep));
+                    outgoingTarget = route.Target;
+                    outgoing = route.InitialVelocity;
+                    RecordGeometricAttackRoute(route.Route);
+                    Debug.Log(
+                        $"[{_configuration.LogTag}] geometric-attack-route " +
+                        $"team={decision.Actor.Team} route={route.Route} " +
+                        $"clearance={route.MinimumArmClearance:0.000}");
+                }
+                catch (InvalidOperationException exception)
+                {
+                    Debug.Log(
+                        $"[{_configuration.LogTag}] geometric-attack-fallback " +
+                        $"team={decision.Actor.Team} reason={exception.Message}");
+                    var outgoingFlightSeconds = OutgoingFlightSecondsFor(
+                        decision.Actor.Team,
+                        decision.Action);
+                    outgoing = ReturnVelocitySolver.Solve(
+                        authoritativeContactCenter,
+                        outgoingTarget,
+                        outgoingFlightSeconds,
+                        SimulatedBall.DefaultFixedStep,
+                        SimulationParameters).InitialVelocity;
+                }
             }
             else
             {
@@ -1344,6 +1414,8 @@ namespace Volleyball.Presentation
             }
 
             var plannedContact = provisionalDecision.AttackContactPlan.Value;
+            var intendedContactCenter = _scheduledGeometricSetTarget ?? plannedContact.ContactCenter;
+            _scheduledGeometricSetTarget = null;
             var prediction = TrajectoryPredictor.Predict(
                 _ball.State,
                 SimulationParameters,
@@ -1353,14 +1425,14 @@ namespace Volleyball.Presentation
                 GroundHeight);
             var actualArrival = ClosestSetArrival(
                 prediction,
-                plannedContact.ContactCenter,
+                intendedContactCenter,
                 plannedFlightSeconds);
             var horizontalError = GroundDistance(
                 actualArrival.Position,
-                plannedContact.ContactCenter);
+                intendedContactCenter);
             var quality = SetQualityAssessment.Evaluate(new SetQualityInput(
                 horizontalError,
-                Mathf.Abs(actualArrival.Position.Y - plannedContact.ContactCenter.Y),
+                Mathf.Abs(actualArrival.Position.Y - intendedContactCenter.Y),
                 Mathf.Abs(actualArrival.TimeSeconds - plannedFlightSeconds),
                 Mathf.Abs(actualArrival.Position.Z),
                 actualArrival.TimeSeconds));
@@ -1404,7 +1476,7 @@ namespace Volleyball.Presentation
                 replan.ContactPlan);
 
             _lastSetQualityAssessment = quality;
-            _lastPlannedAttackContactCenter = plannedContact.ContactCenter;
+            _lastPlannedAttackContactCenter = intendedContactCenter;
             _lastActualAttackContactCenter = replan.ContactPlan.ContactCenter;
             _lastSetReplanOutcome = replan.Outcome;
             _lastSetAttackActor = provisionalDecision.Actor;
@@ -1431,7 +1503,7 @@ namespace Volleyball.Presentation
             }
 
             _pendingReplaySetChain = new ReplaySetChainEvent(
-                plannedContact.ContactCenter,
+                intendedContactCenter,
                 replan.ContactPlan.ContactCenter,
                 quality.Grade,
                 replan.ContactPlan.Outcome,
@@ -2069,6 +2141,90 @@ namespace Volleyball.Presentation
                 landing.X,
                 GroundHeight + SimulatedBall.DefaultRadius,
                 landing.Z);
+        }
+
+        private SimVector3 SelectGeometricSetTarget(
+            TeamRallyDecision setDecision,
+            SimVector3 fallbackTarget,
+            float setContactTime)
+        {
+            if (_plannedAttackDecision == null || !_plannedAttackDecision.HasDecision)
+            {
+                throw new InvalidOperationException("No planned attacker is available for target scoring.");
+            }
+
+            var setter = _players[setDecision.Actor];
+            var setterPosition = new SimVector3(
+                setter.transform.position.x,
+                setter.transform.position.y,
+                setter.transform.position.z);
+            var setterDepth = -new TeamCourtFrame(setDecision.Actor.Team)
+                .ToLocal(setterPosition).Z;
+            var preferredX = fallbackTarget.X;
+            var lateralCandidates = new[]
+            {
+                Mathf.Clamp(preferredX - 0.9f, -4.2f, 4.2f),
+                preferredX,
+                Mathf.Clamp(preferredX + 0.9f, -4.2f, 4.2f)
+            };
+            var selected = SetTargetSelector.Select(new SetTargetSelectionInput(
+                setDecision.Actor.Team,
+                _plannedAttackDecision.Actor.Role,
+                Mathf.Max(0f, setterDepth),
+                fallbackTarget.Y,
+                preferredX,
+                PredictedBlockArmFrames(
+                    setDecision.Actor.Team,
+                    fallbackTarget,
+                    setContactTime + SetFlightSolver.PreferredFlightSeconds(
+                        TacticFor(setDecision.Actor.Team).SetRhythm)),
+                lateralCandidates));
+            Debug.Log(
+                $"[{_configuration.LogTag}] geometric-set-target team={setDecision.Actor.Team} " +
+                $"target=({selected.Target.X:0.00},{selected.Target.Y:0.00}," +
+                $"{selected.Target.Z:0.00}) clearance={selected.MinimumArmClearance:0.000}");
+            return selected.Target;
+        }
+
+        private IReadOnlyList<ContactCapsuleFrame> PredictedBlockArmFrames(
+            TeamId attackingTeam,
+            SimVector3 attackContactCenter,
+            float predictionTime)
+        {
+            var defendingTeam = Opponent(attackingTeam);
+            var intercept = new SimVector3(
+                attackContactCenter.X,
+                Mathf.Max(CourtBuilder.NetHeight + 0.35f, attackContactCenter.Y - 0.2f),
+                0f);
+            var blocker = SelectBlocker(defendingTeam, intercept);
+            return _players[blocker].PreviewBlockArmFrames(
+                predictionTime,
+                BlockRootTarget(defendingTeam, intercept));
+        }
+
+        private void RecordGeometricAttackRoute(GeometricAttackRoute route)
+        {
+            GeometricAttackRouteSelections++;
+            switch (route)
+            {
+                case GeometricAttackRoute.Line:
+                    GeometricLineRoutes++;
+                    break;
+                case GeometricAttackRoute.CrossCourt:
+                    GeometricCrossCourtRoutes++;
+                    break;
+                case GeometricAttackRoute.OverHand:
+                    GeometricOverHandRoutes++;
+                    break;
+                case GeometricAttackRoute.EdgeLeft:
+                    GeometricEdgeLeftRoutes++;
+                    break;
+                case GeometricAttackRoute.EdgeRight:
+                    GeometricEdgeRightRoutes++;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(route));
+            }
         }
 
         private SimVector3 NextContactCenter(TeamId team, TechniqueAction action)

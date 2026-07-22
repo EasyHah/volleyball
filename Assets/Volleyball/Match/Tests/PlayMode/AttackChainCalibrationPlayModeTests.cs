@@ -28,6 +28,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(report.NormalSideSets, Is.Zero);
             Assert.That(report.NonAChainsWithoutReason, Is.Zero);
             Assert.That(report.NearNetAttackPlans, Is.EqualTo(report.NormalAttackPlans));
+            Assert.That(report.GeometricSetTargetSelections, Is.GreaterThan(0));
+            Assert.That(report.GeometricAttackRouteSelections, Is.GreaterThan(0));
         }
 
         [UnityTest]
@@ -46,6 +48,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(report.NormalSideSets, Is.Zero);
             Assert.That(report.NonAChainsWithoutReason, Is.Zero);
             Assert.That(report.NearNetAttackPlans, Is.EqualTo(report.NormalAttackPlans));
+            Assert.That(report.GeometricSetTargetSelections, Is.GreaterThan(0));
+            Assert.That(report.GeometricAttackRouteSelections, Is.GreaterThan(0));
         }
 
         [UnityTest]
@@ -104,6 +108,8 @@ namespace Volleyball.PlayModeTests
             var normalSideSets = 0;
             var normalAttackPlans = 0;
             var nearNetAttackPlans = 0;
+            var geometricSetTargetSelections = 0;
+            var geometricAttackRouteSelections = 0;
             var totalSets = 0;
             var nonAWithoutReason = 0;
             var completedMatches = 0;
@@ -161,6 +167,8 @@ namespace Volleyball.PlayModeTests
                     normalSideSets += director.NormalSideSets;
                     normalAttackPlans += director.NormalAttackPlans;
                     nearNetAttackPlans += director.NearNetAttackPlans;
+                    geometricSetTargetSelections += director.GeometricSetTargetSelections;
+                    geometricAttackRouteSelections += director.GeometricAttackRouteSelections;
                     totalSets += director.TotalSets;
                     if (!string.IsNullOrWhiteSpace(director.LastAGradeNoContactDiagnostic))
                     {
@@ -186,6 +194,8 @@ namespace Volleyball.PlayModeTests
                 normalSideSets,
                 normalAttackPlans,
                 nearNetAttackPlans,
+                geometricSetTargetSelections,
+                geometricAttackRouteSelections,
                 nonAWithoutReason,
                 $"matches={completedMatches}; produced={totalSets}; inSystem={inSystemSets}; " +
                 lastNoContactDiagnostic);
@@ -254,6 +264,8 @@ namespace Volleyball.PlayModeTests
                 int normalSideSets,
                 int normalAttackPlans,
                 int nearNetAttackPlans,
+                int geometricSetTargetSelections,
+                int geometricAttackRouteSelections,
                 int nonAChainsWithoutReason,
                 string noContactDiagnostic)
             {
@@ -262,6 +274,8 @@ namespace Volleyball.PlayModeTests
                 NormalSideSets = normalSideSets;
                 NormalAttackPlans = normalAttackPlans;
                 NearNetAttackPlans = nearNetAttackPlans;
+                GeometricSetTargetSelections = geometricSetTargetSelections;
+                GeometricAttackRouteSelections = geometricAttackRouteSelections;
                 NonAChainsWithoutReason = nonAChainsWithoutReason;
                 NoContactDiagnostic = noContactDiagnostic;
             }
@@ -271,6 +285,8 @@ namespace Volleyball.PlayModeTests
             public int NormalSideSets { get; }
             public int NormalAttackPlans { get; }
             public int NearNetAttackPlans { get; }
+            public int GeometricSetTargetSelections { get; }
+            public int GeometricAttackRouteSelections { get; }
             public int NonAChainsWithoutReason { get; }
             public string NoContactDiagnostic { get; }
         }

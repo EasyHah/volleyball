@@ -551,6 +551,43 @@ namespace Volleyball.Presentation
                 AttackRootContactPosition(plan));
         }
 
+        public IReadOnlyList<ContactCapsuleFrame> PreviewBlockArmFrames(
+            float simulationTime,
+            Vector3 rootPosition)
+        {
+            if (float.IsNaN(simulationTime) || float.IsInfinity(simulationTime) ||
+                float.IsNaN(rootPosition.x) || float.IsInfinity(rootPosition.x) ||
+                float.IsNaN(rootPosition.y) || float.IsInfinity(rootPosition.y) ||
+                float.IsNaN(rootPosition.z) || float.IsInfinity(rootPosition.z))
+            {
+                throw new ArgumentOutOfRangeException(nameof(simulationTime));
+            }
+
+            var savedPosition = transform.position;
+            var savedRotation = transform.rotation;
+            var savedRotations = Rig.CaptureLocalRotations();
+            try
+            {
+                transform.position = ConstrainToOwnCourt(rootPosition);
+                transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
+                Rig.SetPose(StickFigurePose.Block, 1f);
+                var snapshots = new BlockArmContactVolumes(Rig).Capture(false, 0);
+                var frames = new ContactCapsuleFrame[snapshots.Count];
+                for (var index = 0; index < snapshots.Count; index++)
+                {
+                    frames[index] = snapshots[index].Current;
+                }
+
+                return frames;
+            }
+            finally
+            {
+                transform.position = savedPosition;
+                transform.rotation = savedRotation;
+                Rig.RestoreLocalRotations(savedRotations);
+            }
+        }
+
         public Vector3 ResolveContactRootTarget(
             TechniqueAction action,
             SimVector3 desiredContactCenter,

@@ -342,7 +342,7 @@ git commit -m "fix: preserve attack approach through set replans"
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/PrototypePlayerAgent.cs`
 - Modify: `Assets/Volleyball/Match/Runtime/Presentation/PhysicalMatchRallyDirector.cs`
 
-- [ ] **Step 1: Write failing best-handling-point tests**
+- [x] **Step 1: Write failing best-handling-point tests**
 
 Create `SetTargetSelectorTests.cs` with a static arm capsule centred over the middle candidate and assert that the selector chooses a legal lateral point with the largest arm clearance:
 
@@ -369,13 +369,13 @@ public void Select_NearNetSetterTargetsTheLegalBandPointWithLargestArmClearance(
 
 Add a second test with setter depth `2.5f` asserting the selected depth remains within the ordinary band, and a third with depth `6f` asserting it uses the shifted band.
 
-- [ ] **Step 2: Run the selector fixture and confirm RED**
+- [x] **Step 2: Run the selector fixture and confirm RED**
 
 Run the Unity EditMode command with test filter `Volleyball.EditModeTests.SetTargetSelectorTests`.
 
 Expected: compilation failure because the selector types do not exist.
 
-- [ ] **Step 3: Implement deterministic candidate scoring**
+- [x] **Step 3: Implement deterministic candidate scoring**
 
 Create `SetTargetSelector.cs`. Its input accepts `IReadOnlyList<ContactCapsuleFrame>` rather than a Unity object. Generate depths `{NearDepth, midpoint, FarDepth}` and supplied lateral candidates. Reject candidates outside the court or whose capsule clearance is non-positive. Calculate clearance as:
 
@@ -387,21 +387,21 @@ var clearance = (candidate - closest).Magnitude -
 
 Score candidates by their minimum clearance, then by smaller lateral deviation from `preferredX`, then by closer-to-net depth; use lexical coordinates only as the final stable tie breaker. Return the highest scored legal candidate. Throw `InvalidOperationException` when no candidate is legal instead of inventing a random fallback.
 
-- [ ] **Step 4: Write the failing attack-route test**
+- [x] **Step 4: Write the failing attack-route test**
 
 Create `AttackRouteSelectorTests.cs` that supplies one central predicted arm capsule and asserts `AttackRouteSelector.Select` chooses `CrossCourt` or `OverHand` over the obstructed `Line` route, and returns the same result for two identical inputs.
 
-- [ ] **Step 5: Run the route fixture and confirm RED**
+- [x] **Step 5: Run the route fixture and confirm RED**
 
 Run the Unity EditMode command with test filter `Volleyball.EditModeTests.AttackRouteSelectorTests`.
 
 Expected: compilation failure because `AttackRouteSelector` does not exist.
 
-- [ ] **Step 6: Implement route scoring with real ball geometry**
+- [x] **Step 6: Implement route scoring with real ball geometry**
 
 Create `AttackRouteSelector.cs` with route candidates `Line`, `CrossCourt`, `OverHand`, and `EdgeLeft`/`EdgeRight`. For each candidate, use `ReturnVelocitySolver.Solve` with a route-specific legal landing target and flight time. Integrate a cloned `BallState` in fixed steps until it reaches the net plane or ground. Reject an out-of-bounds landing or antenna-width crossing. Score by sampled minimum capsule clearance; `OverHand` receives a slower valid flight time, while edge routes are allowed to have near-zero clearance but never receive points or a score bonus for collision. Choose the greatest legal score with a fixed enum-order tie break.
 
-- [ ] **Step 7: Expose predicted arm snapshots without changing collision authority**
+- [x] **Step 7: Expose predicted arm snapshots without changing collision authority**
 
 Add this read-only preview to `PrototypePlayerAgent`:
 
@@ -413,11 +413,11 @@ public IReadOnlyList<ContactCapsuleFrame> PreviewBlockArmFrames(
 
 It temporarily applies the block pose and root position, captures `BlockArmContactVolumes`, returns their `Current` frames, and restores the transform and rig rotations in `finally`. It must not open a contact window or mutate a live ball state.
 
-- [ ] **Step 8: Integrate target and route selectors in the director**
+- [x] **Step 8: Integrate target and route selectors in the director**
 
 In `PhysicalMatchRallyDirector`, collect predicted defender arm frames at the future attack time, pass them to `SetTargetSelector` while scheduling a Set, and pass the selected target to `SetFlightSolver`. Before scheduling an Attack, call `AttackRouteSelector` and use its selected outgoing velocity. If either selector finds no legal geometry candidate, retain the existing deterministic solver path and log the explicit fallback reason.
 
-- [ ] **Step 9: Run focused EditMode suites and commit**
+- [x] **Step 9: Run focused EditMode suites and commit**
 
 Run both new fixtures plus `SetFlightSolverTests` and `TeamRallyDecisionPlannerTests`; all must pass.
 
