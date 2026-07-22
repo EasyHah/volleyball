@@ -25,16 +25,41 @@ PendingMatch、Match/Shared/UI 或第二周持久化。
   `slotActionId, occurrenceId, kind, contentId` 写入；空槽仍为 `null`。
 - 顶层 `trainingEmphases` 紧随 `progression`，始终为数组；项固定按
   `sourceSlotActionId, direction, bonusBasisPoints` 写入。
-- 第一周行动封闭为 11 个稳定 ID：五个专项、三个力量、团队合练、休息及
-  `schedule.u1w1.match.01`。专项/力量首次与同向重复强调为 `1000 + 500`，方向上限 `1500`。
-- 直接规则：专项 120 XP/+8 fatigue，力量 100/+12，团队八项各 20/+6/+5 trust，休息
-  -18 fatigue 且 mindset 每次最多 5 向 50 靠近。D/C/B/A/S 乘数为
-  8000/9000/10000/11000/12000 basis points。
-- 社交事件固定为 `event.team_meal` 及 attend/extra_practice 两选项；区间与效果按
-  `career-domain-rules.md` 的封闭 V1 表执行，规范 attend roll 6791 得到 `0 XP/+4/+6/+3`。
+- 第一周行动封闭为以下 11 个有序稳定 ID；XP 只增加对应成长经验，所有未列状态增量均为 0：
+
+  | content ID | kind / direction | base XP | fatigue | mindset | trust | emphasis / rest target |
+  | --- | --- | ---: | ---: | ---: | ---: | --- |
+  | `week_action.specialized.spike` | SpecializedTraining / Spike | 120 | +8 | 0 | 0 | Spike |
+  | `week_action.specialized.serve` | SpecializedTraining / Serve | 120 | +8 | 0 | 0 | Serve |
+  | `week_action.specialized.reception` | SpecializedTraining / Reception | 120 | +8 | 0 | 0 | Reception |
+  | `week_action.specialized.defense` | SpecializedTraining / Defense | 120 | +8 | 0 | 0 | Defense |
+  | `week_action.specialized.block` | SpecializedTraining / Block | 120 | +8 | 0 | 0 | Block |
+  | `week_action.strength.movement` | StrengthTraining / Movement | 100 | +12 | 0 | 0 | Movement |
+  | `week_action.strength.jump` | StrengthTraining / Jump | 100 | +12 | 0 | 0 | Jump |
+  | `week_action.strength.stamina` | StrengthTraining / Stamina | 100 | +12 | 0 | 0 | Stamina |
+  | `week_action.team_practice.standard` | TeamPractice / none | 八项各 20 | +6 | 0 | +5 | none |
+  | `week_action.rest.standard` | Rest / none | 0 | -18 | 向 50 最多移动 5 | 0 | target 50 / max step 5 |
+  | `schedule.u1w1.match.01` | Match / none | 0 | 0 | 0 | 0 | none |
+
+  专项/力量首次与同向重复强调为 `1000 + 500` basis points，方向上限 `1500`。
+  D/C/B/A/S 成长乘数为 8000/9000/10000/11000/12000 basis points。
+- 社交事件固定为 `event.team_meal`，完整选项 ID 与封闭效果如下；效果列顺序为
+  `base growth XP / fatigue / mindset / trust`：
+
+  | option ID | roll | effect before clamp |
+  | --- | --- | --- |
+  | `event.team_meal.option.attend` | 0..4999 | none / +2 / +8 / +2 |
+  | `event.team_meal.option.attend` | 5000..9999 | none / +4 / +6 / +3 |
+  | `event.team_meal.option.extra_practice` | 0..4999 | Spike +60 / +8 / +1 / +5 |
+  | `event.team_meal.option.extra_practice` | 5000..9999 | Spike +80 / +10 / -2 / +6 |
+
+  规范 attend roll 6791 得到 `0 XP/+4/+6/+3`，普通 attend 永不增加永久属性 XP。
 - Schema golden hash 重建为
   `d9e9464b0eeeea3c848efff9522e2d41e3c14db40de2c7db40b2daaa5378d237`；旧不完整 V1
-  golden 被保留为拒载回归证据。
+  golden 被保留为拒载回归证据。另增加已确认计划、已执行 slot 1、已解决事件且包含 Spike
+  `contentId` 与非空 `trainingEmphases` 的确定性 golden，hash 为
+  `8b283ee725b277dfd533068bf098e31e16f54f74094499b66d984b5445a68dbd`；合法切换为 Serve
+  及其派生强调时 hash 必须变化。
 
 ## 跨模块交互重点
 
@@ -46,7 +71,7 @@ PendingMatch、Match/Shared/UI 或第二周持久化。
 
 ## 验证
 
-- [x] EditMode 测试（Unity `6000.3.20f1`：Career `284/284`，全项目 `507/507`）
+- [x] EditMode 测试（Unity `6000.3.20f1`：Career `286/286`，全项目 `509/509`）
 - [ ] PlayMode 测试（纯 Career 领域/持久化改动不需要）
 - [ ] 手动场景验证（无 UI/Scene 变更）
 - [x] 序列化、存档或迁移验证：canonical bytes/hash、旧 V1 拒载、create/commit/recovery ledger 往返

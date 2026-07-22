@@ -13,6 +13,103 @@ namespace Volleyball.Career.EditModeTests
         private const long MaximumIJsonSafeInteger = 9007199254740991L;
         private const string GoldenHash =
             "d9e9464b0eeeea3c848efff9522e2d41e3c14db40de2c7db40b2daaa5378d237";
+        private const string ExecutedGoldenHash =
+            "8b283ee725b277dfd533068bf098e31e16f54f74094499b66d984b5445a68dbd";
+        private const string ExecutedGoldenBase64 =
+            "eyJ2ZXJzaW9ucyI6eyJzY2hlbWFWZXJzaW9uIjoxLCJjb250ZW50VmVyc2lvbiI6MSwicnVsZXNldFZlcnNpb24iOjEsImNhcmVlclJhbmRvbUFsZ29yaXRo" +
+            "bVZlcnNpb24iOjF9LCJpZGVudGl0eSI6eyJwcm9maWxlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJzYXZlSWQiOiIwMDAw" +
+            "MDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDIiLCJsaW5lYWdlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDMiLCJyZXZp" +
+            "c2lvbiI6NywicmVzdG9yZWRGcm9tVmVyc2lvblRva2VuIjp7ImxpbmVhZ2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwNCIsInJl" +
+            "dmlzaW9uIjoxLCJzbmFwc2hvdEhhc2giOiJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJi" +
+            "In0sImNyZWF0ZWRBdFV0Y01zIjoxMDAwLCJ1cGRhdGVkQXRVdGNNcyI6MjAwMH0sImludGVncml0eSI6eyJzbmFwc2hvdEhhc2giOiI4YjI4M2VlNzI1YjI3" +
+            "N2RmZDUzMzA2OGJmMDk4ZTMxZTE2ZjU0Zjc0MDk0NDk5YjY2ZDk4NGI1NDQ1YTY4ZGJkIn0sImNhcmVlclNlZWQiOiIwMDAxMDIwMzA0MDUwNjA3MDgwOTBh" +
+            "MGIwYzBkMGUwZjEwMTExMjEzMTQxNTE2MTcxODE5MWExYjFjMWQxZTFmIiwiY2FyZWVyTmFtZSI6IlJvYWQgdG8gViBMZWFndWUiLCJwbGF5ZXJEcmFmdCI6" +
+            "eyJwbGF5ZXJJZCI6InBsYXllci5hbHBoYSIsImRpc3BsYXlOYW1lIjoiTGluIiwiamVyc2V5TnVtYmVyIjoxMn0sIm9uYm9hcmRpbmciOnsic3RhZ2VzIjpb" +
+            "eyJzdGFnZU51bWJlciI6MSwib2NjdXJyZW5jZUlkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMTAxIiwicmFuZG9tVmVyc2lvbiI6MSwi" +
+            "Y2hvaWNlSWQiOiJzdGFnZS0xLWNob2ljZSIsInJlc29sdmVkT3V0cHV0cyI6W3sib3V0cHV0SWQiOiJzdGFnZS0xLXByaW1hcnkiLCJwZXJ0dXJiYXRpb24i" +
+            "OjEwfSx7Im91dHB1dElkIjoic3RhZ2UtMS1zZWNvbmRhcnkiLCJwZXJ0dXJiYXRpb24iOi01fV19LHsic3RhZ2VOdW1iZXIiOjIsIm9jY3VycmVuY2VJZCI6" +
+            "IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDEwMiIsInJhbmRvbVZlcnNpb24iOjEsImNob2ljZUlkIjoic3RhZ2UtMi1jaG9pY2UiLCJyZXNv" +
+            "bHZlZE91dHB1dHMiOlt7Im91dHB1dElkIjoic3RhZ2UtMi1wcmltYXJ5IiwicGVydHVyYmF0aW9uIjoxMH0seyJvdXRwdXRJZCI6InN0YWdlLTItc2Vjb25k" +
+            "YXJ5IiwicGVydHVyYmF0aW9uIjotNX1dfSx7InN0YWdlTnVtYmVyIjozLCJvY2N1cnJlbmNlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAw" +
+            "MDAxMDMiLCJyYW5kb21WZXJzaW9uIjoxLCJjaG9pY2VJZCI6InN0YWdlLTMtY2hvaWNlIiwicmVzb2x2ZWRPdXRwdXRzIjpbeyJvdXRwdXRJZCI6InN0YWdl" +
+            "LTMtcHJpbWFyeSIsInBlcnR1cmJhdGlvbiI6MTB9LHsib3V0cHV0SWQiOiJzdGFnZS0zLXNlY29uZGFyeSIsInBlcnR1cmJhdGlvbiI6LTV9XX1dLCJuZXh0" +
+            "U3RhZ2VOdW1iZXIiOjAsImlzRm9ybWFsbHlFbnJvbGxlZCI6dHJ1ZX0sInByb2dyZXNzaW9uIjp7ImtpbmQiOiJwbGFubmVkIiwicGhhc2UiOiJ1bml2ZXJz" +
+            "aXR5IiwidHJ5b3V0U3RhZ2UiOjAsIndlZWtQbGFuIjp7InBsYW5JZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAxMCIsInNlYXNvbiI6" +
+            "MSwid2VlayI6Miwic2xvdHMiOlt7InNsb3RBY3Rpb25JZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAxMSIsIm9jY3VycmVuY2VJZCI6" +
+            "IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDA0MSIsImtpbmQiOiJzcGVjaWFsaXplZF90cmFpbmluZyIsImNvbnRlbnRJZCI6IndlZWtfYWN0" +
+            "aW9uLnNwZWNpYWxpemVkLnNwaWtlIn0seyJzbG90QWN0aW9uSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTIiLCJvY2N1cnJlbmNl" +
+            "SWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwNDIiLCJraW5kIjoicmVzdCIsImNvbnRlbnRJZCI6IndlZWtfYWN0aW9uLnJlc3Quc3Rh" +
+            "bmRhcmQifSx7InNsb3RBY3Rpb25JZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAxMyIsIm9jY3VycmVuY2VJZCI6IjAwMDAwMDAwLTAw" +
+            "MDAtMDAwMC0wMDAwLTAwMDAwMDAwMDA0MyIsImtpbmQiOiJtYXRjaCIsImNvbnRlbnRJZCI6InNjaGVkdWxlLnUxdzEubWF0Y2guMDEifV0sImlzQ29uZmly" +
+            "bWVkIjp0cnVlfSwibmV4dFNsb3ROdW1iZXIiOjIsInBlbmRpbmdFdmVudCI6bnVsbH0sInRyYWluaW5nRW1waGFzZXMiOlt7InNvdXJjZVNsb3RBY3Rpb25J" +
+            "ZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAxMSIsImRpcmVjdGlvbiI6InNwaWtlIiwiYm9udXNCYXNpc1BvaW50cyI6MTAwMH1dLCJw" +
+            "bGF5ZXIiOnsicGxheWVySWQiOiJwbGF5ZXIuYWxwaGEiLCJkaXNwbGF5TmFtZSI6IkxpbiIsImplcnNleU51bWJlciI6MTIsImF0dHJpYnV0ZXMiOnsic3Bp" +
+            "a2UiOnsiYWJpbGl0eUJhc2lzUG9pbnRzIjo1MTAwLCJncm93dGhFeHBlcmllbmNlIjoxMDF9LCJzZXJ2ZSI6eyJhYmlsaXR5QmFzaXNQb2ludHMiOjUyMDAs" +
+            "Imdyb3d0aEV4cGVyaWVuY2UiOjEwMn0sInJlY2VwdGlvbiI6eyJhYmlsaXR5QmFzaXNQb2ludHMiOjUzMDAsImdyb3d0aEV4cGVyaWVuY2UiOjEwM30sImRl" +
+            "ZmVuc2UiOnsiYWJpbGl0eUJhc2lzUG9pbnRzIjo1NDAwLCJncm93dGhFeHBlcmllbmNlIjoxMDR9LCJibG9jayI6eyJhYmlsaXR5QmFzaXNQb2ludHMiOjU1" +
+            "MDAsImdyb3d0aEV4cGVyaWVuY2UiOjEwNX0sIm1vdmVtZW50Ijp7ImFiaWxpdHlCYXNpc1BvaW50cyI6NTYwMCwiZ3Jvd3RoRXhwZXJpZW5jZSI6MTA2fSwi" +
+            "anVtcCI6eyJhYmlsaXR5QmFzaXNQb2ludHMiOjU3MDAsImdyb3d0aEV4cGVyaWVuY2UiOjEwN30sInN0YW1pbmEiOnsiYWJpbGl0eUJhc2lzUG9pbnRzIjo1" +
+            "ODAwLCJncm93dGhFeHBlcmllbmNlIjoxMDh9fX0sInRlYW1JZCI6InRlYW0udW5pdmVyc2l0eS1hIiwicG90ZW50aWFsR3JhZGUiOiJiIiwiZmF0aWd1ZSI6" +
+            "MjMsIm1pbmRzZXQiOjcyLCJjb2FjaFRydXN0Ijo2MSwib3BlcmF0aW9uUmVjZWlwdHMiOlt7Im9wZXJhdGlvbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAw" +
+            "MDAtMDAwMDAwMDAwMjAwIiwib3BlcmF0aW9uS2luZCI6ImNyZWF0ZV9jYXJlZXIiLCJ0YXJnZXQiOnsidHJ5b3V0U3RhZ2UiOjAsInRyeW91dE9jY3VycmVu" +
+            "Y2VJZCI6bnVsbCwiY2hvaWNlSWQiOm51bGwsIndlZWtQbGFuSWQiOm51bGwsInNsb3RBY3Rpb25JZCI6bnVsbCwiYWN0aW9uT2NjdXJyZW5jZUlkIjpudWxs" +
+            "LCJldmVudE9jY3VycmVuY2VJZCI6bnVsbCwib3B0aW9uSWQiOm51bGx9LCJpbnB1dEZpbmdlcnByaW50IjoiY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj" +
+            "Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjYyIsImFwcGxpZWRMaW5lYWdlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAw" +
+            "MDAwMDMiLCJhcHBsaWVkUmV2aXNpb24iOjEsImNvbXBsZXRlZEF0VXRjTXMiOjMyMDAsIm91dGNvbWVLaW5kIjoiY2FyZWVyX2NyZWF0ZWQiLCJvdXRjb21l" +
+            "U3VtbWFyeSI6eyJ0cnlvdXRSZXNvbHZlZE91dHB1dHMiOltdLCJncm93dGhFeHBlcmllbmNlRGVsdGEiOm51bGwsImZhdGlndWVEZWx0YSI6bnVsbCwibWlu" +
+            "ZHNldERlbHRhIjpudWxsLCJjb2FjaFRydXN0RGVsdGEiOm51bGx9fSx7Im9wZXJhdGlvbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAw" +
+            "MjAxIiwib3BlcmF0aW9uS2luZCI6ImNvbmZpcm1fdHJ5b3V0X3N0YWdlIiwidGFyZ2V0Ijp7InRyeW91dFN0YWdlIjoxLCJ0cnlvdXRPY2N1cnJlbmNlSWQi" +
+            "OiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAxMDEiLCJjaG9pY2VJZCI6InN0YWdlLTEtY2hvaWNlIiwid2Vla1BsYW5JZCI6bnVsbCwic2xv" +
+            "dEFjdGlvbklkIjpudWxsLCJhY3Rpb25PY2N1cnJlbmNlSWQiOm51bGwsImV2ZW50T2NjdXJyZW5jZUlkIjpudWxsLCJvcHRpb25JZCI6bnVsbH0sImlucHV0" +
+            "RmluZ2VycHJpbnQiOiJkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkIiwiYXBwbGllZExp" +
+            "bmVhZ2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMyIsImFwcGxpZWRSZXZpc2lvbiI6MiwiY29tcGxldGVkQXRVdGNNcyI6MzIw" +
+            "MSwib3V0Y29tZUtpbmQiOiJ0cnlvdXRfYWR2YW5jZWQiLCJvdXRjb21lU3VtbWFyeSI6eyJ0cnlvdXRSZXNvbHZlZE91dHB1dHMiOlt7Im91dHB1dElkIjoi" +
+            "c3RhZ2UtMS1wcmltYXJ5IiwicGVydHVyYmF0aW9uIjoxMH0seyJvdXRwdXRJZCI6InN0YWdlLTEtc2Vjb25kYXJ5IiwicGVydHVyYmF0aW9uIjotNX1dLCJn" +
+            "cm93dGhFeHBlcmllbmNlRGVsdGEiOm51bGwsImZhdGlndWVEZWx0YSI6bnVsbCwibWluZHNldERlbHRhIjpudWxsLCJjb2FjaFRydXN0RGVsdGEiOm51bGx9" +
+            "fSx7Im9wZXJhdGlvbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMjAyIiwib3BlcmF0aW9uS2luZCI6ImNvbmZpcm1fdHJ5b3V0X3N0" +
+            "YWdlIiwidGFyZ2V0Ijp7InRyeW91dFN0YWdlIjoyLCJ0cnlvdXRPY2N1cnJlbmNlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAxMDIi" +
+            "LCJjaG9pY2VJZCI6InN0YWdlLTItY2hvaWNlIiwid2Vla1BsYW5JZCI6bnVsbCwic2xvdEFjdGlvbklkIjpudWxsLCJhY3Rpb25PY2N1cnJlbmNlSWQiOm51" +
+            "bGwsImV2ZW50T2NjdXJyZW5jZUlkIjpudWxsLCJvcHRpb25JZCI6bnVsbH0sImlucHV0RmluZ2VycHJpbnQiOiJlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVl" +
+            "ZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlZWVlIiwiYXBwbGllZExpbmVhZ2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAw" +
+            "MDAwMDAwMyIsImFwcGxpZWRSZXZpc2lvbiI6MywiY29tcGxldGVkQXRVdGNNcyI6MzIwMiwib3V0Y29tZUtpbmQiOiJ0cnlvdXRfYWR2YW5jZWQiLCJvdXRj" +
+            "b21lU3VtbWFyeSI6eyJ0cnlvdXRSZXNvbHZlZE91dHB1dHMiOlt7Im91dHB1dElkIjoic3RhZ2UtMi1wcmltYXJ5IiwicGVydHVyYmF0aW9uIjoxMH0seyJv" +
+            "dXRwdXRJZCI6InN0YWdlLTItc2Vjb25kYXJ5IiwicGVydHVyYmF0aW9uIjotNX1dLCJncm93dGhFeHBlcmllbmNlRGVsdGEiOm51bGwsImZhdGlndWVEZWx0" +
+            "YSI6bnVsbCwibWluZHNldERlbHRhIjpudWxsLCJjb2FjaFRydXN0RGVsdGEiOm51bGx9fSx7Im9wZXJhdGlvbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAw" +
+            "MDAtMDAwMDAwMDAwMjAzIiwib3BlcmF0aW9uS2luZCI6ImNvbmZpcm1fdHJ5b3V0X3N0YWdlIiwidGFyZ2V0Ijp7InRyeW91dFN0YWdlIjozLCJ0cnlvdXRP" +
+            "Y2N1cnJlbmNlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAxMDMiLCJjaG9pY2VJZCI6InN0YWdlLTMtY2hvaWNlIiwid2Vla1BsYW5J" +
+            "ZCI6bnVsbCwic2xvdEFjdGlvbklkIjpudWxsLCJhY3Rpb25PY2N1cnJlbmNlSWQiOm51bGwsImV2ZW50T2NjdXJyZW5jZUlkIjpudWxsLCJvcHRpb25JZCI6" +
+            "bnVsbH0sImlucHV0RmluZ2VycHJpbnQiOiJmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZmZm" +
+            "IiwiYXBwbGllZExpbmVhZ2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMyIsImFwcGxpZWRSZXZpc2lvbiI6NCwiY29tcGxldGVk" +
+            "QXRVdGNNcyI6MzIwMywib3V0Y29tZUtpbmQiOiJ0cnlvdXRfYWR2YW5jZWQiLCJvdXRjb21lU3VtbWFyeSI6eyJ0cnlvdXRSZXNvbHZlZE91dHB1dHMiOlt7" +
+            "Im91dHB1dElkIjoic3RhZ2UtMy1wcmltYXJ5IiwicGVydHVyYmF0aW9uIjoxMH0seyJvdXRwdXRJZCI6InN0YWdlLTMtc2Vjb25kYXJ5IiwicGVydHVyYmF0" +
+            "aW9uIjotNX1dLCJncm93dGhFeHBlcmllbmNlRGVsdGEiOm51bGwsImZhdGlndWVEZWx0YSI6bnVsbCwibWluZHNldERlbHRhIjpudWxsLCJjb2FjaFRydXN0" +
+            "RGVsdGEiOm51bGx9fSx7Im9wZXJhdGlvbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMjEwIiwib3BlcmF0aW9uS2luZCI6ImNvbmZp" +
+            "cm1fd2Vla19wbGFuIiwidGFyZ2V0Ijp7InRyeW91dFN0YWdlIjowLCJ0cnlvdXRPY2N1cnJlbmNlSWQiOm51bGwsImNob2ljZUlkIjpudWxsLCJ3ZWVrUGxh" +
+            "bklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDEwIiwic2xvdEFjdGlvbklkIjpudWxsLCJhY3Rpb25PY2N1cnJlbmNlSWQiOm51bGws" +
+            "ImV2ZW50T2NjdXJyZW5jZUlkIjpudWxsLCJvcHRpb25JZCI6bnVsbH0sImlucHV0RmluZ2VycHJpbnQiOiJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh" +
+            "YWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhIiwiYXBwbGllZExpbmVhZ2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAw" +
+            "MDAwMyIsImFwcGxpZWRSZXZpc2lvbiI6NSwiY29tcGxldGVkQXRVdGNNcyI6MzIxMCwib3V0Y29tZUtpbmQiOiJ3ZWVrX3BsYW5fY29uZmlybWVkIiwib3V0" +
+            "Y29tZVN1bW1hcnkiOnsidHJ5b3V0UmVzb2x2ZWRPdXRwdXRzIjpbXSwiZ3Jvd3RoRXhwZXJpZW5jZURlbHRhIjpudWxsLCJmYXRpZ3VlRGVsdGEiOm51bGws" +
+            "Im1pbmRzZXREZWx0YSI6bnVsbCwiY29hY2hUcnVzdERlbHRhIjpudWxsfX0seyJvcGVyYXRpb25JZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAw" +
+            "MDAwMDIxMSIsIm9wZXJhdGlvbktpbmQiOiJleGVjdXRlX3dlZWtfYWN0aW9uIiwidGFyZ2V0Ijp7InRyeW91dFN0YWdlIjowLCJ0cnlvdXRPY2N1cnJlbmNl" +
+            "SWQiOm51bGwsImNob2ljZUlkIjpudWxsLCJ3ZWVrUGxhbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDEwIiwic2xvdEFjdGlvbklk" +
+            "IjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMDExIiwiYWN0aW9uT2NjdXJyZW5jZUlkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAw" +
+            "MDAwMDAwMDQxIiwiZXZlbnRPY2N1cnJlbmNlSWQiOm51bGwsIm9wdGlvbklkIjpudWxsfSwiaW5wdXRGaW5nZXJwcmludCI6ImJiYmJiYmJiYmJiYmJiYmJi" +
+            "YmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmJiYmIiLCJhcHBsaWVkTGluZWFnZUlkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAw" +
+            "MDAtMDAwMDAwMDAwMDAzIiwiYXBwbGllZFJldmlzaW9uIjo2LCJjb21wbGV0ZWRBdFV0Y01zIjozMjExLCJvdXRjb21lS2luZCI6InNsb3RfY29tcGxldGVk" +
+            "Iiwib3V0Y29tZVN1bW1hcnkiOnsidHJ5b3V0UmVzb2x2ZWRPdXRwdXRzIjpbXSwiZ3Jvd3RoRXhwZXJpZW5jZURlbHRhIjp7InNwaWtlIjoxLCJzZXJ2ZSI6" +
+            "MTEsInJlY2VwdGlvbiI6MjEsImRlZmVuc2UiOjMxLCJibG9jayI6NDEsIm1vdmVtZW50Ijo1MSwianVtcCI6NjEsInN0YW1pbmEiOjcxfSwiZmF0aWd1ZURl" +
+            "bHRhIjo0LCJtaW5kc2V0RGVsdGEiOjEsImNvYWNoVHJ1c3REZWx0YSI6Mn19LHsib3BlcmF0aW9uSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAw" +
+            "MDAwMDAyMTIiLCJvcGVyYXRpb25LaW5kIjoicmVzb2x2ZV9ldmVudF9jaG9pY2UiLCJ0YXJnZXQiOnsidHJ5b3V0U3RhZ2UiOjAsInRyeW91dE9jY3VycmVu" +
+            "Y2VJZCI6bnVsbCwiY2hvaWNlSWQiOm51bGwsIndlZWtQbGFuSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTAiLCJzbG90QWN0aW9u" +
+            "SWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMTEiLCJhY3Rpb25PY2N1cnJlbmNlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0w" +
+            "MDAwMDAwMDAwNDEiLCJldmVudE9jY3VycmVuY2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDA1MCIsIm9wdGlvbklkIjoiYWNjZXB0" +
+            "In0sImlucHV0RmluZ2VycHJpbnQiOiJjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjIiwi" +
+            "YXBwbGllZExpbmVhZ2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDAwMyIsImFwcGxpZWRSZXZpc2lvbiI6NywiY29tcGxldGVkQXRV" +
+            "dGNNcyI6MzIxMiwib3V0Y29tZUtpbmQiOiJldmVudF9jaG9pY2VfYXBwbGllZCIsIm91dGNvbWVTdW1tYXJ5Ijp7InRyeW91dFJlc29sdmVkT3V0cHV0cyI6" +
+            "W10sImdyb3d0aEV4cGVyaWVuY2VEZWx0YSI6eyJzcGlrZSI6MTAsInNlcnZlIjoyMCwicmVjZXB0aW9uIjozMCwiZGVmZW5zZSI6NDAsImJsb2NrIjo1MCwi" +
+            "bW92ZW1lbnQiOjYwLCJqdW1wIjo3MCwic3RhbWluYSI6ODB9LCJmYXRpZ3VlRGVsdGEiOjUsIm1pbmRzZXREZWx0YSI6MTAsImNvYWNoVHJ1c3REZWx0YSI6" +
+            "LTJ9fV19";
 
         private const string PreStage4GoldenBase64 =
             "eyJ2ZXJzaW9ucyI6eyJzY2hlbWFWZXJzaW9uIjoxLCJjb250ZW50VmVyc2lvbiI6MSwicnVsZXNldFZlcnNpb24iOjEsImNhcmVl" +
@@ -87,6 +184,60 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(restored.Onboarding.Stages[0].ResolvedOutputs, Is.Empty);
             Assert.That(restored.Player, Is.Null);
             Assert.That(restored.TeamId, Is.Null);
+        }
+
+        [Test]
+        public void ExecutedGoldenSnapshot_LocksActionContentAndNonEmptyEmphasisBytesAndHash()
+        {
+            var candidate = CreateExecutedGoldenCandidate(
+                "week_action.specialized.spike");
+            var sealedSnapshot = CareerSaveJsonCodec.Seal(candidate);
+            var actualBytes = CareerSaveJsonCodec.Serialize(sealedSnapshot);
+            var actualBase64 = Convert.ToBase64String(actualBytes);
+
+            Assert.That(
+                actualBase64,
+                Is.EqualTo(ExecutedGoldenBase64),
+                "Replace ExecutedGoldenBase64 with: " + actualBase64 +
+                "\nReplace ExecutedGoldenHash with: " +
+                sealedSnapshot.Identity.SnapshotHash.Value);
+            Assert.That(
+                sealedSnapshot.Identity.SnapshotHash.Value,
+                Is.EqualTo(ExecutedGoldenHash));
+
+            var restored = CareerSaveJsonCodec.Deserialize(
+                Convert.FromBase64String(ExecutedGoldenBase64));
+            Assert.That(restored.Progression.Kind, Is.EqualTo(CareerProgressionKind.Planned));
+            Assert.That(restored.Progression.NextSlotNumber, Is.EqualTo(2));
+            Assert.That(
+                restored.Progression.WeekPlan.Slots[0].ContentId,
+                Is.EqualTo("week_action.specialized.spike"));
+            Assert.That(restored.TrainingEmphases.Contributions.Count, Is.EqualTo(1));
+            Assert.That(
+                restored.TrainingEmphases.Contributions[0].Direction,
+                Is.EqualTo(CareerTrainingDirection.Spike));
+            Assert.That(
+                restored.TrainingEmphases.Contributions[0].BonusBasisPoints,
+                Is.EqualTo(1000));
+        }
+
+        [Test]
+        public void SnapshotHash_ChangesForValidActionContentAndDerivedEmphasis()
+        {
+            var spike = CreateExecutedGoldenCandidate(
+                "week_action.specialized.spike");
+            var serve = CreateExecutedGoldenCandidate(
+                "week_action.specialized.serve");
+
+            Assert.That(
+                spike.TrainingEmphases.Contributions[0].Direction,
+                Is.EqualTo(CareerTrainingDirection.Spike));
+            Assert.That(
+                serve.TrainingEmphases.Contributions[0].Direction,
+                Is.EqualTo(CareerTrainingDirection.Serve));
+            Assert.That(
+                CareerSaveJsonCodec.ComputeSnapshotHash(serve),
+                Is.Not.EqualTo(CareerSaveJsonCodec.ComputeSnapshotHash(spike)));
         }
 
         [Test]
@@ -354,7 +505,14 @@ namespace Volleyball.Career.EditModeTests
                 new[] { receipt });
         }
 
-        private static CareerSaveSnapshot CreateFullCandidate(bool eventAlreadyResolved)
+        private static CareerSaveSnapshot CreateExecutedGoldenCandidate(string firstContentId)
+        {
+            return CreateFullCandidate(true, firstContentId);
+        }
+
+        private static CareerSaveSnapshot CreateFullCandidate(
+            bool eventAlreadyResolved,
+            string firstContentId = null)
         {
             var lineageId = new LineageId(GuidValue(3));
             var stages = new[] { ConfirmedStage(1), ConfirmedStage(2), ConfirmedStage(3) };
@@ -365,7 +523,13 @@ namespace Volleyball.Career.EditModeTests
                 2,
                 new[]
                 {
-                    Action(11, 41, CareerWeekActionKind.TeamPractice),
+                    firstContentId == null
+                        ? Action(11, 41, CareerWeekActionKind.TeamPractice)
+                        : Action(
+                            11,
+                            41,
+                            CareerWeekActionKind.SpecializedTraining,
+                            firstContentId),
                     Action(12, 42, CareerWeekActionKind.Rest),
                     Action(13, 43, CareerWeekActionKind.Match)
                 },
@@ -447,6 +611,11 @@ namespace Volleyball.Career.EditModeTests
             }
 
             var revision = eventAlreadyResolved ? 7 : 6;
+            var trainingEmphases = firstContentId == null
+                ? TrainingEmphasisLedger.Empty
+                : TrainingEmphasisLedger.Empty.AddExecutedTraining(
+                    plan.Slots[0],
+                    CareerWeekActionCatalogV1.Create());
             return new CareerSaveSnapshot(
                 CareerSaveVersions.Current,
                 new CareerSaveIdentity(
@@ -466,7 +635,7 @@ namespace Volleyball.Career.EditModeTests
                 new CareerPlayerDraft(new PlayerId("player.alpha"), "Lin", 12),
                 onboarding,
                 progression,
-                TrainingEmphasisLedger.Empty,
+                trainingEmphases,
                 Player(),
                 new TeamId("team.university-a"),
                 PotentialGrade.B,
@@ -505,11 +674,20 @@ namespace Volleyball.Career.EditModeTests
             int occurrenceId,
             CareerWeekActionKind kind)
         {
+            return Action(actionId, occurrenceId, kind, ContentIdFor(kind));
+        }
+
+        private static CareerWeekActionState Action(
+            int actionId,
+            int occurrenceId,
+            CareerWeekActionKind kind,
+            string contentId)
+        {
             return new CareerWeekActionState(
                 new SlotActionId(GuidValue(actionId)),
                 new OccurrenceId(GuidValue(occurrenceId)),
                 kind,
-                ContentIdFor(kind));
+                contentId);
         }
 
         private static string ContentIdFor(CareerWeekActionKind kind)

@@ -30,56 +30,22 @@ namespace Volleyball.Career.EditModeTests
         public void CatalogV1_ContainsExactClosedActionIdentityAndTuning()
         {
             var catalog = CareerWeekActionCatalogV1.Create();
+            var expected = new[]
+            {
+                Tuple("week_action.specialized.spike", CareerWeekActionKind.SpecializedTraining, CareerTrainingDirection.Spike, 120, 8, 0, 0, null, 0),
+                Tuple("week_action.specialized.serve", CareerWeekActionKind.SpecializedTraining, CareerTrainingDirection.Serve, 120, 8, 0, 0, null, 0),
+                Tuple("week_action.specialized.reception", CareerWeekActionKind.SpecializedTraining, CareerTrainingDirection.Reception, 120, 8, 0, 0, null, 0),
+                Tuple("week_action.specialized.defense", CareerWeekActionKind.SpecializedTraining, CareerTrainingDirection.Defense, 120, 8, 0, 0, null, 0),
+                Tuple("week_action.specialized.block", CareerWeekActionKind.SpecializedTraining, CareerTrainingDirection.Block, 120, 8, 0, 0, null, 0),
+                Tuple("week_action.strength.movement", CareerWeekActionKind.StrengthTraining, CareerTrainingDirection.Movement, 100, 12, 0, 0, null, 0),
+                Tuple("week_action.strength.jump", CareerWeekActionKind.StrengthTraining, CareerTrainingDirection.Jump, 100, 12, 0, 0, null, 0),
+                Tuple("week_action.strength.stamina", CareerWeekActionKind.StrengthTraining, CareerTrainingDirection.Stamina, 100, 12, 0, 0, null, 0),
+                Tuple("week_action.team_practice.standard", CareerWeekActionKind.TeamPractice, null, 20, 6, 0, 5, null, 0),
+                Tuple("week_action.rest.standard", CareerWeekActionKind.Rest, null, 0, -18, 0, 0, 50, 5),
+                Tuple("schedule.u1w1.match.01", CareerWeekActionKind.Match, null, 0, 0, 0, 0, null, 0)
+            };
 
-            Assert.That(catalog.Actions.Select(x => x.ContentId), Is.EqualTo(new[]
-            {
-                "week_action.specialized.spike",
-                "week_action.specialized.serve",
-                "week_action.specialized.reception",
-                "week_action.specialized.defense",
-                "week_action.specialized.block",
-                "week_action.strength.movement",
-                "week_action.strength.jump",
-                "week_action.strength.stamina",
-                "week_action.team_practice.standard",
-                "week_action.rest.standard",
-                "schedule.u1w1.match.01"
-            }));
-            Assert.That(catalog.Actions.Select(x => x.Kind), Is.EqualTo(new[]
-            {
-                CareerWeekActionKind.SpecializedTraining,
-                CareerWeekActionKind.SpecializedTraining,
-                CareerWeekActionKind.SpecializedTraining,
-                CareerWeekActionKind.SpecializedTraining,
-                CareerWeekActionKind.SpecializedTraining,
-                CareerWeekActionKind.StrengthTraining,
-                CareerWeekActionKind.StrengthTraining,
-                CareerWeekActionKind.StrengthTraining,
-                CareerWeekActionKind.TeamPractice,
-                CareerWeekActionKind.Rest,
-                CareerWeekActionKind.Match
-            }));
-            Assert.That(catalog.Actions.Select(x => x.Direction), Is.EqualTo(new CareerTrainingDirection?[]
-            {
-                CareerTrainingDirection.Spike,
-                CareerTrainingDirection.Serve,
-                CareerTrainingDirection.Reception,
-                CareerTrainingDirection.Defense,
-                CareerTrainingDirection.Block,
-                CareerTrainingDirection.Movement,
-                CareerTrainingDirection.Jump,
-                CareerTrainingDirection.Stamina,
-                null,
-                null,
-                null
-            }));
-            Assert.That(catalog.Actions.Select(x => x.BaseGrowthExperience),
-                Is.EqualTo(new[] { 120, 120, 120, 120, 120, 100, 100, 100, 20, 0, 0 }));
-            Assert.That(catalog.Actions.Select(x => x.FatigueDelta),
-                Is.EqualTo(new[] { 8, 8, 8, 8, 8, 12, 12, 12, 6, -18, 0 }));
-            Assert.That(catalog.Actions[8].CoachTrustDelta, Is.EqualTo(5));
-            Assert.That(catalog.Actions[9].MindsetTarget, Is.EqualTo(50));
-            Assert.That(catalog.Actions[9].MindsetMaximumStep, Is.EqualTo(5));
+            Assert.That(catalog.Actions.Select(ToTuple), Is.EqualTo(expected));
         }
 
         [Test]
@@ -92,6 +58,10 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(() => NewCatalog(Replace(canonical, 0, Copy(canonical[0], kind: CareerWeekActionKind.StrengthTraining))), Throws.ArgumentException);
             Assert.That(() => NewCatalog(Replace(canonical, 0, Copy(canonical[0], direction: CareerTrainingDirection.Serve))), Throws.ArgumentException);
             Assert.That(() => NewCatalog(Replace(canonical, 0, Copy(canonical[0], baseGrowthExperience: 121))), Throws.ArgumentException);
+            Assert.That(() => NewCatalog(Replace(canonical, 0, Copy(canonical[0], fatigueDelta: 9))), Throws.ArgumentException);
+            Assert.That(() => NewCatalog(Replace(canonical, 0, Copy(canonical[0], mindsetDelta: 1))), Throws.ArgumentException);
+            Assert.That(() => NewCatalog(Replace(canonical, 0, Copy(canonical[0], coachTrustDelta: 1))), Throws.ArgumentException);
+            Assert.That(() => NewCatalog(Replace(canonical, 9, Copy(canonical[9], mindsetTarget: 49, replaceMindsetTarget: true))), Throws.ArgumentException);
             Assert.That(() => NewCatalog(Replace(canonical, 9, Copy(canonical[9], mindsetMaximumStep: 4))), Throws.ArgumentException);
         }
 
@@ -159,6 +129,11 @@ namespace Volleyball.Career.EditModeTests
             CareerWeekActionKind? kind = null,
             CareerTrainingDirection? direction = null,
             int? baseGrowthExperience = null,
+            int? fatigueDelta = null,
+            int? mindsetDelta = null,
+            int? coachTrustDelta = null,
+            int? mindsetTarget = null,
+            bool replaceMindsetTarget = false,
             int? mindsetMaximumStep = null)
         {
             return new CareerWeekActionContentDefinition(
@@ -166,11 +141,50 @@ namespace Volleyball.Career.EditModeTests
                 kind ?? value.Kind,
                 direction ?? value.Direction,
                 baseGrowthExperience ?? value.BaseGrowthExperience,
+                fatigueDelta ?? value.FatigueDelta,
+                mindsetDelta ?? value.MindsetDelta,
+                coachTrustDelta ?? value.CoachTrustDelta,
+                replaceMindsetTarget ? mindsetTarget : value.MindsetTarget,
+                mindsetMaximumStep ?? value.MindsetMaximumStep);
+        }
+
+        private static object[] Tuple(
+            string contentId,
+            CareerWeekActionKind kind,
+            CareerTrainingDirection? direction,
+            int baseGrowthExperience,
+            int fatigueDelta,
+            int mindsetDelta,
+            int coachTrustDelta,
+            int? mindsetTarget,
+            int mindsetMaximumStep)
+        {
+            return new object[]
+            {
+                contentId,
+                kind,
+                direction,
+                baseGrowthExperience,
+                fatigueDelta,
+                mindsetDelta,
+                coachTrustDelta,
+                mindsetTarget,
+                mindsetMaximumStep
+            };
+        }
+
+        private static object[] ToTuple(CareerWeekActionContentDefinition value)
+        {
+            return Tuple(
+                value.ContentId,
+                value.Kind,
+                value.Direction,
+                value.BaseGrowthExperience,
                 value.FatigueDelta,
                 value.MindsetDelta,
                 value.CoachTrustDelta,
                 value.MindsetTarget,
-                mindsetMaximumStep ?? value.MindsetMaximumStep);
+                value.MindsetMaximumStep);
         }
 
         private static CareerWeekActionContentDefinition[] Replace(
