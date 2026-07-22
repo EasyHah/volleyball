@@ -78,7 +78,12 @@
     },
     "Volleyball.Career.Application": {
       "path": "Assets/Volleyball/Career/Runtime/Application/Volleyball.Career.Application.asmdef",
-      "references": ["Volleyball.Career.Domain"],
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Career.MatchIntegration": {
+      "path": "Assets/Volleyball/Career/Runtime/MatchIntegration/Volleyball.Career.MatchIntegration.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain", "Volleyball.Career.Application"],
       "noEngineReferences": true
     },
     "Volleyball.Career.Persistence": {
@@ -92,7 +97,7 @@
     },
     "Volleyball.Career.EditModeTests": {
       "path": "Assets/Volleyball/Career/Tests/EditMode/Volleyball.Career.EditModeTests.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap"],
+      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap"],
       "includePlatforms": ["Editor"],
       "optionalUnityReferences": ["TestAssemblies"]
     },

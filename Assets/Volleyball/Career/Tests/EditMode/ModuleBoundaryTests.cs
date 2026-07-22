@@ -21,7 +21,8 @@ namespace Volleyball.Career.EditModeTests
             AssertDoesNotReference(typeof(CareerPlayerRecord), "Volleyball.Match.Presentation");
 
             AssertReferences(typeof(OperationReceiptIndex), "Volleyball.Career.Domain");
-            AssertDoesNotReference(typeof(OperationReceiptIndex), "Volleyball.Shared");
+            AssertReferences(typeof(OperationReceiptIndex), "Volleyball.Shared");
+            AssertDoesNotReference(typeof(OperationReceiptIndex), "Volleyball.Shared.MatchV2");
             AssertDoesNotReference(typeof(OperationReceiptIndex), "Volleyball.Match.Domain");
 
             AssertReferences(typeof(CareerSaveSnapshotMapper), "Volleyball.Career.Domain");
