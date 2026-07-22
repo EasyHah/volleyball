@@ -35,7 +35,8 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
             int? fixtureVersion = 1,
             int? simulationVersion = null,
             int? randomVersion = null,
-            uint matchSeed = 25649701u)
+            uint matchSeed = 25649701u,
+            PreMatchPriorityV2 priority = PreMatchPriorityV2.AttackFirst)
         {
             return MatchContextV2.Create(
                 Versions(simulationVersion, randomVersion),
@@ -48,7 +49,7 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                 "schedule.u1w1.match.01",
                 7500,
                 new MatchFormatV2("indoor_6v6", 6, 1, 25, 2),
-                PreMatchPriorityV2.AttackFirst,
+                priority,
                 teams);
         }
 

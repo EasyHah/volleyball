@@ -460,8 +460,10 @@ outcomeSummary
 
 `PendingMatch` 不是比赛内检查点，不保存局分、轮转位置、球状态、姿态或物理状态。首个里程碑仅让
 FakeMatch 恢复到赛前确认，并复用原 `sessionId`、完整上下文和 `matchSeed` 重新读取固定 fixture。
-未来直接比赛也只能从比赛开头重赛；放弃比赛的结果语义和中途续赛 `MatchCheckpoint` 都必须另行
-版本化设计，不能由首个里程碑猜测实现。
+未来直接比赛也只能从比赛开头重赛。Shared V2 已冻结 `abandoned` 结果语义：无 winner，
+且只能是无局与零 rally，或恰好一个真正未完成局并使 `rallyCount` 精确等于该局双方得分和；
+已达目标分与最小领先分的终局比分不得伪装为未完成。但何时触发放弃、恢复/交互如何处理，
+以及中途续赛 `MatchCheckpoint` 仍必须另行版本化设计，不能由首个里程碑猜测实现。
 
 ### 9.2 SettlementReceipt
 

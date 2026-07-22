@@ -7,7 +7,8 @@
 - 交互级别：跨模块（重点）
 - 关联分支：`feature/shared-career-fake-contract`
 - 关联提交或 PR：`f87ce2f feat(shared): add canonical match v2 contract`；
-  `fix(shared): harden match v2 contract`
+  `45f93a1 fix(shared): harden match v2 contract`；
+  `test(shared): lock match v2 wire tokens`
 - 独立复核修正日期：2026-07-23
 
 > [!IMPORTANT]
@@ -60,12 +61,22 @@ canonical writer 和 strict reader 共用下列完整顺序；任何缺失、多
   longestErrorStreak`。
 
 `contextHash` 是不写入最后 `contextHash` 字段时的 context canonical bytes 之 SHA-256；
-`resultHash` 同理不写入最后 `resultHash` 字段。两者均为 64 位小写十六进制。
+`resultHash` 同理不写入最后 `resultHash` 字段。两者均为 64 个小写十六进制字符（256 bit）。
 
 ## 值域、单位与事实口径
 
-- fixture/direct 不携带 Match 算法版本；quick simulation 必须同时携带两个 Match
-  算法版本且不携带 fixture 身份。`matchSeed` 覆盖完整 uint32 `0..4294967295`。
+- 所有 wire token 大小写敏感且只允许下列值：`executionMode`：`fixture`、`direct`、
+  `quick_simulation`；`preMatchPriority`：`attack_first`、`first_contact_security`、
+  `stamina_control`；`side`：`home`、`away`；`position`：`setter`、`outside_hitter`、
+  `middle_blocker`、`opposite`、`libero`；`status`：`completed`、`abandoned`；
+  `format.kind`：`indoor_6v6`。
+- `fixture` 模式要求非 null 且符合 stable-ID 规则的 `fixtureId`、正整数
+  `fixtureVersion`，同时 `matchSimulationVersion` 与 `matchRandomAlgorithmVersion` 均为 null。
+  `direct` 模式要求 `fixtureId`、`fixtureVersion`、`matchSimulationVersion` 与
+  `matchRandomAlgorithmVersion` 全部为 null。`quick_simulation` 模式要求 `fixtureId` 与
+  `fixtureVersion` 均为 null，且 `matchSimulationVersion` 与 `matchRandomAlgorithmVersion`
+  均为正整数。
+- `matchSeed` 覆盖完整 uint32 `0..4294967295`。
 - 6v6 阵容按 home 后 away、各自 rotation slot `1..6` 排列；每队恰有 1 二传、2 主攻、
   1 副攻、1 接应、1 自由人。12 个球员 ID 全局唯一；每队球衣号是 `1..99`
   且队内唯一。
@@ -154,8 +165,9 @@ manifest 自身是常规文本文件，不是 codec payload。测试使用预先
   随后另有 default stable-ID 与整数溢出 mutation RED，均在生产修复前真实失败。
 - 独立复核回归 RED：`Stage5A1-Review-Red.xml` 为 `59/74` passed、15 failed，直接暴露
   payload 尾随 LF、球衣号 `0`/重号被接受，以及 abandoned rally/终局约束不完整。
-- 最终 focused Shared.MatchV2 EditMode：`75/75` passed；legacy Shared EditMode：`6/6` passed；
-  完整项目 EditMode：`686/686` passed。
+- 最终 focused Shared.MatchV2 EditMode：`83/83` passed；legacy Shared EditMode：`6/6` passed；
+  完整项目 EditMode：`694/694` passed。其中 wire-token 用例通过公共 codec 双向锁定所有
+  合法枚举 token，7 个单项模式负测同时断言目标守卫的结构化错误消息。
 - Python repository policy tests：`8/8` passed；repository validator 以本复核 base `f87ce2f` 与阶段 base
   `e1a56f2` 分别执行，均 passed。
 - 四个 payload 先与测试程序中的独立完整 literal bytes 比对，再进入 codec；manifest

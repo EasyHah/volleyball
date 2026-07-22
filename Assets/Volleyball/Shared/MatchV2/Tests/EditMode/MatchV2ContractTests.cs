@@ -198,6 +198,37 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
                 Throws.TypeOf<MatchV2ContractException>());
         }
 
+        [TestCase("fixture_missing_identity", MatchExecutionModeV2.Fixture,
+            null, null, null, null, "fixtureId")]
+        [TestCase("fixture_only_id", MatchExecutionModeV2.Fixture,
+            "fixture.only.id", null, null, null, "fixtureVersion")]
+        [TestCase("fixture_only_version", MatchExecutionModeV2.Fixture,
+            null, 1, null, null, "fixtureId")]
+        [TestCase("direct_only_fixture_version", MatchExecutionModeV2.Direct,
+            null, 1, null, null, "Direct mode")]
+        [TestCase("quick_only_fixture_version", MatchExecutionModeV2.QuickSimulation,
+            null, 1, 1, 1, "Quick simulation")]
+        [TestCase("fixture_only_simulation_version", MatchExecutionModeV2.Fixture,
+            "fixture.valid", 1, 1, null, "Fixture mode")]
+        [TestCase("fixture_only_random_version", MatchExecutionModeV2.Fixture,
+            "fixture.valid", 1, null, 1, "Fixture mode")]
+        public void Context_RejectsEachIsolatedModePairingViolationAtTheIntendedGuard(
+            string caseName,
+            MatchExecutionModeV2 mode,
+            string fixtureId,
+            int? fixtureVersion,
+            int? simulationVersion,
+            int? randomVersion,
+            string expectedMessage)
+        {
+            Assert.That(() => MatchV2TestFactory.CreateContext(
+                    MatchV2TestFactory.CreateTeams(), mode, fixtureId, fixtureVersion,
+                    simulationVersion, randomVersion),
+                Throws.TypeOf<MatchV2ContractException>()
+                    .With.Message.Contains(expectedMessage),
+                caseName);
+        }
+
         [Test]
         public void PublicBoundaries_RejectNullCollectionsAndMembers()
         {

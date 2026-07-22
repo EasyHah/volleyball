@@ -62,6 +62,82 @@ namespace Volleyball.Shared.MatchV2.EditModeTests
             }
         }
 
+        [Test]
+        public void PublicCodec_LocksEveryLegalWireTokenInBothDirections()
+        {
+            var fixture = MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), priority: PreMatchPriorityV2.AttackFirst);
+            var direct = MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), MatchExecutionModeV2.Direct,
+                null, null, null, null, priority: PreMatchPriorityV2.FirstContactSecurity);
+            var quick = MatchV2TestFactory.CreateContext(
+                MatchV2TestFactory.CreateTeams(), MatchExecutionModeV2.QuickSimulation,
+                null, null, 1, 1, priority: PreMatchPriorityV2.StaminaControl);
+
+            var contextVectors = new[]
+            {
+                (fixture, "fixture", PreMatchPriorityV2.AttackFirst, "attack_first"),
+                (direct, "direct", PreMatchPriorityV2.FirstContactSecurity, "first_contact_security"),
+                (quick, "quick_simulation", PreMatchPriorityV2.StaminaControl, "stamina_control")
+            };
+            foreach (var vector in contextVectors)
+            {
+                var bytes = MatchContractV2Json.SerializeContext(vector.Item1);
+                var text = Encoding.UTF8.GetString(bytes);
+                Assert.That(text, Does.Contain("\"executionMode\":\"" + vector.Item2 + "\""));
+                Assert.That(text, Does.Contain("\"preMatchPriority\":\"" + vector.Item4 + "\""));
+
+                var decoded = MatchContractV2Json.DeserializeContext(bytes);
+                Assert.That(decoded.ExecutionMode, Is.EqualTo(vector.Item1.ExecutionMode));
+                Assert.That(decoded.PreMatchPriority, Is.EqualTo(vector.Item3));
+            }
+
+            var fixtureText = Encoding.UTF8.GetString(MatchContractV2Json.SerializeContext(fixture));
+            Assert.That(fixtureText, Does.Contain("\"kind\":\"indoor_6v6\""));
+            Assert.That(fixtureText, Does.Contain("\"side\":\"home\""));
+            Assert.That(fixtureText, Does.Contain("\"side\":\"away\""));
+            foreach (var token in new[]
+                     {
+                         "setter", "outside_hitter", "middle_blocker", "opposite", "libero"
+                     })
+                Assert.That(fixtureText, Does.Contain("\"position\":\"" + token + "\""));
+
+            var decodedFixture = MatchContractV2Json.DeserializeContext(
+                MatchContractV2Json.SerializeContext(fixture));
+            Assert.That(decodedFixture.Format.Kind, Is.EqualTo("indoor_6v6"));
+            Assert.That(decodedFixture.Teams.Select(team => team.Side),
+                Is.EqualTo(new[] { TeamSideV2.Home, TeamSideV2.Away }));
+            Assert.That(decodedFixture.Teams.SelectMany(team => team.Players)
+                    .Select(player => player.Position).Distinct(),
+                Is.EquivalentTo(new[]
+                {
+                    PlayerPositionV2.Setter,
+                    PlayerPositionV2.OutsideHitter,
+                    PlayerPositionV2.MiddleBlocker,
+                    PlayerPositionV2.Opposite,
+                    PlayerPositionV2.Libero
+                }));
+
+            var facts = MatchV2TestFactory.ZeroFacts(fixture);
+            var completed = MatchResultV2.CreateCompleted(
+                fixture, fixture.Teams[0].TeamId,
+                new[] { new SetScoreV2(1, 25, 21, true) }, 46, facts);
+            var abandoned = MatchResultV2.CreateAbandoned(
+                fixture, Array.Empty<SetScoreV2>(), 0, MatchV2TestFactory.ZeroFacts(fixture));
+            foreach (var vector in new[]
+                     {
+                         (completed, MatchStatusV2.Completed, "completed"),
+                         (abandoned, MatchStatusV2.Abandoned, "abandoned")
+                     })
+            {
+                var bytes = MatchContractV2Json.SerializeResult(vector.Item1);
+                Assert.That(Encoding.UTF8.GetString(bytes),
+                    Does.Contain("\"status\":\"" + vector.Item3 + "\""));
+                Assert.That(MatchContractV2Json.DeserializeResult(bytes, fixture).Status,
+                    Is.EqualTo(vector.Item2));
+            }
+        }
+
         [TestCase("duplicate")]
         [TestCase("unknown")]
         [TestCase("missing")]
