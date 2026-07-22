@@ -656,6 +656,37 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ScheduledBlockContact_ReorientsPreviousSetFacingTowardTheNet()
+        {
+            var player = CreatePlayer("ReorientedBlocker", TeamId.Orange, PlayerRole.Setter);
+            try
+            {
+                player.transform.forward = new Vector3(0.8f, 0f, 0.6f);
+                player.ScheduleBlockContact(
+                    10f,
+                    new Vector3(0f, 0f, PrototypePlayerAgent.NetClearance),
+                    9f,
+                    new SimVector3(0f, 2f, -8f),
+                    704);
+
+                var contacts = Collect(player, 10f);
+
+                Assert.That(contacts, Has.Count.EqualTo(6));
+                Assert.That(player.transform.forward.z, Is.EqualTo(-1f).Within(0.001f));
+                Assert.That(
+                    player.Rig.GetJoint("LeftPalm").position.z,
+                    Is.LessThan(player.transform.position.z));
+                Assert.That(
+                    player.Rig.GetJoint("RightPalm").position.z,
+                    Is.LessThan(player.transform.position.z));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void RetargetBlockContact_ClampsLargeLateCorrection()
         {
             var player = CreatePlayer("RetargetedBlocker", TeamId.Blue, PlayerRole.Setter);

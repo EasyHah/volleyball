@@ -49,6 +49,13 @@ action timeline. The abandoned palm-height-specific jump adjustment is removed;
 reachability comes from the actual animated arm volumes and the predicted block
 position.
 
+The blocker stands with its root 0.18 m from the center line, leaving the visible
+torso on its own side of the net, and is reoriented square to the net when the
+block is scheduled. The block pose presses both arms slightly forward and inward:
+the visible palms penetrate across the net plane and the forearm seam is narrower
+than a ball. This placement is part of the physical geometry, not an enlargement
+of the collision capsules.
+
 ## Verification
 
 Tests must prove all of the following before scene calibration:
@@ -65,6 +72,8 @@ Tests must prove all of the following before scene calibration:
 7. The fixed-seed ordinary 3v3 test records at least one physical block while
    retaining non-setter sets and defender attacks; the 100-sample 3v3/6v6
    calibration and 20-set symmetry tests continue to pass.
+8. A player left facing an earlier set route is squared back toward the net before
+   its block arm volumes become active.
 
 ## Compatibility and Risk
 

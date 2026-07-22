@@ -62,6 +62,73 @@ namespace Volleyball.EditModeTests
             }
         }
 
+        [Test]
+        public void BlockPose_FromLegalClosePosition_ReachesTheNetWithVisiblePalms()
+        {
+            var player = new GameObject("NetReachingBlockPose");
+            try
+            {
+                player.transform.position = new Vector3(
+                    0f,
+                    0f,
+                    -PrototypePlayerAgent.NetClearance);
+                var rig = StickFigureRig.Create(player.transform, Color.blue, "6");
+                rig.SetPose(StickFigurePose.Block, 1f);
+
+                Assert.That(
+                    rig.GetJoint("LeftPalm").position.z,
+                    Is.GreaterThanOrEqualTo(0f));
+                Assert.That(
+                    rig.GetJoint("RightPalm").position.z,
+                    Is.GreaterThanOrEqualTo(0f));
+
+                const float forearmDiameter = 0.13f;
+                var closedSeamWidth = (SimulatedBall.DefaultRadius * 2f) + forearmDiameter;
+                Assert.That(
+                    Mathf.Abs(
+                        rig.GetJoint("RightElbow").position.x -
+                        rig.GetJoint("LeftElbow").position.x),
+                    Is.LessThanOrEqualTo(closedSeamWidth));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
+
+        [Test]
+        public void BlockPose_CloseNetStance_IntersectsRepresentativeAboveTapeBall()
+        {
+            var player = new GameObject("RepresentativeNetBlock");
+            try
+            {
+                player.transform.position = new Vector3(
+                    0f,
+                    0.45f,
+                    -PrototypePlayerAgent.NetClearance);
+                var rig = StickFigureRig.Create(player.transform, Color.blue, "7");
+                rig.SetPose(StickFigurePose.Block, 1f);
+                var volumes = new BlockArmContactVolumes(rig).Capture(true, 803);
+                var ballCenter = new SimVector3(0f, 2.45f, 0.06f);
+
+                var minimumClearance = float.PositiveInfinity;
+                foreach (var volume in volumes)
+                {
+                    var closest = volume.Current.ClosestPoint(ballCenter, out _);
+                    minimumClearance = Mathf.Min(
+                        minimumClearance,
+                        (ballCenter - closest).Magnitude -
+                        (SimulatedBall.DefaultRadius + volume.Current.Radius));
+                }
+
+                Assert.That(minimumClearance, Is.LessThanOrEqualTo(0f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
+
         private static SimVector3 ToSimulation(Vector3 value)
         {
             return new SimVector3(value.x, value.y, value.z);

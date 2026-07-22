@@ -356,6 +356,11 @@ git commit -m "feat: use full-arm block contact volumes"
 - Consumes: the completed capsule contact path and all existing Task 7 counters.
 - Produces: final regression evidence, completed Task 7 documentation, and a clean feature branch checkpoint.
 
+**Calibration note:** blockers use a 0.18 m root clearance from the center line,
+face square to the net when scheduled, and use a visible forward/inward block
+pose whose palms cross the net plane and whose forearms close the central seam.
+Capsule radii remain tied to the visible arm and palm dimensions.
+
 - [ ] **Step 1: Run the ordinary 3v3 regression**
 
 Run:

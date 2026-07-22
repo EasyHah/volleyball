@@ -12,7 +12,7 @@ namespace Volleyball.Presentation
 {
     public sealed class PrototypePlayerAgent : MonoBehaviour, IBallContactSource
     {
-        public const float NetClearance = 0.45f;
+        public const float NetClearance = 0.18f;
         public const float BoundaryClearance = 0.25f;
 
         [SerializeField]
@@ -368,6 +368,7 @@ namespace Volleyball.Presentation
             }
 
             CancelScheduledContact();
+            transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
             ConfigureSupportAction(
                 TechniqueAction.Block,
                 scheduledSimulationTime,
