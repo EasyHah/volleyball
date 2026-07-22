@@ -1,0 +1,6 @@
+{
+  "name": "Volleyball.Shared.MatchV2",
+  "rootNamespace": "Volleyball.Shared.Contracts.V2",
+  "references": ["Volleyball.Shared"],
+  "noEngineReferences": true
+}

@@ -35,6 +35,11 @@
       "references": [],
       "noEngineReferences": true
     },
+    "Volleyball.Shared.MatchV2": {
+      "path": "Assets/Volleyball/Shared/MatchV2/Runtime/Volleyball.Shared.MatchV2.asmdef",
+      "references": ["Volleyball.Shared"],
+      "noEngineReferences": true
+    },
     "Volleyball.Match.Domain": {
       "path": "Assets/Volleyball/Match/Runtime/Domain/Volleyball.Match.Domain.asmdef",
       "references": ["Volleyball.Shared"],
@@ -98,6 +103,12 @@
     "Volleyball.Shared.EditModeTests": {
       "path": "Assets/Volleyball/Shared/Tests/EditMode/Volleyball.Shared.EditModeTests.asmdef",
       "references": ["Volleyball.Shared"],
+      "includePlatforms": ["Editor"],
+      "optionalUnityReferences": ["TestAssemblies"]
+    },
+    "Volleyball.Shared.MatchV2.EditModeTests": {
+      "path": "Assets/Volleyball/Shared/MatchV2/Tests/EditMode/Volleyball.Shared.MatchV2.EditModeTests.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2"],
       "includePlatforms": ["Editor"],
       "optionalUnityReferences": ["TestAssemblies"]
     }
