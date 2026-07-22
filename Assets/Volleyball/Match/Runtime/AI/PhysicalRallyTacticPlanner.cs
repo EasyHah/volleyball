@@ -199,11 +199,8 @@ namespace Volleyball.AI
 
     public sealed class PhysicalRallyTacticPlanner
     {
-        private readonly int _seed;
-
         public PhysicalRallyTacticPlanner(int seed)
         {
-            _seed = seed;
         }
 
         public PhysicalRallyTactics Create(int revision)
@@ -213,11 +210,10 @@ namespace Volleyball.AI
                 throw new ArgumentOutOfRangeException(nameof(revision));
             }
 
-            var random = new Random(unchecked(_seed + (revision * 104729)));
-            var blueSet = (SetRoute)random.Next(0, 4);
-            var blueSpike = (SpikeRoute)random.Next(0, 4);
-            var orangeSet = (SetRoute)random.Next(0, 4);
-            var orangeSpike = (SpikeRoute)random.Next(0, 4);
+            var blueSet = SetRoute.LeftPin;
+            var blueSpike = SpikeRoute.CrossCourt;
+            var orangeSet = SetRoute.LeftPin;
+            var orangeSpike = SpikeRoute.CrossCourt;
             var blueAttack = AttackPosition(blueSet, -1f);
             var orangeAttack = AttackPosition(orangeSet, 1f);
             var blueDefense = DefensePosition(orangeSpike, orangeAttack, -1f);
