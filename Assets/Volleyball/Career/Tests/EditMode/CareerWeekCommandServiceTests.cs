@@ -31,7 +31,7 @@ namespace Volleyball.Career.EditModeTests
             var command = Command(prior);
             var repository = new MemoryRepository(prior);
 
-            var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(command);
+            var result = Service(repository).ConfirmWeekPlan(command);
 
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
             Assert.That(result.PersistenceKind, Is.EqualTo(PersistenceResultKind.Committed));
@@ -97,7 +97,7 @@ namespace Volleyball.Career.EditModeTests
             foreach (var command in commands)
             {
                 var repository = new MemoryRepository(prior);
-                var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(command);
+                var result = Service(repository).ConfirmWeekPlan(command);
 
                 Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
                 Assert.That(result.Snapshot, Is.Null);
@@ -141,7 +141,7 @@ namespace Volleyball.Career.EditModeTests
             foreach (var command in cases)
             {
                 var repository = new MemoryRepository(prior);
-                var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(command);
+                var result = Service(repository).ConfirmWeekPlan(command);
 
                 Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
                 Assert.That(result.Snapshot, Is.SameAs(prior));
@@ -175,7 +175,7 @@ namespace Volleyball.Career.EditModeTests
             foreach (var testCase in cases)
             {
                 var repository = new MemoryRepository(testCase.Snapshot);
-                var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(testCase.Command);
+                var result = Service(repository).ConfirmWeekPlan(testCase.Command);
 
                 Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
                 Assert.That(result.Snapshot, Is.SameAs(testCase.Snapshot));
@@ -190,7 +190,7 @@ namespace Volleyball.Career.EditModeTests
             var prior = PlanningSnapshot();
             var command = Command(prior);
             var repository = new MemoryRepository(prior);
-            var service = new CareerWeekCommandService(repository);
+            var service = Service(repository);
             var applied = service.ConfirmWeekPlan(command);
             var changedTime = Command(
                 prior,
@@ -215,7 +215,7 @@ namespace Volleyball.Career.EditModeTests
             var prior = PlanningSnapshot();
             var original = Command(prior);
             var repository = new MemoryRepository(prior);
-            var service = new CareerWeekCommandService(repository);
+            var service = Service(repository);
             service.ConfirmWeekPlan(original);
             var changed = Command(
                 prior,
@@ -234,7 +234,7 @@ namespace Volleyball.Career.EditModeTests
         {
             var prior = PlanningSnapshot();
             var repository = new MemoryRepository(prior);
-            var service = new CareerWeekCommandService(repository);
+            var service = Service(repository);
             service.ConfirmWeekPlan(Command(prior));
             var stale = Command(
                 prior,
@@ -279,7 +279,7 @@ namespace Volleyball.Career.EditModeTests
         {
             var prior = PlanningSnapshot();
             var notFoundRepository = new MemoryRepository(null);
-            var notFound = new CareerWeekCommandService(notFoundRepository)
+            var notFound = Service(notFoundRepository)
                 .ConfirmWeekPlan(Command(prior));
             Assert.That(notFound.Status, Is.EqualTo(CareerApplicationStatus.NotFound));
             Assert.That(notFound.PersistenceKind, Is.EqualTo(PersistenceResultKind.NotFound));
@@ -289,7 +289,7 @@ namespace Volleyball.Career.EditModeTests
             {
                 LoadFailure = PersistenceResultKind.IoFailure
             };
-            var loadFailure = new CareerWeekCommandService(loadFailureRepository)
+            var loadFailure = Service(loadFailureRepository)
                 .ConfirmWeekPlan(Command(prior));
             Assert.That(loadFailure.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
             Assert.That(loadFailure.PersistenceKind, Is.EqualTo(PersistenceResultKind.IoFailure));
@@ -303,7 +303,7 @@ namespace Volleyball.Career.EditModeTests
                      })
             {
                 var repository = new MemoryRepository(prior) { CommitFailure = failureKind };
-                var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(Command(prior));
+                var result = Service(repository).ConfirmWeekPlan(Command(prior));
 
                 Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
                 Assert.That(result.PersistenceKind, Is.EqualTo(failureKind));
@@ -329,7 +329,7 @@ namespace Volleyball.Career.EditModeTests
             CareerWeekCommandResult result = null;
 
             Assert.DoesNotThrow(() =>
-                result = new CareerWeekCommandService(repository)
+                result = Service(repository)
                     .ConfirmWeekPlan(Command(prior)));
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
             Assert.That(result.PersistenceKind, Is.Null);
@@ -353,7 +353,7 @@ namespace Volleyball.Career.EditModeTests
             CareerWeekCommandResult result = null;
 
             Assert.DoesNotThrow(() =>
-                result = new CareerWeekCommandService(repository)
+                result = Service(repository)
                     .ConfirmWeekPlan(Command(prior)));
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
             Assert.That(result.PersistenceKind, Is.Null);
@@ -382,7 +382,7 @@ namespace Volleyball.Career.EditModeTests
             CareerWeekCommandResult result = null;
 
             Assert.DoesNotThrow(() =>
-                result = new CareerWeekCommandService(repository)
+                result = Service(repository)
                     .ConfirmWeekPlan(Command(prior)));
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
             Assert.That(result.PersistenceKind, Is.Null);
@@ -417,7 +417,7 @@ namespace Volleyball.Career.EditModeTests
 
                 CareerWeekCommandResult result = null;
                 Assert.DoesNotThrow(() =>
-                    result = new CareerWeekCommandService(repository)
+                    result = Service(repository)
                         .ConfirmWeekPlan(Command(prior)));
 
                 Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
@@ -440,7 +440,7 @@ namespace Volleyball.Career.EditModeTests
                 SuccessfulCommitKind = PersistenceResultKind.BackupDegraded
             };
 
-            var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(Command(prior));
+            var result = Service(repository).ConfirmWeekPlan(Command(prior));
 
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
             Assert.That(result.PersistenceKind, Is.EqualTo(PersistenceResultKind.BackupDegraded));
@@ -449,7 +449,556 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void ConfirmWeekPlan_ServiceSurfaceHasNoRandomDependencyOrFutureCommandShells()
+        public void ExecuteWeekAction_SlotOneAppliesActionAndFreezesExactEventWithoutApplyingIt()
+        {
+            var prior = ConfirmedSnapshot();
+            var command = ExecuteCommand(prior, 1);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var repository = new MemoryRepository(prior);
+
+            var result = Service(repository, random).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.PersistenceKind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(repository.LoadCount, Is.EqualTo(1));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(6));
+            Assert.That(result.Snapshot.Progression.Kind, Is.EqualTo(CareerProgressionKind.AwaitingEventChoice));
+            Assert.That(result.Snapshot.Progression.NextSlotNumber, Is.Zero);
+            Assert.That(result.Snapshot.Player.Attributes.Spike.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Spike.GrowthExperience + 132));
+            Assert.That(result.Snapshot.Fatigue.Value, Is.EqualTo(31));
+            Assert.That(result.Snapshot.Mindset.Value, Is.EqualTo(47));
+            Assert.That(result.Snapshot.CoachTrust.Value, Is.EqualTo(71));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(1));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[0].SourceSlotActionId,
+                Is.EqualTo(command.SlotActionId));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[0].Direction,
+                Is.EqualTo(CareerTrainingDirection.Spike));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[0].BonusBasisPoints,
+                Is.EqualTo(1000));
+
+            Assert.That(random.Calls, Has.Count.EqualTo(2));
+            AssertRandomCall(
+                random.Calls[0],
+                "event.team_meal.option.attend",
+                "498a5ad33f7737a79b2d489870aa5b9c32a287a44c5af6d94bad45877cd9de8d",
+                6791);
+            AssertRandomCall(
+                random.Calls[1],
+                "event.team_meal.option.extra_practice",
+                "505b9fbea8a2ef2df237fdd58b1e2fe36c81a22af753e6314214795ad0d98318",
+                7549);
+
+            var pending = result.Snapshot.Progression.PendingEvent;
+            Assert.That(pending.SourceWeekPlanId, Is.EqualTo(command.WeekPlanId));
+            Assert.That(pending.SourceSlotActionId, Is.EqualTo(command.SlotActionId));
+            Assert.That(pending.SourceActionOccurrenceId, Is.EqualTo(command.ActionOccurrenceId));
+            Assert.That(pending.EventId, Is.EqualTo("event.team_meal"));
+            Assert.That(pending.OccurrenceId, Is.EqualTo(command.TriggeredEventOccurrenceId.Value));
+            Assert.That(pending.RandomVersion, Is.EqualTo(1));
+            Assert.That(pending.ResumeAtSlotNumber, Is.EqualTo(2));
+            Assert.That(pending.Options.Select(option => option.OptionId), Is.EqualTo(new[]
+            {
+                "event.team_meal.option.attend",
+                "event.team_meal.option.extra_practice"
+            }));
+            AssertEffect(pending.Options[0], 0, 4, 6, 3);
+            AssertEffect(pending.Options[1], 88, 10, -2, 6);
+
+            var receipt = result.Snapshot.OperationReceipts.Last();
+            Assert.That(receipt.OperationId, Is.EqualTo(command.OperationId));
+            Assert.That(receipt.OperationKind, Is.EqualTo(OperationKind.ExecuteWeekAction));
+            Assert.That(receipt.Target.WeekPlanId, Is.EqualTo(command.WeekPlanId));
+            Assert.That(receipt.Target.SlotActionId, Is.EqualTo(command.SlotActionId));
+            Assert.That(receipt.Target.ActionOccurrenceId, Is.EqualTo(command.ActionOccurrenceId));
+            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV1.Hash(command)));
+            Assert.That(receipt.AppliedRevision, Is.EqualTo(6));
+            Assert.That(receipt.OutcomeKind, Is.EqualTo(OperationOutcomeKind.SlotCompleted));
+            Assert.That(receipt.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(132));
+            Assert.That(receipt.OutcomeSummary.FatigueDelta, Is.EqualTo(8));
+            Assert.That(receipt.OutcomeSummary.MindsetDelta, Is.Zero);
+            Assert.That(receipt.OutcomeSummary.CoachTrustDelta, Is.Zero);
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(132));
+            AssertExecutionContextPreserved(prior, result.Snapshot);
+            Assert.That(result.Snapshot.Player.Attributes.Serve, Is.EqualTo(prior.Player.Attributes.Serve));
+            Assert.That(result.Snapshot.Player.Attributes.Reception, Is.EqualTo(prior.Player.Attributes.Reception));
+            Assert.That(result.Snapshot.Player.Attributes.Defense, Is.EqualTo(prior.Player.Attributes.Defense));
+            Assert.That(result.Snapshot.Player.Attributes.Block, Is.EqualTo(prior.Player.Attributes.Block));
+            Assert.That(result.Snapshot.Player.Attributes.Movement, Is.EqualTo(prior.Player.Attributes.Movement));
+            Assert.That(result.Snapshot.Player.Attributes.Jump, Is.EqualTo(prior.Player.Attributes.Jump));
+            Assert.That(result.Snapshot.Player.Attributes.Stamina, Is.EqualTo(prior.Player.Attributes.Stamina));
+        }
+
+        [TestCase(CareerWeekActionKind.SpecializedTraining, "week_action.specialized.serve", 132, 8, 0, 0, 1)]
+        [TestCase(CareerWeekActionKind.StrengthTraining, "week_action.strength.jump", 110, 12, 0, 0, 1)]
+        [TestCase(CareerWeekActionKind.TeamPractice, "week_action.team_practice.standard", 22, 6, 0, 5, 0)]
+        [TestCase(CareerWeekActionKind.Rest, "week_action.rest.standard", 0, -18, 3, 0, 0)]
+        public void ExecuteWeekAction_SlotOneUsesClosedActionConsequencesAndEmphasisKinds(
+            CareerWeekActionKind kind,
+            string contentId,
+            long growth,
+            int fatigue,
+            int mindset,
+            int trust,
+            int emphasisCount)
+        {
+            var prior = ConfirmedSnapshot(kind, contentId);
+            var command = ExecuteCommand(prior, 1);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(new MemoryRepository(prior), random).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.OutcomeSummary.FatigueDelta, Is.EqualTo(fatigue));
+            Assert.That(result.OutcomeSummary.MindsetDelta, Is.EqualTo(mindset));
+            Assert.That(result.OutcomeSummary.CoachTrustDelta, Is.EqualTo(trust));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(emphasisCount));
+            if (kind == CareerWeekActionKind.TeamPractice)
+            {
+                Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(growth));
+                Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Stamina, Is.EqualTo(growth));
+            }
+            else
+            {
+                Assert.That(
+                    TotalGrowth(result.OutcomeSummary.GrowthExperienceDelta),
+                    Is.EqualTo(growth));
+            }
+
+            Assert.That(random.Calls, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_SlotTwoAdvancesRevisionSevenToEightWithoutRandomOrPendingMatch()
+        {
+            var prior = CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var command = ExecuteCommand(prior, 2);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var repository = new MemoryRepository(prior);
+
+            var result = Service(repository, random).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(8));
+            Assert.That(result.Snapshot.Progression.Kind, Is.EqualTo(CareerProgressionKind.Planned));
+            Assert.That(result.Snapshot.Progression.NextSlotNumber, Is.EqualTo(3));
+            Assert.That(result.Snapshot.Progression.PendingEvent, Is.Null);
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(2));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[1].Direction,
+                Is.EqualTo(CareerTrainingDirection.Jump));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[1].BonusBasisPoints,
+                Is.EqualTo(1000));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Jump, Is.EqualTo(100));
+            Assert.That(result.OutcomeSummary.FatigueDelta, Is.EqualTo(12));
+            Assert.That(random.Calls, Is.Empty);
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(typeof(CareerProgressionState).Assembly.GetType(
+                "Volleyball.Career.Domain.PendingMatch"), Is.Null);
+            AssertExecutionContextPreserved(prior, result.Snapshot);
+        }
+
+        [Test]
+        public void ExecuteWeekAction_InvalidShapesNeverLoadCommitOrCallRandom()
+        {
+            var prior = ConfirmedSnapshot();
+            var invalid = new ExecuteWeekActionCommand[]
+            {
+                null,
+                ExecuteCommand(prior, 1, profileId: default(ProfileId)),
+                ExecuteCommand(prior, 1, saveId: default(SaveId)),
+                ExecuteCommand(prior, 1, expectedToken: default(CareerVersionToken)),
+                ExecuteCommand(prior, 1, operationId: default(OperationId)),
+                ExecuteCommand(prior, 1, completedAtUtcMs: -1),
+                ExecuteCommand(prior, 1, completedAtUtcMs: 9007199254740992L),
+                ExecuteCommand(prior, 1, weekPlanId: default(WeekPlanId)),
+                ExecuteCommand(prior, 0),
+                ExecuteCommand(prior, 3),
+                ExecuteCommand(prior, 1, slotActionId: default(SlotActionId)),
+                ExecuteCommand(prior, 1, actionOccurrenceId: default(OccurrenceId)),
+                ExecuteCommand(prior, 1, contentId: " "),
+                ExecuteCommand(prior, 1, contentId: "\ud800"),
+                ExecuteCommand(prior, 1, eventOccurrenceId: null, useDefaultEventOccurrence: false),
+                ExecuteCommand(prior, 1, eventOccurrenceId: default(OccurrenceId)),
+                ExecuteCommand(CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage), 2,
+                    eventOccurrenceId: EventOccurrence())
+            };
+
+            foreach (var command in invalid)
+            {
+                var repository = new MemoryRepository(prior);
+                var random = new RecordingRandom(new CareerDeterministicRandom());
+                var result = Service(repository, random).ExecuteWeekAction(command);
+
+                Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+                Assert.That(result.Snapshot, Is.Null);
+                Assert.That(result.OutcomeSummary, Is.Null);
+                Assert.That(repository.LoadCount, Is.Zero);
+                Assert.That(repository.CommitCount, Is.Zero);
+                Assert.That(random.Calls, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void ExecuteWeekAction_ExactRetryAndCompletionTimeRetryDoNotDuplicateOrReroll()
+        {
+            var prior = ConfirmedSnapshot();
+            var command = ExecuteCommand(prior, 1);
+            var changedTime = ExecuteCommand(prior, 1, completedAtUtcMs: command.CompletedAtUtcMs + 1);
+            var repository = new MemoryRepository(prior);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var service = Service(repository, random);
+
+            var applied = service.ExecuteWeekAction(command);
+            var exact = service.ExecuteWeekAction(command);
+            var metadataOnly = service.ExecuteWeekAction(changedTime);
+
+            Assert.That(applied.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(exact.Status, Is.EqualTo(CareerApplicationStatus.Existing));
+            Assert.That(metadataOnly.Status, Is.EqualTo(CareerApplicationStatus.Existing));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Has.Count.EqualTo(2));
+            Assert.That(repository.Snapshot.OperationReceipts.Count(
+                receipt => receipt.OperationId.Equals(command.OperationId)), Is.EqualTo(1));
+            Assert.That(repository.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(1));
+            Assert.That(repository.Snapshot.Progression.PendingEvent.Options, Has.Count.EqualTo(2));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_RejectsAuthoritativeMismatchesWithoutRandomOrCommit()
+        {
+            var prior = ConfirmedSnapshot();
+            var unsupported = CopySnapshot(
+                prior,
+                versions: new CareerSaveVersions(1, 2, 1, 1));
+            var wrongCalendar = WithPlanCalendar(prior, 2, 1);
+            var cases = new[]
+            {
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, profileId: new ProfileId(Guid.Parse("abababab-abab-abab-abab-abababababab")))),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, saveId: new SaveId(Guid.Parse("acacacac-acac-acac-acac-acacacacacac")))),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, completedAtUtcMs: prior.Identity.UpdatedAtUtcMs - 1)),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, weekPlanId: WeekPlan(90))),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, slotActionId: Slot(90))),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, actionOccurrenceId: Occurrence(90))),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, contentId: "week_action.specialized.serve")),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 2, eventOccurrenceId: null, useDefaultEventOccurrence: false)),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, eventOccurrenceId: prior.Onboarding.Stages[0].OccurrenceId)),
+                new ExecuteInvalidCase(prior, ExecuteCommand(
+                    prior, 1, eventOccurrenceId: prior.Progression.WeekPlan.Slots[2].OccurrenceId)),
+                new ExecuteInvalidCase(unsupported, ExecuteCommand(unsupported, 1)),
+                new ExecuteInvalidCase(wrongCalendar, ExecuteCommand(wrongCalendar, 1)),
+                new ExecuteInvalidCase(PlanningSnapshot(), ExecuteCommandForPlanning(PlanningSnapshot()))
+            };
+
+            foreach (var testCase in cases)
+            {
+                var repository = new MemoryRepository(testCase.Snapshot);
+                var random = new RecordingRandom(new CareerDeterministicRandom());
+                var result = Service(repository, random).ExecuteWeekAction(testCase.Command);
+
+                Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+                Assert.That(result.Snapshot, Is.SameAs(testCase.Snapshot));
+                Assert.That(result.OutcomeSummary, Is.Null);
+                Assert.That(repository.CommitCount, Is.Zero);
+                Assert.That(random.Calls, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void ExecuteWeekAction_OperationConflictAndStaleVersionDoNotCalculateOrCommit()
+        {
+            var prior = ConfirmedSnapshot();
+            var command = ExecuteCommand(prior, 1);
+            var repository = new MemoryRepository(prior);
+            var initialRandom = new RecordingRandom(new CareerDeterministicRandom());
+            Assert.That(Service(repository, initialRandom).ExecuteWeekAction(command).Status,
+                Is.EqualTo(CareerApplicationStatus.Applied));
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var conflict = ExecuteCommand(
+                prior,
+                1,
+                eventOccurrenceId: new OccurrenceId(
+                    Guid.Parse("00000000-0000-0000-0000-000000000099")));
+            var stale = ExecuteCommand(
+                prior,
+                1,
+                operationId: OperationFor(21));
+
+            var conflictResult = Service(repository, random).ExecuteWeekAction(conflict);
+            var staleResult = Service(repository, random).ExecuteWeekAction(stale);
+
+            Assert.That(conflictResult.Status, Is.EqualTo(CareerApplicationStatus.OperationConflict));
+            Assert.That(conflictResult.ConflictingReceipt.OperationId, Is.EqualTo(command.OperationId));
+            Assert.That(conflictResult.OutcomeSummary, Is.Null);
+            Assert.That(staleResult.Status, Is.EqualTo(CareerApplicationStatus.VersionConflict));
+            Assert.That(staleResult.Snapshot, Is.SameAs(repository.Snapshot));
+            Assert.That(staleResult.OutcomeSummary, Is.Null);
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Is.Empty);
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ExecuteWeekAction_CommitRaceRechecksExactConflictingAndMissingReceipts(int slotNumber)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var command = ExecuteCommand(prior, slotNumber);
+            var winnerRandom = new RecordingRandom(new CareerDeterministicRandom());
+            var winnerRepository = new MemoryRepository(prior);
+            var winner = Service(winnerRepository, winnerRandom).ExecuteWeekAction(command).Snapshot;
+            var conflicting = WithLastReceiptFingerprint(winner, Hash('e'));
+            var missingCommand = ExecuteCommand(prior, slotNumber, operationId: OperationFor(22));
+            var missingRepository = new MemoryRepository(prior);
+            var missingWinner = Service(missingRepository, new RecordingRandom(new CareerDeterministicRandom()))
+                .ExecuteWeekAction(missingCommand).Snapshot;
+
+            AssertExecuteRace(
+                command, prior, winner, CareerApplicationStatus.Existing, false, slotNumber == 1 ? 2 : 0);
+            AssertExecuteRace(
+                command, prior, conflicting, CareerApplicationStatus.OperationConflict, true, slotNumber == 1 ? 2 : 0);
+            AssertExecuteRace(
+                command, prior, missingWinner, CareerApplicationStatus.VersionConflict, false, slotNumber == 1 ? 2 : 0);
+        }
+
+        [TestCase(1, PersistenceResultKind.NotCommitted)]
+        [TestCase(1, PersistenceResultKind.IoFailure)]
+        [TestCase(1, PersistenceResultKind.LockUnavailable)]
+        [TestCase(2, PersistenceResultKind.NotCommitted)]
+        [TestCase(2, PersistenceResultKind.IoFailure)]
+        [TestCase(2, PersistenceResultKind.LockUnavailable)]
+        public void ExecuteWeekAction_CommitFailuresExposeOnlyPriorAuthoritativeState(
+            int slotNumber,
+            PersistenceResultKind failureKind)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var repository = new MemoryRepository(prior) { CommitFailure = failureKind };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ExecuteWeekAction(ExecuteCommand(prior, slotNumber));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.PersistenceKind, Is.EqualTo(failureKind));
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(repository.Snapshot, Is.SameAs(prior));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
+        }
+
+        [TestCase(1, false)]
+        [TestCase(1, true)]
+        [TestCase(2, false)]
+        [TestCase(2, true)]
+        public void ExecuteWeekAction_RepositoryNullOrThrowNeverEscapesOrExposesSpeculation(
+            int slotNumber,
+            bool throws)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var initial = new MemoryRepository(prior)
+            {
+                NullLoadCallNumber = throws ? (int?)null : 1,
+                ThrowLoadCallNumber = throws ? 1 : (int?)null
+            };
+            CareerWeekCommandResult initialResult = null;
+            Assert.DoesNotThrow(() => initialResult = Service(initial).ExecuteWeekAction(
+                ExecuteCommand(prior, slotNumber)));
+            Assert.That(initialResult.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(initialResult.Snapshot, Is.Null);
+            Assert.That(initialResult.OutcomeSummary, Is.Null);
+            Assert.That(initial.CommitCount, Is.Zero);
+
+            var commit = new MemoryRepository(prior)
+            {
+                ReturnNullCommit = !throws,
+                ThrowCommit = throws
+            };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            CareerWeekCommandResult commitResult = null;
+            Assert.DoesNotThrow(() => commitResult = Service(commit, random).ExecuteWeekAction(
+                ExecuteCommand(prior, slotNumber)));
+            Assert.That(commitResult.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(commitResult.Snapshot, Is.SameAs(prior));
+            Assert.That(commitResult.OutcomeSummary, Is.Null);
+            Assert.That(commit.Snapshot, Is.SameAs(prior));
+            Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ExecuteWeekAction_MalformedLoadAndSuccessPayloadsAreStructuredPersistenceFailures(
+            int slotNumber)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var malformedLoadRepository = new MemoryRepository(prior)
+            {
+                MalformedLoadWithoutSnapshot = true
+            };
+            CareerWeekCommandResult malformedLoad = null;
+
+            Assert.DoesNotThrow(() => malformedLoad = Service(malformedLoadRepository)
+                .ExecuteWeekAction(ExecuteCommand(prior, slotNumber)));
+            Assert.That(malformedLoad.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(malformedLoad.Snapshot, Is.Null);
+            Assert.That(malformedLoad.OutcomeSummary, Is.Null);
+            Assert.That(malformedLoadRepository.CommitCount, Is.Zero);
+
+            var malformedSuccessRepository = new MemoryRepository(prior)
+            {
+                MalformedSuccessWithoutSnapshot = true
+            };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            CareerWeekCommandResult malformedSuccess = null;
+            Assert.DoesNotThrow(() => malformedSuccess = Service(malformedSuccessRepository, random)
+                .ExecuteWeekAction(ExecuteCommand(prior, slotNumber)));
+            Assert.That(malformedSuccess.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(malformedSuccess.Snapshot, Is.SameAs(prior));
+            Assert.That(malformedSuccess.OutcomeSummary, Is.Null);
+            Assert.That(malformedSuccessRepository.Snapshot, Is.SameAs(prior));
+            Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_InterleavedUnrelatedKeyDoesNotChangeFrozenOptionEffects()
+        {
+            var prior = ConfirmedSnapshot();
+            var command = ExecuteCommand(prior, 1);
+            var baseline = Service(
+                new MemoryRepository(prior),
+                new RecordingRandom(new CareerDeterministicRandom())).ExecuteWeekAction(command);
+            var interleavedRandom = new InterleavingRandom(new CareerDeterministicRandom());
+            var interleaved = Service(
+                new MemoryRepository(prior),
+                interleavedRandom).ExecuteWeekAction(command);
+
+            Assert.That(interleaved.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            for (var index = 0; index < 2; index++)
+            {
+                AssertEffectEqual(
+                    baseline.Snapshot.Progression.PendingEvent.Options[index],
+                    interleaved.Snapshot.Progression.PendingEvent.Options[index]);
+            }
+
+            Assert.That(interleavedRandom.RequestedCalls, Is.EqualTo(2));
+            Assert.That(interleavedRandom.UnrelatedCalls, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_SameDirectionSecondTrainingAddsOnlyFiveHundredBasisPoints()
+        {
+            var prior = SameDirectionSlotTwoPrior();
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(new MemoryRepository(prior), random)
+                .ExecuteWeekAction(ExecuteCommand(prior, 2));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(120));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(2));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[0].BonusBasisPoints, Is.EqualTo(1000));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions[1].BonusBasisPoints, Is.EqualTo(500));
+            Assert.That(result.Snapshot.TrainingEmphases.Freeze()[0].TotalBonusBasisPoints, Is.EqualTo(1500));
+            Assert.That(random.Calls, Is.Empty);
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ExecuteWeekAction_BackupDegradedReturnsAppliedPersistedSummary(int slotNumber)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var repository = new MemoryRepository(prior)
+            {
+                SuccessfulCommitKind = PersistenceResultKind.BackupDegraded
+            };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ExecuteWeekAction(ExecuteCommand(prior, slotNumber));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.PersistenceKind, Is.EqualTo(PersistenceResultKind.BackupDegraded));
+            Assert.That(result.OutcomeSummary.OutcomeKind, Is.EqualTo(OperationOutcomeKind.SlotCompleted));
+            Assert.That(result.Snapshot.OperationReceipts.Last().OutcomeSummary.OutcomeKind,
+                Is.EqualTo(result.OutcomeSummary.OutcomeKind));
+            Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
+        }
+
+        [TestCase(1)]
+        [TestCase(2)]
+        public void ExecuteWeekAction_SuccessPayloadWithoutMatchingReceiptIsPersistenceFailure(int slotNumber)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var repository = new MemoryRepository(prior)
+            {
+                SuccessfulCommitPayload = prior
+            };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ExecuteWeekAction(ExecuteCommand(prior, slotNumber));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
+        }
+
+        [TestCase(1, false)]
+        [TestCase(1, true)]
+        [TestCase(2, false)]
+        [TestCase(2, true)]
+        public void ExecuteWeekAction_CommitRaceReloadNullOrThrowIsPersistenceFailure(
+            int slotNumber,
+            bool throws)
+        {
+            var prior = slotNumber == 1
+                ? ConfirmedSnapshot()
+                : CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var command = ExecuteCommand(prior, slotNumber);
+            var winner = Service(
+                    new MemoryRepository(prior),
+                    new RecordingRandom(new CareerDeterministicRandom()))
+                .ExecuteWeekAction(command).Snapshot;
+            var repository = new MemoryRepository(prior)
+            {
+                CommitRaceWinner = winner,
+                NullLoadCallNumber = throws ? (int?)null : 2,
+                ThrowLoadCallNumber = throws ? 2 : (int?)null
+            };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            CareerWeekCommandResult result = null;
+
+            Assert.DoesNotThrow(() => result = Service(repository, random).ExecuteWeekAction(command));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.Snapshot, Is.Null);
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(repository.LoadCount, Is.EqualTo(2));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
+        }
+
+        [Test]
+        public void ConfirmWeekPlan_ServiceSurfaceHasFinalRandomDependencyAndNoFutureCommandShells()
         {
             var constructors = typeof(CareerWeekCommandService).GetConstructors();
             var methods = typeof(CareerWeekCommandService).GetMethods(
@@ -460,11 +1009,376 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(constructors, Has.Length.EqualTo(1));
             Assert.That(
                 constructors[0].GetParameters().Select(parameter => parameter.ParameterType),
-                Is.EqualTo(new[] { typeof(ICareerSaveRepository) }));
-            Assert.That(methods.Select(method => method.Name), Is.EqualTo(new[] { "ConfirmWeekPlan" }));
+                Is.EqualTo(new[] { typeof(ICareerSaveRepository), typeof(IDeterministicCareerRandom) }));
+            Assert.That(methods.Select(method => method.Name),
+                Is.EqualTo(new[] { "ConfirmWeekPlan", "ExecuteWeekAction" }));
             Assert.That(
                 fields.Any(field => field.FieldType == typeof(IDeterministicCareerRandom)),
-                Is.False);
+                Is.True);
+
+            var prior = PlanningSnapshot();
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var result = Service(new MemoryRepository(prior), random).ConfirmWeekPlan(Command(prior));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(random.Calls, Is.Empty);
+            Assert.That(typeof(CareerWeekCommandService).GetMethod("ResolveEventChoice"), Is.Null);
+        }
+
+        private static CareerWeekCommandService Service(
+            MemoryRepository repository,
+            IDeterministicCareerRandom random = null)
+        {
+            return new CareerWeekCommandService(
+                repository,
+                random ?? new RecordingRandom(new CareerDeterministicRandom()));
+        }
+
+        private static ExecuteWeekActionCommand ExecuteCommandForPlanning(
+            CareerSaveSnapshot planning)
+        {
+            return new ExecuteWeekActionCommand(
+                planning.Identity.ProfileId,
+                planning.Identity.SaveId,
+                planning.Identity.VersionToken,
+                OperationFor(20),
+                planning.Identity.UpdatedAtUtcMs + 1,
+                planning.Progression.WeekPlan.PlanId,
+                1,
+                Slot(1),
+                Occurrence(2),
+                "week_action.specialized.spike",
+                EventOccurrence());
+        }
+
+        private static CareerSaveSnapshot SameDirectionSlotTwoPrior()
+        {
+            var source = CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var oldPlan = source.Progression.WeekPlan;
+            var plan = new CareerWeekPlanState(
+                oldPlan.PlanId,
+                oldPlan.Season,
+                oldPlan.Week,
+                new[]
+                {
+                    oldPlan.Slots[0],
+                    new CareerWeekActionState(
+                        oldPlan.Slots[1].SlotActionId,
+                        oldPlan.Slots[1].OccurrenceId,
+                        CareerWeekActionKind.SpecializedTraining,
+                        "week_action.specialized.spike"),
+                    oldPlan.Slots[2]
+                },
+                true);
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                CareerProgressionState.Planned(plan, 2),
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                source.OperationReceipts);
+        }
+
+        private static CareerSaveSnapshot WithPlanCalendar(
+            CareerSaveSnapshot source,
+            int season,
+            int week)
+        {
+            var oldPlan = source.Progression.WeekPlan;
+            var plan = new CareerWeekPlanState(
+                oldPlan.PlanId,
+                season,
+                week,
+                oldPlan.Slots,
+                true);
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                CareerProgressionState.Planned(plan, source.Progression.NextSlotNumber),
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                source.OperationReceipts);
+        }
+
+        private static CareerSaveSnapshot WithLastReceiptFingerprint(
+            CareerSaveSnapshot source,
+            Sha256Digest fingerprint)
+        {
+            var receipts = new List<OperationReceipt>(source.OperationReceipts);
+            var last = receipts[receipts.Count - 1];
+            receipts[receipts.Count - 1] = new OperationReceipt(
+                last.OperationId,
+                last.OperationKind,
+                last.Target,
+                fingerprint,
+                last.AppliedLineageId,
+                last.AppliedRevision,
+                last.CompletedAtUtcMs,
+                last.OutcomeKind,
+                last.OutcomeSummary);
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                receipts);
+        }
+
+        private static void AssertExecuteRace(
+            ExecuteWeekActionCommand command,
+            CareerSaveSnapshot prior,
+            CareerSaveSnapshot winner,
+            CareerApplicationStatus status,
+            bool hasConflict,
+            int expectedRandomCalls)
+        {
+            var repository = new MemoryRepository(prior) { CommitRaceWinner = winner };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(status));
+            Assert.That(result.Snapshot, Is.SameAs(winner));
+            Assert.That(result.ConflictingReceipt != null, Is.EqualTo(hasConflict));
+            Assert.That(result.OutcomeSummary != null, Is.EqualTo(status == CareerApplicationStatus.Existing));
+            Assert.That(repository.LoadCount, Is.EqualTo(2));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Has.Count.EqualTo(expectedRandomCalls));
+        }
+
+        private static void AssertEffectEqual(
+            CareerEventOptionEffect expected,
+            CareerEventOptionEffect actual)
+        {
+            Assert.That(actual.OptionId, Is.EqualTo(expected.OptionId));
+            Assert.That(actual.GrowthExperienceDelta.Spike,
+                Is.EqualTo(expected.GrowthExperienceDelta.Spike));
+            Assert.That(actual.GrowthExperienceDelta.Serve,
+                Is.EqualTo(expected.GrowthExperienceDelta.Serve));
+            Assert.That(actual.GrowthExperienceDelta.Reception,
+                Is.EqualTo(expected.GrowthExperienceDelta.Reception));
+            Assert.That(actual.GrowthExperienceDelta.Defense,
+                Is.EqualTo(expected.GrowthExperienceDelta.Defense));
+            Assert.That(actual.GrowthExperienceDelta.Block,
+                Is.EqualTo(expected.GrowthExperienceDelta.Block));
+            Assert.That(actual.GrowthExperienceDelta.Movement,
+                Is.EqualTo(expected.GrowthExperienceDelta.Movement));
+            Assert.That(actual.GrowthExperienceDelta.Jump,
+                Is.EqualTo(expected.GrowthExperienceDelta.Jump));
+            Assert.That(actual.GrowthExperienceDelta.Stamina,
+                Is.EqualTo(expected.GrowthExperienceDelta.Stamina));
+            Assert.That(actual.FatigueDelta, Is.EqualTo(expected.FatigueDelta));
+            Assert.That(actual.MindsetDelta, Is.EqualTo(expected.MindsetDelta));
+            Assert.That(actual.CoachTrustDelta, Is.EqualTo(expected.CoachTrustDelta));
+        }
+
+        private static void AssertExecutionContextPreserved(
+            CareerSaveSnapshot prior,
+            CareerSaveSnapshot next)
+        {
+            Assert.That(next.Identity.ProfileId, Is.EqualTo(prior.Identity.ProfileId));
+            Assert.That(next.Identity.SaveId, Is.EqualTo(prior.Identity.SaveId));
+            Assert.That(next.Identity.LineageId, Is.EqualTo(prior.Identity.LineageId));
+            Assert.That(next.Identity.CreatedAtUtcMs, Is.EqualTo(prior.Identity.CreatedAtUtcMs));
+            Assert.That(next.Identity.RestoredFromVersionToken,
+                Is.EqualTo(prior.Identity.RestoredFromVersionToken));
+            Assert.That(next.Identity.SnapshotHash.Value, Is.EqualTo(ZeroHash));
+            Assert.That(next.Versions.SchemaVersion, Is.EqualTo(prior.Versions.SchemaVersion));
+            Assert.That(next.Versions.ContentVersion, Is.EqualTo(prior.Versions.ContentVersion));
+            Assert.That(next.Versions.RulesetVersion, Is.EqualTo(prior.Versions.RulesetVersion));
+            Assert.That(next.Versions.CareerRandomAlgorithmVersion,
+                Is.EqualTo(prior.Versions.CareerRandomAlgorithmVersion));
+            CollectionAssert.AreEqual(prior.CareerSeed.ToBytes(), next.CareerSeed.ToBytes());
+            Assert.That(next.CareerName, Is.EqualTo(prior.CareerName));
+            Assert.That(next.PlayerDraft.PlayerId, Is.EqualTo(prior.PlayerDraft.PlayerId));
+            Assert.That(next.PlayerDraft.DisplayName, Is.EqualTo(prior.PlayerDraft.DisplayName));
+            Assert.That(next.PlayerDraft.JerseyNumber, Is.EqualTo(prior.PlayerDraft.JerseyNumber));
+            Assert.That(next.Player.PlayerId, Is.EqualTo(prior.Player.PlayerId));
+            Assert.That(next.Player.DisplayName, Is.EqualTo(prior.Player.DisplayName));
+            Assert.That(next.Player.JerseyNumber, Is.EqualTo(prior.Player.JerseyNumber));
+            Assert.That(next.TeamId, Is.EqualTo(prior.TeamId));
+            Assert.That(next.PotentialGrade, Is.EqualTo(prior.PotentialGrade));
+            AssertPlanEqual(prior.Progression.WeekPlan, next.Progression.WeekPlan);
+            Assert.That(next.Onboarding.CurrentStageNumber,
+                Is.EqualTo(prior.Onboarding.CurrentStageNumber));
+            Assert.That(next.Onboarding.IsComplete, Is.EqualTo(prior.Onboarding.IsComplete));
+            Assert.That(next.Onboarding.IsFormallyEnrolled,
+                Is.EqualTo(prior.Onboarding.IsFormallyEnrolled));
+            Assert.That(next.Onboarding.Stages, Has.Count.EqualTo(prior.Onboarding.Stages.Count));
+            for (var index = 0; index < prior.Onboarding.Stages.Count; index++)
+            {
+                Assert.That(next.Onboarding.Stages[index].StageNumber,
+                    Is.EqualTo(prior.Onboarding.Stages[index].StageNumber));
+                Assert.That(next.Onboarding.Stages[index].OccurrenceId,
+                    Is.EqualTo(prior.Onboarding.Stages[index].OccurrenceId));
+                Assert.That(next.Onboarding.Stages[index].ChoiceId,
+                    Is.EqualTo(prior.Onboarding.Stages[index].ChoiceId));
+                AssertResolvedOutputs(
+                    prior.Onboarding.Stages[index].ResolvedOutputs,
+                    next.Onboarding.Stages[index].ResolvedOutputs);
+            }
+
+            for (var index = 0; index < prior.OperationReceipts.Count; index++)
+            {
+                AssertReceipt(prior.OperationReceipts[index], next.OperationReceipts[index]);
+            }
+        }
+
+        private static CareerSaveSnapshot ConfirmedSnapshot(
+            CareerWeekActionKind firstKind = CareerWeekActionKind.SpecializedTraining,
+            string firstContentId = "week_action.specialized.spike")
+        {
+            var planning = PlanningSnapshot();
+            var confirmation = Command(
+                planning,
+                candidate: Candidate(
+                    planning,
+                    firstKind: firstKind,
+                    firstContentId: firstContentId));
+            var confirmed = AppliedSnapshot(planning, confirmation);
+            var seed = new byte[CareerSeed.ByteLength];
+            for (var index = 0; index < seed.Length; index++)
+            {
+                seed[index] = (byte)index;
+            }
+
+            return new CareerSaveSnapshot(
+                confirmed.Versions,
+                confirmed.Identity,
+                new CareerSeed(seed),
+                confirmed.CareerName,
+                confirmed.PlayerDraft,
+                confirmed.Onboarding,
+                confirmed.Progression,
+                confirmed.TrainingEmphases,
+                confirmed.Player,
+                confirmed.TeamId,
+                confirmed.PotentialGrade,
+                confirmed.Fatigue,
+                confirmed.Mindset,
+                confirmed.CoachTrust,
+                confirmed.OperationReceipts);
+        }
+
+        private static ExecuteWeekActionCommand ExecuteCommand(
+            CareerSaveSnapshot prior,
+            int slotNumber,
+            ProfileId? profileId = null,
+            SaveId? saveId = null,
+            CareerVersionToken? expectedToken = null,
+            OperationId? operationId = null,
+            long completedAtUtcMs = 300,
+            WeekPlanId? weekPlanId = null,
+            SlotActionId? slotActionId = null,
+            OccurrenceId? actionOccurrenceId = null,
+            string contentId = null,
+            OccurrenceId? eventOccurrenceId = null,
+            bool useDefaultEventOccurrence = true)
+        {
+            var plan = prior.Progression.WeekPlan;
+            var action = slotNumber >= 1 && slotNumber <= plan.Slots.Count
+                ? plan.Slots[slotNumber - 1]
+                : plan.Slots[0];
+            return new ExecuteWeekActionCommand(
+                profileId ?? Profile,
+                saveId ?? Save,
+                expectedToken ?? prior.Identity.VersionToken,
+                operationId ?? OperationFor(20),
+                completedAtUtcMs,
+                weekPlanId ?? plan.PlanId,
+                slotNumber,
+                slotActionId ?? action.SlotActionId,
+                actionOccurrenceId ?? action.OccurrenceId,
+                contentId ?? action.ContentId,
+                useDefaultEventOccurrence && slotNumber == 1 && !eventOccurrenceId.HasValue
+                    ? new OccurrenceId?(EventOccurrence())
+                    : eventOccurrenceId);
+        }
+
+        private static OccurrenceId EventOccurrence()
+        {
+            return new OccurrenceId(Guid.Parse("00000000-0000-0000-0000-000000000003"));
+        }
+
+        private static long TotalGrowth(CareerAttributeGrowthDelta delta)
+        {
+            return delta.Spike + delta.Serve + delta.Reception + delta.Defense +
+                   delta.Block + delta.Movement + delta.Jump + delta.Stamina;
+        }
+
+        private static void AssertEffect(
+            CareerEventOptionEffect effect,
+            long spikeGrowth,
+            int fatigue,
+            int mindset,
+            int trust)
+        {
+            Assert.That(effect.GrowthExperienceDelta.Spike, Is.EqualTo(spikeGrowth));
+            Assert.That(TotalGrowth(effect.GrowthExperienceDelta), Is.EqualTo(spikeGrowth));
+            Assert.That(effect.FatigueDelta, Is.EqualTo(fatigue));
+            Assert.That(effect.MindsetDelta, Is.EqualTo(mindset));
+            Assert.That(effect.CoachTrustDelta, Is.EqualTo(trust));
+        }
+
+        private static void AssertRandomCall(
+            RandomCall call,
+            string optionId,
+            string expectedDigest,
+            long expectedRoll)
+        {
+            Assert.That(call.Request.AlgorithmVersion, Is.EqualTo(1));
+            Assert.That(call.Request.StreamId, Is.EqualTo("event"));
+            Assert.That(call.Request.Season, Is.EqualTo(1));
+            Assert.That(call.Request.Week, Is.EqualTo(1));
+            Assert.That(call.Request.EntityStableId, Is.EqualTo(optionId));
+            Assert.That(call.Request.OccurrenceId, Is.EqualTo(EventOccurrence()));
+            Assert.That(call.Request.DrawIndex, Is.Zero);
+            Assert.That(call.Minimum, Is.Zero);
+            Assert.That(call.Maximum, Is.EqualTo(10000));
+            Assert.That(call.Result, Is.EqualTo(expectedRoll));
+            Assert.That(
+                Hex(new CareerDeterministicRandom().ComputeDigest(call.Request, 0)),
+                Is.EqualTo(expectedDigest));
+        }
+
+        private static string Hex(byte[] bytes)
+        {
+            const string alphabet = "0123456789abcdef";
+            var characters = new char[bytes.Length * 2];
+            for (var index = 0; index < bytes.Length; index++)
+            {
+                characters[index * 2] = alphabet[bytes[index] >> 4];
+                characters[(index * 2) + 1] = alphabet[bytes[index] & 15];
+            }
+
+            return new string(characters);
         }
 
         private static void AssertRace(
@@ -476,7 +1390,7 @@ namespace Volleyball.Career.EditModeTests
         {
             var repository = new MemoryRepository(prior) { CommitRaceWinner = winner };
 
-            var result = new CareerWeekCommandService(repository).ConfirmWeekPlan(command);
+            var result = Service(repository).ConfirmWeekPlan(command);
 
             Assert.That(result.Status, Is.EqualTo(expectedStatus));
             Assert.That(result.Snapshot, Is.SameAs(winner));
@@ -973,6 +1887,96 @@ namespace Volleyball.Career.EditModeTests
             public ConfirmWeekPlanCommand Command { get; }
         }
 
+        private readonly struct ExecuteInvalidCase
+        {
+            public ExecuteInvalidCase(
+                CareerSaveSnapshot snapshot,
+                ExecuteWeekActionCommand command)
+            {
+                Snapshot = snapshot;
+                Command = command;
+            }
+
+            public CareerSaveSnapshot Snapshot { get; }
+            public ExecuteWeekActionCommand Command { get; }
+        }
+
+        private sealed class RandomCall
+        {
+            public RandomCall(
+                CareerRandomRequest request,
+                long minimum,
+                long maximum,
+                long result)
+            {
+                Request = request;
+                Minimum = minimum;
+                Maximum = maximum;
+                Result = result;
+            }
+
+            public CareerRandomRequest Request { get; }
+            public long Minimum { get; }
+            public long Maximum { get; }
+            public long Result { get; }
+        }
+
+        private sealed class RecordingRandom : IDeterministicCareerRandom
+        {
+            private readonly IDeterministicCareerRandom _inner;
+
+            public RecordingRandom(IDeterministicCareerRandom inner)
+            {
+                _inner = inner;
+            }
+
+            public List<RandomCall> Calls { get; } = new List<RandomCall>();
+
+            public long NextInt64(
+                CareerRandomRequest request,
+                long minInclusive,
+                long maxExclusive)
+            {
+                var result = _inner.NextInt64(request, minInclusive, maxExclusive);
+                Calls.Add(new RandomCall(request, minInclusive, maxExclusive, result));
+                return result;
+            }
+        }
+
+        private sealed class InterleavingRandom : IDeterministicCareerRandom
+        {
+            private readonly IDeterministicCareerRandom _inner;
+
+            public InterleavingRandom(IDeterministicCareerRandom inner)
+            {
+                _inner = inner;
+            }
+
+            public int RequestedCalls { get; private set; }
+            public int UnrelatedCalls { get; private set; }
+
+            public long NextInt64(
+                CareerRandomRequest request,
+                long minInclusive,
+                long maxExclusive)
+            {
+                var unrelated = new CareerRandomRequest(
+                    request.AlgorithmVersion,
+                    request.Seed,
+                    "event",
+                    request.Season,
+                    request.Week,
+                    "event.team_meal.option.attend",
+                    new OccurrenceId(
+                        Guid.Parse("00000000-0000-0000-0000-000000000077")),
+                    0);
+                _inner.NextInt64(unrelated, 0, 10000);
+                UnrelatedCalls++;
+                RequestedCalls++;
+                return _inner.NextInt64(request, minInclusive, maxExclusive);
+            }
+        }
+
         private sealed class MemoryRepository : ICareerSaveRepository
         {
             public MemoryRepository(CareerSaveSnapshot snapshot)
@@ -997,6 +2001,10 @@ namespace Volleyball.Career.EditModeTests
             public bool ReturnNullCommit { get; set; }
 
             public bool ThrowCommit { get; set; }
+
+            public bool MalformedLoadWithoutSnapshot { get; set; }
+
+            public bool MalformedSuccessWithoutSnapshot { get; set; }
 
             public PersistenceResultKind SuccessfulCommitKind { get; set; } =
                 PersistenceResultKind.Committed;
@@ -1030,6 +2038,11 @@ namespace Volleyball.Career.EditModeTests
                     return new CareerPersistenceResult(LoadFailure.Value);
                 }
 
+                if (MalformedLoadWithoutSnapshot)
+                {
+                    return new CareerPersistenceResult(PersistenceResultKind.Loaded);
+                }
+
                 return Snapshot == null
                     ? new CareerPersistenceResult(PersistenceResultKind.NotFound)
                     : new CareerPersistenceResult(PersistenceResultKind.Loaded, Snapshot);
@@ -1051,6 +2064,11 @@ namespace Volleyball.Career.EditModeTests
                 if (ThrowCommit)
                 {
                     throw new IOException("Injected repository commit failure.");
+                }
+
+                if (MalformedSuccessWithoutSnapshot)
+                {
+                    return new CareerPersistenceResult(SuccessfulCommitKind);
                 }
 
                 if (CommitRaceWinner != null)

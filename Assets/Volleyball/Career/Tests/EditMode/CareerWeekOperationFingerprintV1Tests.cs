@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using NUnit.Framework;
 using Volleyball.Career.Application;
@@ -136,9 +138,152 @@ namespace Volleyball.Career.EditModeTests
                     "\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}"));
         }
 
+        [Test]
+        public void ExecuteWeekActionCommand_HasExactImmutablePublicContract()
+        {
+            var type = typeof(ExecuteWeekActionCommand);
+            var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+
+            CollectionAssert.AreEquivalent(
+                new[]
+                {
+                    "ProfileId", "SaveId", "ExpectedVersionToken", "OperationId",
+                    "CompletedAtUtcMs", "WeekPlanId", "SlotNumber", "SlotActionId",
+                    "ActionOccurrenceId", "ContentId", "TriggeredEventOccurrenceId"
+                },
+                properties.Select(property => property.Name));
+            Assert.That(properties, Has.All.Matches<PropertyInfo>(property => !property.CanWrite));
+            Assert.That(type.GetConstructors(BindingFlags.Instance | BindingFlags.Public), Has.Length.EqualTo(1));
+        }
+
+        [Test]
+        public void ExecuteWeekActionFingerprintV1_SlotOneHasLockedCanonicalBytesAndHash()
+        {
+            const string expectedJson =
+                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"execute_week_action\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":5,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"slotNumber\":1,\"slotActionId\":\"55555555-5555-5555-5555-555555555555\",\"actionOccurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"contentId\":\"week_action.specialized.spike\",\"triggeredEventOccurrenceId\":\"00000000-0000-0000-0000-000000000003\",\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+            var command = ExecuteCommand();
+
+            CollectionAssert.AreEqual(
+                Encoding.UTF8.GetBytes(expectedJson),
+                CareerOperationFingerprintV1.Encode(command));
+            Assert.That(
+                CareerOperationFingerprintV1.Hash(command).Value,
+                Is.EqualTo("ad62ae072ff9cbefecb9934d18a4456fa99c4e9467a228bbdae3891e3cb1cd88"));
+        }
+
+        [Test]
+        public void ExecuteWeekActionFingerprintV1_SlotTwoHasLockedCanonicalNullBytesAndHash()
+        {
+            var expectedJson =
+                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"execute_week_action\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":7,\"expectedSnapshotHash\":\"" + new string('f', 64) + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"slotNumber\":2,\"slotActionId\":\"77777777-7777-7777-7777-777777777777\",\"actionOccurrenceId\":\"88888888-8888-8888-8888-888888888888\",\"contentId\":\"week_action.rest.standard\",\"triggeredEventOccurrenceId\":null,\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+            var command = ExecuteCommand(
+                expectedToken: Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    7,
+                    new Sha256Digest(new string('f', 64))),
+                slotNumber: 2,
+                slotActionId: new SlotActionId(Guid.Parse("77777777-7777-7777-7777-777777777777")),
+                actionOccurrenceId: new OccurrenceId(Guid.Parse("88888888-8888-8888-8888-888888888888")),
+                contentId: "week_action.rest.standard",
+                eventOccurrenceId: null,
+                useDefaultEventOccurrence: false);
+
+            CollectionAssert.AreEqual(
+                Encoding.UTF8.GetBytes(expectedJson),
+                CareerOperationFingerprintV1.Encode(command));
+            Assert.That(
+                CareerOperationFingerprintV1.Hash(command).Value,
+                Is.EqualTo("ce66e7b0fe43edf4c833e99a050e0d765cd12c8fdba5237a4d4b981999162852"));
+        }
+
+        [Test]
+        public void ExecuteWeekActionFingerprintV1_ExcludesReceiptLookupAndCompletionMetadata()
+        {
+            var baseline = ExecuteCommand();
+            var changedOperation = ExecuteCommand(
+                operationId: new OperationId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")));
+            var changedTime = ExecuteCommand(completedAtUtcMs: 9007199254740991L);
+
+            Assert.That(CareerOperationFingerprintV1.Hash(changedOperation),
+                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
+            Assert.That(CareerOperationFingerprintV1.Hash(changedTime),
+                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
+            var json = Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(baseline));
+            Assert.That(json, Does.Not.Contain("operationId"));
+            Assert.That(json, Does.Not.Contain("completedAtUtcMs"));
+        }
+
+        [Test]
+        public void ExecuteWeekActionFingerprintV1_IsSensitiveToEveryBusinessInput()
+        {
+            var baseline = CareerOperationFingerprintV1.Hash(ExecuteCommand());
+            var mutations = new[]
+            {
+                ExecuteCommand(profileId: new ProfileId(Guid.Parse("12121212-1212-1212-1212-121212121212"))),
+                ExecuteCommand(saveId: new SaveId(Guid.Parse("13131313-1313-1313-1313-131313131313"))),
+                ExecuteCommand(expectedToken: Token(
+                    new LineageId(Guid.Parse("14141414-1414-1414-1414-141414141414")),
+                    5,
+                    new Sha256Digest(ZeroHash))),
+                ExecuteCommand(expectedToken: Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    6,
+                    new Sha256Digest(ZeroHash))),
+                ExecuteCommand(expectedToken: Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    5,
+                    new Sha256Digest(new string('e', 64)))),
+                ExecuteCommand(weekPlanId: new WeekPlanId(Guid.Parse("15151515-1515-1515-1515-151515151515"))),
+                ExecuteCommand(slotNumber: 2),
+                ExecuteCommand(slotActionId: new SlotActionId(Guid.Parse("16161616-1616-1616-1616-161616161616"))),
+                ExecuteCommand(actionOccurrenceId: new OccurrenceId(Guid.Parse("17171717-1717-1717-1717-171717171717"))),
+                ExecuteCommand(contentId: "week_action.specialized.serve"),
+                ExecuteCommand(eventOccurrenceId: null, useDefaultEventOccurrence: false),
+                ExecuteCommand(eventOccurrenceId: new OccurrenceId(Guid.Parse("18181818-1818-1818-1818-181818181818")))
+            };
+
+            foreach (var mutation in mutations)
+            {
+                Assert.That(CareerOperationFingerprintV1.Hash(mutation), Is.Not.EqualTo(baseline));
+            }
+        }
+
         private static string Fingerprint(CareerWeekPlanState candidate)
         {
             return Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(Command(candidate: candidate)));
+        }
+
+        private static ExecuteWeekActionCommand ExecuteCommand(
+            ProfileId? profileId = null,
+            SaveId? saveId = null,
+            CareerVersionToken? expectedToken = null,
+            OperationId? operationId = null,
+            long completedAtUtcMs = 100,
+            WeekPlanId? weekPlanId = null,
+            int slotNumber = 1,
+            SlotActionId? slotActionId = null,
+            OccurrenceId? actionOccurrenceId = null,
+            string contentId = "week_action.specialized.spike",
+            OccurrenceId? eventOccurrenceId = null,
+            bool useDefaultEventOccurrence = true)
+        {
+            return new ExecuteWeekActionCommand(
+                profileId ?? new ProfileId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
+                saveId ?? new SaveId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
+                expectedToken ?? Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    5,
+                    new Sha256Digest(ZeroHash)),
+                operationId ?? new OperationId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
+                completedAtUtcMs,
+                weekPlanId ?? new WeekPlanId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
+                slotNumber,
+                slotActionId ?? new SlotActionId(Guid.Parse("55555555-5555-5555-5555-555555555555")),
+                actionOccurrenceId ?? new OccurrenceId(Guid.Parse("66666666-6666-6666-6666-666666666666")),
+                contentId,
+                useDefaultEventOccurrence && !eventOccurrenceId.HasValue
+                    ? new OccurrenceId?(new OccurrenceId(Guid.Parse("00000000-0000-0000-0000-000000000003")))
+                    : eventOccurrenceId);
         }
 
         private static ConfirmWeekPlanCommand Command(

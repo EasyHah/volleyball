@@ -156,6 +156,45 @@ namespace Volleyball.Career.Application
             return Encoding.UTF8.GetBytes(builder.ToString());
         }
 
+        public static byte[] Encode(ExecuteWeekActionCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            var builder = new StringBuilder(800);
+            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"execute_week_action\"");
+            AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "expectedLineageId",
+                command.ExpectedVersionToken.LineageId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "expectedRevision", command.ExpectedVersionToken.Revision);
+            AppendString(
+                builder,
+                "expectedSnapshotHash",
+                command.ExpectedVersionToken.SnapshotHash.Value);
+            AppendString(builder, "weekPlanId", command.WeekPlanId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "slotNumber", command.SlotNumber);
+            AppendString(builder, "slotActionId", command.SlotActionId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "actionOccurrenceId",
+                command.ActionOccurrenceId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "contentId", command.ContentId);
+            AppendNullableId(
+                builder,
+                "triggeredEventOccurrenceId",
+                command.TriggeredEventOccurrenceId.HasValue
+                    ? new Guid?(command.TriggeredEventOccurrenceId.Value.Value)
+                    : null);
+            AppendVersions(builder);
+            builder.Append('}');
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
         public static Sha256Digest Hash(CreateCareerCommand command)
         {
             return HashBytes(Encode(command));
@@ -169,6 +208,11 @@ namespace Volleyball.Career.Application
         }
 
         public static Sha256Digest Hash(ConfirmWeekPlanCommand command)
+        {
+            return HashBytes(Encode(command));
+        }
+
+        public static Sha256Digest Hash(ExecuteWeekActionCommand command)
         {
             return HashBytes(Encode(command));
         }

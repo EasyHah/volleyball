@@ -40,6 +40,57 @@ namespace Volleyball.Career.Application
         public CareerWeekPlanState CandidatePlan { get; }
     }
 
+    public sealed class ExecuteWeekActionCommand
+    {
+        public ExecuteWeekActionCommand(
+            ProfileId profileId,
+            SaveId saveId,
+            CareerVersionToken expectedVersionToken,
+            OperationId operationId,
+            long completedAtUtcMs,
+            WeekPlanId weekPlanId,
+            int slotNumber,
+            SlotActionId slotActionId,
+            OccurrenceId actionOccurrenceId,
+            string contentId,
+            OccurrenceId? triggeredEventOccurrenceId)
+        {
+            ProfileId = profileId;
+            SaveId = saveId;
+            ExpectedVersionToken = expectedVersionToken;
+            OperationId = operationId;
+            CompletedAtUtcMs = completedAtUtcMs;
+            WeekPlanId = weekPlanId;
+            SlotNumber = slotNumber;
+            SlotActionId = slotActionId;
+            ActionOccurrenceId = actionOccurrenceId;
+            ContentId = contentId;
+            TriggeredEventOccurrenceId = triggeredEventOccurrenceId;
+        }
+
+        public ProfileId ProfileId { get; }
+
+        public SaveId SaveId { get; }
+
+        public CareerVersionToken ExpectedVersionToken { get; }
+
+        public OperationId OperationId { get; }
+
+        public long CompletedAtUtcMs { get; }
+
+        public WeekPlanId WeekPlanId { get; }
+
+        public int SlotNumber { get; }
+
+        public SlotActionId SlotActionId { get; }
+
+        public OccurrenceId ActionOccurrenceId { get; }
+
+        public string ContentId { get; }
+
+        public OccurrenceId? TriggeredEventOccurrenceId { get; }
+    }
+
     public sealed class CareerWeekCommandResult
     {
         public CareerWeekCommandResult(
