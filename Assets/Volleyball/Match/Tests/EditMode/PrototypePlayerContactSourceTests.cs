@@ -589,7 +589,41 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void ScheduledBlockContact_EmitsTwoActivePalmsOnlyInsideItsWindow()
+        public void SetPreparation_ReplacesAnOldContactAndMovesWithoutAddingContactCandidates()
+        {
+            var gameObject = new GameObject("SetPreparationPlayer");
+            try
+            {
+                var player = gameObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PlayerId(TeamId.Blue, PlayerRole.Setter),
+                    Color.blue,
+                    "2");
+                player.transform.position = new Vector3(-3f, 0f, -7f);
+                var target = new Vector3(1.2f, 0f, -1.1f);
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    0.5f,
+                    new SimVector3(0f, 5f, 4f),
+                    NoExecutionError(),
+                    71);
+                player.ScheduleSetPreparation(1.5f, target, 0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(1.39f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(player.ReplayScheduledAction, Is.EqualTo(TechniqueAction.Set.ToString()));
+                Assert.That(Vector3.Distance(player.transform.position, target), Is.LessThan(0.05f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledBlockContact_EmitsSixArmVolumesOnlyInsideItsWindow()
         {
             var player = CreatePlayer("PhysicalBlocker", TeamId.Orange, PlayerRole.Attacker);
             try
@@ -605,12 +639,13 @@ namespace Volleyball.EditModeTests
                 var atContact = Collect(player, 10f);
 
                 Assert.That(before, Is.Empty);
-                Assert.That(atContact, Has.Count.EqualTo(2));
+                Assert.That(atContact.Count, Is.EqualTo(6));
                 Assert.That(atContact, Has.All.Matches<BallContactCandidate>(candidate =>
                     candidate.Action == TechniqueAction.Block &&
                     candidate.Actor.HasValue && candidate.Actor.Value.Equals(player.Id) &&
-                    candidate.Surface.ContactGroupId == 701 &&
-                    candidate.Surface.Active));
+                    candidate.IsCapsule &&
+                    candidate.Capsule.ContactGroupId == 701 &&
+                    candidate.Capsule.Active));
                 Assert.That(player.transform.position.y, Is.GreaterThan(0.2f));
                 Assert.That(player.PhysicalBlockContactAssignments, Is.EqualTo(1));
             }

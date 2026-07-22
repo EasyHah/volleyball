@@ -108,6 +108,7 @@ namespace Volleyball.Presentation
         private Vector3 _attackTakeoffPosition;
         private Vector3 _attackContactRootPosition;
         private bool _physicalBlockActivationLogged;
+        private BlockArmContactVolumes _blockArmContactVolumes;
         private bool _isControlledHandling;
         private float _courtHalfLength = CourtBuilder.HalfLength;
 
@@ -132,6 +133,7 @@ namespace Volleyball.Presentation
             Rig = StickFigureRig.Create(transform, color, jerseyNumber);
             Ability = PlayerAbilityProfile.Default;
             ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
+            _blockArmContactVolumes = new BlockArmContactVolumes(Rig);
         }
 
         public void SetAbility(PlayerAbilityProfile ability)
@@ -333,6 +335,21 @@ namespace Volleyball.Presentation
                 TechniqueAction.Attack,
                 scheduledSetContactTime,
                 approachStart,
+                movementStartSimulationTime);
+            _hasSupportAction = true;
+            _supportActionActivated = false;
+        }
+
+        public void ScheduleSetPreparation(
+            float scheduledReceiveContactTime,
+            Vector3 settingPosition,
+            float movementStartSimulationTime)
+        {
+            CancelScheduledContact();
+            ConfigureSupportAction(
+                TechniqueAction.Set,
+                scheduledReceiveContactTime,
+                settingPosition,
                 movementStartSimulationTime);
             _hasSupportAction = true;
             _supportActionActivated = false;
@@ -668,8 +685,7 @@ namespace Volleyball.Presentation
                 ? StickFigurePose.Ready
                 : StickFigurePose.Block;
             Rig.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
-            var surfaces = ContactSurfaces.Capture(
-                TechniqueAction.Block,
+            var armVolumes = _blockArmContactVolumes.Capture(
                 sample.SurfaceActive,
                 _physicalBlockContactGroupId);
 
@@ -682,18 +698,19 @@ namespace Volleyball.Presentation
                         $"[Physical3v3] block-surface team={Id.Team} actor={Id.Role} " +
                         $"time={simulationTime:0.00} root=({transform.position.x:0.00}," +
                         $"{transform.position.y:0.00},{transform.position.z:0.00}) " +
-                        $"palms=({surfaces[0].Current.Origin.X:0.00}," +
-                        $"{surfaces[0].Current.Origin.Y:0.00},{surfaces[0].Current.Origin.Z:0.00})");
+                        $"leftPalm=({armVolumes[2].Current.End.X:0.00}," +
+                        $"{armVolumes[2].Current.End.Y:0.00}," +
+                        $"{armVolumes[2].Current.End.Z:0.00})");
                 }
 
                 var strikeDirection = _physicalBlockTargetVelocity.SqrMagnitude > 0.000001f
                     ? _physicalBlockTargetVelocity.Normalized
                     : -new SimVector3(transform.forward.x, transform.forward.y, transform.forward.z);
                 var response = ResponseFor(TechniqueAction.Block);
-                foreach (var surface in surfaces)
+                foreach (var armVolume in armVolumes)
                 {
                     contacts.Add(new BallContactCandidate(
-                        surface,
+                        armVolume,
                         TechniqueAction.Block,
                         Id,
                         Ability.TechniqueFor(TechniqueAction.Block),
@@ -771,6 +788,7 @@ namespace Volleyball.Presentation
             {
                 TechniqueAction.Block => StickFigurePose.Block,
                 TechniqueAction.Attack => StickFigurePose.Run,
+                TechniqueAction.Set => StickFigurePose.Run,
                 _ => StickFigurePose.Receive
             };
             if (sample.Phase == ActionPhase.Prepare && _supportAction == TechniqueAction.Receive)
