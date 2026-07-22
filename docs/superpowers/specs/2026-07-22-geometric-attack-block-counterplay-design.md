@@ -95,6 +95,28 @@ height. The director must preserve accrued movement progress so an attacker is
 not penalized with an avoidable low-contact, far-from-net attack or a timeout
 after a normal A--C set.
 
+The planned takeoff is constrained to a near-net attack band measured from the
+net plane on the attacker's own side. Outside hitters, opposites, and the 3v3
+`Attacker` use a 0.75--1.50 metre band. Middle blockers use a 0.50--0.75 metre
+band. The actual set contact may shift the takeoff within the applicable band
+and laterally toward a reachable ball, but it must never make the actual ball
+contact position itself the new takeoff depth.
+
+The setter has its own organization-depth policy. At 1.50 metres or nearer to
+the net, it is in its best organization area. Eighty percent of normal sets
+from this area must target the attacker's best handling point: the valid point
+inside its takeoff band with the greatest predicted space from active block-arm
+geometry. The remaining twenty percent may use another legal point in that
+same attack band to retain deterministic tactical variation.
+
+When the setter is farther than 1.50 metres but no farther than the four-metre
+line, every normal set must still target its attacker's ordinary takeoff band.
+When the setter is behind the four-metre line, the applicable takeoff band moves
+away from the net by one half of the setter's excess depth: each additional
+metre moves both band limits 0.50 metres. This displacement is capped at 1.50
+metres. Lateral adjustment remains bounded by ball reachability and the
+player's accrued approach progress.
+
 ## Diagnostics And Tests
 
 The director exposes diagnostic counters or replay-visible records for selected
