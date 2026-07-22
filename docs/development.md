@@ -18,6 +18,10 @@ one review; direct push, force push and branch deletion must be disabled.
 
 ## Testing
 
+`docs/rules.md` is the canonical Match-rule source. Before changing match
+behavior, update its applicable rule ID and follow its modification checklist;
+specifications and change records must link to it rather than duplicate rules.
+
 Write pure rule, scoring, rotation and statistics tests as EditMode tests. Use
 PlayMode tests for one full 3v3 rally with Unity scene integration. Use a fixed
 random seed for deterministic simulation tests. Record the Unity editor and package

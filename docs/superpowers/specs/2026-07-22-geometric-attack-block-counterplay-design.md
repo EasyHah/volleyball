@@ -6,6 +6,9 @@
 `2026-07-21-unified-attack-chain-design.md`, and
 `2026-07-22-full-arm-block-contact-design.md`
 
+**Canonical rules:** [`docs/rules.md`](../../rules.md). This specification
+defines implementation details and must not override or duplicate that document.
+
 ## Goal
 
 Make attack and block outcomes arise from physical geometry and reachable
