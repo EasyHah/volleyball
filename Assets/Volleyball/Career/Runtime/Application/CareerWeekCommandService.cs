@@ -33,7 +33,11 @@ namespace Volleyball.Career.Application
                 return Result(CareerApplicationStatus.InvalidInputOrState);
             }
 
-            var loaded = _repository.Load(command.ProfileId, command.SaveId);
+            if (!TryLoad(command.ProfileId, command.SaveId, out var loaded))
+            {
+                return Result(CareerApplicationStatus.PersistenceFailure);
+            }
+
             if (loaded.Kind == PersistenceResultKind.NotFound)
             {
                 return Result(CareerApplicationStatus.NotFound, loaded.Kind);
@@ -96,12 +100,14 @@ namespace Volleyball.Career.Application
                     authoritative);
             }
 
-            var committed = _repository.Commit(
-                command.ProfileId,
-                command.SaveId,
-                command.ExpectedVersionToken,
-                next,
-                command.OperationId);
+            if (!TryCommit(command, next, out var committed))
+            {
+                return Result(
+                    CareerApplicationStatus.PersistenceFailure,
+                    null,
+                    authoritative);
+            }
+
             if (committed.Kind == PersistenceResultKind.Committed ||
                 committed.Kind == PersistenceResultKind.BackupDegraded)
             {
@@ -141,7 +147,11 @@ namespace Volleyball.Career.Application
             Sha256Digest fingerprint,
             PersistenceResultKind commitKind)
         {
-            var latest = _repository.Load(command.ProfileId, command.SaveId);
+            if (!TryLoad(command.ProfileId, command.SaveId, out var latest))
+            {
+                return Result(CareerApplicationStatus.PersistenceFailure);
+            }
+
             if (!HasSnapshot(latest))
             {
                 return Result(CareerApplicationStatus.PersistenceFailure, latest.Kind);
@@ -348,6 +358,45 @@ namespace Volleyball.Career.Application
                 .Find(operationId, fingerprint);
         }
 
+        private bool TryLoad(
+            ProfileId profileId,
+            SaveId saveId,
+            out CareerPersistenceResult result)
+        {
+            try
+            {
+                result = _repository.Load(profileId, saveId);
+                return result != null;
+            }
+            catch (Exception)
+            {
+                result = null;
+                return false;
+            }
+        }
+
+        private bool TryCommit(
+            ConfirmWeekPlanCommand command,
+            CareerSaveSnapshot next,
+            out CareerPersistenceResult result)
+        {
+            try
+            {
+                result = _repository.Commit(
+                    command.ProfileId,
+                    command.SaveId,
+                    command.ExpectedVersionToken,
+                    next,
+                    command.OperationId);
+                return result != null;
+            }
+            catch (Exception)
+            {
+                result = null;
+                return false;
+            }
+        }
+
         private static CareerWeekCommandResult Existing(
             CareerSaveSnapshot snapshot,
             OperationReceipt receipt,
@@ -391,10 +440,11 @@ namespace Volleyball.Career.Application
 
         private static bool HasSnapshot(CareerPersistenceResult result)
         {
-            return result.Kind == PersistenceResultKind.Loaded ||
+            return result != null &&
+                   (result.Kind == PersistenceResultKind.Loaded ||
                    result.Kind == PersistenceResultKind.Created ||
                    result.Kind == PersistenceResultKind.Committed ||
-                   result.Kind == PersistenceResultKind.BackupDegraded;
+                   result.Kind == PersistenceResultKind.BackupDegraded);
         }
 
         private static CareerWeekCommandResult Result(

@@ -53,9 +53,21 @@
 - 消费方或后续负责人需要做什么：Stage 4B2 以 revision 5 `Planned(nextSlotNumber = 1)` 为权威输入；
   无需修改 Match、Shared 或 UI
 
+## 独立复核加固
+
+- repository 初次 `Load`、单次 `Commit` 与 CAS race 后的单次 reload 现在都以明确边界调用；返回
+  `null` 或抛异常时统一映射为 `PersistenceFailure`，异常不逃逸，也不盲目自动重试。
+- 初次 load 失败时没有权威 snapshot；commit 的 null/异常保留已加载 revision 4 且不返回推测的
+  outcome；race reload 的 null/异常不暴露候选 revision 5。`Committed/BackupDegraded` payload 缺少相同
+  operation ID + fingerprint 回执时也结构化失败，而不是接受不完整成功回执。
+- 成功复制测试改用高辨识合法 revision-4 fixture：非零 prior hash、不同 lineage 的非空 restore token、
+  八项互不相同的 ability/growth、三段各异 onboarding/output 与四条元数据各异的历史回执。测试逐字段
+  比较完整 onboarding、八项属性、identity/restore、seed、旧 receipt target/fingerprint/lineage/
+  revision/time/outcome/summary，并锁定 next snapshot hash 为 64 位零占位。
+
 ## 验证
 
-- [x] EditMode 测试（Unity `6000.3.20f1`：focused `17/17`、Career `303/303`、全项目 `526/526`）
+- [x] EditMode 测试（Unity `6000.3.20f1`：focused `24/24`、Career `310/310`、全项目 `533/533`）
 - [ ] PlayMode 测试（纯 Career Domain/Application 命令边界不需要）
 - [ ] 手动场景验证（无 UI/Scene 变更）
 - [x] canonical fingerprint：固定 bytes/hash、五种 kind、成员/槽位顺序、业务敏感字段，以及

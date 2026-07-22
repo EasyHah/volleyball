@@ -1,15 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using Volleyball.Career.Application;
 using Volleyball.Career.Domain;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.EditModeTests
 {
     public sealed class CareerWeekCommandServiceTests
     {
+        private const string ZeroHash =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+
         private static readonly ProfileId Profile =
             new ProfileId(Guid.Parse("11111111-1111-1111-1111-111111111111"));
         private static readonly SaveId Save =
@@ -261,7 +266,7 @@ namespace Volleyball.Career.EditModeTests
                     Lineage,
                     5,
                     prior.Identity.CreatedAtUtcMs,
-                    12,
+                    202,
                     prior.Identity.SnapshotHash));
 
             AssertRace(command, prior, exact, CareerApplicationStatus.Existing, hasConflict: false);
@@ -306,6 +311,122 @@ namespace Volleyball.Career.EditModeTests
                 Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(4));
                 Assert.That(result.OutcomeSummary, Is.Null);
                 Assert.That(repository.Snapshot, Is.SameAs(prior));
+                Assert.That(repository.CommitCount, Is.EqualTo(1));
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ConfirmWeekPlan_InitialLoadNullOrThrowReturnsPersistenceFailureWithoutSnapshot(
+            bool throws)
+        {
+            var prior = PlanningSnapshot();
+            var repository = new MemoryRepository(prior)
+            {
+                NullLoadCallNumber = throws ? (int?)null : 1,
+                ThrowLoadCallNumber = throws ? 1 : (int?)null
+            };
+            CareerWeekCommandResult result = null;
+
+            Assert.DoesNotThrow(() =>
+                result = new CareerWeekCommandService(repository)
+                    .ConfirmWeekPlan(Command(prior)));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.PersistenceKind, Is.Null);
+            Assert.That(result.Snapshot, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(repository.LoadCount, Is.EqualTo(1));
+            Assert.That(repository.CommitCount, Is.Zero);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ConfirmWeekPlan_CommitNullOrThrowReturnsPriorAuthoritativeSnapshot(bool throws)
+        {
+            var prior = PlanningSnapshot();
+            var repository = new MemoryRepository(prior)
+            {
+                ReturnNullCommit = !throws,
+                ThrowCommit = throws
+            };
+            CareerWeekCommandResult result = null;
+
+            Assert.DoesNotThrow(() =>
+                result = new CareerWeekCommandService(repository)
+                    .ConfirmWeekPlan(Command(prior)));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.PersistenceKind, Is.Null);
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(4));
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(repository.Snapshot, Is.SameAs(prior));
+            Assert.That(repository.LoadCount, Is.EqualTo(1));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ConfirmWeekPlan_CommitRaceReloadNullOrThrowReturnsPersistenceFailureWithoutRevisionFive(
+            bool throws)
+        {
+            var prior = PlanningSnapshot();
+            var winner = AppliedSnapshot(prior, Command(prior));
+            var repository = new MemoryRepository(prior)
+            {
+                CommitRaceWinner = winner,
+                NullLoadCallNumber = throws ? (int?)null : 2,
+                ThrowLoadCallNumber = throws ? 2 : (int?)null
+            };
+            CareerWeekCommandResult result = null;
+
+            Assert.DoesNotThrow(() =>
+                result = new CareerWeekCommandService(repository)
+                    .ConfirmWeekPlan(Command(prior)));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.PersistenceKind, Is.Null);
+            Assert.That(result.Snapshot, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(repository.LoadCount, Is.EqualTo(2));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ConfirmWeekPlan_SuccessKindWithoutMatchingReceiptReturnsPersistenceFailure()
+        {
+            var prior = PlanningSnapshot();
+            var missingReceiptPayload = AppliedSnapshot(
+                prior,
+                Command(
+                    prior,
+                    operationId: new OperationId(
+                        Guid.Parse("edededed-eded-eded-eded-edededededed"))));
+            foreach (var successKind in new[]
+                     {
+                         PersistenceResultKind.Committed,
+                         PersistenceResultKind.BackupDegraded
+                     })
+            {
+                var repository = new MemoryRepository(prior)
+                {
+                    SuccessfulCommitKind = successKind,
+                    SuccessfulCommitPayload = missingReceiptPayload
+                };
+
+                CareerWeekCommandResult result = null;
+                Assert.DoesNotThrow(() =>
+                    result = new CareerWeekCommandService(repository)
+                        .ConfirmWeekPlan(Command(prior)));
+
+                Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+                Assert.That(result.PersistenceKind, Is.EqualTo(successKind));
+                Assert.That(result.Snapshot, Is.SameAs(prior));
+                Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(4));
+                Assert.That(result.ConflictingReceipt, Is.Null);
+                Assert.That(result.OutcomeSummary, Is.Null);
+                Assert.That(repository.LoadCount, Is.EqualTo(1));
                 Assert.That(repository.CommitCount, Is.EqualTo(1));
             }
         }
@@ -367,12 +488,98 @@ namespace Volleyball.Career.EditModeTests
 
         private static CareerSaveSnapshot PlanningSnapshot()
         {
-            return CareerPersistenceTestData.PlanningSnapshot(
-                Profile,
-                Save,
-                Lineage,
-                revision: 4,
-                updatedAtUtcMs: 10);
+            var stages = new[]
+            {
+                ConfirmedStage(1, 101, 11),
+                ConfirmedStage(2, 102, 21),
+                ConfirmedStage(3, 103, 31)
+            };
+            var onboarding = new TryoutOnboardingState(stages, 0, true);
+            var match = new CareerWeekActionState(
+                Slot(50),
+                Occurrence(50),
+                CareerWeekActionKind.Match,
+                "schedule.u1w1.match.01");
+            var plan = new CareerWeekPlanState(
+                WeekPlan(50),
+                1,
+                1,
+                new CareerWeekActionState[] { null, null, match },
+                false);
+            var receipts = new List<OperationReceipt>
+            {
+                Receipt(
+                    1,
+                    OperationKind.CreateCareer,
+                    OperationReceiptTarget.ForCreateCareer(),
+                    OperationOutcomeSummary.ForCareerCreated(),
+                    61)
+            };
+            for (var index = 0; index < stages.Length; index++)
+            {
+                var stage = stages[index];
+                receipts.Add(Receipt(
+                    index + 2,
+                    OperationKind.ConfirmTryoutStage,
+                    OperationReceiptTarget.ForTryoutStage(
+                        stage.StageNumber,
+                        stage.OccurrenceId,
+                        stage.ChoiceId),
+                    OperationOutcomeSummary.ForTryoutAdvanced(stage.ResolvedOutputs),
+                    62 + index));
+            }
+
+            var attributes = new CareerPlayerAttributes(
+                new CareerAttributeProgress(1100, 11),
+                new CareerAttributeProgress(2200, 22),
+                new CareerAttributeProgress(3300, 33),
+                new CareerAttributeProgress(4400, 44),
+                new CareerAttributeProgress(5500, 55),
+                new CareerAttributeProgress(6600, 66),
+                new CareerAttributeProgress(7700, 77),
+                new CareerAttributeProgress(8800, 88));
+            var draft = new CareerPlayerDraft(
+                new PlayerId("distinct-player"),
+                "Distinct Player",
+                27);
+            var restoredFrom = new CareerVersionToken(
+                new LineageId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
+                2,
+                Hash('8'));
+            var seedBytes = new byte[CareerSeed.ByteLength];
+            for (var index = 0; index < seedBytes.Length; index++)
+            {
+                seedBytes[index] = (byte)(index + 1);
+            }
+
+            return new CareerSaveSnapshot(
+                CareerSaveVersions.Current,
+                new CareerSaveIdentity(
+                    Profile,
+                    Save,
+                    Lineage,
+                    4,
+                    50,
+                    200,
+                    Hash('9'),
+                    restoredFrom),
+                new CareerSeed(seedBytes),
+                "Distinct Career",
+                draft,
+                onboarding,
+                CareerProgressionState.Planning(plan),
+                TrainingEmphasisLedger.Empty,
+                new CareerPlayerRecord(
+                    draft.PlayerId,
+                    draft.DisplayName,
+                    draft.JerseyNumber,
+                    attributes),
+                new TeamId("university-distinct"),
+                PotentialGrade.A,
+                23,
+                47,
+                71,
+                receipts);
         }
 
         private static ConfirmWeekPlanCommand Command(
@@ -382,7 +589,7 @@ namespace Volleyball.Career.EditModeTests
             SaveId? saveId = null,
             CareerVersionToken? expectedVersionToken = null,
             OperationId? operationId = null,
-            long completedAtUtcMs = 11,
+            long completedAtUtcMs = 201,
             bool useNullCandidate = false,
             bool corruptAfterCopy = false)
         {
@@ -519,32 +726,186 @@ namespace Volleyball.Career.EditModeTests
                 source.OperationReceipts);
         }
 
+        private static TryoutStageState ConfirmedStage(
+            int stageNumber,
+            int occurrenceValue,
+            int perturbationBase)
+        {
+            return new TryoutStageState(
+                stageNumber,
+                Occurrence(occurrenceValue),
+                CareerSaveVersions.CurrentCareerRandomAlgorithmVersion,
+                "tryout.stage." + stageNumber + ".choice",
+                new[]
+                {
+                    new TryoutResolvedOutput(
+                        "stage." + stageNumber + ".output.primary",
+                        perturbationBase),
+                    new TryoutResolvedOutput(
+                        "stage." + stageNumber + ".output.secondary",
+                        perturbationBase + 1)
+                });
+        }
+
+        private static OperationReceipt Receipt(
+            int revision,
+            OperationKind kind,
+            OperationReceiptTarget target,
+            OperationOutcomeSummary summary,
+            long completedAtUtcMs)
+        {
+            return new OperationReceipt(
+                OperationFor(revision),
+                kind,
+                target,
+                Hash((char)('a' + revision)),
+                Lineage,
+                revision,
+                completedAtUtcMs,
+                summary.OutcomeKind,
+                summary);
+        }
+
         private static void AssertUnchanged(CareerSaveSnapshot prior, CareerSaveSnapshot next)
         {
             Assert.That(next.Identity.ProfileId, Is.EqualTo(prior.Identity.ProfileId));
             Assert.That(next.Identity.SaveId, Is.EqualTo(prior.Identity.SaveId));
             Assert.That(next.Identity.LineageId, Is.EqualTo(prior.Identity.LineageId));
             Assert.That(next.Identity.CreatedAtUtcMs, Is.EqualTo(prior.Identity.CreatedAtUtcMs));
-            Assert.That(next.Identity.RestoredFromVersionToken, Is.EqualTo(prior.Identity.RestoredFromVersionToken));
-            Assert.That(next.Versions, Is.EqualTo(prior.Versions));
-            Assert.That(next.CareerSeed, Is.EqualTo(prior.CareerSeed));
+            Assert.That(prior.Identity.SnapshotHash.Value, Is.Not.EqualTo(ZeroHash));
+            Assert.That(next.Identity.SnapshotHash.Value, Is.EqualTo(ZeroHash));
+            Assert.That(prior.Identity.RestoredFromVersionToken.HasValue, Is.True);
+            Assert.That(next.Identity.RestoredFromVersionToken.HasValue, Is.True);
+            Assert.That(
+                next.Identity.RestoredFromVersionToken.Value.LineageId,
+                Is.EqualTo(prior.Identity.RestoredFromVersionToken.Value.LineageId));
+            Assert.That(
+                next.Identity.RestoredFromVersionToken.Value.Revision,
+                Is.EqualTo(prior.Identity.RestoredFromVersionToken.Value.Revision));
+            Assert.That(
+                next.Identity.RestoredFromVersionToken.Value.SnapshotHash,
+                Is.EqualTo(prior.Identity.RestoredFromVersionToken.Value.SnapshotHash));
+            Assert.That(next.Versions.SchemaVersion, Is.EqualTo(prior.Versions.SchemaVersion));
+            Assert.That(next.Versions.ContentVersion, Is.EqualTo(prior.Versions.ContentVersion));
+            Assert.That(next.Versions.RulesetVersion, Is.EqualTo(prior.Versions.RulesetVersion));
+            Assert.That(
+                next.Versions.CareerRandomAlgorithmVersion,
+                Is.EqualTo(prior.Versions.CareerRandomAlgorithmVersion));
+            CollectionAssert.AreEqual(prior.CareerSeed.ToBytes(), next.CareerSeed.ToBytes());
             Assert.That(next.CareerName, Is.EqualTo(prior.CareerName));
             Assert.That(next.PlayerDraft.PlayerId, Is.EqualTo(prior.PlayerDraft.PlayerId));
             Assert.That(next.PlayerDraft.DisplayName, Is.EqualTo(prior.PlayerDraft.DisplayName));
             Assert.That(next.PlayerDraft.JerseyNumber, Is.EqualTo(prior.PlayerDraft.JerseyNumber));
+            Assert.That(
+                next.Onboarding.CurrentStageNumber,
+                Is.EqualTo(prior.Onboarding.CurrentStageNumber));
             Assert.That(next.Onboarding.IsComplete, Is.EqualTo(prior.Onboarding.IsComplete));
             Assert.That(next.Onboarding.IsFormallyEnrolled, Is.EqualTo(prior.Onboarding.IsFormallyEnrolled));
-            Assert.That(next.Onboarding.Stages.Select(stage => stage.OccurrenceId),
-                Is.EqualTo(prior.Onboarding.Stages.Select(stage => stage.OccurrenceId)));
+            Assert.That(next.Onboarding.Stages, Has.Count.EqualTo(prior.Onboarding.Stages.Count));
+            for (var stageIndex = 0; stageIndex < prior.Onboarding.Stages.Count; stageIndex++)
+            {
+                var expectedStage = prior.Onboarding.Stages[stageIndex];
+                var actualStage = next.Onboarding.Stages[stageIndex];
+                Assert.That(actualStage.StageNumber, Is.EqualTo(expectedStage.StageNumber));
+                Assert.That(actualStage.OccurrenceId, Is.EqualTo(expectedStage.OccurrenceId));
+                Assert.That(actualStage.RandomVersion, Is.EqualTo(expectedStage.RandomVersion));
+                Assert.That(actualStage.ChoiceId, Is.EqualTo(expectedStage.ChoiceId));
+                Assert.That(actualStage.IsConfirmed, Is.EqualTo(expectedStage.IsConfirmed));
+                AssertResolvedOutputs(expectedStage.ResolvedOutputs, actualStage.ResolvedOutputs);
+            }
+
             Assert.That(next.Player.PlayerId, Is.EqualTo(prior.Player.PlayerId));
             Assert.That(next.Player.DisplayName, Is.EqualTo(prior.Player.DisplayName));
             Assert.That(next.Player.JerseyNumber, Is.EqualTo(prior.Player.JerseyNumber));
-            Assert.That(next.Player.Attributes, Is.EqualTo(prior.Player.Attributes));
+            AssertAttributes(prior.Player.Attributes, next.Player.Attributes);
             Assert.That(next.TeamId, Is.EqualTo(prior.TeamId));
             Assert.That(next.PotentialGrade, Is.EqualTo(prior.PotentialGrade));
             Assert.That(next.Fatigue, Is.EqualTo(prior.Fatigue));
             Assert.That(next.Mindset, Is.EqualTo(prior.Mindset));
             Assert.That(next.CoachTrust, Is.EqualTo(prior.CoachTrust));
+            for (var receiptIndex = 0; receiptIndex < prior.OperationReceipts.Count; receiptIndex++)
+            {
+                AssertReceipt(
+                    prior.OperationReceipts[receiptIndex],
+                    next.OperationReceipts[receiptIndex]);
+            }
+        }
+
+        private static void AssertAttributes(
+            CareerPlayerAttributes expected,
+            CareerPlayerAttributes actual)
+        {
+            Assert.That(actual.Spike, Is.EqualTo(expected.Spike));
+            Assert.That(actual.Serve, Is.EqualTo(expected.Serve));
+            Assert.That(actual.Reception, Is.EqualTo(expected.Reception));
+            Assert.That(actual.Defense, Is.EqualTo(expected.Defense));
+            Assert.That(actual.Block, Is.EqualTo(expected.Block));
+            Assert.That(actual.Movement, Is.EqualTo(expected.Movement));
+            Assert.That(actual.Jump, Is.EqualTo(expected.Jump));
+            Assert.That(actual.Stamina, Is.EqualTo(expected.Stamina));
+        }
+
+        private static void AssertReceipt(OperationReceipt expected, OperationReceipt actual)
+        {
+            Assert.That(actual.OperationId, Is.EqualTo(expected.OperationId));
+            Assert.That(actual.OperationKind, Is.EqualTo(expected.OperationKind));
+            Assert.That(actual.Target.OperationKind, Is.EqualTo(expected.Target.OperationKind));
+            Assert.That(actual.Target.TryoutStage, Is.EqualTo(expected.Target.TryoutStage));
+            Assert.That(actual.Target.TryoutOccurrenceId, Is.EqualTo(expected.Target.TryoutOccurrenceId));
+            Assert.That(actual.Target.ChoiceId, Is.EqualTo(expected.Target.ChoiceId));
+            Assert.That(actual.Target.WeekPlanId, Is.EqualTo(expected.Target.WeekPlanId));
+            Assert.That(actual.Target.SlotActionId, Is.EqualTo(expected.Target.SlotActionId));
+            Assert.That(actual.Target.ActionOccurrenceId, Is.EqualTo(expected.Target.ActionOccurrenceId));
+            Assert.That(actual.Target.EventOccurrenceId, Is.EqualTo(expected.Target.EventOccurrenceId));
+            Assert.That(actual.Target.OptionId, Is.EqualTo(expected.Target.OptionId));
+            Assert.That(actual.InputFingerprint, Is.EqualTo(expected.InputFingerprint));
+            Assert.That(actual.AppliedLineageId, Is.EqualTo(expected.AppliedLineageId));
+            Assert.That(actual.AppliedRevision, Is.EqualTo(expected.AppliedRevision));
+            Assert.That(actual.CompletedAtUtcMs, Is.EqualTo(expected.CompletedAtUtcMs));
+            Assert.That(actual.OutcomeKind, Is.EqualTo(expected.OutcomeKind));
+            AssertOutcomeSummary(expected.OutcomeSummary, actual.OutcomeSummary);
+        }
+
+        private static void AssertOutcomeSummary(
+            OperationOutcomeSummary expected,
+            OperationOutcomeSummary actual)
+        {
+            Assert.That(actual.OutcomeKind, Is.EqualTo(expected.OutcomeKind));
+            AssertResolvedOutputs(
+                expected.TryoutResolvedOutputs,
+                actual.TryoutResolvedOutputs);
+            if (expected.GrowthExperienceDelta == null)
+            {
+                Assert.That(actual.GrowthExperienceDelta, Is.Null);
+            }
+            else
+            {
+                Assert.That(actual.GrowthExperienceDelta, Is.Not.Null);
+                Assert.That(actual.GrowthExperienceDelta.Spike, Is.EqualTo(expected.GrowthExperienceDelta.Spike));
+                Assert.That(actual.GrowthExperienceDelta.Serve, Is.EqualTo(expected.GrowthExperienceDelta.Serve));
+                Assert.That(actual.GrowthExperienceDelta.Reception, Is.EqualTo(expected.GrowthExperienceDelta.Reception));
+                Assert.That(actual.GrowthExperienceDelta.Defense, Is.EqualTo(expected.GrowthExperienceDelta.Defense));
+                Assert.That(actual.GrowthExperienceDelta.Block, Is.EqualTo(expected.GrowthExperienceDelta.Block));
+                Assert.That(actual.GrowthExperienceDelta.Movement, Is.EqualTo(expected.GrowthExperienceDelta.Movement));
+                Assert.That(actual.GrowthExperienceDelta.Jump, Is.EqualTo(expected.GrowthExperienceDelta.Jump));
+                Assert.That(actual.GrowthExperienceDelta.Stamina, Is.EqualTo(expected.GrowthExperienceDelta.Stamina));
+            }
+
+            Assert.That(actual.FatigueDelta, Is.EqualTo(expected.FatigueDelta));
+            Assert.That(actual.MindsetDelta, Is.EqualTo(expected.MindsetDelta));
+            Assert.That(actual.CoachTrustDelta, Is.EqualTo(expected.CoachTrustDelta));
+        }
+
+        private static void AssertResolvedOutputs(
+            IReadOnlyList<TryoutResolvedOutput> expected,
+            IReadOnlyList<TryoutResolvedOutput> actual)
+        {
+            Assert.That(actual, Has.Count.EqualTo(expected.Count));
+            for (var index = 0; index < expected.Count; index++)
+            {
+                Assert.That(actual[index].OutputId, Is.EqualTo(expected[index].OutputId));
+                Assert.That(actual[index].Perturbation, Is.EqualTo(expected[index].Perturbation));
+            }
         }
 
         private static void AssertPlanEqual(CareerWeekPlanState expected, CareerWeekPlanState actual)
@@ -589,6 +950,16 @@ namespace Volleyball.Career.EditModeTests
             return new WeekPlanId(Guid.Parse("20000000-0000-0000-0000-" + value.ToString("D12")));
         }
 
+        private static OperationId OperationFor(int value)
+        {
+            return new OperationId(Guid.Parse("30000000-0000-0000-0000-" + value.ToString("D12")));
+        }
+
+        private static Sha256Digest Hash(char value)
+        {
+            return new Sha256Digest(new string(value, 64));
+        }
+
         private readonly struct InvalidCase
         {
             public InvalidCase(CareerSaveSnapshot snapshot, ConfirmWeekPlanCommand command)
@@ -619,8 +990,18 @@ namespace Volleyball.Career.EditModeTests
 
             public PersistenceResultKind? CommitFailure { get; set; }
 
+            public int? NullLoadCallNumber { get; set; }
+
+            public int? ThrowLoadCallNumber { get; set; }
+
+            public bool ReturnNullCommit { get; set; }
+
+            public bool ThrowCommit { get; set; }
+
             public PersistenceResultKind SuccessfulCommitKind { get; set; } =
                 PersistenceResultKind.Committed;
+
+            public CareerSaveSnapshot SuccessfulCommitPayload { get; set; }
 
             public CareerSaveSnapshot CommitRaceWinner { get; set; }
 
@@ -634,6 +1015,16 @@ namespace Volleyball.Career.EditModeTests
             public CareerPersistenceResult Load(ProfileId profileId, SaveId saveId)
             {
                 LoadCount++;
+                if (NullLoadCallNumber == LoadCount)
+                {
+                    return null;
+                }
+
+                if (ThrowLoadCallNumber == LoadCount)
+                {
+                    throw new IOException("Injected repository load failure.");
+                }
+
                 if (LoadFailure.HasValue)
                 {
                     return new CareerPersistenceResult(LoadFailure.Value);
@@ -652,6 +1043,16 @@ namespace Volleyball.Career.EditModeTests
                 OperationId operationId)
             {
                 CommitCount++;
+                if (ReturnNullCommit)
+                {
+                    return null;
+                }
+
+                if (ThrowCommit)
+                {
+                    throw new IOException("Injected repository commit failure.");
+                }
+
                 if (CommitRaceWinner != null)
                 {
                     Snapshot = CommitRaceWinner;
@@ -669,7 +1070,7 @@ namespace Volleyball.Career.EditModeTests
                     return new CareerPersistenceResult(PersistenceResultKind.VersionConflict);
                 }
 
-                Snapshot = nextSnapshot;
+                Snapshot = SuccessfulCommitPayload ?? nextSnapshot;
                 return new CareerPersistenceResult(SuccessfulCommitKind, Snapshot);
             }
 
