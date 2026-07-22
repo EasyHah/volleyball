@@ -19,6 +19,7 @@ namespace Volleyball.Presentation
         private int _nextSampleIndex;
         private int _eventSequence;
         private bool _capturing;
+        private MatchReplayEventV1 _lastSetChainEvent;
 
         public bool IsComplete { get; private set; }
 
@@ -55,6 +56,7 @@ namespace Volleyball.Presentation
             _eventSequence = 0;
             IsComplete = false;
             _capturing = true;
+            _lastSetChainEvent = null;
             ForceSnapshot();
         }
 
@@ -169,12 +171,13 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            CaptureScheduledSamplesThrough(replayEvent.SimulationTimeSeconds);
-            var snapshotIndex = ForceSnapshot(replayEvent.SimulationTimeSeconds);
+            var simulationTime = MonotonicEventTime(replayEvent.SimulationTimeSeconds);
+            CaptureScheduledSamplesThrough(simulationTime);
+            var snapshotIndex = ForceSnapshot(simulationTime);
             _replay.Events.Add(new MatchReplayEventV1
             {
                 Kind = "Decision",
-                SimulationTimeSeconds = replayEvent.SimulationTimeSeconds,
+                SimulationTimeSeconds = simulationTime,
                 SnapshotIndex = snapshotIndex,
                 Team = replayEvent.Team.ToString(),
                 PlayerId = StableId(replayEvent.SelectedPlayer),
@@ -195,7 +198,27 @@ namespace Volleyball.Presentation
 
         private void RecordContact(ReplayContactEvent replayEvent)
         {
-            RecordEvent(replayEvent.Kind, replayEvent.SimulationTimeSeconds, replayEvent.Team, replayEvent.PlayerId);
+            if (!_capturing || IsComplete)
+            {
+                return;
+            }
+
+            var simulationTime = MonotonicEventTime(replayEvent.SimulationTimeSeconds);
+            CaptureScheduledSamplesThrough(simulationTime);
+            var replayRecord = new MatchReplayEventV1
+            {
+                Kind = replayEvent.Kind,
+                SimulationTimeSeconds = simulationTime,
+                SnapshotIndex = ForceSnapshot(simulationTime),
+                Team = replayEvent.Team.ToString(),
+                PlayerId = replayEvent.PlayerId?.Value,
+                SetChain = ToReplaySetChain(replayEvent.SetChain)
+            };
+            _replay.Events.Add(replayRecord);
+            if (replayRecord.SetChain != null)
+            {
+                _lastSetChainEvent = replayRecord;
+            }
         }
 
         private void RecordSimpleEvent(ReplaySimpleEvent replayEvent)
@@ -205,20 +228,57 @@ namespace Volleyball.Presentation
 
         private void RecordResolution(ReplayRallyResolvedEvent replayEvent)
         {
-            RecordEvent(replayEvent.Kind, replayEvent.SimulationTimeSeconds, replayEvent.Team, replayEvent.PlayerId);
+            if (_lastSetChainEvent?.SetChain != null)
+            {
+                _lastSetChainEvent.SetChain.PrimaryResponsibility =
+                    _director.LastAttackResponsibility.ToString();
+            }
+
+            RecordEvent(
+                replayEvent.Kind,
+                replayEvent.SimulationTimeSeconds,
+                replayEvent.Team,
+                replayEvent.PlayerId,
+                replayEvent.ErrorPlayerId,
+                replayEvent.Reason);
             _capturing = false;
             _replay.IsComplete = true;
             _replay.Seal();
             IsComplete = true;
         }
 
-        private void RecordEvent(string kind, float simulationTime, TeamId team, Volleyball.Shared.Contracts.PlayerId? playerId)
+        private static MatchReplaySetChainV1 ToReplaySetChain(ReplaySetChainEvent setChain)
+        {
+            if (setChain == null)
+            {
+                return null;
+            }
+
+            return new MatchReplaySetChainV1
+            {
+                PlannedAttackContactCenter = ToReplayVector(setChain.PlannedAttackContactCenter),
+                ActualAttackContactCenter = ToReplayVector(setChain.ActualAttackContactCenter),
+                QualityGrade = setChain.QualityGrade.ToString(),
+                ReplanOutcome = setChain.ReplanOutcome.ToString(),
+                PrimaryResponsibility = setChain.PrimaryResponsibility.ToString(),
+                Reason = setChain.Reason
+            };
+        }
+
+        private void RecordEvent(
+            string kind,
+            float simulationTime,
+            TeamId team,
+            Volleyball.Shared.Contracts.PlayerId? playerId,
+            Volleyball.Shared.Contracts.PlayerId? errorPlayerId = null,
+            string reason = null)
         {
             if (!_capturing || IsComplete)
             {
                 return;
             }
 
+            simulationTime = MonotonicEventTime(simulationTime);
             CaptureScheduledSamplesThrough(simulationTime);
             var snapshotIndex = ForceSnapshot(simulationTime);
             _replay.Events.Add(new MatchReplayEventV1
@@ -227,8 +287,22 @@ namespace Volleyball.Presentation
                 SimulationTimeSeconds = simulationTime,
                 SnapshotIndex = snapshotIndex,
                 Team = team.ToString(),
-                PlayerId = playerId?.Value
+                PlayerId = playerId?.Value,
+                ErrorPlayerId = errorPlayerId?.Value,
+                Reason = reason
             });
+        }
+
+        private float MonotonicEventTime(float requestedTime)
+        {
+            if (_replay.Snapshots.Count == 0)
+            {
+                return requestedTime;
+            }
+
+            return Mathf.Max(
+                requestedTime,
+                _replay.Snapshots[_replay.Snapshots.Count - 1].SimulationTimeSeconds);
         }
 
         private int ForceSnapshot()

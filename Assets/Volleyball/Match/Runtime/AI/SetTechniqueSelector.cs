@@ -40,21 +40,59 @@ namespace Volleyball.AI
         private const float BackSetMinimum = 0.78f;
         private const float OneHandMinimum = 0.90f;
 
+        public static SetTechniqueDecision SelectNormal(SetRoute route, float setTechnique)
+        {
+            if (!Enum.IsDefined(typeof(SetRoute), route))
+            {
+                throw new ArgumentOutOfRangeException(nameof(route));
+            }
+
+            ValidateTechnique(setTechnique);
+            var requested = route == SetRoute.RightPin || route == SetRoute.BackSet
+                ? SetTechniqueStyle.BackTwoHand
+                : SetTechniqueStyle.FrontTwoHand;
+            var executed = requested == SetTechniqueStyle.BackTwoHand && setTechnique < BackSetMinimum
+                ? SetTechniqueStyle.FrontTwoHand
+                : requested;
+            // A prepared two-hand set is the normal route, so it receives the full
+            // technique-control budget. Difficulty scaling is reserved for emergency
+            // orientation and one-hand recovery actions.
+            var controlScale = 1f;
+            if (requested != executed)
+            {
+                controlScale *= 0.65f;
+            }
+
+            return new SetTechniqueDecision(requested, executed, controlScale);
+        }
+
+        public static SetTechniqueDecision SelectEmergency(
+            SimVector3 localTargetVelocity,
+            float setTechnique,
+            bool oneHand)
+        {
+            return SelectEmergencyCore(localTargetVelocity, setTechnique, oneHand);
+        }
+
         public static SetTechniqueDecision Select(
             SimVector3 localTargetVelocity,
             float setTechnique,
             bool emergencyOneHand = false)
+        {
+            return SelectEmergencyCore(localTargetVelocity, setTechnique, emergencyOneHand);
+        }
+
+        private static SetTechniqueDecision SelectEmergencyCore(
+            SimVector3 localTargetVelocity,
+            float setTechnique,
+            bool emergencyOneHand)
         {
             if (!localTargetVelocity.IsFinite)
             {
                 throw new ArgumentOutOfRangeException(nameof(localTargetVelocity));
             }
 
-            if (float.IsNaN(setTechnique) || float.IsInfinity(setTechnique) ||
-                setTechnique < 0f || setTechnique > 1f)
-            {
-                throw new ArgumentOutOfRangeException(nameof(setTechnique));
-            }
+            ValidateTechnique(setTechnique);
 
             var requested = RequestedStyle(localTargetVelocity, emergencyOneHand);
             var executed = ResolveAvailableStyle(requested, localTargetVelocity, setTechnique);
@@ -65,6 +103,15 @@ namespace Volleyball.AI
             }
 
             return new SetTechniqueDecision(requested, executed, difficultyScale);
+        }
+
+        private static void ValidateTechnique(float setTechnique)
+        {
+            if (float.IsNaN(setTechnique) || float.IsInfinity(setTechnique) ||
+                setTechnique < 0f || setTechnique > 1f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(setTechnique));
+            }
         }
 
         private static SetTechniqueStyle RequestedStyle(

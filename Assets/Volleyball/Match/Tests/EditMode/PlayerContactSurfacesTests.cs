@@ -45,7 +45,10 @@ namespace Volleyball.EditModeTests
 
                 Assert.That(set.Count, Is.EqualTo(2));
                 Assert.That(set[0].ContactGroupId, Is.EqualTo(set[1].ContactGroupId));
+                Assert.That(set[0].TwoSided, Is.False);
                 Assert.That(attack.Count, Is.EqualTo(1));
+                Assert.That(attack[0].TwoSided, Is.True);
+                Assert.That(attack[0].Current.Normal.Y, Is.GreaterThan(0f));
             }
             finally
             {

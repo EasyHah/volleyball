@@ -67,17 +67,23 @@ namespace Volleyball.Domain.Simulation
             var surfaceDisplacement = surface.Current.Origin - surface.Previous.Origin;
             var relativeDisplacement = ballDisplacement - surfaceDisplacement;
             var averageNormal = (surface.Previous.Normal + surface.Current.Normal).Normalized;
+            var normalSign = 1f;
             if (SimVector3.Dot(relativeDisplacement, averageNormal) >= -DirectionEpsilon)
             {
-                return false;
+                if (!surface.TwoSided)
+                {
+                    return false;
+                }
+
+                normalSign = -1f;
             }
 
             var previousCenterDistance = SimVector3.Dot(
                 ball.PreviousPosition - surface.Previous.Origin,
-                surface.Previous.Normal);
+                surface.Previous.Normal * normalSign);
             var currentCenterDistance = SimVector3.Dot(
                 ball.Position - surface.Current.Origin,
-                surface.Current.Normal);
+                surface.Current.Normal * normalSign);
             if (previousCenterDistance < -ball.Radius || currentCenterDistance - ball.Radius > 0f)
             {
                 return false;
@@ -91,10 +97,11 @@ namespace Volleyball.Domain.Simulation
                 : Clamp01(previousOffsetDistance / denominator);
 
             var frame = surface.At(timeFraction);
+            var contactNormal = frame.Normal * normalSign;
             var sweptCenter = SimVector3.Lerp(ball.PreviousPosition, ball.Position, timeFraction);
-            var signedCenterDistance = SimVector3.Dot(sweptCenter - frame.Origin, frame.Normal);
-            var impactCenter = sweptCenter + (frame.Normal * (ball.Radius - signedCenterDistance));
-            var contactPoint = impactCenter - (frame.Normal * ball.Radius);
+            var signedCenterDistance = SimVector3.Dot(sweptCenter - frame.Origin, contactNormal);
+            var impactCenter = sweptCenter + (contactNormal * (ball.Radius - signedCenterDistance));
+            var contactPoint = impactCenter - (contactNormal * ball.Radius);
             var fromOrigin = contactPoint - frame.Origin;
             var rightOffset = SimVector3.Dot(fromOrigin, frame.Right);
             var upOffset = SimVector3.Dot(fromOrigin, frame.Up);

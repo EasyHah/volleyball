@@ -2,13 +2,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
-using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
-using PlayerAbilitySnapshotV1 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV1;
+using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
+using PlayerAbilitySnapshotV2 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV2;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
-using PlayerSnapshotV1 = Volleyball.Shared.Contracts.PlayerSnapshotV1;
+using PlayerSnapshotV2 = Volleyball.Shared.Contracts.PlayerSnapshotV2;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
-using TeamSnapshotV1 = Volleyball.Shared.Contracts.TeamSnapshotV1;
+using TeamSnapshotV2 = Volleyball.Shared.Contracts.TeamSnapshotV2;
 
 namespace Volleyball.Presentation
 {
@@ -22,10 +22,11 @@ namespace Volleyball.Presentation
             Application.targetFrameRate = 60;
             CourtBuilder.Build(transform);
             var ball = CreateBall();
-            var agents = CreateSixAgents();
+            var context = CreateSandboxContext();
+            var agents = CreateSixAgents(context);
             var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<ThreeVsThreeRallyDirector>();
-            director.Initialize(ball, agents, CreateSandboxContext(), scoreDisplay);
+            director.InitializeV2(ball, agents, context, scoreDisplay);
             var cameras = gameObject.AddComponent<RallyCameraController>();
             cameras.Initialize(ball);
         }
@@ -58,20 +59,21 @@ namespace Volleyball.Presentation
             return ballObject.AddComponent<SimulatedBall>();
         }
 
-        private List<PrototypePlayerAgent> CreateSixAgents()
+        private List<PrototypePlayerAgent> CreateSixAgents(MatchContextV2 context)
         {
             var agents = new List<PrototypePlayerAgent>(6);
-            CreateAgent(agents, TeamId.Blue, PlayerRole.Defender, new Vector3(-2.5f, 0f, -5.2f), BlueColor, "3");
-            CreateAgent(agents, TeamId.Blue, PlayerRole.Setter, new Vector3(0f, 0f, -3.4f), BlueColor, "1");
-            CreateAgent(agents, TeamId.Blue, PlayerRole.Attacker, new Vector3(2.1f, 0f, -2.6f), BlueColor, "2");
-            CreateAgent(agents, TeamId.Orange, PlayerRole.Defender, new Vector3(2.5f, 0f, 5.2f), OrangeColor, "6");
-            CreateAgent(agents, TeamId.Orange, PlayerRole.Setter, new Vector3(0f, 0f, 3.4f), OrangeColor, "4");
-            CreateAgent(agents, TeamId.Orange, PlayerRole.Attacker, new Vector3(-2.1f, 0f, 2.6f), OrangeColor, "5");
+            CreateAgent(agents, context, TeamId.Blue, PlayerRole.Defender, new Vector3(-2.5f, 0f, -5.2f), BlueColor, "3");
+            CreateAgent(agents, context, TeamId.Blue, PlayerRole.Setter, new Vector3(0f, 0f, -3.4f), BlueColor, "1");
+            CreateAgent(agents, context, TeamId.Blue, PlayerRole.Attacker, new Vector3(2.1f, 0f, -2.6f), BlueColor, "2");
+            CreateAgent(agents, context, TeamId.Orange, PlayerRole.Defender, new Vector3(2.5f, 0f, 5.2f), OrangeColor, "6");
+            CreateAgent(agents, context, TeamId.Orange, PlayerRole.Setter, new Vector3(0f, 0f, 3.4f), OrangeColor, "4");
+            CreateAgent(agents, context, TeamId.Orange, PlayerRole.Attacker, new Vector3(-2.1f, 0f, 2.6f), OrangeColor, "5");
             return agents;
         }
 
         private void CreateAgent(
             ICollection<PrototypePlayerAgent> agents,
+            MatchContextV2 context,
             TeamId team,
             PlayerRole role,
             Vector3 position,
@@ -88,54 +90,47 @@ namespace Volleyball.Presentation
 
             var agent = playerObject.AddComponent<PrototypePlayerAgent>();
             agent.Initialize(new PlayerId(team, role), color, jerseyNumber);
-            agent.SetAbility(AbilityFor(role));
+            agent.SetAbility(new PlayerAbilityProfile(AbilityFor(context, team, role)));
             agents.Add(agent);
         }
 
-        private static PlayerAbilityProfile AbilityFor(PlayerRole role)
+        private static PlayerAbilitySnapshotV2 AbilityFor(
+            MatchContextV2 context,
+            TeamId team,
+            PlayerRole role)
         {
-            return role switch
+            var snapshot = team == TeamId.Blue ? context.Home : context.Away;
+            var position = role switch
             {
-                PlayerRole.Defender => new PlayerAbilityProfile(
-                    0.88f,
-                    0.91f,
-                    0.78f,
-                    0.94f,
-                    0.74f,
-                    0.70f,
-                    0.68f),
-                PlayerRole.Setter => new PlayerAbilityProfile(
-                    0.90f,
-                    0.93f,
-                    0.80f,
-                    0.80f,
-                    0.95f,
-                    0.74f,
-                    0.70f),
-                PlayerRole.Attacker => new PlayerAbilityProfile(
-                    0.91f,
-                    0.89f,
-                    0.94f,
-                    0.72f,
-                    0.72f,
-                    0.93f,
-                    0.92f),
-                _ => PlayerAbilityProfile.Default
+                PlayerRole.Defender => PlayerPosition.Defender,
+                PlayerRole.Setter => PlayerPosition.Setter,
+                PlayerRole.Attacker => PlayerPosition.OutsideHitter,
+                _ => throw new System.ArgumentOutOfRangeException(nameof(role))
             };
+
+            foreach (var player in snapshot.Players)
+            {
+                if (player.Position == position)
+                {
+                    return player.Ability;
+                }
+            }
+
+            throw new System.InvalidOperationException("The sandbox roster is missing its required position.");
         }
 
-        private static MatchContextV1 CreateSandboxContext()
+        private static MatchContextV2 CreateSandboxContext()
         {
-            return MatchContextV1.Create(
+            return MatchContextV2.Create(
                 System.Guid.Parse("22222222-2222-2222-2222-222222222222"),
                 7351,
                 CreateTeam("sandbox-home", "Blue", TeamSide.Home, "home"),
                 CreateTeam("sandbox-away", "Orange", TeamSide.Away, "away"));
         }
 
-        private static TeamSnapshotV1 CreateTeam(string id, string name, TeamSide side, string prefix)
+        private static TeamSnapshotV2 CreateTeam(string id, string name, TeamSide side, string prefix)
         {
-            return new TeamSnapshotV1(
+            return new TeamSnapshotV2(
                 new Volleyball.Shared.Contracts.TeamId(id),
                 name,
                 side,
@@ -147,14 +142,42 @@ namespace Volleyball.Presentation
                 });
         }
 
-        private static PlayerSnapshotV1 CreatePlayer(string id, string name, int number, PlayerPosition position)
+        private static PlayerSnapshotV2 CreatePlayer(string id, string name, int number, PlayerPosition position)
         {
-            return new PlayerSnapshotV1(
+            var ability = AbilityFor(position);
+            return new PlayerSnapshotV2(
                 new StablePlayerId(id),
                 name,
                 number,
                 position,
-                new PlayerAbilitySnapshotV1(0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f));
+                new PlayerAbilitySnapshotV2(
+                    ability.Mobility,
+                    ability.Reaction,
+                    ability.Jump,
+                    ability.ReceiveTechnique,
+                    ability.SetTechnique,
+                    ability.AttackTechnique,
+                    ability.AttackPower,
+                    ReachFor(position)));
+        }
+
+        private static PlayerAbilityProfile AbilityFor(PlayerPosition position)
+        {
+            return position switch
+            {
+                PlayerPosition.Defender => new PlayerAbilityProfile(
+                    0.88f, 0.91f, 0.78f, 0.94f, 0.74f, 0.70f, 0.68f),
+                PlayerPosition.Setter => new PlayerAbilityProfile(
+                    0.90f, 0.93f, 0.80f, 0.80f, 0.95f, 0.74f, 0.70f),
+                PlayerPosition.OutsideHitter => new PlayerAbilityProfile(
+                    0.91f, 0.89f, 0.94f, 0.72f, 0.72f, 0.93f, 0.92f),
+                _ => throw new System.ArgumentOutOfRangeException(nameof(position))
+            };
+        }
+
+        private static float ReachFor(PlayerPosition position)
+        {
+            return position == PlayerPosition.OutsideHitter ? 3.42f : 3.20f;
         }
     }
 }

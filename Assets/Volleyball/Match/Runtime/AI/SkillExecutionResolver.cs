@@ -6,6 +6,8 @@ namespace Volleyball.AI
 {
     public static class SkillExecutionResolver
     {
+        public const float MaximumReactionDelaySeconds = 0.22f;
+
         public static SkillExecutionError Resolve(
             PlayerAbilityProfile profile,
             TechniqueAction action,
@@ -23,7 +25,8 @@ namespace Volleyball.AI
             var random = new Random(CombineSeed(seed, playerStableId, rallyNumber, actionIndex, (int)action));
             var technique = profile.TechniqueFor(action);
             var executionScale = (1f - technique) * difficulty;
-            var reactionDelay = NextPositive(random) * 0.22f * (1f - profile.Reaction) * difficulty;
+            var reactionDelay = NextPositive(random) * MaximumReactionDelaySeconds *
+                                (1f - profile.Reaction) * difficulty;
             var positionRange = action switch
             {
                 TechniqueAction.Set => new SimVector3(0.14f, 0.18f, 0.14f),

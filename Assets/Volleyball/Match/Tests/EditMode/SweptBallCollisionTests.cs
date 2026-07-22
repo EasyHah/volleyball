@@ -40,6 +40,20 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void TryFindContact_AcceptsBackFaceCrossingForExplicitTwoSidedPalm()
+        {
+            var ball = AdvanceBall(new SimVector3(0f, -0.2f, 0f), new SimVector3(0f, 40f, 0f));
+            var frame = Frame(SimVector3.Zero);
+            var palm = new ContactSurfaceSnapshot(frame, frame, true, 2, true);
+
+            var found = SweptBallCollision.TryFindContact(ball, palm, Step, out var hit);
+
+            Assert.That(found, Is.True);
+            Assert.That(hit.Normal.Y, Is.EqualTo(1f).Within(0.00001f),
+                "Back-face detection must preserve the palm's authored strike normal.");
+        }
+
+        [Test]
         public void TryFindContact_RepairsExistingFrontFacePenetrationAtStartOfStep()
         {
             var ball = AdvanceBall(new SimVector3(0f, 0.08f, 0f), new SimVector3(0f, -20f, 0f));

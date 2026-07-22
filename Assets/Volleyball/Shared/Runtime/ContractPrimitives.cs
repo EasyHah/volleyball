@@ -2,9 +2,28 @@ using System;
 
 namespace Volleyball.Shared.Contracts
 {
+    public interface IMatchContext
+    {
+        int ContractVersion { get; }
+        Guid SessionId { get; }
+        int Seed { get; }
+        string ContextHash { get; }
+    }
+
+    public interface IMatchResult
+    {
+        int ContractVersion { get; }
+        Guid SessionId { get; }
+        string ContextHash { get; }
+        TeamId WinnerTeamId { get; }
+        int HomeScore { get; }
+        int AwayScore { get; }
+    }
+
     public static class ContractVersions
     {
         public const int MatchV1 = 1;
+        public const int MatchV2 = 2;
 
         public static bool SupportsMatch(int version)
         {
@@ -140,6 +159,16 @@ namespace Volleyball.Shared.Contracts
             if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f || value > 1f)
             {
                 throw new ContractValidationException(name + " must be finite and in the range [0, 1].");
+            }
+
+            return value;
+        }
+
+        public static float AttackReach(float value, string name)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) || value < 3.20f || value > 3.55f)
+            {
+                throw new ContractValidationException(name + " must be finite and in the range [3.20, 3.55].");
             }
 
             return value;

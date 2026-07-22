@@ -5,6 +5,7 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Presentation;
 
 namespace Volleyball.EditModeTests
 {
@@ -95,6 +96,23 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void SetterPreparedFacing_IsIdenticalLocallyAndMirroredInWorldDepth()
+        {
+            var blueFrame = new TeamCourtFrame(TeamId.Blue);
+            var orangeFrame = new TeamCourtFrame(TeamId.Orange);
+            var blueWorld = PrototypePlayerAgent.PreparedForwardFor(blueFrame);
+            var orangeWorld = PrototypePlayerAgent.PreparedForwardFor(orangeFrame);
+            var blueLocal = blueFrame.ToLocal(blueWorld);
+            var orangeLocal = orangeFrame.ToLocal(orangeWorld);
+
+            Assert.That(blueLocal, Is.EqualTo(orangeLocal));
+            Assert.That(blueLocal.X, Is.LessThan(0f));
+            Assert.That(blueLocal.Z, Is.GreaterThan(0f));
+            Assert.That(blueWorld.X, Is.EqualTo(orangeWorld.X).Within(0.00001f));
+            Assert.That(blueWorld.Z, Is.EqualTo(-orangeWorld.Z).Within(0.00001f));
+        }
+
+        [Test]
         public void Plan_AttackUsesReachableDefenderWhenTheAttackerCannotArrive()
         {
             var tactic = CreateTactic(SpikeRoute.Line);
@@ -114,8 +132,11 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
             Assert.That(decision.Action, Is.EqualTo(TechniqueAction.Attack));
-            Assert.That(decision.ContactTarget, Is.EqualTo(takeoff));
+            Assert.That(decision.ContactTarget, Is.EqualTo(decision.AttackContactPlan.Value.ContactCenter));
             Assert.That(decision.AttackApproach.HasValue, Is.True);
+            Assert.That(decision.AttackContactPlan.HasValue, Is.True);
+            Assert.That(decision.AttackContactPlan.Value.Takeoff, Is.EqualTo(takeoff));
+            Assert.That(decision.AttackContactPlan.Value.ContactCenter.Y, Is.InRange(3.20f, 3.55f));
         }
 
         [Test]
@@ -248,6 +269,41 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AttackApproachStaging_AdvancesQuickHitterBeforeTheSetContact()
+        {
+            var approach = new AttackApproachPlan(
+                new SimVector3(0f, 0f, -3.2f),
+                new SimVector3(0f, 0f, -2f),
+                1.2f,
+                1f,
+                0f);
+
+            var target = AttackApproachStaging.TargetAtSetContact(
+                approach,
+                0.425f,
+                6f,
+                0.38f);
+
+            Assert.That(target.Z, Is.EqualTo(-2.27f).Within(0.00001f));
+            Assert.That(target.X, Is.Zero.Within(0.00001f));
+        }
+
+        [Test]
+        public void AttackApproachStaging_LeavesSlowHitterAtTheApproachStart()
+        {
+            var approach = new AttackApproachPlan(
+                new SimVector3(0f, 0f, -3.2f),
+                new SimVector3(0f, 0f, -2f),
+                1.2f,
+                1f,
+                0f);
+
+            Assert.That(
+                AttackApproachStaging.TargetAtSetContact(approach, 1f, 6f, 0.38f),
+                Is.EqualTo(approach.ApproachStart));
+        }
+
+        [Test]
         public void Plan_AttackApproachQualityEasesSmoothlyIntoItsExplicitCap()
         {
             var below = AttackDecisionForApproachDistance(1.3f).AttackApproach.Value.JumpQuality;
@@ -340,6 +396,7 @@ namespace Volleyball.EditModeTests
             Assert.That(second.MovementTarget, Is.EqualTo(first.MovementTarget));
             Assert.That(second.BallTarget, Is.EqualTo(first.BallTarget));
             Assert.That(second.AttackApproach, Is.EqualTo(first.AttackApproach));
+            Assert.That(second.AttackContactPlan, Is.EqualTo(first.AttackContactPlan));
             Assert.That(input.Players[0].WorldPosition.X, Is.Not.EqualTo(99f));
             Assert.Throws<NotSupportedException>(() => ((IList<RallyDecisionCandidate>)first.Candidates)[0] = default);
             Assert.That(second.Candidates.Count, Is.EqualTo(first.Candidates.Count));
@@ -460,6 +517,14 @@ namespace Volleyball.EditModeTests
                 1.05f,
                 0.5f,
                 0.1f);
+            var attackContactPlan = AttackContactPlanner.Plan(new AttackContactInput(
+                3.42f,
+                0.5f,
+                1f,
+                SetQualityGrade.A,
+                attackApproach.Takeoff,
+                0.5f,
+                1f));
 
             Assert.That(TeamRallyDecision.NoDecision.HasDecision, Is.False);
             Assert.That(TeamRallyDecision.NoDecision.Candidates, Is.Empty);
@@ -555,11 +620,13 @@ namespace Volleyball.EditModeTests
                 new SimVector3(2f, 0f, 5.25f),
                 ValidScore(),
                 new[] { candidate },
-                attackApproach);
+                attackApproach,
+                attackContactPlan);
 
             Assert.That(valid.HasDecision, Is.True);
             Assert.That(valid.Actor, Is.EqualTo(actor));
             Assert.That(valid.AttackApproach, Is.EqualTo(attackApproach));
+            Assert.That(valid.AttackContactPlan, Is.EqualTo(attackContactPlan));
         }
 
         private static TeamRallyDecisionInput CreateOrangeAttackInput(SpikeRoute route)
@@ -711,7 +778,7 @@ namespace Volleyball.EditModeTests
                     new CourtPoint(0f, sign * 0.65f),
                     PlayerRole.Setter,
                     new CourtPoint(0f, sign * 4.15f)),
-                0.8f,
+                SetRhythm.FastPin,
                 0.45f);
         }
 

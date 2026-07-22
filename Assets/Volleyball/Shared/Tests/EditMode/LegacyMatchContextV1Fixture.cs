@@ -1,0 +1,10 @@
+namespace Volleyball.Shared.EditModeTests
+{
+    internal static class LegacyMatchContextV1Fixture
+    {
+        public const string ContextHash = "9f63fb6443b052203554d75fb89c5214de02e1c971f577a7751dc45ac800987c";
+
+        public const string Json =
+            "{\"contractVersion\":1,\"sessionId\":\"42e99cf4-b7bf-449e-9281-f82dbe0f6aa4\",\"seed\":7351,\"home\":{\"teamId\":\"team-blue\",\"displayName\":\"Blue Team\",\"side\":0,\"players\":[{\"playerId\":\"blue-setter\",\"displayName\":\"Setter\",\"jerseyNumber\":1,\"position\":0,\"ability\":{\"mobility\":0.81,\"reaction\":0.82,\"jump\":0.83,\"receiveTechnique\":0.84,\"setTechnique\":0.85,\"attackTechnique\":0.86,\"attackPower\":0.87}},{\"playerId\":\"blue-attacker\",\"displayName\":\"Attacker\",\"jerseyNumber\":2,\"position\":1,\"ability\":{\"mobility\":0.81,\"reaction\":0.82,\"jump\":0.83,\"receiveTechnique\":0.84,\"setTechnique\":0.85,\"attackTechnique\":0.86,\"attackPower\":0.87}},{\"playerId\":\"blue-defender\",\"displayName\":\"Defender\",\"jerseyNumber\":3,\"position\":5,\"ability\":{\"mobility\":0.81,\"reaction\":0.82,\"jump\":0.83,\"receiveTechnique\":0.84,\"setTechnique\":0.85,\"attackTechnique\":0.86,\"attackPower\":0.87}}]},\"away\":{\"teamId\":\"team-orange\",\"displayName\":\"Orange Team\",\"side\":1,\"players\":[{\"playerId\":\"orange-setter\",\"displayName\":\"Setter\",\"jerseyNumber\":1,\"position\":0,\"ability\":{\"mobility\":0.81,\"reaction\":0.82,\"jump\":0.83,\"receiveTechnique\":0.84,\"setTechnique\":0.85,\"attackTechnique\":0.86,\"attackPower\":0.87}},{\"playerId\":\"orange-attacker\",\"displayName\":\"Attacker\",\"jerseyNumber\":2,\"position\":1,\"ability\":{\"mobility\":0.81,\"reaction\":0.82,\"jump\":0.83,\"receiveTechnique\":0.84,\"setTechnique\":0.85,\"attackTechnique\":0.86,\"attackPower\":0.87}},{\"playerId\":\"orange-defender\",\"displayName\":\"Defender\",\"jerseyNumber\":3,\"position\":5,\"ability\":{\"mobility\":0.81,\"reaction\":0.82,\"jump\":0.83,\"receiveTechnique\":0.84,\"setTechnique\":0.85,\"attackTechnique\":0.86,\"attackPower\":0.87}}]},\"contextHash\":\"9f63fb6443b052203554d75fb89c5214de02e1c971f577a7751dc45ac800987c\"}";
+    }
+}

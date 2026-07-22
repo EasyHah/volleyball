@@ -45,6 +45,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Create_MapsRoutesToRhythmMetadataInsteadOfFixedSetDurations()
+        {
+            var planner = new PhysicalRallyTacticPlanner(7351);
+            for (var revision = 0; revision < 64; revision++)
+            {
+                var tactics = planner.Create(revision);
+                AssertRhythm(tactics.Blue);
+                AssertRhythm(tactics.Orange);
+            }
+        }
+
+        [Test]
         public void Create_KeepsEveryMovementTargetInsidePlayableCourt()
         {
             var planner = new PhysicalRallyTacticPlanner(7351);
@@ -205,6 +217,17 @@ namespace Volleyball.EditModeTests
             Assert.That(tactic.DefenderPosition.Z, Is.InRange(-9f, 9f));
             Assert.That(tactic.BlockPosition.Z, Is.InRange(-9f, 9f));
             Assert.That(tactic.CoverPosition.Z, Is.InRange(-9f, 9f));
+        }
+
+        private static void AssertRhythm(TeamRallyTactic tactic)
+        {
+            var expected = tactic.SetRoute switch
+            {
+                SetRoute.MiddleQuick => SetRhythm.CloseQuick,
+                SetRoute.BackSet => SetRhythm.BackQuick,
+                _ => SetRhythm.FastPin
+            };
+            Assert.That(tactic.SetRhythm, Is.EqualTo(expected));
         }
     }
 }

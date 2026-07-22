@@ -315,6 +315,61 @@ namespace Volleyball.EditModeTests
             }
         }
 
+        [TestCase(TeamId.Blue)]
+        [TestCase(TeamId.Orange)]
+        public void PlannedAttack_UsesTheSameContactCenterForPreviewAndScheduledPalm(TeamId team)
+        {
+            var player = CreatePlayer("UnifiedAttackContact", team, PlayerRole.Attacker);
+            try
+            {
+                var depthSign = new TeamCourtFrame(team).WorldDepthSign;
+                player.transform.rotation = Quaternion.Euler(0f, team == TeamId.Orange ? 180f : 0f, 0f);
+                player.SetAbility(new PlayerAbilityProfile(
+                    0.9f, 0.9f, 0.9f, 0.8f, 0.8f, 0.9f, 0.9f, 3.50f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(1f, 0f, depthSign * 3.65f),
+                    new SimVector3(1f, 0f, depthSign * 2.45f),
+                    1.2f,
+                    1f,
+                    0f);
+                var plan = AttackContactPlanner.Plan(new AttackContactInput(
+                    player.Ability.MaxAttackReach,
+                    1f,
+                    1f,
+                    SetQualityGrade.A,
+                    approach.Takeoff,
+                    0.8f,
+                    1.1f));
+
+                var preview = player.PreviewAttackContactFramesAt(plan);
+                var previewCenter = preview[0].Origin +
+                                    (preview[0].Normal * SimulatedBall.DefaultRadius);
+                player.transform.position = new Vector3(1f, 0f, depthSign * 3.65f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    5f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    705,
+                    plan.ContactCenter,
+                    movementStartSimulationTime: 3.8f,
+                    attackApproach: approach,
+                    attackContactPlan: plan);
+
+                var contacts = Collect(player, 5f);
+                var scheduledCenter = contacts[0].Surface.Current.Origin +
+                                      (contacts[0].Surface.Current.Normal * SimulatedBall.DefaultRadius);
+
+                Assert.That((previewCenter - plan.ContactCenter).Magnitude, Is.LessThan(0.05f));
+                Assert.That((scheduledCenter - plan.ContactCenter).Magnitude, Is.LessThan(0.05f));
+                Assert.That((scheduledCenter - previewCenter).Magnitude, Is.LessThan(0.01f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
         [Test]
         public void ScheduledMovement_ReachesNearbyTacticalPositionBeforeContact()
         {
@@ -344,6 +399,34 @@ namespace Volleyball.EditModeTests
                 Assert.That(Vector3.Distance(player.ScheduledMovementTarget, target), Is.LessThan(0.001f));
                 Assert.That(Vector3.Distance(player.transform.position, target), Is.LessThan(0.2f));
                 Assert.That(player.MovementShortfall, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void ResolveContactRootTarget_OffsetsReceiverRootForTheVisiblePlatform()
+        {
+            var playerObject = new GameObject("RootResolvedReceiver");
+            try
+            {
+                playerObject.transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Orange, PlayerRole.Defender), Color.red, "6");
+                var desiredCenter = new SimVector3(-3f, 1.36f, 1.80f);
+                var resolvedRoot = player.ResolveContactRootTarget(
+                    TechniqueAction.Receive,
+                    desiredCenter,
+                    new Vector3(desiredCenter.X, 0f, desiredCenter.Z));
+                var frame = player.PreviewContactFramesAt(TechniqueAction.Receive, resolvedRoot)[0];
+                var actualCenter = frame.Origin +
+                                   (frame.Normal * SimulatedBall.DefaultRadius);
+
+                Assert.That(actualCenter.X, Is.EqualTo(desiredCenter.X).Within(0.001f));
+                Assert.That(actualCenter.Z, Is.EqualTo(desiredCenter.Z).Within(0.001f));
+                Assert.That(resolvedRoot.z, Is.GreaterThan(desiredCenter.Z + 0.3f));
             }
             finally
             {
@@ -472,7 +555,75 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void ScheduledBlockContact_EmitsTwoActivePalmsOnlyInsideItsWindow()
+        public void AttackPreparation_MovesTowardApproachStartWithoutAddingContactCandidates()
+        {
+            var gameObject = new GameObject("AttackPreparationPlayer");
+            try
+            {
+                var player = gameObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter),
+                    Color.blue,
+                    "4");
+                player.transform.position = new Vector3(0f, 0f, -3f);
+                var target = new Vector3(1.5f, 0f, -1.4f);
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    0.5f,
+                    new SimVector3(0f, 5f, 4f),
+                    NoExecutionError(),
+                    70);
+                player.ScheduleAttackPreparation(1f, target, 0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(0.89f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(player.ReplayScheduledAction, Is.EqualTo(TechniqueAction.Attack.ToString()));
+                Assert.That(Vector3.Distance(player.transform.position, target), Is.LessThan(0.05f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void SetPreparation_ReplacesAnOldContactAndMovesWithoutAddingContactCandidates()
+        {
+            var gameObject = new GameObject("SetPreparationPlayer");
+            try
+            {
+                var player = gameObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PlayerId(TeamId.Blue, PlayerRole.Setter),
+                    Color.blue,
+                    "2");
+                player.transform.position = new Vector3(-3f, 0f, -7f);
+                var target = new Vector3(1.2f, 0f, -1.1f);
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    0.5f,
+                    new SimVector3(0f, 5f, 4f),
+                    NoExecutionError(),
+                    71);
+                player.ScheduleSetPreparation(1.5f, target, 0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(1.39f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(player.ReplayScheduledAction, Is.EqualTo(TechniqueAction.Set.ToString()));
+                Assert.That(Vector3.Distance(player.transform.position, target), Is.LessThan(0.05f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledBlockContact_EmitsSixArmVolumesOnlyInsideItsWindow()
         {
             var player = CreatePlayer("PhysicalBlocker", TeamId.Orange, PlayerRole.Attacker);
             try
@@ -488,14 +639,46 @@ namespace Volleyball.EditModeTests
                 var atContact = Collect(player, 10f);
 
                 Assert.That(before, Is.Empty);
-                Assert.That(atContact, Has.Count.EqualTo(2));
+                Assert.That(atContact.Count, Is.EqualTo(6));
                 Assert.That(atContact, Has.All.Matches<BallContactCandidate>(candidate =>
                     candidate.Action == TechniqueAction.Block &&
                     candidate.Actor.HasValue && candidate.Actor.Value.Equals(player.Id) &&
-                    candidate.Surface.ContactGroupId == 701 &&
-                    candidate.Surface.Active));
+                    candidate.IsCapsule &&
+                    candidate.Capsule.ContactGroupId == 701 &&
+                    candidate.Capsule.Active));
                 Assert.That(player.transform.position.y, Is.GreaterThan(0.2f));
                 Assert.That(player.PhysicalBlockContactAssignments, Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledBlockContact_ReorientsPreviousSetFacingTowardTheNet()
+        {
+            var player = CreatePlayer("ReorientedBlocker", TeamId.Orange, PlayerRole.Setter);
+            try
+            {
+                player.transform.forward = new Vector3(0.8f, 0f, 0.6f);
+                player.ScheduleBlockContact(
+                    10f,
+                    new Vector3(0f, 0f, PrototypePlayerAgent.NetClearance),
+                    9f,
+                    new SimVector3(0f, 2f, -8f),
+                    704);
+
+                var contacts = Collect(player, 10f);
+
+                Assert.That(contacts, Has.Count.EqualTo(6));
+                Assert.That(player.transform.forward.z, Is.EqualTo(-1f).Within(0.001f));
+                Assert.That(
+                    player.Rig.GetJoint("LeftPalm").position.z,
+                    Is.LessThan(player.transform.position.z));
+                Assert.That(
+                    player.Rig.GetJoint("RightPalm").position.z,
+                    Is.LessThan(player.transform.position.z));
             }
             finally
             {
@@ -583,6 +766,113 @@ namespace Volleyball.EditModeTests
             {
                 Object.DestroyImmediate(low.gameObject);
                 Object.DestroyImmediate(high.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledAttackApproach_UsesActualEarlyContactTimeForMovementWindow()
+        {
+            var player = CreatePlayer("EarlyContactAttacker", TeamId.Blue, PlayerRole.Defender);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(0.8f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -3.2f),
+                    new SimVector3(0f, 0f, -1.2f),
+                    2f,
+                    1f,
+                    0f);
+                var plan = AttackContactPlanner.Plan(new AttackContactInput(
+                    player.Ability.MaxAttackReach,
+                    approach.JumpQuality,
+                    1f,
+                    SetQualityGrade.A,
+                    approach.Takeoff,
+                    0.6f,
+                    1f));
+                var earlyExecution = new SkillExecutionError(
+                    0f,
+                    SimVector3.Zero,
+                    SimVector3.Zero,
+                    -0.08f,
+                    1f,
+                    SimVector3.Zero,
+                    1f);
+                player.transform.position = new Vector3(0f, 0f, -3.2f);
+
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    5f,
+                    new SimVector3(0f, -4f, 14f),
+                    earlyExecution,
+                    706,
+                    plan.ContactCenter,
+                    movementStartSimulationTime: 4f,
+                    attackApproach: approach,
+                    attackContactPlan: plan);
+
+                Assert.That(player.MovementShortfall, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledQuickAttack_AlignsPalmAtBallArrivalBeforeSlightlyLateContact()
+        {
+            var player = CreatePlayer("QuickAttackDefender", TeamId.Orange, PlayerRole.Defender);
+            try
+            {
+                player.transform.forward = Vector3.back;
+                var takeoff = new SimVector3(-0.34f, 0f, 2.055f);
+                var approach = new AttackApproachPlan(
+                    new SimVector3(-0.34f, 0f, 2.27f),
+                    takeoff,
+                    0.215f,
+                    1f,
+                    0f);
+                var plan = AttackContactPlanner.Plan(new AttackContactInput(
+                    player.Ability.MaxAttackReach,
+                    1f,
+                    1f,
+                    SetQualityGrade.A,
+                    takeoff,
+                    0.4f,
+                    0.42f));
+                var slightlyLate = new SkillExecutionError(
+                    0f,
+                    new SimVector3(0.04f, 0.04f, 0.04f),
+                    new SimVector3(2f, 2f, 2f),
+                    0.025f,
+                    1f,
+                    SimVector3.Zero,
+                    1f);
+                player.transform.position = new Vector3(-0.34f, 0f, 2.27f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2.033f,
+                    new SimVector3(0f, -4f, -14f),
+                    slightlyLate,
+                    707,
+                    plan.ContactCenter,
+                    movementStartSimulationTime: 1.614f,
+                    attackApproach: approach,
+                    attackContactPlan: plan);
+
+                var contacts = Collect(player, 2.033f);
+                var palmCenter = contacts[0].Surface.Current.Origin +
+                                 (contacts[0].Surface.Current.Normal * SimulatedBall.DefaultRadius);
+
+                Assert.That(
+                    (palmCenter - plan.ContactCenter).Magnitude,
+                    Is.LessThan(0.01f));
+                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.70f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
             }
         }
 

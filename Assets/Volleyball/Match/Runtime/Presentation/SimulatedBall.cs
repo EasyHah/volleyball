@@ -38,6 +38,46 @@ namespace Volleyball.Presentation
             ContactResponseParameters responseParameters)
         {
             Surface = surface;
+            Capsule = default;
+            IsCapsule = false;
+            Action = action;
+            Actor = actor;
+            PlayerTechnique = playerTechnique;
+            TargetVelocity = targetVelocity;
+            StrikeDirection = strikeDirection;
+            ResponseParameters = responseParameters;
+        }
+
+        public BallContactCandidate(
+            ContactCapsuleSnapshot capsule,
+            TechniqueAction action,
+            float playerTechnique,
+            SimVector3 targetVelocity,
+            SimVector3 strikeDirection,
+            ContactResponseParameters responseParameters)
+            : this(
+                capsule,
+                action,
+                null,
+                playerTechnique,
+                targetVelocity,
+                strikeDirection,
+                responseParameters)
+        {
+        }
+
+        public BallContactCandidate(
+            ContactCapsuleSnapshot capsule,
+            TechniqueAction action,
+            PlayerId? actor,
+            float playerTechnique,
+            SimVector3 targetVelocity,
+            SimVector3 strikeDirection,
+            ContactResponseParameters responseParameters)
+        {
+            Surface = default;
+            Capsule = capsule;
+            IsCapsule = true;
             Action = action;
             Actor = actor;
             PlayerTechnique = playerTechnique;
@@ -47,6 +87,10 @@ namespace Volleyball.Presentation
         }
 
         public ContactSurfaceSnapshot Surface { get; }
+
+        public ContactCapsuleSnapshot Capsule { get; }
+
+        public bool IsCapsule { get; }
 
         public TechniqueAction Action { get; }
 
@@ -463,7 +507,19 @@ namespace Volleyball.Presentation
             var found = false;
             foreach (var candidate in _contactCandidates)
             {
-                if (!SweptBallCollision.TryFindContact(State, candidate.Surface, deltaSeconds, out var hit))
+                SweptBallHit hit;
+                var hasContact = candidate.IsCapsule
+                    ? SweptBallCapsuleCollision.TryFindContact(
+                        State,
+                        candidate.Capsule,
+                        deltaSeconds,
+                        out hit)
+                    : SweptBallCollision.TryFindContact(
+                        State,
+                        candidate.Surface,
+                        deltaSeconds,
+                        out hit);
+                if (!hasContact)
                 {
                     continue;
                 }

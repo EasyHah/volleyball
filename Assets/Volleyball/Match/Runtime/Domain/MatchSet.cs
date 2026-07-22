@@ -55,7 +55,35 @@ namespace Volleyball.Domain
             ServingSide = firstServer;
         }
 
+        public MatchSet(
+            MatchContextV2 context,
+            TeamSide firstServer,
+            MatchSetRules rules = null)
+        {
+            ContextV2 = context ?? throw new ArgumentNullException(nameof(context));
+            if (!Enum.IsDefined(typeof(TeamSide), firstServer))
+            {
+                throw new ArgumentOutOfRangeException(nameof(firstServer));
+            }
+
+            _statsByPlayer = new Dictionary<StablePlayerId, MutablePlayerStats>();
+            _sideByPlayer = new Dictionary<StablePlayerId, TeamSide>();
+            AddTeam(ContextV2.Home);
+            AddTeam(ContextV2.Away);
+            if (ContextV2.Home.Players.Count != ContextV2.Away.Players.Count)
+            {
+                throw new ArgumentException("Both court rosters must have the same size.", nameof(context));
+            }
+
+            _rules = rules ?? MatchSetRules.ForRosterSize(ContextV2.Home.Players.Count);
+            _homeRotation = new TeamRotation(ContextV2.Home.Players.Select(player => player.PlayerId));
+            _awayRotation = new TeamRotation(ContextV2.Away.Players.Select(player => player.PlayerId));
+            ServingSide = firstServer;
+        }
+
         public MatchContextV1 Context { get; }
+
+        public MatchContextV2 ContextV2 { get; }
 
         public int HomeScore { get; private set; }
 
@@ -70,6 +98,8 @@ namespace Volleyball.Domain
         public int SetTargetScore => _rules.TargetScore;
 
         public int MinimumWinningLead => _rules.MinimumLead;
+
+        public int MaximumScore => _rules.MaximumScore;
 
         public int RosterSize => _homeRotation.PlayerCount;
 
@@ -181,7 +211,9 @@ namespace Volleyball.Domain
                 Rotate(winner);
             }
 
-            IsComplete = Math.Max(HomeScore, AwayScore) >= _rules.TargetScore &&
+            var highestScore = Math.Max(HomeScore, AwayScore);
+            IsComplete = highestScore >= _rules.MaximumScore ||
+                         highestScore >= _rules.TargetScore &&
                          Math.Abs(HomeScore - AwayScore) >= _rules.MinimumLead;
         }
 
@@ -200,7 +232,36 @@ namespace Volleyball.Domain
             return MatchResultV1.Create(Context, winner, HomeScore, AwayScore, stats);
         }
 
+        public MatchResultV2 CreateResultV2()
+        {
+            if (!IsComplete)
+            {
+                throw new InvalidOperationException("A result is available only after the set completes.");
+            }
+
+            if (ContextV2 == null)
+            {
+                throw new InvalidOperationException("This set was created with a V1 context.");
+            }
+
+            var winner = WinnerSide == TeamSide.Home ? ContextV2.Home.TeamId : ContextV2.Away.TeamId;
+            var stats = _statsByPlayer
+                .OrderBy(entry => entry.Key.Value, StringComparer.Ordinal)
+                .Select(entry => entry.Value.ToContractV2(entry.Key))
+                .ToArray();
+            return MatchResultV2.Create(ContextV2, winner, HomeScore, AwayScore, stats);
+        }
+
         private void AddTeam(TeamSnapshotV1 team)
+        {
+            foreach (var player in team.Players)
+            {
+                _statsByPlayer.Add(player.PlayerId, new MutablePlayerStats());
+                _sideByPlayer.Add(player.PlayerId, team.Side);
+            }
+        }
+
+        private void AddTeam(TeamSnapshotV2 team)
         {
             foreach (var player in team.Players)
             {
@@ -276,16 +337,26 @@ namespace Volleyball.Domain
             {
                 return new PlayerMatchStatsV1(playerId, Points, Contacts, Errors, Workload);
             }
+
+            public PlayerMatchStatsV2 ToContractV2(StablePlayerId playerId)
+            {
+                return new PlayerMatchStatsV2(playerId, Points, Contacts, Errors, Workload);
+            }
         }
     }
 
     public sealed class MatchSetRules
     {
+        public const int AbsoluteMaximumScore = 50;
+
         public static MatchSetRules ThreeVsThree { get; } = new MatchSetRules(15, 2);
 
         public static MatchSetRules FormalIndoor { get; } = new MatchSetRules(25, 2);
 
-        public MatchSetRules(int targetScore, int minimumLead)
+        public MatchSetRules(
+            int targetScore,
+            int minimumLead,
+            int maximumScore = AbsoluteMaximumScore)
         {
             if (targetScore <= 0)
             {
@@ -297,13 +368,21 @@ namespace Volleyball.Domain
                 throw new ArgumentOutOfRangeException(nameof(minimumLead));
             }
 
+            if (maximumScore < targetScore || maximumScore > AbsoluteMaximumScore)
+            {
+                throw new ArgumentOutOfRangeException(nameof(maximumScore));
+            }
+
             TargetScore = targetScore;
             MinimumLead = minimumLead;
+            MaximumScore = maximumScore;
         }
 
         public int TargetScore { get; }
 
         public int MinimumLead { get; }
+
+        public int MaximumScore { get; }
 
         public static MatchSetRules ForRosterSize(int rosterSize)
         {

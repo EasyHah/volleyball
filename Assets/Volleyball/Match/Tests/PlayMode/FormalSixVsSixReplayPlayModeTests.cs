@@ -42,6 +42,11 @@ namespace Volleyball.PlayModeTests
             Assert.That(replay.Events.First().Kind, Is.EqualTo("Serve"));
             Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Serve"));
             Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Contact"));
+            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent =>
+                replayEvent.SetChain != null &&
+                !string.IsNullOrWhiteSpace(replayEvent.SetChain.QualityGrade) &&
+                replayEvent.SetChain.ActualAttackContactCenter != null));
+            Assert.That(director.AttackableSetRate, Is.InRange(0f, 1f));
             var decisions = replay.Events.Where(replayEvent => replayEvent.Kind == "Decision").ToList();
             Assert.That(decisions, Is.Not.Empty);
             Assert.That(decisions, Has.All.Matches<MatchReplayEventV1>(replayEvent =>
@@ -75,6 +80,7 @@ namespace Volleyball.PlayModeTests
             Assert.That(html, Does.Contain("score-panel"));
             Assert.That(html, Does.Contain("event-marker"));
             Assert.That(html, Does.Contain("replay.json"));
+            Assert.That(html, Does.Contain("set-quality"));
         }
 
         private static void AssertCandidateScores(
