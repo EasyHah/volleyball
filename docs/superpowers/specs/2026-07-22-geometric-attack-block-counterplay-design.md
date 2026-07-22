@@ -103,11 +103,20 @@ and laterally toward a reachable ball, but it must never make the actual ball
 contact position itself the new takeoff depth.
 
 The setter has its own organization-depth policy. At 1.50 metres or nearer to
-the net, it is in its best organization area. Eighty percent of normal sets
-from this area must target the attacker's best handling point: the valid point
-inside its takeoff band with the greatest predicted space from active block-arm
-geometry. The remaining twenty percent may use another legal point in that
-same attack band to retain deterministic tactical variation.
+the net, it is in its best organization area. Every normal set from this area
+targets the attacker's best handling point: the valid point inside its takeoff
+band with the greatest predicted space from active block-arm geometry. The AI
+does not intentionally choose a lower-quality point to create variation.
+
+Setter technique determines execution fidelity rather than tactical intent.
+It produces bounded horizontal, depth, height, and arrival-time error around
+the same best handling point. The error grows with set difficulty: greater
+distance from the setter, lateral displacement, backward or emergency style,
+and a tighter attacker approach window. Higher technique can preserve a faster
+legal rhythm and a smaller error envelope; lower technique prefers a safer,
+higher rhythm where required and is more likely to produce a C/D/E-quality set.
+Every realized set continues through the existing physical flight solver and
+set-quality assessment before attack replanning.
 
 When the setter is farther than 1.50 metres but no farther than the four-metre
 line, every normal set must still target its attacker's ordinary takeoff band.
