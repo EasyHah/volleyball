@@ -319,13 +319,27 @@ namespace Volleyball.Career.EditModeTests
                     new CareerAttributeProgress(
                         priorAttributes.Spike.AbilityBasisPoints,
                         priorAttributes.Spike.GrowthExperience + 120),
-                    priorAttributes.Serve,
-                    priorAttributes.Reception,
-                    priorAttributes.Defense,
-                    priorAttributes.Block,
-                    priorAttributes.Movement,
-                    priorAttributes.Jump,
-                    priorAttributes.Stamina));
+                    new CareerAttributeProgress(
+                        priorAttributes.Serve.AbilityBasisPoints,
+                        priorAttributes.Serve.GrowthExperience + 11),
+                    new CareerAttributeProgress(
+                        priorAttributes.Reception.AbilityBasisPoints,
+                        priorAttributes.Reception.GrowthExperience + 22),
+                    new CareerAttributeProgress(
+                        priorAttributes.Defense.AbilityBasisPoints,
+                        priorAttributes.Defense.GrowthExperience + 33),
+                    new CareerAttributeProgress(
+                        priorAttributes.Block.AbilityBasisPoints,
+                        priorAttributes.Block.GrowthExperience + 44),
+                    new CareerAttributeProgress(
+                        priorAttributes.Movement.AbilityBasisPoints,
+                        priorAttributes.Movement.GrowthExperience + 55),
+                    new CareerAttributeProgress(
+                        priorAttributes.Jump.AbilityBasisPoints,
+                        priorAttributes.Jump.GrowthExperience + 66),
+                    new CareerAttributeProgress(
+                        priorAttributes.Stamina.AbilityBasisPoints,
+                        priorAttributes.Stamina.GrowthExperience + 77)));
             return new CareerSaveSnapshot(
                 planning.Versions,
                 new CareerSaveIdentity(

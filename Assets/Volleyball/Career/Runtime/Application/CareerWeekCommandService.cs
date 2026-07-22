@@ -242,6 +242,27 @@ namespace Volleyball.Career.Application
                     null,
                     authoritative);
             }
+            catch (ArgumentException)
+            {
+                return Result(
+                    CareerApplicationStatus.InvalidInputOrState,
+                    loaded.Kind,
+                    authoritative);
+            }
+            catch (InvalidOperationException)
+            {
+                return Result(
+                    CareerApplicationStatus.InvalidInputOrState,
+                    loaded.Kind,
+                    authoritative);
+            }
+            catch (OverflowException)
+            {
+                return Result(
+                    CareerApplicationStatus.InvalidInputOrState,
+                    loaded.Kind,
+                    authoritative);
+            }
 
             if (!TryCommit(command, next, out var committed))
             {
@@ -613,6 +634,11 @@ namespace Volleyball.Career.Application
             if (command.CompletedAtUtcMs < snapshot.Identity.UpdatedAtUtcMs)
             {
                 throw new ArgumentException("Completion time cannot precede the authoritative snapshot.");
+            }
+
+            if (snapshot.Identity.Revision >= MaximumIJsonSafeInteger)
+            {
+                throw new ArgumentException("The authoritative snapshot revision cannot advance safely.");
             }
 
             if (snapshot.Progression.Kind != CareerProgressionKind.Planned ||

@@ -590,15 +590,57 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(result.Snapshot.TrainingEmphases.Contributions[1].BonusBasisPoints,
                 Is.EqualTo(1000));
             Assert.That(prior.Player.Attributes.Spike.GrowthExperience, Is.EqualTo(130));
+            Assert.That(prior.Player.Attributes.Serve.GrowthExperience, Is.EqualTo(21));
+            Assert.That(prior.Player.Attributes.Reception.GrowthExperience, Is.EqualTo(32));
+            Assert.That(prior.Player.Attributes.Defense.GrowthExperience, Is.EqualTo(43));
+            Assert.That(prior.Player.Attributes.Block.GrowthExperience, Is.EqualTo(54));
+            Assert.That(prior.Player.Attributes.Movement.GrowthExperience, Is.EqualTo(65));
+            Assert.That(prior.Player.Attributes.Jump.GrowthExperience, Is.EqualTo(76));
+            Assert.That(prior.Player.Attributes.Stamina.GrowthExperience, Is.EqualTo(87));
             Assert.That(prior.Fatigue.Value, Is.EqualTo(32));
             Assert.That(prior.Mindset.Value, Is.EqualTo(56));
             Assert.That(prior.CoachTrust.Value, Is.EqualTo(63));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.Zero);
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Serve, Is.Zero);
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Reception, Is.Zero);
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Defense, Is.Zero);
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Block, Is.Zero);
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Movement, Is.Zero);
             Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Jump, Is.EqualTo(100));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Stamina, Is.Zero);
             Assert.That(result.OutcomeSummary.FatigueDelta, Is.EqualTo(12));
-            Assert.That(result.Snapshot.Player.Attributes.Spike, Is.EqualTo(prior.Player.Attributes.Spike));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Spike.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Spike.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Spike));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Serve.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Serve.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Serve));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Reception.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Reception.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Reception));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Defense.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Defense.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Defense));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Block.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Block.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Block));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Movement.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Movement.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Movement));
             Assert.That(
                 result.Snapshot.Player.Attributes.Jump.GrowthExperience,
-                Is.EqualTo(prior.Player.Attributes.Jump.GrowthExperience + 100));
+                Is.EqualTo(prior.Player.Attributes.Jump.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Jump));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Stamina.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Stamina.GrowthExperience +
+                    result.OutcomeSummary.GrowthExperienceDelta.Stamina));
             Assert.That(result.Snapshot.Fatigue.Value, Is.EqualTo(prior.Fatigue.Value + 12));
             Assert.That(result.Snapshot.Mindset.Value, Is.EqualTo(prior.Mindset.Value));
             Assert.That(result.Snapshot.CoachTrust.Value, Is.EqualTo(prior.CoachTrust.Value));
@@ -635,6 +677,26 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(receipt.AppliedLineageId, Is.EqualTo(restored.Identity.LineageId));
             Assert.That(receipt.AppliedRevision, Is.EqualTo(7));
             Assert.That(repository.CommitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_RejectsMaximumSafeRevisionBeforeRandomOrCommit()
+        {
+            var prior = UnadvanceableConfirmedSnapshot();
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var repository = new MemoryRepository(prior);
+            CareerWeekCommandResult result = null;
+
+            Assert.DoesNotThrow(() => result = Service(repository, random)
+                .ExecuteWeekAction(ExecuteCommand(prior, 1)));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+            Assert.That(result.PersistenceKind, Is.EqualTo(PersistenceResultKind.Loaded));
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(random.Calls, Is.Empty);
+            Assert.That(repository.CommitCount, Is.Zero);
         }
 
         [Test]
@@ -1309,12 +1371,14 @@ namespace Volleyball.Career.EditModeTests
             CareerPlayerAttributes expected,
             CareerPlayerAttributes actual)
         {
-            for (var index = 0; index < 8; index++)
-            {
-                Assert.That(
-                    actual.Get((CareerAttributeKind)index).AbilityBasisPoints,
-                    Is.EqualTo(expected.Get((CareerAttributeKind)index).AbilityBasisPoints));
-            }
+            Assert.That(actual.Spike.AbilityBasisPoints, Is.EqualTo(expected.Spike.AbilityBasisPoints));
+            Assert.That(actual.Serve.AbilityBasisPoints, Is.EqualTo(expected.Serve.AbilityBasisPoints));
+            Assert.That(actual.Reception.AbilityBasisPoints, Is.EqualTo(expected.Reception.AbilityBasisPoints));
+            Assert.That(actual.Defense.AbilityBasisPoints, Is.EqualTo(expected.Defense.AbilityBasisPoints));
+            Assert.That(actual.Block.AbilityBasisPoints, Is.EqualTo(expected.Block.AbilityBasisPoints));
+            Assert.That(actual.Movement.AbilityBasisPoints, Is.EqualTo(expected.Movement.AbilityBasisPoints));
+            Assert.That(actual.Jump.AbilityBasisPoints, Is.EqualTo(expected.Jump.AbilityBasisPoints));
+            Assert.That(actual.Stamina.AbilityBasisPoints, Is.EqualTo(expected.Stamina.AbilityBasisPoints));
         }
 
         private static void AssertContributionEqual(
@@ -1449,6 +1513,51 @@ namespace Volleyball.Career.EditModeTests
                 94,
                 97,
                 source.OperationReceipts);
+        }
+
+        private static CareerSaveSnapshot UnadvanceableConfirmedSnapshot()
+        {
+            var source = ConfirmedSnapshot();
+            var maximumSafeRevision = CareerAttributeProgress.MaximumGrowthExperience;
+            var restoredLineage = new LineageId(
+                Guid.Parse("43434343-4343-4343-4343-434343434343"));
+            var receipts = source.OperationReceipts.Select(receipt => new OperationReceipt(
+                receipt.OperationId,
+                receipt.OperationKind,
+                receipt.Target,
+                receipt.InputFingerprint,
+                restoredLineage,
+                receipt.AppliedRevision,
+                receipt.CompletedAtUtcMs,
+                receipt.OutcomeKind,
+                receipt.OutcomeSummary)).ToArray();
+            return new CareerSaveSnapshot(
+                source.Versions,
+                new CareerSaveIdentity(
+                    source.Identity.ProfileId,
+                    source.Identity.SaveId,
+                    restoredLineage,
+                    maximumSafeRevision,
+                    source.Identity.CreatedAtUtcMs,
+                    source.Identity.UpdatedAtUtcMs + 1,
+                    Hash('8'),
+                    new CareerVersionToken(
+                        source.Identity.LineageId,
+                        maximumSafeRevision - 1,
+                        source.Identity.SnapshotHash)),
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                receipts);
         }
 
         private static CareerSaveSnapshot ImmediateRestore(
