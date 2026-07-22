@@ -102,6 +102,60 @@ namespace Volleyball.Career.Application
             return Encoding.UTF8.GetBytes(builder.ToString());
         }
 
+        public static byte[] Encode(ConfirmWeekPlanCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            var builder = new StringBuilder(1000);
+            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"confirm_week_plan\"");
+            AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "expectedLineageId",
+                command.ExpectedVersionToken.LineageId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "expectedRevision", command.ExpectedVersionToken.Revision);
+            AppendString(
+                builder,
+                "expectedSnapshotHash",
+                command.ExpectedVersionToken.SnapshotHash.Value);
+
+            var plan = command.CandidatePlan;
+            AppendString(builder, "planId", plan.PlanId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "season", plan.Season);
+            AppendInteger(builder, "week", plan.Week);
+            builder.Append(",\"slots\":[");
+            for (var index = 0; index < plan.Slots.Count; index++)
+            {
+                if (index != 0)
+                {
+                    builder.Append(',');
+                }
+
+                var slot = plan.Slots[index];
+                builder.Append('{');
+                builder.Append("\"slotActionId\":");
+                AppendJsonString(
+                    builder,
+                    slot.SlotActionId.Value.ToString("D").ToLowerInvariant());
+                AppendString(
+                    builder,
+                    "occurrenceId",
+                    slot.OccurrenceId.Value.ToString("D").ToLowerInvariant());
+                AppendString(builder, "kind", FormatActionKind(slot.Kind));
+                AppendString(builder, "contentId", slot.ContentId);
+                builder.Append('}');
+            }
+
+            builder.Append(']');
+            AppendVersions(builder);
+            builder.Append('}');
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
         public static Sha256Digest Hash(CreateCareerCommand command)
         {
             return HashBytes(Encode(command));
@@ -112,6 +166,25 @@ namespace Volleyball.Career.Application
             OccurrenceId persistedTryoutOccurrenceId)
         {
             return HashBytes(Encode(command, persistedTryoutOccurrenceId));
+        }
+
+        public static Sha256Digest Hash(ConfirmWeekPlanCommand command)
+        {
+            return HashBytes(Encode(command));
+        }
+
+        private static string FormatActionKind(CareerWeekActionKind kind)
+        {
+            switch (kind)
+            {
+                case CareerWeekActionKind.SpecializedTraining: return "specialized_training";
+                case CareerWeekActionKind.StrengthTraining: return "strength_training";
+                case CareerWeekActionKind.TeamPractice: return "team_practice";
+                case CareerWeekActionKind.Rest: return "rest";
+                case CareerWeekActionKind.Match: return "match";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+            }
         }
 
         private static void AppendVersions(StringBuilder builder)
