@@ -195,6 +195,46 @@ namespace Volleyball.Career.Application
             return Encoding.UTF8.GetBytes(builder.ToString());
         }
 
+        public static byte[] Encode(ResolveEventChoiceCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            var builder = new StringBuilder(850);
+            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"resolve_event_choice\"");
+            AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "expectedLineageId",
+                command.ExpectedVersionToken.LineageId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "expectedRevision", command.ExpectedVersionToken.Revision);
+            AppendString(
+                builder,
+                "expectedSnapshotHash",
+                command.ExpectedVersionToken.SnapshotHash.Value);
+            AppendString(builder, "weekPlanId", command.WeekPlanId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "sourceSlotActionId",
+                command.SourceSlotActionId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "sourceActionOccurrenceId",
+                command.SourceActionOccurrenceId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "eventId", command.EventId);
+            AppendString(
+                builder,
+                "eventOccurrenceId",
+                command.EventOccurrenceId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "optionId", command.OptionId);
+            AppendVersions(builder);
+            builder.Append('}');
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
         public static Sha256Digest Hash(CreateCareerCommand command)
         {
             return HashBytes(Encode(command));
@@ -213,6 +253,11 @@ namespace Volleyball.Career.Application
         }
 
         public static Sha256Digest Hash(ExecuteWeekActionCommand command)
+        {
+            return HashBytes(Encode(command));
+        }
+
+        public static Sha256Digest Hash(ResolveEventChoiceCommand command)
         {
             return HashBytes(Encode(command));
         }

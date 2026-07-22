@@ -306,6 +306,132 @@ namespace Volleyball.Career.Application
                 authoritative);
         }
 
+        public CareerWeekCommandResult ResolveEventChoice(ResolveEventChoiceCommand command)
+        {
+            Sha256Digest fingerprint;
+            try
+            {
+                ValidateResolveCommandShape(command);
+                fingerprint = CareerOperationFingerprintV1.Hash(command);
+            }
+            catch (ArgumentException)
+            {
+                return Result(CareerApplicationStatus.InvalidInputOrState);
+            }
+            catch (InvalidOperationException)
+            {
+                return Result(CareerApplicationStatus.InvalidInputOrState);
+            }
+
+            if (!TryLoad(command.ProfileId, command.SaveId, out var loaded))
+            {
+                return Result(CareerApplicationStatus.PersistenceFailure);
+            }
+
+            if (loaded.Kind == PersistenceResultKind.NotFound)
+            {
+                return Result(CareerApplicationStatus.NotFound, loaded.Kind);
+            }
+
+            if (!HasSnapshot(loaded))
+            {
+                return Result(CareerApplicationStatus.PersistenceFailure, loaded.Kind);
+            }
+
+            var authoritative = loaded.Snapshot;
+            var lookup = FindReceipt(authoritative, command.OperationId, fingerprint);
+            if (lookup.Kind == OperationReceiptLookupKind.Existing)
+            {
+                return Existing(authoritative, lookup.Receipt, loaded.Kind);
+            }
+
+            if (lookup.Kind == OperationReceiptLookupKind.Conflict)
+            {
+                return Result(
+                    CareerApplicationStatus.OperationConflict,
+                    loaded.Kind,
+                    authoritative,
+                    lookup.Receipt);
+            }
+
+            if (!authoritative.Identity.VersionToken.Equals(command.ExpectedVersionToken))
+            {
+                return Result(
+                    CareerApplicationStatus.VersionConflict,
+                    loaded.Kind,
+                    authoritative);
+            }
+
+            CareerSaveSnapshot next;
+            try
+            {
+                ValidateResolveTransition(authoritative, command);
+                next = BuildResolvedSnapshot(authoritative, command, fingerprint);
+            }
+            catch (ArgumentException)
+            {
+                return Result(
+                    CareerApplicationStatus.InvalidInputOrState,
+                    loaded.Kind,
+                    authoritative);
+            }
+            catch (InvalidOperationException)
+            {
+                return Result(
+                    CareerApplicationStatus.InvalidInputOrState,
+                    loaded.Kind,
+                    authoritative);
+            }
+            catch (OverflowException)
+            {
+                return Result(
+                    CareerApplicationStatus.InvalidInputOrState,
+                    loaded.Kind,
+                    authoritative);
+            }
+
+            if (!TryCommit(command, next, out var committed))
+            {
+                return Result(
+                    CareerApplicationStatus.PersistenceFailure,
+                    null,
+                    authoritative);
+            }
+
+            if (committed.Kind == PersistenceResultKind.Committed ||
+                committed.Kind == PersistenceResultKind.BackupDegraded)
+            {
+                var committedLookup = FindReceipt(
+                    committed.Snapshot,
+                    command.OperationId,
+                    fingerprint);
+                if (committedLookup.Kind != OperationReceiptLookupKind.Existing)
+                {
+                    return Result(
+                        CareerApplicationStatus.PersistenceFailure,
+                        committed.Kind,
+                        authoritative);
+                }
+
+                return Result(
+                    CareerApplicationStatus.Applied,
+                    committed.Kind,
+                    committed.Snapshot,
+                    null,
+                    committedLookup.Receipt.OutcomeSummary);
+            }
+
+            if (committed.Kind == PersistenceResultKind.VersionConflict)
+            {
+                return ResolveCommitRace(command, fingerprint, committed.Kind);
+            }
+
+            return Result(
+                CareerApplicationStatus.PersistenceFailure,
+                committed.Kind,
+                authoritative);
+        }
+
         private CareerWeekCommandResult ResolveCommitRace(
             ConfirmWeekPlanCommand command,
             Sha256Digest fingerprint,
@@ -344,6 +470,42 @@ namespace Volleyball.Career.Application
 
         private CareerWeekCommandResult ResolveCommitRace(
             ExecuteWeekActionCommand command,
+            Sha256Digest fingerprint,
+            PersistenceResultKind commitKind)
+        {
+            if (!TryLoad(command.ProfileId, command.SaveId, out var latest))
+            {
+                return Result(CareerApplicationStatus.PersistenceFailure);
+            }
+
+            if (!HasSnapshot(latest))
+            {
+                return Result(CareerApplicationStatus.PersistenceFailure, latest.Kind);
+            }
+
+            var lookup = FindReceipt(latest.Snapshot, command.OperationId, fingerprint);
+            if (lookup.Kind == OperationReceiptLookupKind.Existing)
+            {
+                return Existing(latest.Snapshot, lookup.Receipt, latest.Kind);
+            }
+
+            if (lookup.Kind == OperationReceiptLookupKind.Conflict)
+            {
+                return Result(
+                    CareerApplicationStatus.OperationConflict,
+                    latest.Kind,
+                    latest.Snapshot,
+                    lookup.Receipt);
+            }
+
+            return Result(
+                CareerApplicationStatus.VersionConflict,
+                commitKind,
+                latest.Snapshot);
+        }
+
+        private CareerWeekCommandResult ResolveCommitRace(
+            ResolveEventChoiceCommand command,
             Sha256Digest fingerprint,
             PersistenceResultKind commitKind)
         {
@@ -524,6 +686,84 @@ namespace Volleyball.Career.Application
                 receipts);
         }
 
+        private static CareerSaveSnapshot BuildResolvedSnapshot(
+            CareerSaveSnapshot prior,
+            ResolveEventChoiceCommand command,
+            Sha256Digest fingerprint)
+        {
+            var pending = prior.Progression.PendingEvent;
+            CareerEventOptionEffect selected = null;
+            for (var index = 0; index < pending.Options.Count; index++)
+            {
+                if (string.Equals(
+                        pending.Options[index].OptionId,
+                        command.OptionId,
+                        StringComparison.Ordinal))
+                {
+                    selected = pending.Options[index];
+                    break;
+                }
+            }
+
+            if (selected == null)
+            {
+                throw new ArgumentException("The selected option is not frozen in the pending event.");
+            }
+
+            var priorAttributes = prior.Player.Attributes;
+            var growth = selected.GrowthExperienceDelta;
+            var nextAttributes = new CareerPlayerAttributes(
+                priorAttributes.Spike.AddGrowthExperience(growth.Spike),
+                priorAttributes.Serve.AddGrowthExperience(growth.Serve),
+                priorAttributes.Reception.AddGrowthExperience(growth.Reception),
+                priorAttributes.Defense.AddGrowthExperience(growth.Defense),
+                priorAttributes.Block.AddGrowthExperience(growth.Block),
+                priorAttributes.Movement.AddGrowthExperience(growth.Movement),
+                priorAttributes.Jump.AddGrowthExperience(growth.Jump),
+                priorAttributes.Stamina.AddGrowthExperience(growth.Stamina));
+            var fatigue = checked(prior.Fatigue.Value + selected.FatigueDelta);
+            var mindset = checked(prior.Mindset.Value + selected.MindsetDelta);
+            var coachTrust = checked(prior.CoachTrust.Value + selected.CoachTrustDelta);
+            RequireStatus(fatigue, nameof(fatigue));
+            RequireStatus(mindset, nameof(mindset));
+            RequireStatus(coachTrust, nameof(coachTrust));
+
+            var outcome = OperationOutcomeSummary.ForEventChoiceApplied(
+                growth,
+                selected.FatigueDelta,
+                selected.MindsetDelta,
+                selected.CoachTrustDelta);
+            var nextRevision = checked(prior.Identity.Revision + 1);
+            var receipts = new List<OperationReceipt>(prior.OperationReceipts)
+            {
+                new OperationReceipt(
+                    command.OperationId,
+                    OperationKind.ResolveEventChoice,
+                    OperationReceiptTarget.ForEventChoice(
+                        command.WeekPlanId,
+                        command.SourceSlotActionId,
+                        command.SourceActionOccurrenceId,
+                        command.EventOccurrenceId,
+                        command.OptionId),
+                    fingerprint,
+                    prior.Identity.LineageId,
+                    nextRevision,
+                    command.CompletedAtUtcMs,
+                    OperationOutcomeKind.EventChoiceApplied,
+                    outcome)
+            };
+            return CareerWeekSnapshotFactory.Advance(
+                prior,
+                command.CompletedAtUtcMs,
+                CareerProgressionState.Planned(prior.Progression.WeekPlan, 2),
+                prior.TrainingEmphases,
+                nextAttributes,
+                fatigue,
+                mindset,
+                coachTrust,
+                receipts);
+        }
+
         private static void ValidateCommandShape(ConfirmWeekPlanCommand command)
         {
             if (command == null)
@@ -617,6 +857,144 @@ namespace Volleyball.Career.Application
             else if (command.TriggeredEventOccurrenceId.HasValue)
             {
                 throw new ArgumentException("Slot 2 cannot create an event occurrence.");
+            }
+        }
+
+        private static void ValidateResolveCommandShape(ResolveEventChoiceCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            RequireGuid(command.ProfileId.Value, nameof(command.ProfileId));
+            RequireGuid(command.SaveId.Value, nameof(command.SaveId));
+            RequireGuid(command.OperationId.Value, nameof(command.OperationId));
+            RequireGuid(
+                command.ExpectedVersionToken.LineageId.Value,
+                nameof(command.ExpectedVersionToken));
+            if (command.ExpectedVersionToken.Revision < 1 ||
+                command.ExpectedVersionToken.Revision > MaximumIJsonSafeInteger ||
+                string.IsNullOrEmpty(command.ExpectedVersionToken.SnapshotHash.Value))
+            {
+                throw new ArgumentException("A complete expected version token is required.");
+            }
+
+            RequireTimestamp(command.CompletedAtUtcMs, nameof(command.CompletedAtUtcMs));
+            RequireGuid(command.WeekPlanId.Value, nameof(command.WeekPlanId));
+            RequireGuid(command.SourceSlotActionId.Value, nameof(command.SourceSlotActionId));
+            RequireGuid(
+                command.SourceActionOccurrenceId.Value,
+                nameof(command.SourceActionOccurrenceId));
+            RequireGuid(command.EventOccurrenceId.Value, nameof(command.EventOccurrenceId));
+            if (string.IsNullOrWhiteSpace(command.EventId) ||
+                string.IsNullOrWhiteSpace(command.OptionId))
+            {
+                throw new ArgumentException("Strict event and option IDs are required.");
+            }
+        }
+
+        private static void ValidateResolveTransition(
+            CareerSaveSnapshot snapshot,
+            ResolveEventChoiceCommand command)
+        {
+            RequireSupportedVersions(snapshot.Versions);
+            if (!snapshot.Identity.ProfileId.Equals(command.ProfileId) ||
+                !snapshot.Identity.SaveId.Equals(command.SaveId))
+            {
+                throw new ArgumentException("The authoritative save ownership does not match the command.");
+            }
+
+            if (command.CompletedAtUtcMs < snapshot.Identity.UpdatedAtUtcMs)
+            {
+                throw new ArgumentException("Completion time cannot precede the authoritative snapshot.");
+            }
+
+            if (snapshot.Identity.Revision >= MaximumIJsonSafeInteger)
+            {
+                throw new ArgumentException("The authoritative snapshot revision cannot advance safely.");
+            }
+
+            if (snapshot.Progression.Kind != CareerProgressionKind.AwaitingEventChoice ||
+                snapshot.Progression.Phase != CareerPhase.University ||
+                !snapshot.Onboarding.IsComplete ||
+                !snapshot.Onboarding.IsFormallyEnrolled ||
+                !snapshot.HasCompletePlayer ||
+                !snapshot.PotentialGrade.HasValue ||
+                !snapshot.Fatigue.HasValue ||
+                !snapshot.Mindset.HasValue ||
+                !snapshot.CoachTrust.HasValue)
+            {
+                throw new ArgumentException(
+                    "Only a complete enrolled AwaitingEventChoice snapshot can resolve an event.");
+            }
+
+            var plan = snapshot.Progression.WeekPlan;
+            var pending = snapshot.Progression.PendingEvent;
+            if (plan == null ||
+                !plan.IsConfirmed ||
+                plan.Season != 1 ||
+                plan.Week != 1 ||
+                plan.Slots == null ||
+                plan.Slots.Count != CareerWeekPlan.SlotCount ||
+                plan.Slots[0] == null ||
+                pending == null ||
+                !plan.PlanId.Equals(command.WeekPlanId) ||
+                !pending.SourceWeekPlanId.Equals(plan.PlanId) ||
+                !pending.SourceSlotActionId.Equals(plan.Slots[0].SlotActionId) ||
+                !pending.SourceActionOccurrenceId.Equals(plan.Slots[0].OccurrenceId) ||
+                !pending.SourceWeekPlanId.Equals(command.WeekPlanId) ||
+                !pending.SourceSlotActionId.Equals(command.SourceSlotActionId) ||
+                !pending.SourceActionOccurrenceId.Equals(command.SourceActionOccurrenceId) ||
+                !pending.OccurrenceId.Equals(command.EventOccurrenceId) ||
+                !string.Equals(pending.EventId, command.EventId, StringComparison.Ordinal))
+            {
+                throw new ArgumentException("The command does not match the authoritative pending event.");
+            }
+
+            if (!string.Equals(pending.EventId, TeamMealEventId, StringComparison.Ordinal) ||
+                pending.ResumeAtSlotNumber != 2 ||
+                pending.RandomVersion != snapshot.Versions.CareerRandomAlgorithmVersion ||
+                pending.Options == null ||
+                pending.Options.Count != 2 ||
+                !string.Equals(
+                    pending.Options[0].OptionId,
+                    "event.team_meal.option.attend",
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    pending.Options[1].OptionId,
+                    "event.team_meal.option.extra_practice",
+                    StringComparison.Ordinal))
+            {
+                throw new ArgumentException("The frozen schema V1 team-meal fixture is invalid.");
+            }
+
+            if (!string.Equals(command.OptionId, pending.Options[0].OptionId, StringComparison.Ordinal) &&
+                !string.Equals(command.OptionId, pending.Options[1].OptionId, StringComparison.Ordinal))
+            {
+                throw new ArgumentException("The selected option is not frozen in the pending event.");
+            }
+
+            var hasSlotOneReceipt = false;
+            for (var index = 0; index < snapshot.OperationReceipts.Count; index++)
+            {
+                var receipt = snapshot.OperationReceipts[index];
+                if (receipt.OperationKind == OperationKind.ExecuteWeekAction &&
+                    receipt.Target.WeekPlanId.HasValue &&
+                    receipt.Target.SlotActionId.HasValue &&
+                    receipt.Target.ActionOccurrenceId.HasValue &&
+                    receipt.Target.WeekPlanId.Value.Equals(plan.PlanId) &&
+                    receipt.Target.SlotActionId.Value.Equals(plan.Slots[0].SlotActionId) &&
+                    receipt.Target.ActionOccurrenceId.Value.Equals(plan.Slots[0].OccurrenceId))
+                {
+                    hasSlotOneReceipt = true;
+                    break;
+                }
+            }
+
+            if (!hasSlotOneReceipt)
+            {
+                throw new ArgumentException("The pending event requires its applied slot-1 frontier.");
             }
         }
 
@@ -915,6 +1293,28 @@ namespace Volleyball.Career.Application
             }
         }
 
+        private bool TryCommit(
+            ResolveEventChoiceCommand command,
+            CareerSaveSnapshot next,
+            out CareerPersistenceResult result)
+        {
+            try
+            {
+                result = _repository.Commit(
+                    command.ProfileId,
+                    command.SaveId,
+                    command.ExpectedVersionToken,
+                    next,
+                    command.OperationId);
+                return result != null;
+            }
+            catch (Exception)
+            {
+                result = null;
+                return false;
+            }
+        }
+
         private static CareerWeekCommandResult Existing(
             CareerSaveSnapshot snapshot,
             OperationReceipt receipt,
@@ -951,6 +1351,14 @@ namespace Volleyball.Career.Application
         private static void RequireTimestamp(long value, string parameterName)
         {
             if (value < 0 || value > MaximumIJsonSafeInteger)
+            {
+                throw new ArgumentOutOfRangeException(parameterName);
+            }
+        }
+
+        private static void RequireStatus(int value, string parameterName)
+        {
+            if (value < 0 || value > 100)
             {
                 throw new ArgumentOutOfRangeException(parameterName);
             }

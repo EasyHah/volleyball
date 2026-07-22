@@ -91,6 +91,57 @@ namespace Volleyball.Career.Application
         public OccurrenceId? TriggeredEventOccurrenceId { get; }
     }
 
+    public sealed class ResolveEventChoiceCommand
+    {
+        public ResolveEventChoiceCommand(
+            ProfileId profileId,
+            SaveId saveId,
+            CareerVersionToken expectedVersionToken,
+            OperationId operationId,
+            long completedAtUtcMs,
+            WeekPlanId weekPlanId,
+            SlotActionId sourceSlotActionId,
+            OccurrenceId sourceActionOccurrenceId,
+            string eventId,
+            OccurrenceId eventOccurrenceId,
+            string optionId)
+        {
+            ProfileId = profileId;
+            SaveId = saveId;
+            ExpectedVersionToken = expectedVersionToken;
+            OperationId = operationId;
+            CompletedAtUtcMs = completedAtUtcMs;
+            WeekPlanId = weekPlanId;
+            SourceSlotActionId = sourceSlotActionId;
+            SourceActionOccurrenceId = sourceActionOccurrenceId;
+            EventId = eventId;
+            EventOccurrenceId = eventOccurrenceId;
+            OptionId = optionId;
+        }
+
+        public ProfileId ProfileId { get; }
+
+        public SaveId SaveId { get; }
+
+        public CareerVersionToken ExpectedVersionToken { get; }
+
+        public OperationId OperationId { get; }
+
+        public long CompletedAtUtcMs { get; }
+
+        public WeekPlanId WeekPlanId { get; }
+
+        public SlotActionId SourceSlotActionId { get; }
+
+        public OccurrenceId SourceActionOccurrenceId { get; }
+
+        public string EventId { get; }
+
+        public OccurrenceId EventOccurrenceId { get; }
+
+        public string OptionId { get; }
+    }
+
     public sealed class CareerWeekCommandResult
     {
         public CareerWeekCommandResult(

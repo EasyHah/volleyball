@@ -248,6 +248,107 @@ namespace Volleyball.Career.EditModeTests
             }
         }
 
+        [Test]
+        public void ResolveEventChoiceCommand_HasExactImmutablePublicContract()
+        {
+            var type = typeof(ResolveEventChoiceCommand);
+            var properties = type.GetProperties(BindingFlags.Instance | BindingFlags.Public);
+
+            CollectionAssert.AreEquivalent(
+                new[]
+                {
+                    "ProfileId", "SaveId", "ExpectedVersionToken", "OperationId",
+                    "CompletedAtUtcMs", "WeekPlanId", "SourceSlotActionId",
+                    "SourceActionOccurrenceId", "EventId", "EventOccurrenceId", "OptionId"
+                },
+                properties.Select(property => property.Name));
+            Assert.That(properties, Has.All.Matches<PropertyInfo>(property => !property.CanWrite));
+            Assert.That(type.GetConstructors(BindingFlags.Instance | BindingFlags.Public), Has.Length.EqualTo(1));
+        }
+
+        [Test]
+        public void ResolveEventChoiceFingerprintV1_HasLockedCanonicalBytesAndHash()
+        {
+            const string expectedJson =
+                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"resolve_event_choice\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":6,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"sourceSlotActionId\":\"55555555-5555-5555-5555-555555555555\",\"sourceActionOccurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"eventId\":\"event.team_meal\",\"eventOccurrenceId\":\"00000000-0000-0000-0000-000000000003\",\"optionId\":\"event.team_meal.option.extra_practice\",\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+            var command = ResolveCommand();
+
+            CollectionAssert.AreEqual(
+                Encoding.UTF8.GetBytes(expectedJson),
+                CareerOperationFingerprintV1.Encode(command));
+            Assert.That(
+                CareerOperationFingerprintV1.Hash(command).Value,
+                Is.EqualTo("0b268051bdeb3dd7a9b0999c801240a8bf6d2b31ea69147f521a655fdc820f81"));
+        }
+
+        [Test]
+        public void ResolveEventChoiceFingerprintV1_ExcludesReceiptLookupAndCompletionMetadata()
+        {
+            var baseline = ResolveCommand();
+            var changedOperation = ResolveCommand(
+                operationId: new OperationId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")));
+            var changedTime = ResolveCommand(completedAtUtcMs: 9007199254740991L);
+
+            Assert.That(CareerOperationFingerprintV1.Hash(changedOperation),
+                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
+            Assert.That(CareerOperationFingerprintV1.Hash(changedTime),
+                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
+            var json = Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(baseline));
+            Assert.That(json, Does.Not.Contain("operationId"));
+            Assert.That(json, Does.Not.Contain("completedAtUtcMs"));
+        }
+
+        [Test]
+        public void ResolveEventChoiceFingerprintV1_IsSensitiveToEveryBusinessInput()
+        {
+            var baseline = CareerOperationFingerprintV1.Hash(ResolveCommand());
+            var mutations = new[]
+            {
+                ResolveCommand(profileId: new ProfileId(Guid.Parse("12121212-1212-1212-1212-121212121212"))),
+                ResolveCommand(saveId: new SaveId(Guid.Parse("13131313-1313-1313-1313-131313131313"))),
+                ResolveCommand(expectedToken: Token(
+                    new LineageId(Guid.Parse("14141414-1414-1414-1414-141414141414")),
+                    6,
+                    new Sha256Digest(ZeroHash))),
+                ResolveCommand(expectedToken: Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    7,
+                    new Sha256Digest(ZeroHash))),
+                ResolveCommand(expectedToken: Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    6,
+                    new Sha256Digest(new string('e', 64)))),
+                ResolveCommand(weekPlanId: new WeekPlanId(Guid.Parse("15151515-1515-1515-1515-151515151515"))),
+                ResolveCommand(sourceSlotActionId: new SlotActionId(Guid.Parse("16161616-1616-1616-1616-161616161616"))),
+                ResolveCommand(sourceActionOccurrenceId: new OccurrenceId(Guid.Parse("17171717-1717-1717-1717-171717171717"))),
+                ResolveCommand(eventId: "event.team_meal.changed"),
+                ResolveCommand(eventOccurrenceId: new OccurrenceId(Guid.Parse("18181818-1818-1818-1818-181818181818"))),
+                ResolveCommand(optionId: "event.team_meal.option.attend")
+            };
+
+            foreach (var mutation in mutations)
+            {
+                Assert.That(CareerOperationFingerprintV1.Hash(mutation), Is.Not.EqualTo(baseline));
+            }
+        }
+
+        [Test]
+        public void ResolveEventChoiceFingerprintV1_UsesStrictCanonicalStringEscapingAndRejectsLoneSurrogate()
+        {
+            var escaped = ResolveCommand(
+                eventId: "event.\"\\/\b\t\n\f\r\u0001雪😀",
+                optionId: "option.strict");
+            var encoded = Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(escaped));
+
+            Assert.That(
+                encoded,
+                Does.Contain("\"eventId\":\"event.\\\"\\\\/\\b\\t\\n\\f\\r\\u0001雪😀\""));
+
+            var loneSurrogate = new string(new[] { '\ud800' });
+            Assert.Throws<ArgumentException>(() =>
+                CareerOperationFingerprintV1.Encode(ResolveCommand(eventId: loneSurrogate)));
+        }
+
         private static string Fingerprint(CareerWeekPlanState candidate)
         {
             return Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(Command(candidate: candidate)));
@@ -284,6 +385,36 @@ namespace Volleyball.Career.EditModeTests
                 useDefaultEventOccurrence && !eventOccurrenceId.HasValue
                     ? new OccurrenceId?(new OccurrenceId(Guid.Parse("00000000-0000-0000-0000-000000000003")))
                     : eventOccurrenceId);
+        }
+
+        private static ResolveEventChoiceCommand ResolveCommand(
+            ProfileId? profileId = null,
+            SaveId? saveId = null,
+            CareerVersionToken? expectedToken = null,
+            OperationId? operationId = null,
+            long completedAtUtcMs = 100,
+            WeekPlanId? weekPlanId = null,
+            SlotActionId? sourceSlotActionId = null,
+            OccurrenceId? sourceActionOccurrenceId = null,
+            string eventId = "event.team_meal",
+            OccurrenceId? eventOccurrenceId = null,
+            string optionId = "event.team_meal.option.extra_practice")
+        {
+            return new ResolveEventChoiceCommand(
+                profileId ?? new ProfileId(Guid.Parse("11111111-1111-1111-1111-111111111111")),
+                saveId ?? new SaveId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
+                expectedToken ?? Token(
+                    new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
+                    6,
+                    new Sha256Digest(ZeroHash)),
+                operationId ?? new OperationId(Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")),
+                completedAtUtcMs,
+                weekPlanId ?? new WeekPlanId(Guid.Parse("44444444-4444-4444-4444-444444444444")),
+                sourceSlotActionId ?? new SlotActionId(Guid.Parse("55555555-5555-5555-5555-555555555555")),
+                sourceActionOccurrenceId ?? new OccurrenceId(Guid.Parse("66666666-6666-6666-6666-666666666666")),
+                eventId,
+                eventOccurrenceId ?? new OccurrenceId(Guid.Parse("00000000-0000-0000-0000-000000000003")),
+                optionId);
         }
 
         private static ConfirmWeekPlanCommand Command(

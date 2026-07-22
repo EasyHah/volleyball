@@ -1165,6 +1165,563 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(random.Calls, Has.Count.EqualTo(slotNumber == 1 ? 2 : 0));
         }
 
+        [TestCase("event.team_meal.option.attend", 0, 4, 6, 3)]
+        [TestCase("event.team_meal.option.extra_practice", 88, 10, -2, 6)]
+        public void ResolveEventChoice_AppliesOnlySelectedFrozenEffectAndClearsEvent(
+            string optionId,
+            long spikeGrowth,
+            int fatigueDelta,
+            int mindsetDelta,
+            int trustDelta)
+        {
+            var prior = AwaitingEventSnapshot();
+            var command = ResolveCommand(prior, optionId);
+            var repository = new MemoryRepository(prior);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ResolveEventChoice(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.PersistenceKind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(result.Snapshot, Is.SameAs(repository.Snapshot));
+            Assert.That(repository.LoadCount, Is.EqualTo(1));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Is.Empty);
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(7));
+            Assert.That(result.Snapshot.Identity.UpdatedAtUtcMs, Is.EqualTo(command.CompletedAtUtcMs));
+            Assert.That(result.Snapshot.Progression.Kind, Is.EqualTo(CareerProgressionKind.Planned));
+            Assert.That(result.Snapshot.Progression.NextSlotNumber, Is.EqualTo(2));
+            Assert.That(result.Snapshot.Progression.PendingEvent, Is.Null);
+            Assert.That(result.Snapshot.Player.Attributes.Spike.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Spike.GrowthExperience + spikeGrowth));
+            Assert.That(result.Snapshot.Player.Attributes.Serve.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Serve.GrowthExperience));
+            Assert.That(result.Snapshot.Player.Attributes.Reception.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Reception.GrowthExperience));
+            Assert.That(result.Snapshot.Player.Attributes.Defense.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Defense.GrowthExperience));
+            Assert.That(result.Snapshot.Player.Attributes.Block.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Block.GrowthExperience));
+            Assert.That(result.Snapshot.Player.Attributes.Movement.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Movement.GrowthExperience));
+            Assert.That(result.Snapshot.Player.Attributes.Jump.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Jump.GrowthExperience));
+            Assert.That(result.Snapshot.Player.Attributes.Stamina.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Stamina.GrowthExperience));
+            AssertAbilityBasisPointsEqual(prior.Player.Attributes, result.Snapshot.Player.Attributes);
+            Assert.That(result.Snapshot.Fatigue.Value, Is.EqualTo(prior.Fatigue.Value + fatigueDelta));
+            Assert.That(result.Snapshot.Mindset.Value, Is.EqualTo(prior.Mindset.Value + mindsetDelta));
+            Assert.That(result.Snapshot.CoachTrust.Value, Is.EqualTo(prior.CoachTrust.Value + trustDelta));
+            Assert.That(result.Snapshot.TrainingEmphases.Contributions,
+                Has.Count.EqualTo(prior.TrainingEmphases.Contributions.Count));
+            AssertContributionEqual(
+                prior.TrainingEmphases.Contributions[0],
+                result.Snapshot.TrainingEmphases.Contributions[0]);
+            AssertExecutionContextPreserved(prior, result.Snapshot);
+
+            Assert.That(result.Snapshot.OperationReceipts, Has.Count.EqualTo(prior.OperationReceipts.Count + 1));
+            var receipt = result.Snapshot.OperationReceipts.Last();
+            Assert.That(receipt.OperationId, Is.EqualTo(command.OperationId));
+            Assert.That(receipt.OperationKind, Is.EqualTo(OperationKind.ResolveEventChoice));
+            Assert.That(receipt.Target.WeekPlanId, Is.EqualTo(command.WeekPlanId));
+            Assert.That(receipt.Target.SlotActionId, Is.EqualTo(command.SourceSlotActionId));
+            Assert.That(receipt.Target.ActionOccurrenceId, Is.EqualTo(command.SourceActionOccurrenceId));
+            Assert.That(receipt.Target.EventOccurrenceId, Is.EqualTo(command.EventOccurrenceId));
+            Assert.That(receipt.Target.OptionId, Is.EqualTo(optionId));
+            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV1.Hash(command)));
+            Assert.That(receipt.AppliedLineageId, Is.EqualTo(prior.Identity.LineageId));
+            Assert.That(receipt.AppliedRevision, Is.EqualTo(prior.Identity.Revision + 1));
+            Assert.That(receipt.CompletedAtUtcMs, Is.EqualTo(command.CompletedAtUtcMs));
+            Assert.That(receipt.OutcomeKind, Is.EqualTo(OperationOutcomeKind.EventChoiceApplied));
+            Assert.That(receipt.OutcomeSummary.OutcomeKind,
+                Is.EqualTo(OperationOutcomeKind.EventChoiceApplied));
+            Assert.That(receipt.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(spikeGrowth));
+            Assert.That(receipt.OutcomeSummary.FatigueDelta, Is.EqualTo(fatigueDelta));
+            Assert.That(receipt.OutcomeSummary.MindsetDelta, Is.EqualTo(mindsetDelta));
+            Assert.That(receipt.OutcomeSummary.CoachTrustDelta, Is.EqualTo(trustDelta));
+            AssertOutcomeSummary(receipt.OutcomeSummary, result.OutcomeSummary);
+        }
+
+        [Test]
+        public void ResolveEventChoice_ConsumesPersistedEffectWithoutReResolvingStaticContent()
+        {
+            var source = AwaitingEventSnapshot();
+            var custom = new CareerEventOptionEffect(
+                "event.team_meal.option.extra_practice",
+                new CareerAttributeGrowthDelta(1, 2, 3, 4, 5, 6, 7, 8),
+                1,
+                -1,
+                2);
+            var prior = WithPendingEvent(
+                source,
+                firstOption: source.Progression.PendingEvent.Options[0],
+                secondOption: custom);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(new MemoryRepository(prior), random)
+                .ResolveEventChoice(ResolveCommand(prior, custom.OptionId));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(1));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Serve, Is.EqualTo(2));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Reception, Is.EqualTo(3));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Defense, Is.EqualTo(4));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Block, Is.EqualTo(5));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Movement, Is.EqualTo(6));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Jump, Is.EqualTo(7));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Stamina, Is.EqualTo(8));
+            Assert.That(result.OutcomeSummary.FatigueDelta, Is.EqualTo(1));
+            Assert.That(result.OutcomeSummary.MindsetDelta, Is.EqualTo(-1));
+            Assert.That(result.OutcomeSummary.CoachTrustDelta, Is.EqualTo(2));
+            Assert.That(random.Calls, Is.Empty);
+        }
+
+        [Test]
+        public void ResolveEventChoice_InvalidShapesNeverLoadCommitOrCallRandom()
+        {
+            var prior = AwaitingEventSnapshot();
+            var invalid = new ResolveEventChoiceCommand[]
+            {
+                null,
+                ResolveCommand(prior, profileId: default(ProfileId)),
+                ResolveCommand(prior, saveId: default(SaveId)),
+                ResolveCommand(prior, expectedToken: default(CareerVersionToken)),
+                ResolveCommand(prior, operationId: default(OperationId)),
+                ResolveCommand(prior, completedAtUtcMs: -1),
+                ResolveCommand(prior, completedAtUtcMs: 9007199254740992L),
+                ResolveCommand(prior, weekPlanId: default(WeekPlanId)),
+                ResolveCommand(prior, sourceSlotActionId: default(SlotActionId)),
+                ResolveCommand(prior, sourceActionOccurrenceId: default(OccurrenceId)),
+                ResolveCommand(prior, eventId: null, useDefaultEventId: false),
+                ResolveCommand(prior, eventId: " "),
+                ResolveCommand(prior, eventId: "\ud800"),
+                ResolveCommand(prior, eventOccurrenceId: default(OccurrenceId)),
+                ResolveCommand(prior, optionId: null),
+                ResolveCommand(prior, optionId: " "),
+                ResolveCommand(prior, optionId: "\ud800")
+            };
+
+            foreach (var command in invalid)
+            {
+                var repository = new MemoryRepository(prior);
+                var random = new RecordingRandom(new CareerDeterministicRandom());
+                var result = Service(repository, random).ResolveEventChoice(command);
+
+                Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+                Assert.That(result.Snapshot, Is.Null);
+                Assert.That(result.OutcomeSummary, Is.Null);
+                Assert.That(repository.LoadCount, Is.Zero);
+                Assert.That(repository.CommitCount, Is.Zero);
+                Assert.That(random.Calls, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void ResolveEventChoice_RejectsMismatchedStateFixtureAndCommandBeforeCommit()
+        {
+            var prior = AwaitingEventSnapshot();
+            var pending = prior.Progression.PendingEvent;
+            var reordered = WithPendingEvent(
+                prior,
+                firstOption: pending.Options[1],
+                secondOption: pending.Options[0]);
+            var replaced = WithPendingEvent(
+                prior,
+                secondOption: new CareerEventOptionEffect(
+                    "event.team_meal.option.changed",
+                    new CareerAttributeGrowthDelta(0, 0, 0, 0, 0, 0, 0, 0),
+                    0,
+                    0,
+                    0));
+            var wrongEvent = WithPendingEvent(prior, eventId: "event.team_meal.changed");
+            var wrongRandomVersion = CopySnapshot(prior);
+            CorruptPendingRandomVersion(wrongRandomVersion, 2);
+            var duplicate = CopySnapshot(prior);
+            CorruptPendingOption(
+                duplicate,
+                1,
+                duplicate.Progression.PendingEvent.Options[0]);
+            var wrongResumeSlot = CopySnapshot(prior);
+            CorruptPendingValue(wrongResumeSlot, "<ResumeAtSlotNumber>k__BackingField", 1);
+            var wrongSource = CopySnapshot(prior);
+            CorruptPendingValue(
+                wrongSource,
+                "<SourceSlotActionId>k__BackingField",
+                Slot(90));
+            var unsupported = CopySnapshot(
+                prior,
+                versions: new CareerSaveVersions(1, 1, 2, 1));
+            var appliedRepository = new MemoryRepository(prior);
+            var originalCommand = ResolveCommand(prior);
+            var applied = Service(appliedRepository).ResolveEventChoice(originalCommand).Snapshot;
+            var cases = new[]
+            {
+                new ResolveInvalidCase(prior, ResolveCommand(
+                    prior,
+                    profileId: new ProfileId(Guid.Parse("abababab-abab-abab-abab-abababababab")))),
+                new ResolveInvalidCase(prior, ResolveCommand(
+                    prior,
+                    saveId: new SaveId(Guid.Parse("acacacac-acac-acac-acac-acacacacacac")))),
+                new ResolveInvalidCase(prior, ResolveCommand(
+                    prior,
+                    completedAtUtcMs: prior.Identity.UpdatedAtUtcMs - 1)),
+                new ResolveInvalidCase(prior, ResolveCommand(prior, weekPlanId: WeekPlan(90))),
+                new ResolveInvalidCase(prior, ResolveCommand(prior, sourceSlotActionId: Slot(90))),
+                new ResolveInvalidCase(prior, ResolveCommand(prior, sourceActionOccurrenceId: Occurrence(90))),
+                new ResolveInvalidCase(prior, ResolveCommand(prior, eventId: "event.team_meal.changed")),
+                new ResolveInvalidCase(prior, ResolveCommand(
+                    prior,
+                    eventOccurrenceId: new OccurrenceId(
+                        Guid.Parse("00000000-0000-0000-0000-000000000099")))),
+                new ResolveInvalidCase(prior, ResolveCommand(prior, optionId: "event.team_meal.option.unknown")),
+                new ResolveInvalidCase(reordered, ResolveCommand(reordered)),
+                new ResolveInvalidCase(replaced, ResolveCommand(replaced)),
+                new ResolveInvalidCase(wrongEvent, ResolveCommand(wrongEvent)),
+                new ResolveInvalidCase(wrongRandomVersion, ResolveCommand(wrongRandomVersion)),
+                new ResolveInvalidCase(duplicate, ResolveCommand(duplicate)),
+                new ResolveInvalidCase(wrongResumeSlot, ResolveCommand(wrongResumeSlot)),
+                new ResolveInvalidCase(wrongSource, ResolveCommand(wrongSource)),
+                new ResolveInvalidCase(unsupported, ResolveCommand(unsupported)),
+                new ResolveInvalidCase(
+                    applied,
+                    ResolveCommand(
+                        prior,
+                        expectedToken: applied.Identity.VersionToken,
+                        operationId: OperationFor(22)))
+            };
+
+            foreach (var testCase in cases)
+            {
+                var repository = new MemoryRepository(testCase.Snapshot);
+                var random = new RecordingRandom(new CareerDeterministicRandom());
+                var result = Service(repository, random).ResolveEventChoice(testCase.Command);
+
+                Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+                Assert.That(result.Snapshot, Is.SameAs(testCase.Snapshot));
+                Assert.That(result.OutcomeSummary, Is.Null);
+                Assert.That(repository.CommitCount, Is.Zero);
+                Assert.That(random.Calls, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void ResolveEventChoice_RejectsUnapplicablePersistedDeltasAndMaximumRevisionBeforeCommit()
+        {
+            var source = AwaitingEventSnapshot();
+            var tooMuchGrowth = WithPendingEvent(
+                source,
+                secondOption: new CareerEventOptionEffect(
+                    "event.team_meal.option.extra_practice",
+                    new CareerAttributeGrowthDelta(
+                        CareerAttributeProgress.MaximumGrowthExperience,
+                        0, 0, 0, 0, 0, 0, 0),
+                    0,
+                    0,
+                    0));
+            var outOfRangeStatus = WithPendingEvent(
+                source,
+                firstOption: new CareerEventOptionEffect(
+                    "event.team_meal.option.attend",
+                    new CareerAttributeGrowthDelta(0, 0, 0, 0, 0, 0, 0, 0),
+                    100,
+                    0,
+                    0));
+            var maximumRevision = UnadvanceableAwaitingEventSnapshot(source);
+
+            var cases = new[]
+            {
+                new ResolveInvalidCase(tooMuchGrowth, ResolveCommand(tooMuchGrowth)),
+                new ResolveInvalidCase(
+                    outOfRangeStatus,
+                    ResolveCommand(outOfRangeStatus, "event.team_meal.option.attend")),
+                new ResolveInvalidCase(maximumRevision, ResolveCommand(maximumRevision))
+            };
+
+            foreach (var testCase in cases)
+            {
+                var prior = testCase.Snapshot;
+                var repository = new MemoryRepository(prior);
+                var random = new RecordingRandom(new CareerDeterministicRandom());
+                CareerWeekCommandResult result = null;
+
+                Assert.DoesNotThrow(() => result = Service(repository, random)
+                    .ResolveEventChoice(testCase.Command));
+                Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.InvalidInputOrState));
+                Assert.That(result.Snapshot, Is.SameAs(prior));
+                Assert.That(result.OutcomeSummary, Is.Null);
+                Assert.That(repository.CommitCount, Is.Zero);
+                Assert.That(random.Calls, Is.Empty);
+            }
+        }
+
+        [Test]
+        public void ResolveEventChoice_AcceptsHigherImmediateRestoreFrontier()
+        {
+            var original = AwaitingEventSnapshot();
+            var restored = ImmediateRestore(
+                original,
+                new LineageId(Guid.Parse("45454545-4545-4545-4545-454545454545")));
+            var command = ResolveCommand(
+                restored,
+                completedAtUtcMs: restored.Identity.UpdatedAtUtcMs + 1);
+
+            var result = Service(new MemoryRepository(restored)).ResolveEventChoice(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(restored.Identity.Revision + 1));
+            Assert.That(result.Snapshot.Identity.LineageId, Is.EqualTo(restored.Identity.LineageId));
+            Assert.That(result.Snapshot.Identity.RestoredFromVersionToken,
+                Is.EqualTo(restored.Identity.RestoredFromVersionToken));
+            Assert.That(result.Snapshot.OperationReceipts.Last().AppliedRevision,
+                Is.EqualTo(restored.Identity.Revision + 1));
+            Assert.That(result.Snapshot.OperationReceipts.Last().AppliedLineageId,
+                Is.EqualTo(restored.Identity.LineageId));
+        }
+
+        [Test]
+        public void ResolveEventChoice_RetriesConflictAndStaleInputNeverReapplyEffect()
+        {
+            var prior = AwaitingEventSnapshot();
+            var command = ResolveCommand(prior);
+            var changedTime = ResolveCommand(prior, completedAtUtcMs: command.CompletedAtUtcMs + 1);
+            var repository = new MemoryRepository(prior);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+            var service = Service(repository, random);
+
+            var applied = service.ResolveEventChoice(command);
+            var exact = service.ResolveEventChoice(command);
+            var metadataOnly = service.ResolveEventChoice(changedTime);
+            var conflict = service.ResolveEventChoice(ResolveCommand(
+                prior,
+                optionId: "event.team_meal.option.attend"));
+            var stale = service.ResolveEventChoice(ResolveCommand(
+                prior,
+                operationId: OperationFor(22)));
+
+            Assert.That(applied.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(exact.Status, Is.EqualTo(CareerApplicationStatus.Existing));
+            Assert.That(metadataOnly.Status, Is.EqualTo(CareerApplicationStatus.Existing));
+            AssertOutcomeSummary(applied.OutcomeSummary, exact.OutcomeSummary);
+            AssertOutcomeSummary(applied.OutcomeSummary, metadataOnly.OutcomeSummary);
+            Assert.That(conflict.Status, Is.EqualTo(CareerApplicationStatus.OperationConflict));
+            Assert.That(conflict.ConflictingReceipt.OperationId, Is.EqualTo(command.OperationId));
+            Assert.That(conflict.OutcomeSummary, Is.Null);
+            Assert.That(stale.Status, Is.EqualTo(CareerApplicationStatus.VersionConflict));
+            Assert.That(stale.Snapshot, Is.SameAs(repository.Snapshot));
+            Assert.That(stale.OutcomeSummary, Is.Null);
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(repository.Snapshot.OperationReceipts.Count(
+                receipt => receipt.OperationId.Equals(command.OperationId)), Is.EqualTo(1));
+            Assert.That(random.Calls, Is.Empty);
+        }
+
+        [Test]
+        public void ResolveEventChoice_CommitRaceRechecksExactConflictingAndMissingReceipts()
+        {
+            var prior = AwaitingEventSnapshot();
+            var command = ResolveCommand(prior);
+            var exact = ApplyResolve(prior, command);
+            var conflicting = ApplyResolve(
+                prior,
+                ResolveCommand(prior, optionId: "event.team_meal.option.attend"));
+            var missing = ApplyResolve(
+                prior,
+                ResolveCommand(prior, operationId: OperationFor(22)));
+
+            AssertResolveRace(command, prior, exact, CareerApplicationStatus.Existing, false);
+            AssertResolveRace(command, prior, conflicting, CareerApplicationStatus.OperationConflict, true);
+            AssertResolveRace(command, prior, missing, CareerApplicationStatus.VersionConflict, false);
+        }
+
+        [TestCase(PersistenceResultKind.NotCommitted)]
+        [TestCase(PersistenceResultKind.IoFailure)]
+        [TestCase(PersistenceResultKind.LockUnavailable)]
+        public void ResolveEventChoice_CommitFailureExposesOnlyPriorAuthoritativeState(
+            PersistenceResultKind failureKind)
+        {
+            var prior = AwaitingEventSnapshot();
+            var repository = new MemoryRepository(prior) { CommitFailure = failureKind };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ResolveEventChoice(ResolveCommand(prior));
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.PersistenceKind, Is.EqualTo(failureKind));
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(repository.Snapshot, Is.SameAs(prior));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Is.Empty);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ResolveEventChoice_RepositoryNullOrThrowIsStructuredPersistenceFailure(bool throws)
+        {
+            var prior = AwaitingEventSnapshot();
+            var command = ResolveCommand(prior);
+            var initial = new MemoryRepository(prior)
+            {
+                NullLoadCallNumber = throws ? (int?)null : 1,
+                ThrowLoadCallNumber = throws ? 1 : (int?)null
+            };
+            CareerWeekCommandResult initialResult = null;
+            Assert.DoesNotThrow(() => initialResult = Service(initial).ResolveEventChoice(command));
+            Assert.That(initialResult.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(initialResult.Snapshot, Is.Null);
+            Assert.That(initialResult.OutcomeSummary, Is.Null);
+            Assert.That(initial.CommitCount, Is.Zero);
+
+            var commit = new MemoryRepository(prior)
+            {
+                ReturnNullCommit = !throws,
+                ThrowCommit = throws
+            };
+            CareerWeekCommandResult commitResult = null;
+            Assert.DoesNotThrow(() => commitResult = Service(commit).ResolveEventChoice(command));
+            Assert.That(commitResult.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(commitResult.Snapshot, Is.SameAs(prior));
+            Assert.That(commitResult.OutcomeSummary, Is.Null);
+            Assert.That(commit.Snapshot, Is.SameAs(prior));
+
+            var winner = ApplyResolve(prior, command);
+            var reload = new MemoryRepository(prior)
+            {
+                CommitRaceWinner = winner,
+                NullLoadCallNumber = throws ? (int?)null : 2,
+                ThrowLoadCallNumber = throws ? 2 : (int?)null
+            };
+            CareerWeekCommandResult reloadResult = null;
+            Assert.DoesNotThrow(() => reloadResult = Service(reload).ResolveEventChoice(command));
+            Assert.That(reloadResult.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(reloadResult.Snapshot, Is.Null);
+            Assert.That(reloadResult.OutcomeSummary, Is.Null);
+            Assert.That(reload.LoadCount, Is.EqualTo(2));
+            Assert.That(reload.CommitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ResolveEventChoice_NotFoundMalformedPayloadAndBackupDegradedAreStructured()
+        {
+            var prior = AwaitingEventSnapshot();
+            var command = ResolveCommand(prior);
+            var notFound = Service(new MemoryRepository(null)).ResolveEventChoice(command);
+            Assert.That(notFound.Status, Is.EqualTo(CareerApplicationStatus.NotFound));
+            Assert.That(notFound.PersistenceKind, Is.EqualTo(PersistenceResultKind.NotFound));
+            Assert.That(notFound.Snapshot, Is.Null);
+
+            foreach (var kind in new[]
+                     {
+                         PersistenceResultKind.NotCommitted,
+                         PersistenceResultKind.IoFailure,
+                         PersistenceResultKind.LockUnavailable
+                     })
+            {
+                var failedLoadRepository = new MemoryRepository(prior) { LoadFailure = kind };
+                var failedLoad = Service(failedLoadRepository).ResolveEventChoice(command);
+                Assert.That(failedLoad.Status,
+                    Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+                Assert.That(failedLoad.PersistenceKind, Is.EqualTo(kind));
+                Assert.That(failedLoad.Snapshot, Is.Null);
+                Assert.That(failedLoadRepository.CommitCount, Is.Zero);
+            }
+
+            var malformedLoadRepository = new MemoryRepository(prior)
+            {
+                MalformedLoadWithoutSnapshot = true
+            };
+            var malformedLoad = Service(malformedLoadRepository).ResolveEventChoice(command);
+            Assert.That(malformedLoad.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(malformedLoad.Snapshot, Is.Null);
+            Assert.That(malformedLoadRepository.CommitCount, Is.Zero);
+
+            var malformedSuccessRepository = new MemoryRepository(prior)
+            {
+                MalformedSuccessWithoutSnapshot = true
+            };
+            var malformedSuccess = Service(malformedSuccessRepository).ResolveEventChoice(command);
+            Assert.That(malformedSuccess.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(malformedSuccess.Snapshot, Is.SameAs(prior));
+            Assert.That(malformedSuccess.OutcomeSummary, Is.Null);
+
+            var missingReceiptRepository = new MemoryRepository(prior)
+            {
+                SuccessfulCommitPayload = prior
+            };
+            var missingReceipt = Service(missingReceiptRepository).ResolveEventChoice(command);
+            Assert.That(missingReceipt.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(missingReceipt.Snapshot, Is.SameAs(prior));
+            Assert.That(missingReceipt.OutcomeSummary, Is.Null);
+
+            var degradedRepository = new MemoryRepository(prior)
+            {
+                SuccessfulCommitKind = PersistenceResultKind.BackupDegraded
+            };
+            var degraded = Service(degradedRepository).ResolveEventChoice(command);
+            Assert.That(degraded.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(degraded.PersistenceKind, Is.EqualTo(PersistenceResultKind.BackupDegraded));
+            Assert.That(degraded.OutcomeSummary.OutcomeKind,
+                Is.EqualTo(OperationOutcomeKind.EventChoiceApplied));
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        public void WeekCommandFrontiers_PrePublicationFailureAndPublishedRaceAreAtomic(int boundary)
+        {
+            CareerSaveSnapshot prior;
+            Func<MemoryRepository, CareerWeekCommandResult> invoke;
+            switch (boundary)
+            {
+                case 0:
+                    prior = PlanningSnapshot();
+                    var confirm = Command(prior);
+                    invoke = repository => Service(repository).ConfirmWeekPlan(confirm);
+                    break;
+                case 1:
+                    prior = ConfirmedSnapshot();
+                    var slotOne = ExecuteCommand(prior, 1);
+                    invoke = repository => Service(repository).ExecuteWeekAction(slotOne);
+                    break;
+                case 2:
+                    prior = AwaitingEventSnapshot();
+                    var resolve = ResolveCommand(prior);
+                    invoke = repository => Service(repository).ResolveEventChoice(resolve);
+                    break;
+                case 3:
+                    prior = ApplyResolve(AwaitingEventSnapshot());
+                    var slotTwo = ExecuteCommand(
+                        prior,
+                        2,
+                        operationId: OperationFor(22),
+                        completedAtUtcMs: prior.Identity.UpdatedAtUtcMs + 1);
+                    invoke = repository => Service(repository).ExecuteWeekAction(slotTwo);
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(boundary));
+            }
+
+            var failedRepository = new MemoryRepository(prior)
+            {
+                CommitFailure = PersistenceResultKind.NotCommitted
+            };
+            var failed = invoke(failedRepository);
+            Assert.That(failed.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(failed.Snapshot, Is.SameAs(prior));
+            Assert.That(failedRepository.Snapshot, Is.SameAs(prior));
+
+            var winner = invoke(new MemoryRepository(prior)).Snapshot;
+            var raceRepository = new MemoryRepository(prior) { CommitRaceWinner = winner };
+            var recovered = invoke(raceRepository);
+            Assert.That(recovered.Status, Is.EqualTo(CareerApplicationStatus.Existing));
+            Assert.That(recovered.Snapshot, Is.SameAs(winner));
+            Assert.That(recovered.OutcomeSummary, Is.Not.Null);
+            Assert.That(raceRepository.LoadCount, Is.EqualTo(2));
+            Assert.That(raceRepository.CommitCount, Is.EqualTo(1));
+        }
+
         [Test]
         public void ConfirmWeekPlan_ServiceSurfaceHasFinalRandomDependencyAndNoFutureCommandShells()
         {
@@ -1179,7 +1736,7 @@ namespace Volleyball.Career.EditModeTests
                 constructors[0].GetParameters().Select(parameter => parameter.ParameterType),
                 Is.EqualTo(new[] { typeof(ICareerSaveRepository), typeof(IDeterministicCareerRandom) }));
             Assert.That(methods.Select(method => method.Name),
-                Is.EqualTo(new[] { "ConfirmWeekPlan", "ExecuteWeekAction" }));
+                Is.EqualTo(new[] { "ConfirmWeekPlan", "ExecuteWeekAction", "ResolveEventChoice" }));
             Assert.That(
                 fields.Any(field => field.FieldType == typeof(IDeterministicCareerRandom)),
                 Is.True);
@@ -1189,7 +1746,6 @@ namespace Volleyball.Career.EditModeTests
             var result = Service(new MemoryRepository(prior), random).ConfirmWeekPlan(Command(prior));
             Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
             Assert.That(random.Calls, Is.Empty);
-            Assert.That(typeof(CareerWeekCommandService).GetMethod("ResolveEventChoice"), Is.Null);
         }
 
         private static CareerWeekCommandService Service(
@@ -1199,6 +1755,198 @@ namespace Volleyball.Career.EditModeTests
             return new CareerWeekCommandService(
                 repository,
                 random ?? new RecordingRandom(new CareerDeterministicRandom()));
+        }
+
+        private static CareerSaveSnapshot AwaitingEventSnapshot()
+        {
+            var prior = ConfirmedSnapshot();
+            var repository = new MemoryRepository(prior);
+            var result = Service(
+                    repository,
+                    new RecordingRandom(new CareerDeterministicRandom()))
+                .ExecuteWeekAction(ExecuteCommand(prior, 1));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            return result.Snapshot;
+        }
+
+        private static ResolveEventChoiceCommand ResolveCommand(
+            CareerSaveSnapshot prior,
+            string optionId = "event.team_meal.option.extra_practice",
+            ProfileId? profileId = null,
+            SaveId? saveId = null,
+            CareerVersionToken? expectedToken = null,
+            OperationId? operationId = null,
+            long completedAtUtcMs = 400,
+            WeekPlanId? weekPlanId = null,
+            SlotActionId? sourceSlotActionId = null,
+            OccurrenceId? sourceActionOccurrenceId = null,
+            string eventId = null,
+            OccurrenceId? eventOccurrenceId = null,
+            bool useDefaultEventId = true)
+        {
+            var plan = prior.Progression.WeekPlan;
+            var pending = prior.Progression.PendingEvent;
+            return new ResolveEventChoiceCommand(
+                profileId ?? Profile,
+                saveId ?? Save,
+                expectedToken ?? prior.Identity.VersionToken,
+                operationId ?? OperationFor(21),
+                completedAtUtcMs,
+                weekPlanId ?? plan.PlanId,
+                sourceSlotActionId ?? plan.Slots[0].SlotActionId,
+                sourceActionOccurrenceId ?? plan.Slots[0].OccurrenceId,
+                useDefaultEventId && eventId == null ? pending.EventId : eventId,
+                eventOccurrenceId ?? pending.OccurrenceId,
+                optionId);
+        }
+
+        private static CareerSaveSnapshot WithPendingEvent(
+            CareerSaveSnapshot source,
+            string eventId = null,
+            int? randomVersion = null,
+            CareerEventOptionEffect firstOption = null,
+            CareerEventOptionEffect secondOption = null)
+        {
+            var current = source.Progression.PendingEvent;
+            var pending = new PendingCareerEvent(
+                current.SourceWeekPlanId,
+                current.SourceSlotActionId,
+                current.SourceActionOccurrenceId,
+                eventId ?? current.EventId,
+                current.OccurrenceId,
+                randomVersion ?? current.RandomVersion,
+                firstOption ?? current.Options[0],
+                secondOption ?? current.Options[1],
+                current.ResumeAtSlotNumber);
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                CareerProgressionState.AwaitingEventChoice(
+                    source.Progression.WeekPlan,
+                    pending),
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                source.OperationReceipts);
+        }
+
+        private static void CorruptPendingRandomVersion(
+            CareerSaveSnapshot snapshot,
+            int randomVersion)
+        {
+            var field = typeof(PendingCareerEvent).GetField(
+                "<RandomVersion>k__BackingField",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            field.SetValue(snapshot.Progression.PendingEvent, randomVersion);
+        }
+
+        private static void CorruptPendingOption(
+            CareerSaveSnapshot snapshot,
+            int index,
+            CareerEventOptionEffect replacement)
+        {
+            var field = typeof(PendingCareerEvent).GetField(
+                "_options",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var options = (CareerEventOptionEffect[])field.GetValue(
+                snapshot.Progression.PendingEvent);
+            options[index] = replacement;
+        }
+
+        private static void CorruptPendingValue(
+            CareerSaveSnapshot snapshot,
+            string fieldName,
+            object value)
+        {
+            var field = typeof(PendingCareerEvent).GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            field.SetValue(snapshot.Progression.PendingEvent, value);
+        }
+
+        private static CareerSaveSnapshot UnadvanceableAwaitingEventSnapshot(
+            CareerSaveSnapshot source)
+        {
+            var maximumSafeRevision = CareerAttributeProgress.MaximumGrowthExperience;
+            var restoredLineage = new LineageId(
+                Guid.Parse("46464646-4646-4646-4646-464646464646"));
+            var receipts = source.OperationReceipts.Select(receipt => new OperationReceipt(
+                receipt.OperationId,
+                receipt.OperationKind,
+                receipt.Target,
+                receipt.InputFingerprint,
+                restoredLineage,
+                receipt.AppliedRevision,
+                receipt.CompletedAtUtcMs,
+                receipt.OutcomeKind,
+                receipt.OutcomeSummary)).ToArray();
+            return new CareerSaveSnapshot(
+                source.Versions,
+                new CareerSaveIdentity(
+                    source.Identity.ProfileId,
+                    source.Identity.SaveId,
+                    restoredLineage,
+                    maximumSafeRevision,
+                    source.Identity.CreatedAtUtcMs,
+                    source.Identity.UpdatedAtUtcMs + 1,
+                    Hash('6'),
+                    new CareerVersionToken(
+                        source.Identity.LineageId,
+                        maximumSafeRevision - 1,
+                        source.Identity.SnapshotHash)),
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                receipts);
+        }
+
+        private static CareerSaveSnapshot ApplyResolve(
+            CareerSaveSnapshot prior,
+            ResolveEventChoiceCommand command = null)
+        {
+            var result = Service(new MemoryRepository(prior))
+                .ResolveEventChoice(command ?? ResolveCommand(prior));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            return result.Snapshot;
+        }
+
+        private static void AssertResolveRace(
+            ResolveEventChoiceCommand command,
+            CareerSaveSnapshot prior,
+            CareerSaveSnapshot winner,
+            CareerApplicationStatus expectedStatus,
+            bool hasConflict)
+        {
+            var repository = new MemoryRepository(prior) { CommitRaceWinner = winner };
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(repository, random).ResolveEventChoice(command);
+
+            Assert.That(result.Status, Is.EqualTo(expectedStatus));
+            Assert.That(result.Snapshot, Is.SameAs(winner));
+            Assert.That(result.ConflictingReceipt != null, Is.EqualTo(hasConflict));
+            Assert.That(result.OutcomeSummary != null,
+                Is.EqualTo(expectedStatus == CareerApplicationStatus.Existing));
+            Assert.That(repository.LoadCount, Is.EqualTo(2));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+            Assert.That(random.Calls, Is.Empty);
         }
 
         private static ExecuteWeekActionCommand ExecuteCommandForPlanning(
@@ -2212,6 +2960,20 @@ namespace Volleyball.Career.EditModeTests
 
             public CareerSaveSnapshot Snapshot { get; }
             public ExecuteWeekActionCommand Command { get; }
+        }
+
+        private readonly struct ResolveInvalidCase
+        {
+            public ResolveInvalidCase(
+                CareerSaveSnapshot snapshot,
+                ResolveEventChoiceCommand command)
+            {
+                Snapshot = snapshot;
+                Command = command;
+            }
+
+            public CareerSaveSnapshot Snapshot { get; }
+            public ResolveEventChoiceCommand Command { get; }
         }
 
         private sealed class RandomCall
