@@ -1120,6 +1120,41 @@ namespace Volleyball.Career.Persistence
             LineageId newLineageId,
             long recoveredAtUtcMs)
         {
+            var candidate = CreateRestoredSnapshotCandidate(
+                backup,
+                backupVersionToken,
+                newLineageId,
+                recoveredAtUtcMs);
+            if (candidate.Versions.SchemaVersion == 1 &&
+                (candidate.PendingMatch != null ||
+                 candidate.MatchHistory.Count != 0 ||
+                 candidate.SettlementReceipts.Count != 0))
+            {
+                throw new InvalidOperationException(
+                    "Schema V1 cannot seal match lifecycle evidence; recovery requires the Schema V2 codec.");
+            }
+
+            return CareerSaveJsonCodec.Seal(candidate);
+        }
+
+        internal static CareerSaveSnapshot CreateRestoredSnapshotCandidate(
+            CareerSaveSnapshot backup,
+            CareerVersionToken backupVersionToken,
+            LineageId newLineageId,
+            long recoveredAtUtcMs)
+        {
+            if (backup == null)
+            {
+                throw new ArgumentNullException(nameof(backup));
+            }
+
+            if (!backup.Identity.VersionToken.Equals(backupVersionToken))
+            {
+                throw new ArgumentException(
+                    "The restore source token must equal the backup snapshot token.",
+                    nameof(backupVersionToken));
+            }
+
             var receipts = new OperationReceipt[backup.OperationReceipts.Count];
             for (var index = 0; index < receipts.Length; index++)
             {
@@ -1145,7 +1180,42 @@ namespace Volleyball.Career.Persistence
                 recoveredAtUtcMs,
                 backup.Identity.SnapshotHash,
                 backupVersionToken);
-            var candidate = new CareerSaveSnapshot(
+            var pendingMatch = RebindPendingMatch(backup.PendingMatch, newLineageId);
+            var history = new CareerMatchHistoryEntry[backup.MatchHistory.Count];
+            for (var index = 0; index < history.Length; index++)
+            {
+                var entry = backup.MatchHistory[index];
+                history[index] = new CareerMatchHistoryEntry(
+                    entry.SessionId,
+                    entry.ScheduleItemId,
+                    entry.SourceWeekPlanId,
+                    entry.SourceSlotActionId,
+                    entry.ContextDigest,
+                    entry.ResultDigest,
+                    entry.CanonicalContextUtf8,
+                    entry.CanonicalResultUtf8,
+                    newLineageId,
+                    entry.AppliedRevision,
+                    entry.SettledAtUtcMs,
+                    entry.SettlementSummary);
+            }
+
+            var settlementReceipts =
+                new CareerSettlementReceipt[backup.SettlementReceipts.Count];
+            for (var index = 0; index < settlementReceipts.Length; index++)
+            {
+                var receipt = backup.SettlementReceipts[index];
+                settlementReceipts[index] = new CareerSettlementReceipt(
+                    receipt.SessionId,
+                    receipt.ContextDigest,
+                    receipt.ResultDigest,
+                    newLineageId,
+                    receipt.AppliedRevision,
+                    receipt.SettledAtUtcMs,
+                    receipt.SettlementSummary);
+            }
+
+            return new CareerSaveSnapshot(
                 backup.Versions,
                 identity,
                 backup.CareerSeed,
@@ -1160,8 +1230,44 @@ namespace Volleyball.Career.Persistence
                 backup.Fatigue,
                 backup.Mindset,
                 backup.CoachTrust,
-                receipts);
-            return CareerSaveJsonCodec.Seal(candidate);
+                receipts,
+                pendingMatch,
+                history,
+                settlementReceipts);
+        }
+
+        private static PendingCareerMatch RebindPendingMatch(
+            PendingCareerMatch pendingMatch,
+            LineageId newLineageId)
+        {
+            if (pendingMatch == null)
+            {
+                return null;
+            }
+
+            return new PendingCareerMatch(
+                pendingMatch.SessionId,
+                pendingMatch.CreationOperationId,
+                newLineageId,
+                pendingMatch.CreatedRevision,
+                pendingMatch.Versions,
+                pendingMatch.ExecutionMode,
+                pendingMatch.FixtureId,
+                pendingMatch.FixtureVersion,
+                pendingMatch.MatchSeed,
+                pendingMatch.CompetitionId,
+                pendingMatch.ScheduleItemId,
+                pendingMatch.SourceWeekPlanId,
+                pendingMatch.SourceSlotActionId,
+                pendingMatch.SourceActionOccurrenceId,
+                pendingMatch.PreMatchPriority,
+                pendingMatch.ContextDigest,
+                pendingMatch.CanonicalContextUtf8,
+                pendingMatch.HomeTeamId,
+                pendingMatch.AwayTeamId,
+                pendingMatch.OrderedPlayerIds,
+                pendingMatch.ProtagonistPlayerId,
+                pendingMatch.FrozenTrainingEmphases);
         }
 
         private Candidate ReadCandidate(string path, ProfileId profileId, SaveId saveId)

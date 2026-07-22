@@ -943,6 +943,97 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void RecoveryCandidate_RebindsPendingLifecycleAndPreservesItsAuthorityEvidence()
+        {
+            var before = CareerPersistenceTestData.AfterSecondTraining(
+                CareerPersistenceTestData.PlannedAfterFirstTraining(
+                    new ProfileId(Guid.NewGuid()),
+                    new SaveId(Guid.NewGuid()),
+                    new LineageId(Guid.NewGuid())));
+            var backup = CareerMatchLifecycleDomainTests.AwaitingSnapshot(before);
+            var newLineage = new LineageId(Guid.NewGuid());
+
+            var restored = LocalCareerSaveRepository.CreateRestoredSnapshotCandidate(
+                backup,
+                backup.Identity.VersionToken,
+                newLineage,
+                backup.Identity.UpdatedAtUtcMs + 1);
+
+            Assert.That(restored.Identity.LineageId, Is.EqualTo(newLineage));
+            Assert.That(restored.Identity.Revision, Is.EqualTo(backup.Identity.Revision + 1));
+            Assert.That(
+                restored.Identity.RestoredFromVersionToken,
+                Is.EqualTo(backup.Identity.VersionToken));
+            Assert.That(restored.PendingMatch, Is.Not.Null);
+            Assert.That(restored.PendingMatch.SessionId, Is.EqualTo(backup.PendingMatch.SessionId));
+            Assert.That(
+                restored.PendingMatch.CreatedLineageId,
+                Is.EqualTo(newLineage));
+            Assert.That(
+                restored.PendingMatch.CreatedRevision,
+                Is.EqualTo(backup.PendingMatch.CreatedRevision));
+            Assert.That(
+                restored.PendingMatch.ContextDigest,
+                Is.EqualTo(backup.PendingMatch.ContextDigest));
+            Assert.That(
+                restored.PendingMatch.CanonicalContextUtf8,
+                Is.EqualTo(backup.PendingMatch.CanonicalContextUtf8));
+            Assert.That(restored.MatchHistory, Is.Empty);
+            Assert.That(restored.SettlementReceipts, Is.Empty);
+
+            var creation = FindPendingCreation(restored, restored.PendingMatch.SessionId);
+            var originalCreation = FindPendingCreation(backup, backup.PendingMatch.SessionId);
+            Assert.That(creation.AppliedLineageId, Is.EqualTo(newLineage));
+            Assert.That(creation.AppliedRevision, Is.EqualTo(originalCreation.AppliedRevision));
+        }
+
+        [Test]
+        public void RecoveryCandidate_RebindsSettledLifecycleAndPreservesDurableResultEvidence()
+        {
+            var before = CareerPersistenceTestData.AfterSecondTraining(
+                CareerPersistenceTestData.PlannedAfterFirstTraining(
+                    new ProfileId(Guid.NewGuid()),
+                    new SaveId(Guid.NewGuid()),
+                    new LineageId(Guid.NewGuid())));
+            var backup = CareerMatchLifecycleDomainTests.SettledWeekTwoSnapshot(
+                CareerMatchLifecycleDomainTests.AwaitingSnapshot(before));
+            var originalHistory = backup.MatchHistory[0];
+            var originalReceipt = backup.SettlementReceipts[0];
+            var newLineage = new LineageId(Guid.NewGuid());
+
+            var restored = LocalCareerSaveRepository.CreateRestoredSnapshotCandidate(
+                backup,
+                backup.Identity.VersionToken,
+                newLineage,
+                backup.Identity.UpdatedAtUtcMs + 1);
+
+            Assert.That(restored.PendingMatch, Is.Null);
+            Assert.That(restored.MatchHistory, Has.Count.EqualTo(1));
+            Assert.That(restored.SettlementReceipts, Has.Count.EqualTo(1));
+            var history = restored.MatchHistory[0];
+            var receipt = restored.SettlementReceipts[0];
+            Assert.That(history.SessionId, Is.EqualTo(originalHistory.SessionId));
+            Assert.That(history.ContextDigest, Is.EqualTo(originalHistory.ContextDigest));
+            Assert.That(history.ResultDigest, Is.EqualTo(originalHistory.ResultDigest));
+            Assert.That(history.CanonicalContextUtf8, Is.EqualTo(originalHistory.CanonicalContextUtf8));
+            Assert.That(history.CanonicalResultUtf8, Is.EqualTo(originalHistory.CanonicalResultUtf8));
+            Assert.That(history.SettlementSummary, Is.EqualTo(originalHistory.SettlementSummary));
+            Assert.That(history.AppliedLineageId, Is.EqualTo(newLineage));
+            Assert.That(history.AppliedRevision, Is.EqualTo(originalHistory.AppliedRevision));
+            Assert.That(receipt.SessionId, Is.EqualTo(originalReceipt.SessionId));
+            Assert.That(receipt.ContextDigest, Is.EqualTo(originalReceipt.ContextDigest));
+            Assert.That(receipt.ResultDigest, Is.EqualTo(originalReceipt.ResultDigest));
+            Assert.That(receipt.SettlementSummary, Is.EqualTo(originalReceipt.SettlementSummary));
+            Assert.That(receipt.AppliedLineageId, Is.EqualTo(newLineage));
+            Assert.That(receipt.AppliedRevision, Is.EqualTo(originalReceipt.AppliedRevision));
+
+            var creation = FindPendingCreation(restored, history.SessionId);
+            var originalCreation = FindPendingCreation(backup, history.SessionId);
+            Assert.That(creation.AppliedLineageId, Is.EqualTo(newLineage));
+            Assert.That(creation.AppliedRevision, Is.EqualTo(originalCreation.AppliedRevision));
+        }
+
+        [Test]
         public void CareerRepository_RecoveryThrowBeforePublishKeepsPromptAndNeverPromotesTemp()
         {
             var faults = new FaultInjectingAtomicFileSystem(_system);
@@ -1839,6 +1930,22 @@ namespace Volleyball.Career.EditModeTests
                 current.CreatedAtUtcMs,
                 current.UpdatedAtUtcMs + 1,
                 current.CareerEntries);
+        }
+
+        private static OperationReceipt FindPendingCreation(
+            CareerSaveSnapshot snapshot,
+            Guid sessionId)
+        {
+            foreach (var receipt in snapshot.OperationReceipts)
+            {
+                if (receipt.OperationKind == OperationKind.CreatePendingMatch &&
+                    receipt.Target.MatchSessionId == sessionId)
+                {
+                    return receipt;
+                }
+            }
+
+            throw new AssertionException("The lifecycle fixture requires a pending-creation receipt.");
         }
 
         private static Sha256Digest RawHash(byte[] bytes)

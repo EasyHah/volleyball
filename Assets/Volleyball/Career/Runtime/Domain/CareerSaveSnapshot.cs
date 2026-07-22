@@ -434,6 +434,11 @@ namespace Volleyball.Career.Domain
                 copiedProgression,
                 copiedTrainingEmphases,
                 copiedReceipts,
+                player,
+                teamId,
+                fatigue,
+                mindset,
+                coachTrust,
                 copiedPendingMatch,
                 copiedMatchHistory,
                 copiedSettlementReceipts);
@@ -562,6 +567,11 @@ namespace Volleyball.Career.Domain
             CareerProgressionState progression,
             TrainingEmphasisLedger trainingEmphases,
             IReadOnlyList<OperationReceipt> operationReceipts,
+            CareerPlayerRecord player,
+            TeamId? teamId,
+            int? fatigue,
+            int? mindset,
+            int? coachTrust,
             PendingCareerMatch pendingMatch,
             IReadOnlyList<CareerMatchHistoryEntry> history,
             IReadOnlyList<CareerSettlementReceipt> settlementReceipts)
@@ -582,6 +592,8 @@ namespace Volleyball.Career.Domain
                     progression,
                     trainingEmphases,
                     operationReceipts,
+                    player,
+                    teamId,
                     pendingMatch);
             }
 
@@ -642,6 +654,12 @@ namespace Volleyball.Career.Domain
                         nameof(settlementReceipts));
                 }
 
+                ValidateSettledCareerState(
+                    pair.Value,
+                    player,
+                    fatigue,
+                    mindset,
+                    coachTrust);
                 ValidateSettledCreationReceipt(pair.Value, operationReceipts);
             }
 
@@ -679,6 +697,8 @@ namespace Volleyball.Career.Domain
             CareerProgressionState progression,
             TrainingEmphasisLedger trainingEmphases,
             IReadOnlyList<OperationReceipt> operationReceipts,
+            CareerPlayerRecord player,
+            TeamId? teamId,
             PendingCareerMatch pendingMatch)
         {
             var plan = progression.WeekPlan;
@@ -698,13 +718,20 @@ namespace Volleyball.Career.Domain
                     nameof(pendingMatch));
             }
 
+            var isImmediateRestore = identity.RestoredFromVersionToken.HasValue &&
+                                     identity.Revision ==
+                                     identity.RestoredFromVersionToken.Value.Revision + 1 &&
+                                     pendingMatch.CreatedRevision ==
+                                     identity.RestoredFromVersionToken.Value.Revision;
             if (!pendingMatch.CreatedLineageId.Equals(identity.LineageId) ||
-                pendingMatch.CreatedRevision != identity.Revision)
+                (pendingMatch.CreatedRevision != identity.Revision && !isImmediateRestore))
             {
                 throw new ArgumentException(
-                    "PendingMatch creation identity must equal its containing snapshot identity.",
+                    "PendingMatch creation identity must equal the containing snapshot, except for its preserved source revision on an immediate restore.",
                     nameof(pendingMatch));
             }
+
+            ValidatePendingCareerIdentity(player, teamId, pendingMatch);
 
             if (pendingMatch.Versions.ContractVersion != CareerMatchLifecycleVersions.ContractV2 ||
                 pendingMatch.Versions.ContentVersion != versions.ContentVersion ||
@@ -762,6 +789,74 @@ namespace Volleyball.Career.Domain
                 throw new ArgumentException(
                     "PendingMatch requires its exact pending-creation operation receipt.",
                     nameof(operationReceipts));
+            }
+        }
+
+        private static void ValidatePendingCareerIdentity(
+            CareerPlayerRecord player,
+            TeamId? teamId,
+            PendingCareerMatch pendingMatch)
+        {
+            if (player == null || !teamId.HasValue ||
+                !pendingMatch.ProtagonistPlayerId.Equals(player.PlayerId))
+            {
+                throw new ArgumentException(
+                    "PendingMatch protagonist must equal the current Career player.",
+                    nameof(pendingMatch));
+            }
+
+            var isHomeTeam = teamId.Value.Equals(pendingMatch.HomeTeamId);
+            var isAwayTeam = teamId.Value.Equals(pendingMatch.AwayTeamId);
+            if (!isHomeTeam && !isAwayTeam)
+            {
+                throw new ArgumentException(
+                    "PendingMatch must include the current Career team.",
+                    nameof(pendingMatch));
+            }
+
+            var firstRosterIndex = isHomeTeam ? 0 : 6;
+            var rosterContainsPlayer = false;
+            for (var index = firstRosterIndex; index < firstRosterIndex + 6; index++)
+            {
+                if (pendingMatch.OrderedPlayerIds[index].Equals(player.PlayerId))
+                {
+                    rosterContainsPlayer = true;
+                    break;
+                }
+            }
+
+            if (!rosterContainsPlayer)
+            {
+                throw new ArgumentException(
+                    "PendingMatch protagonist must be in the six-player roster segment owned by the current Career team.",
+                    nameof(pendingMatch));
+            }
+        }
+
+        private static void ValidateSettledCareerState(
+            CareerMatchHistoryEntry history,
+            CareerPlayerRecord player,
+            int? fatigue,
+            int? mindset,
+            int? coachTrust)
+        {
+            if (player == null || !fatigue.HasValue || !mindset.HasValue ||
+                !coachTrust.HasValue)
+            {
+                throw new ArgumentException(
+                    "Settled match evidence requires complete authoritative Career state.",
+                    nameof(history));
+            }
+
+            var summary = history.SettlementSummary;
+            if (!summary.AfterAttributes.Equals(player.Attributes) ||
+                summary.WeekendFatigueChange.NewValue != fatigue.Value ||
+                summary.WeekendMindsetChange.NewValue != mindset.Value ||
+                summary.WeekendCoachTrustChange.NewValue != coachTrust.Value)
+            {
+                throw new ArgumentException(
+                    "Settled match after-values must equal the authoritative Career snapshot state.",
+                    nameof(history));
             }
         }
 

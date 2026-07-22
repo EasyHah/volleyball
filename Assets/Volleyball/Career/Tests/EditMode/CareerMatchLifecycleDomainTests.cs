@@ -500,6 +500,118 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void AwaitingSnapshot_RejectsPendingProtagonistThatIsNotTheCareerPlayer()
+        {
+            var awaiting = AwaitingSnapshot(BeforePending());
+            var pending = awaiting.PendingMatch;
+            var mismatched = PendingWithCareerIdentity(
+                pending,
+                pending.HomeTeamId,
+                pending.AwayTeamId,
+                pending.OrderedPlayerIds,
+                pending.OrderedPlayerIds[2]);
+
+            Assert.That(
+                () => FullSnapshot(
+                    awaiting,
+                    awaiting.Progression,
+                    mismatched,
+                    awaiting.MatchHistory,
+                    awaiting.SettlementReceipts),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void AwaitingSnapshot_RejectsPendingWhenCareerTeamIsNotPlaying()
+        {
+            var awaiting = AwaitingSnapshot(BeforePending());
+            var pending = awaiting.PendingMatch;
+            var mismatched = PendingWithCareerIdentity(
+                pending,
+                new TeamId("university-green"),
+                new TeamId("university-red"),
+                pending.OrderedPlayerIds,
+                pending.ProtagonistPlayerId);
+
+            Assert.That(
+                () => FullSnapshot(
+                    awaiting,
+                    awaiting.Progression,
+                    mismatched,
+                    awaiting.MatchHistory,
+                    awaiting.SettlementReceipts),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void AwaitingSnapshot_RejectsCareerPlayerOnTheOpponentRosterSegment()
+        {
+            var awaiting = AwaitingSnapshot(BeforePending());
+            var pending = awaiting.PendingMatch;
+            var roster = pending.OrderedPlayerIds.ToArray();
+            var homeIndex = Array.IndexOf(roster, awaiting.Player.PlayerId);
+            var opponent = roster[6];
+            roster[6] = roster[homeIndex];
+            roster[homeIndex] = opponent;
+            var mismatched = PendingWithCareerIdentity(
+                pending,
+                pending.HomeTeamId,
+                pending.AwayTeamId,
+                roster,
+                awaiting.Player.PlayerId);
+
+            Assert.That(
+                () => FullSnapshot(
+                    awaiting,
+                    awaiting.Progression,
+                    mismatched,
+                    awaiting.MatchHistory,
+                    awaiting.SettlementReceipts),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void AwaitingSnapshot_RejectsStalePendingRevisionAfterTheImmediateRestoreWindow()
+        {
+            var awaiting = AwaitingSnapshot(BeforePending());
+            var restoredFrom = new CareerVersionToken(
+                new LineageId(Guid.NewGuid()),
+                awaiting.Identity.Revision - 1,
+                new Sha256Digest(new string('d', 64)));
+            var laterIdentity = new CareerSaveIdentity(
+                awaiting.Identity.ProfileId,
+                awaiting.Identity.SaveId,
+                awaiting.Identity.LineageId,
+                awaiting.Identity.Revision + 1,
+                awaiting.Identity.CreatedAtUtcMs,
+                awaiting.Identity.UpdatedAtUtcMs + 1,
+                awaiting.Identity.SnapshotHash,
+                restoredFrom);
+
+            Assert.That(
+                () => new CareerSaveSnapshot(
+                    awaiting.Versions,
+                    laterIdentity,
+                    awaiting.CareerSeed,
+                    awaiting.CareerName,
+                    awaiting.PlayerDraft,
+                    awaiting.Onboarding,
+                    awaiting.Progression,
+                    awaiting.TrainingEmphases,
+                    awaiting.Player,
+                    awaiting.TeamId,
+                    awaiting.PotentialGrade,
+                    awaiting.Fatigue,
+                    awaiting.Mindset,
+                    awaiting.CoachTrust,
+                    awaiting.OperationReceipts,
+                    awaiting.PendingMatch,
+                    awaiting.MatchHistory,
+                    awaiting.SettlementReceipts),
+                Throws.ArgumentException);
+        }
+
+        [Test]
         public void Snapshot_MatchesHistoryAndSettlementReceiptsOneToOneWithoutOperationRevisionCollision()
         {
             var awaiting = AwaitingSnapshot(BeforePending());
@@ -546,6 +658,87 @@ namespace Volleyball.Career.EditModeTests
                     null,
                     settled.MatchHistory,
                     new[] { wrongReceipt }),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void SettledSnapshot_RejectsPlayerAttributesThatDoNotMatchSettlementAfterValues()
+        {
+            var settled = SettledWeekTwoSnapshot(AwaitingSnapshot(BeforePending()));
+            var attributes = settled.Player.Attributes;
+            var wrongAttributes = new CareerPlayerAttributes(
+                new CareerAttributeProgress(
+                    attributes.Spike.AbilityBasisPoints,
+                    attributes.Spike.GrowthExperience + 1),
+                attributes.Serve,
+                attributes.Reception,
+                attributes.Defense,
+                attributes.Block,
+                attributes.Movement,
+                attributes.Jump,
+                attributes.Stamina);
+            var wrongPlayer = new CareerPlayerRecord(
+                settled.Player.PlayerId,
+                settled.Player.DisplayName,
+                settled.Player.JerseyNumber,
+                wrongAttributes);
+
+            Assert.That(
+                () => SnapshotWithCareerState(
+                    settled,
+                    wrongPlayer,
+                    settled.TeamId,
+                    settled.Fatigue,
+                    settled.Mindset,
+                    settled.CoachTrust),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void SettledSnapshot_RejectsFatigueThatDoesNotMatchSettlementAfterValue()
+        {
+            var settled = SettledWeekTwoSnapshot(AwaitingSnapshot(BeforePending()));
+
+            Assert.That(
+                () => SnapshotWithCareerState(
+                    settled,
+                    settled.Player,
+                    settled.TeamId,
+                    DifferentStatus(settled.Fatigue.Value),
+                    settled.Mindset,
+                    settled.CoachTrust),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void SettledSnapshot_RejectsMindsetThatDoesNotMatchSettlementAfterValue()
+        {
+            var settled = SettledWeekTwoSnapshot(AwaitingSnapshot(BeforePending()));
+
+            Assert.That(
+                () => SnapshotWithCareerState(
+                    settled,
+                    settled.Player,
+                    settled.TeamId,
+                    settled.Fatigue,
+                    DifferentStatus(settled.Mindset.Value),
+                    settled.CoachTrust),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void SettledSnapshot_RejectsCoachTrustThatDoesNotMatchSettlementAfterValue()
+        {
+            var settled = SettledWeekTwoSnapshot(AwaitingSnapshot(BeforePending()));
+
+            Assert.That(
+                () => SnapshotWithCareerState(
+                    settled,
+                    settled.Player,
+                    settled.TeamId,
+                    settled.Fatigue,
+                    settled.Mindset,
+                    DifferentStatus(settled.CoachTrust.Value)),
                 Throws.ArgumentException);
         }
 
@@ -794,7 +987,7 @@ namespace Volleyball.Career.EditModeTests
                     new LineageId(Guid.NewGuid())));
         }
 
-        private static CareerSaveSnapshot AwaitingSnapshot(CareerSaveSnapshot before)
+        internal static CareerSaveSnapshot AwaitingSnapshot(CareerSaveSnapshot before)
         {
             var identity = NextIdentity(before, 9);
             var sessionId = Guid.NewGuid();
@@ -870,7 +1063,7 @@ namespace Volleyball.Career.EditModeTests
                 Array.Empty<CareerSettlementReceipt>());
         }
 
-        private static CareerSaveSnapshot SettledWeekTwoSnapshot(CareerSaveSnapshot awaiting)
+        internal static CareerSaveSnapshot SettledWeekTwoSnapshot(CareerSaveSnapshot awaiting)
         {
             var identity = NextIdentity(awaiting, 10);
             var summary = Summary();
@@ -902,6 +1095,11 @@ namespace Volleyball.Career.EditModeTests
                 2,
                 new CareerWeekActionState[] { null, null, null },
                 false);
+            var settledPlayer = new CareerPlayerRecord(
+                awaiting.Player.PlayerId,
+                awaiting.Player.DisplayName,
+                awaiting.Player.JerseyNumber,
+                summary.AfterAttributes);
             return new CareerSaveSnapshot(
                 awaiting.Versions,
                 identity,
@@ -911,16 +1109,45 @@ namespace Volleyball.Career.EditModeTests
                 awaiting.Onboarding,
                 CareerProgressionState.Planning(weekTwo),
                 TrainingEmphasisLedger.Empty,
-                awaiting.Player,
+                settledPlayer,
                 awaiting.TeamId,
                 awaiting.PotentialGrade,
-                awaiting.Fatigue,
-                awaiting.Mindset,
-                awaiting.CoachTrust,
+                summary.WeekendFatigueChange.NewValue,
+                summary.WeekendMindsetChange.NewValue,
+                summary.WeekendCoachTrustChange.NewValue,
                 awaiting.OperationReceipts,
                 null,
                 new[] { history },
                 new[] { receipt });
+        }
+
+        private static CareerSaveSnapshot SnapshotWithCareerState(
+            CareerSaveSnapshot source,
+            CareerPlayerRecord player,
+            TeamId? teamId,
+            int? fatigue,
+            int? mindset,
+            int? coachTrust)
+        {
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                player,
+                teamId,
+                source.PotentialGrade,
+                fatigue,
+                mindset,
+                coachTrust,
+                source.OperationReceipts,
+                source.PendingMatch,
+                source.MatchHistory,
+                source.SettlementReceipts);
         }
 
         private static CareerSaveSnapshot FullSnapshot(
@@ -969,6 +1196,43 @@ namespace Volleyball.Career.EditModeTests
             var players = Players();
             players[1] = protagonist;
             return players;
+        }
+
+        private static PendingCareerMatch PendingWithCareerIdentity(
+            PendingCareerMatch source,
+            TeamId homeTeamId,
+            TeamId awayTeamId,
+            IEnumerable<PlayerId> orderedPlayerIds,
+            PlayerId protagonistPlayerId)
+        {
+            return new PendingCareerMatch(
+                source.SessionId,
+                source.CreationOperationId,
+                source.CreatedLineageId,
+                source.CreatedRevision,
+                source.Versions,
+                source.ExecutionMode,
+                source.FixtureId,
+                source.FixtureVersion,
+                source.MatchSeed,
+                source.CompetitionId,
+                source.ScheduleItemId,
+                source.SourceWeekPlanId,
+                source.SourceSlotActionId,
+                source.SourceActionOccurrenceId,
+                source.PreMatchPriority,
+                source.ContextDigest,
+                source.CanonicalContextUtf8,
+                homeTeamId,
+                awayTeamId,
+                orderedPlayerIds,
+                protagonistPlayerId,
+                source.FrozenTrainingEmphases);
+        }
+
+        private static int DifferentStatus(int value)
+        {
+            return value == 100 ? 99 : value + 1;
         }
 
         private static void MutatePending(PendingInput input, string contradiction)
