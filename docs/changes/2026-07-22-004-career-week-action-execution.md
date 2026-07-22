@@ -10,10 +10,12 @@
 
 ## 改动摘要
 
-加入第一周第二个独立命令边界：权威 revision 5 的 slot 1 普通行动在一个 CAS revision 中结算直接
+加入第一周第二个独立命令边界：通常权威 revision 5 的 slot 1 普通行动在一个 CAS revision 中结算直接
 后果、可选训练 emphasis、行动回执与已解析但尚未应用的固定 `event.team_meal`，推进到 revision 6
-`AwaitingEventChoice`；测试使用的合法 revision 7 `Planned(nextSlotNumber = 2)` 可同样原子结算 slot 2，
-推进到 revision 8 `Planned(nextSlotNumber = 3)`。本次不处理事件选择、slot 3 或比赛。
+`AwaitingEventChoice`；通常 revision 7 `Planned(nextSlotNumber = 2)` 同样原子结算 slot 2，推进到
+revision 8 `Planned(nextSlotNumber = 3)`。合法 immediate backup restore 会因恢复 revision 多加一而从
+revision 6/8 分别推进到 7/9；服务依赖完整 expected token 与权威状态/回执 frontier，不绑定绝对
+revision。本次不处理事件选择、slot 3 或比赛。
 
 ## 契约与 canonical fingerprint
 
@@ -59,6 +61,9 @@
 - slot 2 的合法测试 frontier 含 slot-1 行动与已解决事件回执；它从 revision 7 一次推进到 revision 8，
   保存 slot-2 后果/可选第二 emphasis/一个执行回执并进入 `Planned(nextSlotNumber = 3)`。它零随机、无
   pending event，也不创建 `PendingMatch`。
+- immediate restore 使用新 lineage、`source revision + 1` 与完整 `RestoredFromVersionToken`；slot 1/2
+  执行保留恢复来源与新 lineage，新回执写入新 lineage 及实际 next revision。错误 progression、next
+  slot、plan/action identity 或缺失 slot-1/event receipt 的状态仍会在随机与 commit 前拒绝。
 - 每个命令恰好一次 repository CAS。load 后先查 operation receipt：exact 返回 `Existing`，同 ID 不同
   fingerprint 返回 `OperationConflict`，其他陈旧 token 返回权威 `VersionConflict`。CAS race 只 reload
   一次并按 exact/conflicting/missing receipt 收敛，不自动重算或重试；slot-1 race 最多保留提交前已发生
@@ -66,6 +71,10 @@
 - `Committed` 与 `BackupDegraded` 只在返回 payload 含相同 operation/fingerprint 回执时映射为
   `Applied`。load/commit/race reload 的 null、异常、I/O、lock、not-committed 或 malformed result 均返回
   结构化失败；不会暴露推测 revision、outcome、XP、状态、emphasis 或 event。
+- `_random.NextInt64` 是独立基础设施边界。该依赖抛出的 `IOException`、`InvalidOperationException` 或
+  其他异常只由私有 marker 包装并映射为 `PersistenceFailure`：返回 prior authoritative snapshot、
+  `PersistenceKind = null`，不返回 outcome/conflict，不 commit，也不重抽。确定性 Build 本身不再被宽
+  `InvalidOperationException` catch 覆盖，规则/编程错误不会被误标为随机依赖失败。
 
 ## 跨模块交互重点
 
@@ -80,13 +89,32 @@
 - [x] contract/fingerprint：exact public surface、两条 complete UTF-8 vector/literal hash、敏感字段与
   `operationId`/时间排除项
 - [x] slot 1/2：四类直接后果、same/different emphasis、两条 event random vector、同一 post-action
-  basis、revision `5 -> 6` 与测试 fixture `7 -> 8`
+  basis、revision `5 -> 6` / `7 -> 8` 以及 immediate restore `6 -> 7` / `8 -> 9`
 - [x] CAS/幂等/失败：Applied、BackupDegraded、Existing、OperationConflict、VersionConflict、两种
   transition 的三类 race、null/throw/malformed/not-committed/I/O/lock
 - [x] 边界：Confirm 零随机、slot 2 零随机、无 event application、无 slot 3/PendingMatch/future shell
 
-Unity focused/Career/full EditMode、Python policy、repository validator、diff/禁用 API/frozen hash 的最终
-命令和计数记录于 workspace-only `.superpowers/sdd/task-4b2-report.md`。
+最终验证命令与结果直接记录如下：
+
+- `E:\UnityEditor\6000.3.20f1\Editor\Unity.exe -batchmode -projectPath
+  C:\Users\chen\Documents\球队经理\volleyball -runTests -testPlatform EditMode -testFilter
+  'Volleyball.Career.EditModeTests.CareerWeekOperationFingerprintV1Tests;Volleyball.Career.EditModeTests.CareerWeekCommandServiceTests'`
+  — focused `68/68` passed。
+- 同一 Unity 命令使用 `-testFilter 'Volleyball.Career.EditModeTests'` — Career `354/354` passed。
+- 同一 Unity 命令省略 `-testFilter` — full EditMode `577/577` passed。
+- `python -B -m unittest discover -s tools/tests -p "test_*.py" -v` — `8/8` passed。
+- `python -B tools/validate_repository.py --base c09fc43` — repository validation passed。
+- `git diff --check c09fc43..HEAD`、forbidden/future API search 与 frozen path diff — clean。
+
+Frozen `c09fc43` base 与 review-fix HEAD 的四项 hash 完全相同：
+
+- `Assets/Volleyball/Match`: `1f0bbe976355ded867dcefadba61d538f77905b9`
+- `Assets/Volleyball/Match.meta`: `23d5e66a3e4158bd421c4d3ee573e0d4e7339627`
+- `Assets/Volleyball/Shared/Runtime`: `61c7a928f2bf4740defea34c67e5cb108f6dfe76`
+- `Assets/Volleyball/Shared/Runtime.meta`: `9085d85a3a423a82a6303df4ca3fe3819d8d30ea`
+
+完整 RED/GREEN 日志文件名与自审细节另记录于 workspace-only
+`.superpowers/sdd/task-4b2-report.md`。
 
 ## 回滚与风险
 

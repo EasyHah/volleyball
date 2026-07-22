@@ -589,13 +589,119 @@ namespace Volleyball.Career.EditModeTests
                 Is.EqualTo(CareerTrainingDirection.Jump));
             Assert.That(result.Snapshot.TrainingEmphases.Contributions[1].BonusBasisPoints,
                 Is.EqualTo(1000));
+            Assert.That(prior.Player.Attributes.Spike.GrowthExperience, Is.EqualTo(130));
+            Assert.That(prior.Fatigue.Value, Is.EqualTo(32));
+            Assert.That(prior.Mindset.Value, Is.EqualTo(56));
+            Assert.That(prior.CoachTrust.Value, Is.EqualTo(63));
             Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Jump, Is.EqualTo(100));
             Assert.That(result.OutcomeSummary.FatigueDelta, Is.EqualTo(12));
+            Assert.That(result.Snapshot.Player.Attributes.Spike, Is.EqualTo(prior.Player.Attributes.Spike));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Jump.GrowthExperience,
+                Is.EqualTo(prior.Player.Attributes.Jump.GrowthExperience + 100));
+            Assert.That(result.Snapshot.Fatigue.Value, Is.EqualTo(prior.Fatigue.Value + 12));
+            Assert.That(result.Snapshot.Mindset.Value, Is.EqualTo(prior.Mindset.Value));
+            Assert.That(result.Snapshot.CoachTrust.Value, Is.EqualTo(prior.CoachTrust.Value));
+            AssertAbilityBasisPointsEqual(prior.Player.Attributes, result.Snapshot.Player.Attributes);
+            AssertContributionEqual(
+                prior.TrainingEmphases.Contributions[0],
+                result.Snapshot.TrainingEmphases.Contributions[0]);
             Assert.That(random.Calls, Is.Empty);
             Assert.That(repository.CommitCount, Is.EqualTo(1));
             Assert.That(typeof(CareerProgressionState).Assembly.GetType(
                 "Volleyball.Career.Domain.PendingMatch"), Is.Null);
             AssertExecutionContextPreserved(prior, result.Snapshot);
+        }
+
+        [Test]
+        public void ExecuteWeekAction_AcceptsImmediateRestoreOfSlotOneFrontier()
+        {
+            var original = ConfirmedSnapshot();
+            var restored = ImmediateRestore(
+                original,
+                new LineageId(Guid.Parse("41414141-4141-4141-4141-414141414141")));
+            var command = ExecuteCommand(restored, 1, completedAtUtcMs: restored.Identity.UpdatedAtUtcMs + 1);
+            var repository = new MemoryRepository(restored);
+
+            var result = Service(repository).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(7));
+            Assert.That(result.Snapshot.Identity.LineageId, Is.EqualTo(restored.Identity.LineageId));
+            Assert.That(
+                result.Snapshot.Identity.RestoredFromVersionToken,
+                Is.EqualTo(new CareerVersionToken? (original.Identity.VersionToken)));
+            var receipt = result.Snapshot.OperationReceipts.Last();
+            Assert.That(receipt.AppliedLineageId, Is.EqualTo(restored.Identity.LineageId));
+            Assert.That(receipt.AppliedRevision, Is.EqualTo(7));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_AcceptsImmediateRestoreOfSlotTwoFrontier()
+        {
+            var original = CareerPersistenceTestData.PlannedAfterFirstTraining(Profile, Save, Lineage);
+            var restored = ImmediateRestore(
+                original,
+                new LineageId(Guid.Parse("42424242-4242-4242-4242-424242424242")));
+            var command = ExecuteCommand(restored, 2, completedAtUtcMs: restored.Identity.UpdatedAtUtcMs + 1);
+            var repository = new MemoryRepository(restored);
+
+            var result = Service(repository).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(result.Snapshot.Identity.Revision, Is.EqualTo(9));
+            Assert.That(result.Snapshot.Identity.LineageId, Is.EqualTo(restored.Identity.LineageId));
+            Assert.That(
+                result.Snapshot.Identity.RestoredFromVersionToken,
+                Is.EqualTo(new CareerVersionToken?(original.Identity.VersionToken)));
+            var receipt = result.Snapshot.OperationReceipts.Last();
+            Assert.That(receipt.AppliedLineageId, Is.EqualTo(restored.Identity.LineageId));
+            Assert.That(receipt.AppliedRevision, Is.EqualTo(9));
+            Assert.That(repository.CommitCount, Is.EqualTo(1));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ExecuteWeekAction_RandomDependencyExceptionIsPersistenceFailure(bool invalidOperation)
+        {
+            var prior = ConfirmedSnapshot();
+            var random = new ThrowingRandom(invalidOperation);
+            var repository = new MemoryRepository(prior);
+            CareerWeekCommandResult result = null;
+
+            Assert.DoesNotThrow(() => result = Service(repository, random)
+                .ExecuteWeekAction(ExecuteCommand(prior, 1)));
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.PersistenceFailure));
+            Assert.That(result.PersistenceKind, Is.Null);
+            Assert.That(result.Snapshot, Is.SameAs(prior));
+            Assert.That(result.OutcomeSummary, Is.Null);
+            Assert.That(result.ConflictingReceipt, Is.Null);
+            Assert.That(repository.CommitCount, Is.Zero);
+            Assert.That(random.CallCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ExecuteWeekAction_FrozenOptionsUseSameClampedPostActionBasis()
+        {
+            var prior = BoundaryConfirmedSnapshot();
+            var command = ExecuteCommand(prior, 1);
+            var random = new RecordingRandom(new CareerDeterministicRandom());
+
+            var result = Service(new MemoryRepository(prior), random).ExecuteWeekAction(command);
+
+            Assert.That(result.Status, Is.EqualTo(CareerApplicationStatus.Applied));
+            Assert.That(
+                result.Snapshot.Player.Attributes.Spike.GrowthExperience,
+                Is.EqualTo(CareerAttributeProgress.MaximumGrowthExperience));
+            Assert.That(result.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(100));
+            Assert.That(result.Snapshot.Fatigue.Value, Is.EqualTo(98));
+            Assert.That(result.Snapshot.Mindset.Value, Is.EqualTo(94));
+            Assert.That(result.Snapshot.CoachTrust.Value, Is.EqualTo(97));
+            var options = result.Snapshot.Progression.PendingEvent.Options;
+            AssertEffect(options[0], 0, 2, 6, 3);
+            AssertEffect(options[1], 0, 2, -2, 3);
+            Assert.That(random.Calls.Select(call => call.Result), Is.EqualTo(new long[] { 6791, 7549 }));
         }
 
         [Test]
@@ -1199,6 +1305,27 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(actual.CoachTrustDelta, Is.EqualTo(expected.CoachTrustDelta));
         }
 
+        private static void AssertAbilityBasisPointsEqual(
+            CareerPlayerAttributes expected,
+            CareerPlayerAttributes actual)
+        {
+            for (var index = 0; index < 8; index++)
+            {
+                Assert.That(
+                    actual.Get((CareerAttributeKind)index).AbilityBasisPoints,
+                    Is.EqualTo(expected.Get((CareerAttributeKind)index).AbilityBasisPoints));
+            }
+        }
+
+        private static void AssertContributionEqual(
+            TrainingEmphasisContribution expected,
+            TrainingEmphasisContribution actual)
+        {
+            Assert.That(actual.SourceSlotActionId, Is.EqualTo(expected.SourceSlotActionId));
+            Assert.That(actual.Direction, Is.EqualTo(expected.Direction));
+            Assert.That(actual.BonusBasisPoints, Is.EqualTo(expected.BonusBasisPoints));
+        }
+
         private static void AssertExecutionContextPreserved(
             CareerSaveSnapshot prior,
             CareerSaveSnapshot next)
@@ -1285,6 +1412,83 @@ namespace Volleyball.Career.EditModeTests
                 confirmed.Mindset,
                 confirmed.CoachTrust,
                 confirmed.OperationReceipts);
+        }
+
+        private static CareerSaveSnapshot BoundaryConfirmedSnapshot()
+        {
+            var source = ConfirmedSnapshot();
+            var attributes = source.Player.Attributes;
+            var player = new CareerPlayerRecord(
+                source.Player.PlayerId,
+                source.Player.DisplayName,
+                source.Player.JerseyNumber,
+                new CareerPlayerAttributes(
+                    new CareerAttributeProgress(
+                        attributes.Spike.AbilityBasisPoints,
+                        CareerAttributeProgress.MaximumGrowthExperience - 100),
+                    attributes.Serve,
+                    attributes.Reception,
+                    attributes.Defense,
+                    attributes.Block,
+                    attributes.Movement,
+                    attributes.Jump,
+                    attributes.Stamina));
+            return new CareerSaveSnapshot(
+                source.Versions,
+                source.Identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                player,
+                source.TeamId,
+                source.PotentialGrade,
+                90,
+                94,
+                97,
+                source.OperationReceipts);
+        }
+
+        private static CareerSaveSnapshot ImmediateRestore(
+            CareerSaveSnapshot source,
+            LineageId newLineageId)
+        {
+            var receipts = source.OperationReceipts.Select(receipt => new OperationReceipt(
+                receipt.OperationId,
+                receipt.OperationKind,
+                receipt.Target,
+                receipt.InputFingerprint,
+                newLineageId,
+                receipt.AppliedRevision,
+                receipt.CompletedAtUtcMs,
+                receipt.OutcomeKind,
+                receipt.OutcomeSummary)).ToArray();
+            return new CareerSaveSnapshot(
+                source.Versions,
+                new CareerSaveIdentity(
+                    source.Identity.ProfileId,
+                    source.Identity.SaveId,
+                    newLineageId,
+                    source.Identity.Revision + 1,
+                    source.Identity.CreatedAtUtcMs,
+                    source.Identity.UpdatedAtUtcMs + 1,
+                    Hash('7'),
+                    source.Identity.VersionToken),
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.TrainingEmphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                receipts);
         }
 
         private static ExecuteWeekActionCommand ExecuteCommand(
@@ -1974,6 +2178,32 @@ namespace Volleyball.Career.EditModeTests
                 UnrelatedCalls++;
                 RequestedCalls++;
                 return _inner.NextInt64(request, minInclusive, maxExclusive);
+            }
+        }
+
+        private sealed class ThrowingRandom : IDeterministicCareerRandom
+        {
+            private readonly bool _invalidOperation;
+
+            public ThrowingRandom(bool invalidOperation)
+            {
+                _invalidOperation = invalidOperation;
+            }
+
+            public int CallCount { get; private set; }
+
+            public long NextInt64(
+                CareerRandomRequest request,
+                long minInclusive,
+                long maxExclusive)
+            {
+                CallCount++;
+                if (_invalidOperation)
+                {
+                    throw new InvalidOperationException("Injected random dependency failure.");
+                }
+
+                throw new IOException("Injected random dependency failure.");
             }
         }
 

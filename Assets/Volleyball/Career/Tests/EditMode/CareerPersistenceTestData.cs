@@ -310,6 +310,22 @@ namespace Volleyball.Career.EditModeTests
             var emphases = TrainingEmphasisLedger.Empty.AddExecutedTraining(
                 plan.Slots[0],
                 CareerWeekActionCatalogV1.Create());
+            var priorAttributes = planning.Player.Attributes;
+            var player = new CareerPlayerRecord(
+                planning.Player.PlayerId,
+                planning.Player.DisplayName,
+                planning.Player.JerseyNumber,
+                new CareerPlayerAttributes(
+                    new CareerAttributeProgress(
+                        priorAttributes.Spike.AbilityBasisPoints,
+                        priorAttributes.Spike.GrowthExperience + 120),
+                    priorAttributes.Serve,
+                    priorAttributes.Reception,
+                    priorAttributes.Defense,
+                    priorAttributes.Block,
+                    priorAttributes.Movement,
+                    priorAttributes.Jump,
+                    priorAttributes.Stamina));
             return new CareerSaveSnapshot(
                 planning.Versions,
                 new CareerSaveIdentity(
@@ -326,12 +342,12 @@ namespace Volleyball.Career.EditModeTests
                 planning.Onboarding,
                 CareerProgressionState.Planned(plan, 2),
                 emphases,
-                planning.Player,
+                player,
                 planning.TeamId,
                 planning.PotentialGrade,
-                planning.Fatigue,
-                planning.Mindset,
-                planning.CoachTrust,
+                planning.Fatigue.Value + 8 + 4,
+                planning.Mindset.Value + 6,
+                planning.CoachTrust.Value + 3,
                 receipts);
         }
 

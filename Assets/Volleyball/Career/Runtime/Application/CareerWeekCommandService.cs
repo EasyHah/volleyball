@@ -204,11 +204,9 @@ namespace Volleyball.Career.Application
                     authoritative);
             }
 
-            CareerSaveSnapshot next;
             try
             {
                 ValidateExecuteTransition(authoritative, command);
-                next = BuildExecutedSnapshot(authoritative, command, fingerprint);
             }
             catch (ArgumentException)
             {
@@ -229,6 +227,19 @@ namespace Volleyball.Career.Application
                 return Result(
                     CareerApplicationStatus.InvalidInputOrState,
                     loaded.Kind,
+                    authoritative);
+            }
+
+            CareerSaveSnapshot next;
+            try
+            {
+                next = BuildExecutedSnapshot(authoritative, command, fingerprint);
+            }
+            catch (CareerRandomDependencyException)
+            {
+                return Result(
+                    CareerApplicationStatus.PersistenceFailure,
+                    null,
                     authoritative);
             }
 
@@ -427,7 +438,7 @@ namespace Volleyball.Career.Application
                         option.OptionId,
                         command.TriggeredEventOccurrenceId.Value,
                         0);
-                    var roll = checked((int)_random.NextInt64(request, 0, 10000));
+                    var roll = checked((int)NextRandomInt64(request, 0, 10000));
                     effects[index] = CareerEventRulesV1.Resolve(
                         prior.Versions.ContentVersion,
                         prior.Versions.RulesetVersion,
@@ -617,10 +628,8 @@ namespace Volleyball.Career.Application
                 throw new ArgumentException("Only a complete enrolled Planned snapshot can execute an action.");
             }
 
-            var expectedRevision = command.SlotNumber == 1 ? 5 : 7;
             var plan = snapshot.Progression.WeekPlan;
-            if (snapshot.Identity.Revision != expectedRevision ||
-                plan == null ||
+            if (plan == null ||
                 !plan.IsConfirmed ||
                 plan.Season != 1 ||
                 plan.Week != 1 ||
@@ -698,6 +707,21 @@ namespace Volleyball.Career.Application
                 {
                     throw new ArgumentException("Slot 2 requires the completed slot-1 event frontier.");
                 }
+            }
+        }
+
+        private long NextRandomInt64(
+            CareerRandomRequest request,
+            long minInclusive,
+            long maxExclusive)
+        {
+            try
+            {
+                return _random.NextInt64(request, minInclusive, maxExclusive);
+            }
+            catch (Exception exception)
+            {
+                throw new CareerRandomDependencyException(exception);
             }
         }
 
@@ -928,6 +952,14 @@ namespace Volleyball.Career.Application
                 snapshot,
                 conflict,
                 outcomeSummary);
+        }
+
+        private sealed class CareerRandomDependencyException : Exception
+        {
+            public CareerRandomDependencyException(Exception innerException)
+                : base("The deterministic career random dependency failed.", innerException)
+            {
+            }
         }
     }
 }
