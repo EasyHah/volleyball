@@ -161,6 +161,38 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AdvanceSimulation_OverlappingArmCapsulesEmitOneBlockContact()
+        {
+            var gameObject = new GameObject("SimulatedBallArmCapsules");
+            try
+            {
+                gameObject.transform.position = new Vector3(0f, 1.3f, 0.3f);
+                var ball = gameObject.AddComponent<SimulatedBall>();
+                ball.RegisterContactSource(new OverlappingArmCapsuleSource());
+                ball.ContactCandidateResolver = (_, __, ___) => BallContactResolution.Accept();
+                var contacts = 0;
+                PlayerBallContactEvent accepted = default;
+                ball.PlayerContact += value =>
+                {
+                    contacts++;
+                    accepted = value;
+                };
+                ball.Launch(new Vector3(0f, 0f, -40f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(contacts, Is.EqualTo(1));
+                Assert.That(accepted.Candidate.Action, Is.EqualTo(TechniqueAction.Block));
+                Assert.That(accepted.Hit.ContactGroupId, Is.EqualTo(81));
+                Assert.That(ball.State.LastContactGroupId, Is.EqualTo(81));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void AdvanceSimulation_ConsumedCrossingSuppressesLaterPlayerAndGroundResponses()
         {
             var gameObject = new GameObject("SimulatedBallConsumedCrossing");
@@ -301,6 +333,32 @@ namespace Volleyball.EditModeTests
                     new SimVector3(0f, 2f, -12f),
                     new SimVector3(0f, 0f, -1f),
                     new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+            }
+        }
+
+        private sealed class OverlappingArmCapsuleSource : IBallContactSource
+        {
+            public void CollectContacts(
+                float simulationTime,
+                float deltaSeconds,
+                System.Collections.Generic.ICollection<BallContactCandidate> contacts)
+            {
+                var frame = new ContactCapsuleFrame(
+                    new SimVector3(-0.3f, 1.3f, 0f),
+                    new SimVector3(0.3f, 1.3f, 0f),
+                    0.065f);
+                var capsule = new ContactCapsuleSnapshot(frame, frame, true, 81);
+                for (var index = 0; index < 2; index++)
+                {
+                    contacts.Add(new BallContactCandidate(
+                        capsule,
+                        TechniqueAction.Block,
+                        new PlayerId(TeamId.Orange, PlayerRole.Attacker),
+                        0.8f,
+                        new SimVector3(0f, 2f, 12f),
+                        new SimVector3(0f, 0f, 1f),
+                        new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+                }
             }
         }
     }
