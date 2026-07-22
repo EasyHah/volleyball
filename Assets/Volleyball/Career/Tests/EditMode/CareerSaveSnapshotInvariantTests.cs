@@ -47,6 +47,47 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void Identity_RestoredSourceRequiresOlderRevisionAndDifferentLineage()
+        {
+            var currentLineage = NewLineageId();
+            var sourceLineage = NewLineageId();
+            var restoredFrom = new CareerVersionToken(sourceLineage, 4, Digest('b'));
+            var identity = new CareerSaveIdentity(
+                NewProfileId(),
+                NewSaveId(),
+                currentLineage,
+                5,
+                0,
+                10,
+                Digest(),
+                restoredFrom);
+
+            Assert.That(identity.RestoredFromVersionToken, Is.EqualTo(restoredFrom));
+            Assert.That(
+                () => new CareerSaveIdentity(
+                    NewProfileId(),
+                    NewSaveId(),
+                    currentLineage,
+                    5,
+                    0,
+                    10,
+                    Digest(),
+                    new CareerVersionToken(currentLineage, 4, Digest('b'))),
+                Throws.ArgumentException.With.Message.Contains("new lineage"));
+            Assert.That(
+                () => new CareerSaveIdentity(
+                    NewProfileId(),
+                    NewSaveId(),
+                    currentLineage,
+                    5,
+                    0,
+                    10,
+                    Digest(),
+                    new CareerVersionToken(sourceLineage, 5, Digest('b'))),
+                Throws.ArgumentException.With.Message.Contains("follow"));
+        }
+
+        [Test]
         public void Progression_HasNoPersistedExecutingSlotStateOrCommandFields()
         {
             Assert.That(

@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260721-004 | 2026-07-21 | 已完成 | Career.Application / Persistence / Tests / Docs | **跨模块（重点）** | [实现本地档案与生涯持久化](2026-07-21-004-career-local-persistence.md) |
 | CHG-20260721-003 | 2026-07-21 | 已完成 | Career.Domain / Application / Persistence / Tests / Bootstrap | **跨模块（重点）** | [建立正式生涯快照模型](2026-07-21-003-career-save-model.md) |
 | CHG-20260721-002 | 2026-07-21 | 已完成 | Career.Domain / Career.EditModeTests | 模块内部 | [对齐球员生涯周行动计划领域规则](2026-07-21-002-career-week-plan-alignment.md) |
 | CHG-20260721-001 | 2026-07-21 | 已完成 | Repository / CI / Docs / Shared / Match | **跨模块（重点）** | [首里程碑单负责人协作与冻结基线](2026-07-21-001-solo-integration-and-collaboration-baseline.md) |

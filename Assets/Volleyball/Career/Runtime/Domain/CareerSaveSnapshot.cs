@@ -366,7 +366,7 @@ namespace Volleyball.Career.Domain
                 copiedOnboarding,
                 copiedProgression,
                 copiedReceipts,
-                identity.Revision);
+                identity);
 
             Versions = new CareerSaveVersions(
                 versions.SchemaVersion,
@@ -380,7 +380,8 @@ namespace Volleyball.Career.Domain
                 identity.Revision,
                 identity.CreatedAtUtcMs,
                 identity.UpdatedAtUtcMs,
-                identity.SnapshotHash);
+                identity.SnapshotHash,
+                identity.RestoredFromVersionToken);
             CareerSeed = new CareerSeed(careerSeed.ToBytes());
             PlayerDraft = playerDraft.Copy();
             Onboarding = copiedOnboarding;
@@ -787,8 +788,18 @@ namespace Volleyball.Career.Domain
             TryoutOnboardingState onboarding,
             CareerProgressionState progression,
             IReadOnlyList<OperationReceipt> receipts,
-            long snapshotRevision)
+            CareerSaveIdentity identity)
         {
+            var snapshotRevision = identity.Revision;
+            var requiredBusinessFrontier = snapshotRevision;
+            var isImmediateRestore = identity.RestoredFromVersionToken.HasValue &&
+                                     snapshotRevision ==
+                                     identity.RestoredFromVersionToken.Value.Revision + 1;
+            if (isImmediateRestore)
+            {
+                requiredBusinessFrontier = identity.RestoredFromVersionToken.Value.Revision;
+            }
+
             var createReceipt = FindReceipt(receipts, OperationKind.CreateCareer, null, null);
             var frontierRevision = createReceipt.AppliedRevision;
             for (var index = 0; index < onboarding.Stages.Count; index++)
@@ -819,7 +830,11 @@ namespace Volleyball.Career.Domain
                     }
                 }
 
-                RequireFrontierRevision(frontierRevision, snapshotRevision, progression.Kind);
+                RequireFrontierRevision(
+                    frontierRevision,
+                    requiredBusinessFrontier,
+                    progression.Kind,
+                    isImmediateRestore);
                 return;
             }
 
@@ -842,7 +857,11 @@ namespace Volleyball.Career.Domain
             if (progression.Kind == CareerProgressionKind.Planned &&
                 progression.NextSlotNumber == 1)
             {
-                RequireFrontierRevision(frontierRevision, snapshotRevision, progression.Kind);
+                RequireFrontierRevision(
+                    frontierRevision,
+                    requiredBusinessFrontier,
+                    progression.Kind,
+                    isImmediateRestore);
                 return;
             }
 
@@ -858,7 +877,11 @@ namespace Volleyball.Career.Domain
 
             if (progression.Kind == CareerProgressionKind.AwaitingEventChoice)
             {
-                RequireFrontierRevision(frontierRevision, snapshotRevision, progression.Kind);
+                RequireFrontierRevision(
+                    frontierRevision,
+                    requiredBusinessFrontier,
+                    progression.Kind,
+                    isImmediateRestore);
                 return;
             }
 
@@ -874,7 +897,11 @@ namespace Volleyball.Career.Domain
 
             if (progression.NextSlotNumber == 2)
             {
-                RequireFrontierRevision(frontierRevision, snapshotRevision, progression.Kind);
+                RequireFrontierRevision(
+                    frontierRevision,
+                    requiredBusinessFrontier,
+                    progression.Kind,
+                    isImmediateRestore);
                 return;
             }
 
@@ -887,7 +914,11 @@ namespace Volleyball.Career.Domain
                 frontierRevision,
                 slotTwoReceipt,
                 "Slot 2 execution must strictly follow the fixed event choice.");
-            RequireFrontierRevision(frontierRevision, snapshotRevision, progression.Kind);
+            RequireFrontierRevision(
+                frontierRevision,
+                requiredBusinessFrontier,
+                progression.Kind,
+                isImmediateRestore);
         }
 
         private static OperationReceipt FindTryoutReceipt(
@@ -960,13 +991,19 @@ namespace Volleyball.Career.Domain
         private static void RequireFrontierRevision(
             long businessRevision,
             long snapshotRevision,
-            CareerProgressionKind progressionKind)
+            CareerProgressionKind progressionKind,
+            bool allowOlderRestoreFrontier = false)
         {
-            if (businessRevision != snapshotRevision)
+            var isValid = allowOlderRestoreFrontier
+                ? businessRevision <= snapshotRevision
+                : businessRevision == snapshotRevision;
+            if (!isValid)
             {
                 throw new ArgumentException(
                     "The latest business receipt for " + progressionKind +
-                    " must equal the snapshot revision.",
+                    (allowOlderRestoreFrontier
+                        ? " cannot be newer than the restored source revision."
+                        : " must equal the snapshot revision."),
                     nameof(snapshotRevision));
             }
         }

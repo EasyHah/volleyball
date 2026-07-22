@@ -78,7 +78,7 @@
     },
     "Volleyball.Career.Persistence": {
       "path": "Assets/Volleyball/Career/Runtime/Persistence/Volleyball.Career.Persistence.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Career.Domain"],
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application"],
       "noEngineReferences": true
     },
     "Volleyball.Career.Presentation": {

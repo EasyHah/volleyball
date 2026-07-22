@@ -3,7 +3,8 @@
   "rootNamespace": "Volleyball.Career.Persistence",
   "references": [
     "Volleyball.Shared",
-    "Volleyball.Career.Domain"
+    "Volleyball.Career.Domain",
+    "Volleyball.Career.Application"
   ],
   "noEngineReferences": true
 }

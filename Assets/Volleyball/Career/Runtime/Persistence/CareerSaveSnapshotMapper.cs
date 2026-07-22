@@ -47,6 +47,8 @@ namespace Volleyball.Career.Persistence
                     saveId = CanonicalGuid(snapshot.Identity.SaveId.Value),
                     lineageId = CanonicalGuid(snapshot.Identity.LineageId.Value),
                     revision = snapshot.Identity.Revision,
+                    restoredFromVersionToken = ToDocument(
+                        snapshot.Identity.RestoredFromVersionToken),
                     createdAtUtcMs = snapshot.Identity.CreatedAtUtcMs,
                     updatedAtUtcMs = snapshot.Identity.UpdatedAtUtcMs
                 },
@@ -97,6 +99,9 @@ namespace Volleyball.Career.Persistence
             EnsureIJsonSafe(identityDocument.revision, "identity.revision");
             EnsureIJsonSafe(identityDocument.createdAtUtcMs, "identity.createdAtUtcMs");
             EnsureIJsonSafe(identityDocument.updatedAtUtcMs, "identity.updatedAtUtcMs");
+            var restoredFromVersionToken = ToDomain(
+                identityDocument.restoredFromVersionToken,
+                "identity.restoredFromVersionToken");
             var identity = new CareerSaveIdentity(
                 new ProfileId(ParseCanonicalGuid(identityDocument.profileId, "identity.profileId")),
                 new SaveId(ParseCanonicalGuid(identityDocument.saveId, "identity.saveId")),
@@ -104,7 +109,8 @@ namespace Volleyball.Career.Persistence
                 identityDocument.revision,
                 identityDocument.createdAtUtcMs,
                 identityDocument.updatedAtUtcMs,
-                Sha256Digest.Parse(integrityDocument.snapshotHash));
+                Sha256Digest.Parse(integrityDocument.snapshotHash),
+                restoredFromVersionToken);
 
             var receiptDocuments = Required(document.operationReceipts, "operationReceipts");
             var receipts = new OperationReceipt[receiptDocuments.Length];
@@ -138,6 +144,38 @@ namespace Volleyball.Career.Persistence
                 document.mindset,
                 document.coachTrust,
                 receipts);
+        }
+
+        private static CareerVersionTokenDocumentV1 ToDocument(
+            CareerVersionToken? versionToken)
+        {
+            if (!versionToken.HasValue)
+            {
+                return null;
+            }
+
+            return new CareerVersionTokenDocumentV1
+            {
+                lineageId = CanonicalGuid(versionToken.Value.LineageId.Value),
+                revision = versionToken.Value.Revision,
+                snapshotHash = versionToken.Value.SnapshotHash.Value
+            };
+        }
+
+        private static CareerVersionToken? ToDomain(
+            CareerVersionTokenDocumentV1 document,
+            string path)
+        {
+            if (document == null)
+            {
+                return null;
+            }
+
+            EnsureIJsonSafe(document.revision, path + ".revision");
+            return new CareerVersionToken(
+                new LineageId(ParseCanonicalGuid(document.lineageId, path + ".lineageId")),
+                document.revision,
+                Sha256Digest.Parse(document.snapshotHash));
         }
 
         private static CareerPlayerDraftDocumentV1 ToDocument(CareerPlayerDraft draft)

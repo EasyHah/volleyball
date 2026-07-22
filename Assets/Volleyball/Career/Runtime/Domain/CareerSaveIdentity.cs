@@ -60,7 +60,8 @@ namespace Volleyball.Career.Domain
             long revision,
             long createdAtUtcMs,
             long updatedAtUtcMs,
-            Sha256Digest snapshotHash)
+            Sha256Digest snapshotHash,
+            CareerVersionToken? restoredFromVersionToken = null)
         {
             CareerSaveModelGuard.StableId(profileId.Value, nameof(profileId));
             CareerSaveModelGuard.StableId(saveId.Value, nameof(saveId));
@@ -80,6 +81,24 @@ namespace Volleyball.Career.Domain
                 throw new ArgumentException("A snapshot hash is required.", nameof(snapshotHash));
             }
 
+            if (restoredFromVersionToken.HasValue)
+            {
+                var restoredFrom = restoredFromVersionToken.Value;
+                if (restoredFrom.LineageId.Equals(lineageId))
+                {
+                    throw new ArgumentException(
+                        "A restored snapshot must use a new lineage.",
+                        nameof(restoredFromVersionToken));
+                }
+
+                if (revision <= restoredFrom.Revision)
+                {
+                    throw new ArgumentException(
+                        "A restored snapshot revision must follow its source revision.",
+                        nameof(restoredFromVersionToken));
+                }
+            }
+
             ProfileId = profileId;
             SaveId = saveId;
             LineageId = lineageId;
@@ -87,6 +106,7 @@ namespace Volleyball.Career.Domain
             CreatedAtUtcMs = createdAtUtcMs;
             UpdatedAtUtcMs = updatedAtUtcMs;
             SnapshotHash = snapshotHash;
+            RestoredFromVersionToken = restoredFromVersionToken;
         }
 
         public ProfileId ProfileId { get; }
@@ -102,6 +122,8 @@ namespace Volleyball.Career.Domain
         public long UpdatedAtUtcMs { get; }
 
         public Sha256Digest SnapshotHash { get; }
+
+        public CareerVersionToken? RestoredFromVersionToken { get; }
 
         public CareerVersionToken VersionToken => new CareerVersionToken(
             LineageId,

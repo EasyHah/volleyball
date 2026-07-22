@@ -54,6 +54,45 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void RoundTrip_PreservesRestoredSourceFullVersionToken()
+        {
+            var source = CreateSnapshot(CareerProgressionKind.Planning);
+            var restoredFrom = new CareerVersionToken(
+                new LineageId(Guid.NewGuid()),
+                source.Identity.Revision - 1,
+                new Sha256Digest(new string('e', 64)));
+            var identity = new CareerSaveIdentity(
+                source.Identity.ProfileId,
+                source.Identity.SaveId,
+                source.Identity.LineageId,
+                source.Identity.Revision,
+                source.Identity.CreatedAtUtcMs,
+                source.Identity.UpdatedAtUtcMs,
+                source.Identity.SnapshotHash,
+                restoredFrom);
+            var restoredSource = new CareerSaveSnapshot(
+                source.Versions,
+                identity,
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                source.Progression,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                source.OperationReceipts);
+
+            var restored = CareerSaveSnapshotMapper.ToDomain(
+                CareerSaveSnapshotMapper.ToDocument(restoredSource));
+
+            Assert.That(restored.Identity.RestoredFromVersionToken, Is.EqualTo(restoredFrom));
+        }
+
+        [Test]
         public void RoundTrip_PreservesPlanningEmptySlotAndReservedMatchSlot()
         {
             var restored = CareerSaveSnapshotMapper.ToDomain(
@@ -947,6 +986,9 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(actual.Identity.CreatedAtUtcMs, Is.EqualTo(expected.Identity.CreatedAtUtcMs));
             Assert.That(actual.Identity.UpdatedAtUtcMs, Is.EqualTo(expected.Identity.UpdatedAtUtcMs));
             Assert.That(actual.Identity.SnapshotHash, Is.EqualTo(expected.Identity.SnapshotHash));
+            Assert.That(
+                actual.Identity.RestoredFromVersionToken,
+                Is.EqualTo(expected.Identity.RestoredFromVersionToken));
             Assert.That(actual.CareerSeed, Is.EqualTo(expected.CareerSeed));
             Assert.That(actual.CareerName, Is.EqualTo(expected.CareerName));
             Assert.That(actual.PlayerDraft.PlayerId, Is.EqualTo(expected.PlayerDraft.PlayerId));

@@ -38,8 +38,17 @@ namespace Volleyball.Career.Persistence
         public string saveId;
         public string lineageId;
         public long revision;
+        public CareerVersionTokenDocumentV1 restoredFromVersionToken;
         public long createdAtUtcMs;
         public long updatedAtUtcMs;
+    }
+
+    [Serializable]
+    public sealed class CareerVersionTokenDocumentV1
+    {
+        public string lineageId;
+        public long revision;
+        public string snapshotHash;
     }
 
     [Serializable]
