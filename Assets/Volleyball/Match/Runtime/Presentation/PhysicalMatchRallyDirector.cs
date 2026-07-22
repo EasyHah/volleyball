@@ -149,6 +149,9 @@ namespace Volleyball.Presentation
 
     public class PhysicalMatchRallyDirector : MonoBehaviour
     {
+        public const float ServeArrivalVerticalSpeed = -8f;
+        public const float ControlledHandlingMinimumFlightSeconds = 1f;
+
         private const float BaseMovementSpeed = 7f;
         private const float ReceiveFlightSeconds = 0.70f;
         private const float GroundHeight = 0.15f;
@@ -190,11 +193,13 @@ namespace Volleyball.Presentation
         private AttackOutcome _lastSetReplanOutcome;
         private AttackResponsibility _lastAttackResponsibility;
         private PlayerId? _lastSetAttackActor;
+        private PlayerId? _lastSetSetterActor;
         private ReplaySetChainEvent _pendingReplaySetChain;
         private AttackContactOutcome _lastAttackContactOutcome;
         private bool _lastSetChainSuccessRecorded;
         private bool _activeSetChain;
         private bool _lastSetWasSetter;
+        private bool _forceInSystemReceiveExecution;
         private int _tacticRevision;
         private int _decisionIndex;
         private int _aiDecisionRequestVersion;
@@ -526,6 +531,11 @@ namespace Volleyball.Presentation
                 minimumSimulationWindowSeconds);
         }
 
+        public void ConfigureInSystemFirstPassCalibration(bool enabled)
+        {
+            _forceInSystemReceiveExecution = enabled;
+        }
+
         private void OnDestroy()
         {
             _aiDecisionRequestVersion++;
@@ -659,8 +669,8 @@ namespace Volleyball.Presentation
                 nominalReceiver.PreviewContactFrames(TechniqueAction.Receive),
                 TechniqueAction.Receive);
             var arrivalVelocity = receivingTeam == TeamId.Blue
-                ? new SimVector3(0f, -7f, -9f)
-                : new SimVector3(0f, -7f, 9f);
+                ? new SimVector3(0f, ServeArrivalVerticalSpeed, -9f)
+                : new SimVector3(0f, ServeArrivalVerticalSpeed, 9f);
             var launch = ArrivalLaunchSolver.Solve(
                 receiveCenter,
                 arrivalVelocity,
@@ -958,26 +968,51 @@ namespace Volleyball.Presentation
                     SimulatedBall.DefaultFixedStep,
                     SimulationParameters).InitialVelocity;
             }
-            var execution = SkillExecutionResolver.Resolve(
-                actor.Ability,
-                decision.Action,
-                StablePlayerNumber(decision.Actor),
-                _tacticRevision,
-                SuccessfulContacts,
-                7351,
-                0.72f);
+            var execution = _forceInSystemReceiveExecution &&
+                            decision.Action == TechniqueAction.Receive
+                ? InSystemReceiveExecution()
+                : SkillExecutionResolver.Resolve(
+                    actor.Ability,
+                    decision.Action,
+                    StablePlayerNumber(decision.Actor),
+                    _tacticRevision,
+                    SuccessfulContacts,
+                    7351,
+                    0.72f);
             ExecutionErrorApplications++;
 
             _expectedContactTime = _ball.SimulationTime + flightSeconds;
+            if (decision.Action == TechniqueAction.Receive)
+            {
+                if (_configuration.RosterSize == 6 || _tacticRevision % 4 != 3)
+                {
+                    PrepareSetterForReceive(decision);
+                }
+                PrepareAttackerForReceive(decision, flightSeconds);
+            }
             if (decision.Action == TechniqueAction.Set &&
                 _plannedAttackDecision != null &&
                 _plannedAttackDecision.HasDecision &&
-                _plannedAttackDecision.AttackApproach.HasValue)
+                _plannedAttackDecision.AttackApproach.HasValue &&
+                _plannedAttackDecision.AttackContactPlan.HasValue)
             {
                 var plannedAttacker = _players[_plannedAttackDecision.Actor];
+                var approach = _plannedAttackDecision.AttackApproach.Value;
+                var contactPlan = _plannedAttackDecision.AttackContactPlan.Value;
+                var movementSpeed = BaseMovementSpeed *
+                                    (0.65f + (plannedAttacker.Ability.Mobility * 0.5f));
+                var reactionReserve = SkillExecutionResolver.MaximumReactionDelaySeconds *
+                                      (1f - plannedAttacker.Ability.Reaction) * 0.72f;
+                var jumpLead = Mathf.Lerp(0.24f, 0.38f, contactPlan.JumpTiming) +
+                               reactionReserve;
+                var stagingTarget = AttackApproachStaging.TargetAtSetContact(
+                    approach,
+                    _scheduledSetFlightSeconds,
+                    movementSpeed,
+                    jumpLead);
                 plannedAttacker.ScheduleAttackPreparation(
                     _expectedContactTime,
-                    ToUnity(_plannedAttackDecision.AttackApproach.Value.ApproachStart),
+                    ToUnity(stagingTarget),
                     _ball.SimulationTime);
                 MovementAssignments++;
             }
@@ -1047,6 +1082,73 @@ namespace Volleyball.Presentation
                     outgoing,
                     _expectedContactTime);
             }
+        }
+
+        private void PrepareSetterForReceive(TeamRallyDecision receiveDecision)
+        {
+            var setter = FindPlayer(
+                receiveDecision.Actor.Team,
+                role => role == PlayerRole.Setter);
+            if (setter.Id.Equals(receiveDecision.Actor))
+            {
+                return;
+            }
+
+            var settingContactCenter = NextContactCenter(
+                receiveDecision.Actor.Team,
+                TechniqueAction.Set);
+            var settingRoot = setter.ResolveContactRootTarget(
+                TechniqueAction.Set,
+                settingContactCenter,
+                ToUnity(TacticFor(receiveDecision.Actor.Team).SetterPosition));
+            setter.ScheduleSetPreparation(
+                _expectedContactTime,
+                settingRoot,
+                _ball.SimulationTime);
+            MovementAssignments++;
+        }
+
+        private static SkillExecutionError InSystemReceiveExecution()
+        {
+            return new SkillExecutionError(
+                0f,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                0f,
+                1f,
+                SimVector3.Zero,
+                TechniqueControlPolicy.MaximumControlFor(TechniqueAction.Receive));
+        }
+
+        private void PrepareAttackerForReceive(
+            TeamRallyDecision receiveDecision,
+            float receiveArrivalSeconds)
+        {
+            var setter = FindPlayer(
+                receiveDecision.Actor.Team,
+                role => role == PlayerRole.Setter);
+            var setFlightSeconds = SetFlightSolver.PreferredFlightSeconds(
+                TacticFor(receiveDecision.Actor.Team).SetRhythm);
+            var preparation = PlanDecisionAt(
+                receiveDecision.Actor.Team,
+                RallyDecisionStage.Attack,
+                receiveArrivalSeconds + ReceiveFlightSeconds + setFlightSeconds,
+                NextContactCenter(receiveDecision.Actor.Team, TechniqueAction.Attack),
+                _touchState.CountedTeamTouches + 2,
+                setter.Id);
+            if (!preparation.HasDecision ||
+                !preparation.AttackApproach.HasValue ||
+                preparation.Actor.Equals(receiveDecision.Actor) ||
+                preparation.Actor.Equals(setter.Id))
+            {
+                return;
+            }
+
+            _players[preparation.Actor].ScheduleAttackPreparation(
+                _expectedContactTime + ReceiveFlightSeconds,
+                ToUnity(preparation.AttackApproach.Value.ApproachStart),
+                _ball.SimulationTime);
+            MovementAssignments++;
         }
 
         private BallContactResolution ResolveCandidate(
@@ -1196,7 +1298,7 @@ namespace Volleyball.Presentation
                             RallyDecisionStage.Attack,
                             setFlight);
                     }
-                    ScheduleAttackFromActualSet(attackDecision, setFlight);
+                    ScheduleAttackFromActualSet(attackDecision, setFlight, actorId);
                     RecordSetCalibration(actorId, actor.CurrentSetStyle, contact.Hit.Centeredness);
                     break;
                 case TechniqueAction.Attack:
@@ -1226,7 +1328,8 @@ namespace Volleyball.Presentation
 
         private void ScheduleAttackFromActualSet(
             TeamRallyDecision provisionalDecision,
-            float plannedFlightSeconds)
+            float plannedFlightSeconds,
+            PlayerId setterActor)
         {
             if (provisionalDecision == null || !provisionalDecision.HasDecision ||
                 !provisionalDecision.AttackApproach.HasValue ||
@@ -1265,6 +1368,16 @@ namespace Volleyball.Presentation
                 actualArrival.TimeSeconds,
                 attacker.Ability.MaxAttackReach,
                 quality);
+            var resumedApproachStart = new SimVector3(
+                attacker.transform.position.x,
+                0f,
+                attacker.transform.position.z);
+            var resumedApproach = new AttackApproachPlan(
+                resumedApproachStart,
+                replan.Approach.Takeoff,
+                GroundDistance(resumedApproachStart, replan.Approach.Takeoff),
+                replan.Approach.JumpQuality,
+                replan.Approach.AnglePenalty);
             var replacement = new TeamRallyDecision(
                 provisionalDecision.Actor,
                 TechniqueAction.Attack,
@@ -1273,7 +1386,7 @@ namespace Volleyball.Presentation
                 provisionalDecision.BallTarget,
                 provisionalDecision.Score,
                 provisionalDecision.Candidates,
-                replan.Approach,
+                resumedApproach,
                 replan.ContactPlan);
 
             _lastSetQualityAssessment = quality;
@@ -1281,6 +1394,7 @@ namespace Volleyball.Presentation
             _lastActualAttackContactCenter = replan.ContactPlan.ContactCenter;
             _lastSetReplanOutcome = replan.Outcome;
             _lastSetAttackActor = provisionalDecision.Actor;
+            _lastSetSetterActor = setterActor;
             _lastAttackContactOutcome = replan.ContactPlan.Outcome;
             _lastSetChainSuccessRecorded = false;
             _activeSetChain = true;
@@ -1440,7 +1554,9 @@ namespace Volleyball.Presentation
             var outgoing = ReturnVelocitySolver.Solve(
                 replan.ContactPlan.ContactCenter,
                 target,
-                TacticFor(decision.Actor.Team).AttackFlightSeconds,
+                Mathf.Max(
+                    ControlledHandlingMinimumFlightSeconds,
+                    TacticFor(decision.Actor.Team).AttackFlightSeconds),
                 SimulatedBall.DefaultFixedStep,
                 SimulationParameters).InitialVelocity;
             var actor = _players[decision.Actor];
@@ -1458,7 +1574,7 @@ namespace Volleyball.Presentation
                 outgoing,
                 execution,
                 NextContactGroup(),
-                replan.Approach,
+                decision.AttackApproach.Value,
                 replan.ContactPlan,
                 _ball.SimulationTime);
             MovementAssignments++;
@@ -1738,6 +1854,10 @@ namespace Volleyball.Presentation
                 _touchState?.ContactWindow?.Action == TechniqueAction.Attack)
             {
                 AGradeNoContactErrors++;
+                _lastSetReplanOutcome = AttackOutcome.Out;
+                _lastAttackResponsibility = SetQualityAssessment.PrimaryResponsibility(
+                    _lastSetQualityAssessment.Value.Grade,
+                    AttackOutcome.Out);
                 var scheduledActor = _scheduledPrimaryActor.HasValue
                     ? _players[_scheduledPrimaryActor.Value]
                     : null;
@@ -1748,6 +1868,7 @@ namespace Volleyball.Presentation
                     $"actor={actorLabel}; movementShortfall=" +
                     $"{scheduledActor?.MovementShortfall ?? -1f:0.000}; correction=" +
                     $"{scheduledActor?.MaximumAppliedContactCorrection ?? -1f:0.000}; " +
+                    $"surfacePlanError={scheduledActor?.MinimumActiveSurfacePlanError ?? -1f:0.000}; " +
                     $"root={scheduledActor?.transform.position}; surface=" +
                     $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceCenter)}; normal=" +
                     $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceNormal)}; actualPlan=" +
@@ -1755,9 +1876,10 @@ namespace Volleyball.Presentation
                     $"ball=({_ball.State.Position.X:0.000},{_ball.State.Position.Y:0.000}," +
                     $"{_ball.State.Position.Z:0.000}); expected={_expectedContactTime:0.000}; " +
                     $"now={_ball.SimulationTime:0.000}";
+                LastAGradeNoContactDiagnostic +=
+                    $"; setQuality={_lastSetQualityAssessment.Value.Reason}";
             }
 
-            _activeSetChain = false;
             var loser = _scheduledPrimaryActor?.Team ?? _touchState.PossessionTeam;
             var outcome = new RallyOutcome(Opponent(ToSide(loser)), true, reason);
             ResolveRally(outcome, null, _scheduledPrimaryActor, reason);
@@ -1782,6 +1904,17 @@ namespace Volleyball.Presentation
             }
 
             RecordSetChainSuccess(scorer);
+            var resolvedErrorPlayer = errorPlayer;
+            if (_activeSetChain && _lastSetAttackActor.HasValue &&
+                outcome.Winner != ToSide(_lastSetAttackActor.Value.Team))
+            {
+                resolvedErrorPlayer = SetChainAttribution.ResponsiblePlayer(
+                    _lastAttackResponsibility,
+                    _lastSetSetterActor,
+                    _lastSetAttackActor,
+                    errorPlayer);
+            }
+            _activeSetChain = false;
 
             _restartScheduled = true;
             _rallyActive = false;
@@ -1803,7 +1936,7 @@ namespace Volleyball.Presentation
             _set.ResolveRally(
                 outcome.Winner,
                 scorer.HasValue ? StableId(scorer.Value) : null,
-                errorPlayer.HasValue ? StableId(errorPlayer.Value) : null);
+                resolvedErrorPlayer.HasValue ? StableId(resolvedErrorPlayer.Value) : null);
             RenderScore();
             _status = $"{reason}  {_set.HomeScore}:{_set.AwayScore}";
             NotifyReplay(
@@ -1812,7 +1945,7 @@ namespace Volleyball.Presentation
                     _ball.SimulationTime,
                     FromSide(outcome.Winner),
                     scorer.HasValue ? StableId(scorer.Value) : null,
-                    errorPlayer.HasValue ? StableId(errorPlayer.Value) : null,
+                    resolvedErrorPlayer.HasValue ? StableId(resolvedErrorPlayer.Value) : null,
                     reason));
             Debug.Log(
                 $"[{_configuration.LogTag}] rally={reason} winner={outcome.Winner} " +

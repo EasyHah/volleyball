@@ -719,7 +719,12 @@ namespace Volleyball.Domain.Replay
         [DataMember(Name = "team", Order = 4)] public string Team { get; set; }
         [DataMember(Name = "playerId", Order = 5)] public string PlayerId { get; set; }
         [DataMember(Name = "decision", Order = 6)] public MatchReplayDecisionV1 Decision { get; set; }
-        [DataMember(Name = "setChain", Order = 7)] public MatchReplaySetChainV1 SetChain { get; set; }
+        [DataMember(Name = "setChain", Order = 7, EmitDefaultValue = false)]
+        public MatchReplaySetChainV1 SetChain { get; set; }
+        [DataMember(Name = "errorPlayerId", Order = 8, EmitDefaultValue = false)]
+        public string ErrorPlayerId { get; set; }
+        [DataMember(Name = "reason", Order = 9, EmitDefaultValue = false)]
+        public string Reason { get; set; }
 
         internal void Validate(ISet<string> playerIds, int snapshotCount)
         {
@@ -732,6 +737,7 @@ namespace Volleyball.Domain.Replay
 
             MatchReplayV1.Required(Team, nameof(Team));
             MatchReplayV1.OptionalPlayer(playerIds, PlayerId, nameof(PlayerId));
+            MatchReplayV1.OptionalPlayer(playerIds, ErrorPlayerId, nameof(ErrorPlayerId));
             if (Decision != null)
             {
                 Decision.Validate(playerIds);
@@ -750,7 +756,9 @@ namespace Volleyball.Domain.Replay
                 Team = Team,
                 PlayerId = PlayerId,
                 Decision = Decision == null ? null : Decision.CanonicalCopy(),
-                SetChain = SetChain == null ? null : SetChain.CanonicalCopy()
+                SetChain = SetChain == null ? null : SetChain.CanonicalCopy(),
+                ErrorPlayerId = ErrorPlayerId,
+                Reason = Reason
             };
         }
     }

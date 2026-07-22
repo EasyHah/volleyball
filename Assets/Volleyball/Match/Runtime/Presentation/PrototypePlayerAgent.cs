@@ -64,6 +64,8 @@ namespace Volleyball.Presentation
 
         public SimVector3 LastScheduledSurfaceNormal { get; private set; }
 
+        internal float MinimumActiveSurfacePlanError { get; private set; }
+
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
@@ -224,7 +226,9 @@ namespace Volleyball.Presentation
             ConfigureScheduledMovement(
                 requestedMovementTarget,
                 movementStartSimulationTime + executionError.ReactionDelay,
-                scheduledSimulationTime,
+                action == TechniqueAction.Attack
+                    ? _actionTimeline.ActualContactTime
+                    : scheduledSimulationTime,
                 action,
                 attackApproach.HasValue ? 0.72f : (float?)null);
             if (attackApproach.HasValue)
@@ -236,6 +240,7 @@ namespace Volleyball.Presentation
             var authoritativeContactCenter = attackContactPlan?.ContactCenter ?? plannedContactCenter;
             _hasPlannedContactCenter = authoritativeContactCenter.HasValue;
             _plannedContactCenter = authoritativeContactCenter.GetValueOrDefault();
+            MinimumActiveSurfacePlanError = float.PositiveInfinity;
             _hasScheduledContact = true;
             _hasSupportAction = false;
             _supportActionActivated = false;
@@ -640,6 +645,12 @@ namespace Volleyball.Presentation
 
             LastScheduledSurfaceCenter /= surfaces.Count;
             LastScheduledSurfaceNormal = (LastScheduledSurfaceNormal / surfaces.Count).Normalized;
+            if (sample.SurfaceActive && _hasPlannedContactCenter)
+            {
+                MinimumActiveSurfacePlanError = Mathf.Min(
+                    MinimumActiveSurfacePlanError,
+                    (LastScheduledSurfaceCenter - _plannedContactCenter).Magnitude);
+            }
             var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
                 ? _targetVelocity.Normalized
                 : SimVector3.Up;

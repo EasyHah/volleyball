@@ -127,6 +127,54 @@ namespace Volleyball.AI
         }
     }
 
+    public static class AttackApproachStaging
+    {
+        public static SimVector3 TargetAtSetContact(
+            AttackApproachPlan approach,
+            float setFlightSeconds,
+            float movementSpeed,
+            float jumpLeadSeconds)
+        {
+            if (!IsFinite(setFlightSeconds) || setFlightSeconds < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(setFlightSeconds));
+            }
+
+            if (!IsFinite(movementSpeed) || movementSpeed <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(movementSpeed));
+            }
+
+            if (!IsFinite(jumpLeadSeconds) || jumpLeadSeconds < 0f)
+            {
+                throw new ArgumentOutOfRangeException(nameof(jumpLeadSeconds));
+            }
+
+            var route = approach.Takeoff - approach.ApproachStart;
+            var routeDistance = GroundDistance(route);
+            if (routeDistance <= 0.00001f)
+            {
+                return approach.ApproachStart;
+            }
+
+            var postSetApproachDistance = movementSpeed *
+                                          Math.Max(0f, setFlightSeconds - jumpLeadSeconds);
+            var preSetAdvance = Math.Max(0f, routeDistance - postSetApproachDistance);
+            var progress = Math.Min(1f, preSetAdvance / routeDistance);
+            return approach.ApproachStart + (route * progress);
+        }
+
+        private static float GroundDistance(SimVector3 value)
+        {
+            return (float)Math.Sqrt((value.X * value.X) + (value.Z * value.Z));
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+    }
+
     public readonly struct RallyDecisionScore : IEquatable<RallyDecisionScore>
     {
         public RallyDecisionScore(float reachability, float nominalRole, float approach, float angle, float total)

@@ -1,7 +1,7 @@
 # Full-Arm Block Contact Design
 
-**Date:** 2026-07-22  
-**Status:** Design approved  
+**Date:** 2026-07-22
+**Status:** Design approved
 **Related design:** `2026-07-21-unified-attack-chain-design.md`
 
 ## Goal

@@ -2,6 +2,24 @@ using System;
 
 namespace Volleyball.Shared.Contracts
 {
+    public interface IMatchContext
+    {
+        int ContractVersion { get; }
+        Guid SessionId { get; }
+        int Seed { get; }
+        string ContextHash { get; }
+    }
+
+    public interface IMatchResult
+    {
+        int ContractVersion { get; }
+        Guid SessionId { get; }
+        string ContextHash { get; }
+        TeamId WinnerTeamId { get; }
+        int HomeScore { get; }
+        int AwayScore { get; }
+    }
+
     public static class ContractVersions
     {
         public const int MatchV1 = 1;

@@ -87,6 +87,23 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CalibrationConfiguration_CannotRaiseTheAbsoluteFiftyPointCap()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                PhysicalMatchConfiguration.CreateCalibration(
+                    PhysicalMatchConfiguration.FormalIndoorSixVsSix,
+                    51,
+                    1));
+        }
+
+        [Test]
+        public void MatchSetRules_RejectsMaximumAboveTheAbsoluteFiftyPointCap()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new MatchSetRules(15, 2, 51));
+        }
+
+        [Test]
         public void CreateResult_CompletedSet_ContainsAllSixPlayersAndValidatedStatistics()
         {
             var set = CreateSet(TeamSide.Home);

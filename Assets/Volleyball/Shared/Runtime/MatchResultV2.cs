@@ -42,7 +42,7 @@ namespace Volleyball.Shared.Contracts
     }
 
     [DataContract]
-    public sealed class MatchResultV2
+    public sealed class MatchResultV2 : IMatchResult
     {
         [DataMember(Name = "contractVersion", Order = 1)] private int _contractVersion;
         [DataMember(Name = "sessionId", Order = 2)] private string _sessionId;

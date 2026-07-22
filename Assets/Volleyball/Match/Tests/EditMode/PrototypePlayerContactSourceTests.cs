@@ -770,6 +770,113 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ScheduledAttackApproach_UsesActualEarlyContactTimeForMovementWindow()
+        {
+            var player = CreatePlayer("EarlyContactAttacker", TeamId.Blue, PlayerRole.Defender);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(0.8f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -3.2f),
+                    new SimVector3(0f, 0f, -1.2f),
+                    2f,
+                    1f,
+                    0f);
+                var plan = AttackContactPlanner.Plan(new AttackContactInput(
+                    player.Ability.MaxAttackReach,
+                    approach.JumpQuality,
+                    1f,
+                    SetQualityGrade.A,
+                    approach.Takeoff,
+                    0.6f,
+                    1f));
+                var earlyExecution = new SkillExecutionError(
+                    0f,
+                    SimVector3.Zero,
+                    SimVector3.Zero,
+                    -0.08f,
+                    1f,
+                    SimVector3.Zero,
+                    1f);
+                player.transform.position = new Vector3(0f, 0f, -3.2f);
+
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    5f,
+                    new SimVector3(0f, -4f, 14f),
+                    earlyExecution,
+                    706,
+                    plan.ContactCenter,
+                    movementStartSimulationTime: 4f,
+                    attackApproach: approach,
+                    attackContactPlan: plan);
+
+                Assert.That(player.MovementShortfall, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledQuickAttack_AlignsPalmAtBallArrivalBeforeSlightlyLateContact()
+        {
+            var player = CreatePlayer("QuickAttackDefender", TeamId.Orange, PlayerRole.Defender);
+            try
+            {
+                player.transform.forward = Vector3.back;
+                var takeoff = new SimVector3(-0.34f, 0f, 2.055f);
+                var approach = new AttackApproachPlan(
+                    new SimVector3(-0.34f, 0f, 2.27f),
+                    takeoff,
+                    0.215f,
+                    1f,
+                    0f);
+                var plan = AttackContactPlanner.Plan(new AttackContactInput(
+                    player.Ability.MaxAttackReach,
+                    1f,
+                    1f,
+                    SetQualityGrade.A,
+                    takeoff,
+                    0.4f,
+                    0.42f));
+                var slightlyLate = new SkillExecutionError(
+                    0f,
+                    new SimVector3(0.04f, 0.04f, 0.04f),
+                    new SimVector3(2f, 2f, 2f),
+                    0.025f,
+                    1f,
+                    SimVector3.Zero,
+                    1f);
+                player.transform.position = new Vector3(-0.34f, 0f, 2.27f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2.033f,
+                    new SimVector3(0f, -4f, -14f),
+                    slightlyLate,
+                    707,
+                    plan.ContactCenter,
+                    movementStartSimulationTime: 1.614f,
+                    attackApproach: approach,
+                    attackContactPlan: plan);
+
+                var contacts = Collect(player, 2.033f);
+                var palmCenter = contacts[0].Surface.Current.Origin +
+                                 (contacts[0].Surface.Current.Normal * SimulatedBall.DefaultRadius);
+
+                Assert.That(
+                    (palmCenter - plan.ContactCenter).Magnitude,
+                    Is.LessThan(0.01f));
+                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.70f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void EmergencyReceiveWindow_AddsReceiveCandidateWithoutScheduledContact()
         {
             var playerObject = new GameObject("EmergencyDigSetter");

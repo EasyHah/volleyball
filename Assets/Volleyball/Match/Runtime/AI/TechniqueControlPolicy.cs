@@ -166,7 +166,7 @@ namespace Volleyball.AI
             {
                 TechniqueAction.Receive => new TechniqueControlProfile(1f, 180f, 30f, 30f),
                 TechniqueAction.Set => new TechniqueControlProfile(1f, 180f, 30f, 30f),
-                TechniqueAction.Attack => new TechniqueControlProfile(1f, 45f, 24f, 30f),
+                TechniqueAction.Attack => new TechniqueControlProfile(1f, 60f, 24f, 30f),
                 TechniqueAction.Block => new TechniqueControlProfile(0.05f, 5f, 2f, 24f),
                 TechniqueAction.Serve => new TechniqueControlProfile(0.35f, 18f, 7f, 24f),
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)

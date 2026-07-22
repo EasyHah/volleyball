@@ -96,12 +96,15 @@ six-player physical rally director pass their own acceptance tests.
 
 Open `Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity` and enter Play Mode.
 One simulated ball runs position-aware possessions until one team reaches 15 points
-with a two-point lead. All three players are evaluated for receive, set and attack
+with a two-point lead, or reaches the absolute 50-point cap first. At 50 points the
+set ends immediately even if the lead is only one point. All three players are
+evaluated for receive, set and attack
 from their actual world positions, available time and abilities. Defender, setter
 and attacker are scoring preferences rather than action locks, so a reachable
 non-setter can organize and a reachable defender can attack.
-The scene then stops and displays `RESULT READY`; `ThreeVsThreeRallyDirector.Result`
-contains one `MatchResultV1` with all six player statistics. A legal opponent-court
+The scene then stops and displays `RESULT READY`; new matches expose one validated
+`MatchResultV2` with all six player statistics, while the explicit legacy initializer
+still exposes `MatchResultV1`. A legal opponent-court
 landing after the final touch scores, while an own-court landing, out-of-bounds
 opponent-court landing, antenna fault or contact timeout gives the point away.
 Net contact itself is legal when the ball later crosses the net inside the antenna
@@ -109,8 +112,10 @@ interval and above net height.
 
 Receive, Set and Attack consume the current team's normal three-touch allowance.
 The fourth counted touch and same-player consecutive counted contact are rejected
-before the ball response is applied. A scheduled Block is a real physical palm
-contact, but it consumes zero team touches. Whichever team controls the rebound
+before the ball response is applied. A scheduled Block uses six swept capsules that
+follow the visible left/right upper arms, forearms and palms; head, torso, hips, legs
+and feet are excluded. It consumes zero team touches. Whichever team controls the
+rebound
 starts a fresh possession at zero counted touches; the remaining defenders can
 move into non-contact coverage positions.
 
@@ -126,8 +131,10 @@ between teams. Logs expose the selected actor/action, score terms, approach qual
 block assignment/contact, post-block possession and complete result for review.
 
 Player roots are clamped to their own court with a small net and sideline margin,
-and all six tactical roots are reset at the start of every rally. Arms may still
-reach across the net during a legal spike or block; the player root may not cross.
+and all six tactical roots are reset at the start of every rally. A scheduled blocker
+stands 0.18 metres from the centre line, squares to the net, and uses a visible
+forward/inward arm pose; arms may reach across during a legal spike or block while
+the player root and visible torso remain on their own side.
 Blue and Orange use the same role ability profiles, while seeded execution error
 continues to model ordinary imperfect contacts without a team-specific advantage.
 
@@ -149,11 +156,20 @@ sets require `0.90`; unavailable techniques fall back to a simpler visible pose
 and receive an additional control penalty. One-hand setting is an explicit
 emergency request, not the automatic result of an ordinary wide set.
 
+New physical matches use `MatchContextV2` and carry each player's metre-based
+`MaxAttackReach`. `AttackContactPlan` is the shared source for the planned takeoff,
+setter target and actual striking-palm centre. Set flight time is solved inside the
+selected rhythm's bounds; after the real set contact, the attacker replans from the
+actual trajectory. A-E set quality, fallback, responsibility and counters are
+recorded through the existing replay pipeline. Legacy V1 initialization remains a
+separate supported path and produces a V1 result.
+
 ## Formal indoor 6v6 loop
 
 Open `Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity` and enter Play Mode.
 The scene creates one 9×18 metre court, one simulated ball and twelve visible players.
-It plays a 25-point, win-by-two set and stops at `RESULT READY`; the result contains
+It plays a 25-point, win-by-two set, applies the same immediate 50-point cap, and
+stops at `RESULT READY`; the result contains
 one statistics entry for every player in the injected context.
 
 The bottom roster panels show P1–P6, front/back row and the current server. A side-out
@@ -170,6 +186,17 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
   -testFilter "Volleyball.PlayModeTests.FormalSixVsSixRallyPlayModeTests" \
   -testResults "$PWD/TestResults/Formal6v6.xml" \
   -logFile "$PWD/TestResults/Formal6v6.log"
+```
+
+Run the unified attack-chain calibration (100 in-system setter contacts in each
+scene plus 20 symmetric formal sets) with:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testFilter "Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests" \
+  -testResults "$PWD/TestResults/AttackChainCalibration.xml" \
+  -logFile "$PWD/TestResults/AttackChainCalibration.log"
 ```
 
 ## Match Replay V1 artifacts

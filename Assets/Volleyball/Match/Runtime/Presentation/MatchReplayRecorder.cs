@@ -234,7 +234,13 @@ namespace Volleyball.Presentation
                     _director.LastAttackResponsibility.ToString();
             }
 
-            RecordEvent(replayEvent.Kind, replayEvent.SimulationTimeSeconds, replayEvent.Team, replayEvent.PlayerId);
+            RecordEvent(
+                replayEvent.Kind,
+                replayEvent.SimulationTimeSeconds,
+                replayEvent.Team,
+                replayEvent.PlayerId,
+                replayEvent.ErrorPlayerId,
+                replayEvent.Reason);
             _capturing = false;
             _replay.IsComplete = true;
             _replay.Seal();
@@ -259,7 +265,13 @@ namespace Volleyball.Presentation
             };
         }
 
-        private void RecordEvent(string kind, float simulationTime, TeamId team, Volleyball.Shared.Contracts.PlayerId? playerId)
+        private void RecordEvent(
+            string kind,
+            float simulationTime,
+            TeamId team,
+            Volleyball.Shared.Contracts.PlayerId? playerId,
+            Volleyball.Shared.Contracts.PlayerId? errorPlayerId = null,
+            string reason = null)
         {
             if (!_capturing || IsComplete)
             {
@@ -275,7 +287,9 @@ namespace Volleyball.Presentation
                 SimulationTimeSeconds = simulationTime,
                 SnapshotIndex = snapshotIndex,
                 Team = team.ToString(),
-                PlayerId = playerId?.Value
+                PlayerId = playerId?.Value,
+                ErrorPlayerId = errorPlayerId?.Value,
+                Reason = reason
             });
         }
 

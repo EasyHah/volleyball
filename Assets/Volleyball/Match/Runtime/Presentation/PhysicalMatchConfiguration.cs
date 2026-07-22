@@ -63,7 +63,10 @@ namespace Volleyball.Presentation
                 source.LogTag + "Calibration",
                 source.RosterSize,
                 source.CourtHalfLength,
-                new MatchSetRules(targetScore, minimumLead, Math.Max(50, targetScore)));
+                new MatchSetRules(
+                    targetScore,
+                    minimumLead,
+                    MatchSetRules.AbsoluteMaximumScore));
         }
 
         public Vector3 PositionFor(TeamSide side, int rotationPosition)

@@ -8,7 +8,7 @@ using System.Text;
 namespace Volleyball.Shared.Contracts
 {
     [DataContract]
-    public sealed class MatchContextV2
+    public sealed class MatchContextV2 : IMatchContext
     {
         [DataMember(Name = "contractVersion", Order = 1)] private int _contractVersion;
         [DataMember(Name = "sessionId", Order = 2)] private string _sessionId;

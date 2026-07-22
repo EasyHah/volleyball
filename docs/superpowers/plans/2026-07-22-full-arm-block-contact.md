@@ -34,7 +34,7 @@
 - Consumes: `BallState`, `SimVector3`, and `SweptBallHit` from `Volleyball.Domain.Simulation`.
 - Produces: `ContactCapsuleFrame`, `ContactCapsuleSnapshot`, and `SweptBallCapsuleCollision.TryFindContact(BallState, ContactCapsuleSnapshot, float, out SweptBallHit)`.
 
-- [ ] **Step 1: Write failing capsule collision tests**
+- [x] **Step 1: Write failing capsule collision tests**
 
 Add tests that construct real ball states and capsule snapshots:
 
@@ -97,7 +97,7 @@ public void TryFindContact_InactiveCapsule_ReturnsFalse()
 }
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -111,7 +111,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because `ContactCapsuleFrame`, `ContactCapsuleSnapshot`, and `SweptBallCapsuleCollision` do not exist.
 
-- [ ] **Step 3: Implement immutable capsule snapshots**
+- [x] **Step 3: Implement immutable capsule snapshots**
 
 Create `ContactCapsuleSnapshot.cs` with validated finite endpoints, positive radius, linear interpolation, and point velocity:
 
@@ -138,17 +138,17 @@ public readonly struct ContactCapsuleSnapshot
 }
 ```
 
-- [ ] **Step 4: Implement deterministic swept sphere-versus-moving-capsule collision**
+- [x] **Step 4: Implement deterministic swept sphere-versus-moving-capsule collision**
 
 Create `SweptBallCapsuleCollision.cs`. Evaluate clearance at 16 equal time subdivisions, find the first interval whose expanded capsule contains the ball center, and refine its first impact with 10 bisection iterations. Build `SweptBallHit` from the closest capsule-axis point, outward normal, capsule-point velocity, shared group ID, and centeredness `1f`. If the normal length is zero, use the negative relative velocity; if that is also zero, use `SimVector3.Up`.
 
-- [ ] **Step 5: Run tests and verify GREEN**
+- [x] **Step 5: Run tests and verify GREEN**
 
 Run the Task 1 command again.
 
 Expected: `SweptBallCapsuleCollisionTests` passes with no compiler errors or warnings.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/Domain/Simulation/ContactCapsuleSnapshot.cs* \
@@ -167,7 +167,7 @@ git commit -m "feat: add swept arm capsule collision"
 - Consumes: `ContactCapsuleSnapshot` and `SweptBallCapsuleCollision.TryFindContact` from Task 1.
 - Produces: a `BallContactCandidate` capsule constructor, `IsCapsule`, `Capsule`, and earliest-contact dispatch for plane or capsule candidates.
 
-- [ ] **Step 1: Write a failing ball integration test**
+- [x] **Step 1: Write a failing ball integration test**
 
 Add a test contact source that emits two overlapping capsule candidates with the same group, then assert that one fixed step raises exactly one `PlayerContact` and records the capsule group ID. Construct candidates with:
 
@@ -182,7 +182,7 @@ new BallContactCandidate(
     new ContactResponseParameters(0.65f, 0.8f, 0.22f, 0.08f));
 ```
 
-- [ ] **Step 2: Run the integration test and verify RED**
+- [x] **Step 2: Run the integration test and verify RED**
 
 Run:
 
@@ -196,7 +196,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because `BallContactCandidate` has no capsule constructor.
 
-- [ ] **Step 3: Add the capsule candidate variant**
+- [x] **Step 3: Add the capsule candidate variant**
 
 Keep all existing surface constructors and properties compatible. Add a capsule constructor and discriminant:
 
@@ -207,7 +207,7 @@ public ContactCapsuleSnapshot Capsule { get; }
 
 The existing `Surface` property remains unchanged for existing candidates. Capsule candidates set `IsCapsule = true`; plane candidates keep it false.
 
-- [ ] **Step 4: Dispatch the matching collision solver**
+- [x] **Step 4: Dispatch the matching collision solver**
 
 In `TryFindEarliestPlayerContact`, replace the direct plane call with:
 
@@ -224,7 +224,7 @@ if (!hasContact)
 
 Keep resolver evaluation and earliest `TimeFraction` selection unchanged.
 
-- [ ] **Step 5: Run Task 2 and Task 1 tests and verify GREEN**
+- [x] **Step 5: Run Task 2 and Task 1 tests and verify GREEN**
 
 Run with filter:
 
@@ -234,7 +234,7 @@ Volleyball.EditModeTests.SimulatedBallTests|Volleyball.EditModeTests.SweptBallCa
 
 Expected: both fixtures pass and overlapping capsules emit one accepted contact.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/Presentation/SimulatedBall.cs \
@@ -257,7 +257,7 @@ git commit -m "feat: resolve capsule ball contacts"
 - Consumes: `ContactCapsuleFrame`, `ContactCapsuleSnapshot`, the capsule `BallContactCandidate` constructor, and visible `StickFigureRig` joints.
 - Produces: `BlockArmContactVolumes.Capture(bool active, int contactGroupId)` returning six capsule snapshots.
 
-- [ ] **Step 1: Remove the abandoned palm-height experiment**
+- [x] **Step 1: Remove the abandoned palm-height experiment**
 
 Restore `ScheduleBlockContact` and `RetargetBlockContact` to their original signatures without `desiredContactHeight`; remove `_physicalBlockJumpHeight`, `ResolveBlockJumpHeight`, the two director height arguments, and `ScheduledBlockContact_UsesAStandingBlockForALowNetCrossing`. Restore `EvaluateSupportBlockJump` to:
 
@@ -266,7 +266,7 @@ var jumpHeight = 0.30f + (Ability.Jump * 0.20f);
 return jumpHeight * 4f * jumpProgress * (1f - jumpProgress);
 ```
 
-- [ ] **Step 2: Write failing visible-arm volume tests**
+- [x] **Step 2: Write failing visible-arm volume tests**
 
 Create `BlockArmContactVolumesTests` and assert:
 
@@ -284,7 +284,7 @@ Assert.That(volumes[0].Current.End, Is.EqualTo(ToSimulation(rig.GetJoint("LeftEl
 
 Move the player between captures and assert the second snapshot's `Previous` is the first capture and `Current` follows the moved visible joints.
 
-- [ ] **Step 3: Run volume tests and verify RED**
+- [x] **Step 3: Run volume tests and verify RED**
 
 Run:
 
@@ -298,7 +298,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: compilation fails because `BlockArmContactVolumes` does not exist.
 
-- [ ] **Step 4: Implement six rig-driven capsule snapshots**
+- [x] **Step 4: Implement six rig-driven capsule snapshots**
 
 Create `BlockArmContactVolumes` with a previous-frame dictionary and these exact segments:
 
@@ -313,15 +313,15 @@ Create `BlockArmContactVolumes` with a previous-frame dictionary and these exact
 
 Each capture builds `ContactCapsuleFrame` from current joint world positions, uses the stored frame as `Previous` when available, stores the new frame, and returns snapshots with the supplied active flag and group ID.
 
-- [ ] **Step 5: Write the failing player-source test**
+- [x] **Step 5: Write the failing player-source test**
 
 Replace `ScheduledBlockContact_EmitsTwoActivePalmsOnlyInsideItsWindow` with `ScheduledBlockContact_EmitsSixArmVolumesOnlyInsideItsWindow`. Assert the pre-contact list is empty, the active list has six capsule candidates, every candidate is `TechniqueAction.Block`, every candidate has `IsCapsule == true`, and all capsule snapshots share one contact group.
 
-- [ ] **Step 6: Integrate arm volumes into the player agent**
+- [x] **Step 6: Integrate arm volumes into the player agent**
 
 Initialize one `BlockArmContactVolumes` beside `PlayerContactSurfaces`. In `CollectPhysicalBlockContacts`, capture the six arm volumes instead of `ContactSurfaces.Capture(TechniqueAction.Block, ...)`, and emit one capsule `BallContactCandidate` for each active volume using the existing block target velocity, technique, strike direction, and response parameters. Do not add new counters or referee paths.
 
-- [ ] **Step 7: Run focused tests and verify GREEN**
+- [x] **Step 7: Run focused tests and verify GREEN**
 
 Run with filter:
 
@@ -331,7 +331,7 @@ Volleyball.EditModeTests.BlockArmContactVolumesTests|Volleyball.EditModeTests.Pr
 
 Expected: all focused fixtures pass; no arm candidates appear outside the action window.
 
-- [ ] **Step 8: Commit Task 3**
+- [x] **Step 8: Commit Task 3**
 
 ```bash
 git add Assets/Volleyball/Match/Runtime/Presentation/BlockArmContactVolumes.cs* \
@@ -361,7 +361,7 @@ face square to the net when scheduled, and use a visible forward/inward block
 pose whose palms cross the net plane and whose forearms close the central seam.
 Capsule radii remain tied to the visible arm and palm dimensions.
 
-- [ ] **Step 1: Run the ordinary 3v3 regression**
+- [x] **Step 1: Run the ordinary 3v3 regression**
 
 Run:
 
@@ -375,13 +375,13 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: PASS with `PhysicalBlockContacts > 0`, `NonSetterSetContacts > 0`, and `DefenderAttackContacts > 0` without weakening assertions.
 
-- [ ] **Step 2: Run both 100-sample calibrations and 20-set symmetry**
+- [x] **Step 2: Run both 100-sample calibrations and 20-set symmetry**
 
 Run the complete `Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests` fixture.
 
 Expected: 3/3 pass; both scenes collect 100 in-system setter contacts, attackable rate is at least 0.95, A-grade no-contact rate is below 0.02, normal side sets are zero, and Blue wins 9-11 of 20 symmetric sets.
 
-- [ ] **Step 3: Run full EditMode**
+- [x] **Step 3: Run full EditMode**
 
 Run:
 
@@ -394,7 +394,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: every discovered EditMode test passes.
 
-- [ ] **Step 4: Run the selected final PlayMode suite**
+- [x] **Step 4: Run the selected final PlayMode suite**
 
 Run:
 
@@ -408,11 +408,11 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: all selected tests pass with no time-scale leakage, non-finite ball state, replay validation error, or score-cap regression.
 
-- [ ] **Step 5: Complete documentation**
+- [x] **Step 5: Complete documentation**
 
 Record the full-arm capsule model, the absolute 50-point cap, final XML counts, calibration rates, branch name, compatibility statement, and any remaining integration work. Mark Task 7 complete only after Steps 1-4 pass.
 
-- [ ] **Step 6: Commit final calibration and documentation**
+- [x] **Step 6: Commit final calibration and documentation**
 
 ```bash
 git add Assets/Volleyball/Match/Tests/PlayMode/AttackChainCalibrationPlayModeTests.cs \

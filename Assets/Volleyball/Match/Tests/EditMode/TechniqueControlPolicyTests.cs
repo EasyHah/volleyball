@@ -77,6 +77,21 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Apply_FullQualityAttackAllowsASixtyDegreeTargetCorrection()
+        {
+            var target = new SimVector3(0f, 0f, 10f);
+            var result = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Attack,
+                new SimVector3(8.660254f, 0f, 5f),
+                target,
+                target.Normalized,
+                1f,
+                1f));
+
+            Assert.That((result.FinalOutgoing - target).Magnitude, Is.LessThan(0.0001f));
+        }
+
+        [Test]
         public void Apply_DoesNotUseTargetThatOpposesActualStrikeDirection()
         {
             var physical = new SimVector3(0f, 8f, 0f);

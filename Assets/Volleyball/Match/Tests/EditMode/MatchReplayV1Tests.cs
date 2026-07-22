@@ -164,6 +164,29 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Json_OmitsAbsentSetChainForHistoricalV1Events()
+        {
+            var json = MatchReplayJson.Serialize(ReplayFixture.CreateValid());
+
+            Assert.That(json, Does.Not.Contain("\"setChain\""));
+        }
+
+        [Test]
+        public void Json_RoundTripsRallyResolutionReasonAndErrorPlayer()
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.Events[0].PlayerId = "player-1";
+            replay.Events[0].ErrorPlayerId = "player-7";
+            replay.Events[0].Reason = "attack landed out";
+            replay.Seal();
+
+            var restored = MatchReplayJson.Deserialize(MatchReplayJson.Serialize(replay));
+
+            Assert.That(restored.Events[0].ErrorPlayerId, Is.EqualTo("player-7"));
+            Assert.That(restored.Events[0].Reason, Is.EqualTo("attack landed out"));
+        }
+
+        [Test]
         public void Validate_RejectsSetChainWithoutAQualityGrade()
         {
             var replay = ReplayFixture.CreateValid();

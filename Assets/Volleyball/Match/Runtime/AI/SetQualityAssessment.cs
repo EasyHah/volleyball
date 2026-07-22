@@ -1,4 +1,5 @@
 using System;
+using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 
 namespace Volleyball.AI
@@ -15,6 +16,24 @@ namespace Volleyball.AI
         None,
         Setter,
         Attacker
+    }
+
+    public static class SetChainAttribution
+    {
+        public static PlayerId? ResponsiblePlayer(
+            AttackResponsibility responsibility,
+            PlayerId? setter,
+            PlayerId? attacker,
+            PlayerId? fallback)
+        {
+            return responsibility switch
+            {
+                AttackResponsibility.Setter => setter ?? fallback,
+                AttackResponsibility.Attacker => attacker ?? fallback,
+                AttackResponsibility.None => fallback,
+                _ => throw new ArgumentOutOfRangeException(nameof(responsibility))
+            };
+        }
     }
 
     public readonly struct SetQualityInput
@@ -230,7 +249,12 @@ namespace Volleyball.AI
                 actualArrivalSeconds));
             var reachableCenter = new SimVector3(
                 actualContactCenter.X,
-                Clamp(actualContactCenter.Y, AttackContactPlanner.MinimumAttackReach, maxAttackReach),
+                Clamp(
+                    actualContactCenter.Y,
+                    planned.Outcome == AttackContactOutcome.Handling
+                        ? 0f
+                        : AttackContactPlanner.MinimumAttackReach,
+                    maxAttackReach),
                 actualContactCenter.Z);
             var contact = new AttackContactPlan(
                 takeoff,

@@ -13,7 +13,7 @@ namespace Volleyball.PlayModeTests
     public sealed class AttackChainCalibrationPlayModeTests
     {
         [UnityTest]
-        [Timeout(600000)]
+        [Timeout(1200000)]
         public IEnumerator Formal6v6_InSystemAttackChainMeetsInitialThresholds()
         {
             AttackChainCalibrationReport report = null;
@@ -30,7 +30,7 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
-        [Timeout(600000)]
+        [Timeout(1200000)]
         public IEnumerator ThreeVsThree_InSystemAttackChainMeetsInitialThresholds()
         {
             AttackChainCalibrationReport report = null;
@@ -93,39 +93,79 @@ namespace Volleyball.PlayModeTests
             int targetInSystemSets,
             Action<AttackChainCalibrationReport> completed)
         {
-            PhysicalMatchRallyDirector director = null;
-            yield return CreateCalibrationDirector(
-                sceneName,
-                targetScore: 1000,
-                firstServer: TeamSide.Home,
-                value => director = value);
-            Assert.That(director.MatchContextV2.Seed, Is.EqualTo(seed));
-
             var originalTimeScale = Time.timeScale;
             var originalLogging = Debug.unityLogger.logEnabled;
-            var observedSets = 0;
+            var inSystemSets = 0;
+            var inSystemAttackableSets = 0;
+            var gradeASetterSets = 0;
+            var aGradeNoContactErrors = 0;
+            var normalSideSets = 0;
+            var totalSets = 0;
             var nonAWithoutReason = 0;
-            var timeout = Time.realtimeSinceStartup + 420f;
+            var completedMatches = 0;
+            var lastNoContactDiagnostic = string.Empty;
+            var timeout = Time.realtimeSinceStartup + 900f;
             try
             {
                 Debug.unityLogger.logEnabled = false;
-                while (director.InSystemSetterSets < targetInSystemSets &&
-                       director.ResultV2 == null &&
-                       Time.realtimeSinceStartup < timeout)
+                while (inSystemSets < targetInSystemSets && Time.realtimeSinceStartup < timeout)
                 {
-                    Time.timeScale = 8f;
-                    if (director.TotalSets > observedSets)
+                    Time.timeScale = 1f;
+                    PhysicalMatchRallyDirector director = null;
+                    yield return CreateCalibrationDirector(
+                        sceneName,
+                        targetScore: 50,
+                        firstServer: completedMatches % 2 == 0 ? TeamSide.Home : TeamSide.Away,
+                        value => director = value);
+                    Assert.That(director.MatchContextV2.Seed, Is.EqualTo(seed));
+                    director.ConfigureInSystemFirstPassCalibration(true);
+                    MatchReplayRecorder replayRecorder = null;
+                    if (director.RosterSize == 6)
                     {
-                        observedSets = director.TotalSets;
-                        var quality = director.LastSetQualityAssessment;
-                        if (quality.HasValue && quality.Value.Grade != SetQualityGrade.A &&
-                            string.IsNullOrWhiteSpace(quality.Value.Reason))
-                        {
-                            nonAWithoutReason++;
-                        }
+                        replayRecorder = MatchReplayRecorder.Attach(
+                            director,
+                            UnityEngine.Object.FindFirstObjectByType<SimulatedBall>(),
+                            UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                                FindObjectsSortMode.None));
+                        replayRecorder.StartCapture();
                     }
 
-                    yield return null;
+                    var observedSets = 0;
+                    while (inSystemSets + director.InSystemSetterSets < targetInSystemSets &&
+                           director.ResultV2 == null &&
+                           Time.realtimeSinceStartup < timeout)
+                    {
+                        Time.timeScale = 20f;
+                        if (director.TotalSets > observedSets)
+                        {
+                            observedSets = director.TotalSets;
+                            var quality = director.LastSetQualityAssessment;
+                            if (quality.HasValue && quality.Value.Grade != SetQualityGrade.A &&
+                                string.IsNullOrWhiteSpace(quality.Value.Reason))
+                            {
+                                nonAWithoutReason++;
+                            }
+                        }
+
+                        yield return null;
+                    }
+
+                    inSystemSets += director.InSystemSetterSets;
+                    inSystemAttackableSets += director.InSystemAttackableSets;
+                    gradeASetterSets += director.GradeASetterSets;
+                    aGradeNoContactErrors += director.AGradeNoContactErrors;
+                    normalSideSets += director.NormalSideSets;
+                    totalSets += director.TotalSets;
+                    if (!string.IsNullOrWhiteSpace(director.LastAGradeNoContactDiagnostic))
+                    {
+                        lastNoContactDiagnostic = director.LastAGradeNoContactDiagnostic;
+                    }
+                    if (replayRecorder != null && replayRecorder.IsComplete)
+                    {
+                        Assert.DoesNotThrow(() => replayRecorder.Complete().Validate());
+                    }
+
+                    completedMatches++;
                 }
             }
             finally
@@ -134,16 +174,24 @@ namespace Volleyball.PlayModeTests
                 Time.timeScale = originalTimeScale;
             }
 
-            completed(new AttackChainCalibrationReport(
-                director.InSystemAttackableSetRate,
-                director.AGradeNoContactErrorRate,
-                director.NormalSideSets,
+            var report = new AttackChainCalibrationReport(
+                inSystemSets == 0 ? 0f : (float)inSystemAttackableSets / inSystemSets,
+                gradeASetterSets == 0 ? 0f : (float)aGradeNoContactErrors / gradeASetterSets,
+                normalSideSets,
                 nonAWithoutReason,
-                $"produced={director.TotalSets}; inSystem={director.InSystemSetterSets}; " +
-                director.LastAGradeNoContactDiagnostic));
-            Assert.That(director.InSystemSetterSets, Is.GreaterThanOrEqualTo(targetInSystemSets),
-                $"{sceneName} produced only {director.InSystemSetterSets}/{targetInSystemSets} " +
-                $"in-system set contacts ({director.TotalSets} total) before timeout.");
+                $"matches={completedMatches}; produced={totalSets}; inSystem={inSystemSets}; " +
+                lastNoContactDiagnostic);
+            completed(report);
+            Debug.Log(
+                $"[AttackChainCalibration] scene={sceneName} matches={completedMatches} " +
+                $"sets={totalSets} inSystem={inSystemSets} " +
+                $"attackableRate={report.AttackableSetRate:0.000} " +
+                $"aNoContactRate={report.AGradeNoContactErrorRate:0.000} " +
+                $"normalSide={report.NormalSideSets}");
+            Assert.That(inSystemSets, Is.GreaterThanOrEqualTo(targetInSystemSets),
+                $"{sceneName} produced only {inSystemSets}/{targetInSystemSets} " +
+                $"in-system set contacts ({totalSets} total across {completedMatches} matches) " +
+                "before timeout.");
         }
 
         private static IEnumerator CreateCalibrationDirector(

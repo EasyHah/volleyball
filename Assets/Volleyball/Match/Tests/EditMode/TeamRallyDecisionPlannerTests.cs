@@ -269,6 +269,41 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AttackApproachStaging_AdvancesQuickHitterBeforeTheSetContact()
+        {
+            var approach = new AttackApproachPlan(
+                new SimVector3(0f, 0f, -3.2f),
+                new SimVector3(0f, 0f, -2f),
+                1.2f,
+                1f,
+                0f);
+
+            var target = AttackApproachStaging.TargetAtSetContact(
+                approach,
+                0.425f,
+                6f,
+                0.38f);
+
+            Assert.That(target.Z, Is.EqualTo(-2.27f).Within(0.00001f));
+            Assert.That(target.X, Is.Zero.Within(0.00001f));
+        }
+
+        [Test]
+        public void AttackApproachStaging_LeavesSlowHitterAtTheApproachStart()
+        {
+            var approach = new AttackApproachPlan(
+                new SimVector3(0f, 0f, -3.2f),
+                new SimVector3(0f, 0f, -2f),
+                1.2f,
+                1f,
+                0f);
+
+            Assert.That(
+                AttackApproachStaging.TargetAtSetContact(approach, 1f, 6f, 0.38f),
+                Is.EqualTo(approach.ApproachStart));
+        }
+
+        [Test]
         public void Plan_AttackApproachQualityEasesSmoothlyIntoItsExplicitCap()
         {
             var below = AttackDecisionForApproachDistance(1.3f).AttackApproach.Value.JumpQuality;

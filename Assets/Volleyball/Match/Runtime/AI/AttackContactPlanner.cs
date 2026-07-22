@@ -164,8 +164,11 @@ namespace Volleyball.AI
 
         public void Validate()
         {
+            var minimumHeight = Outcome == AttackContactOutcome.Handling
+                ? 0f
+                : AttackContactPlanner.MinimumAttackReach;
             if (!Takeoff.IsFinite || !ContactCenter.IsFinite ||
-                ContactCenter.Y < AttackContactPlanner.MinimumAttackReach ||
+                ContactCenter.Y < minimumHeight ||
                 ContactCenter.Y > 3.55f)
             {
                 throw new ArgumentOutOfRangeException(nameof(ContactCenter));

@@ -52,7 +52,7 @@ namespace Volleyball.Presentation
                         "RightPalm",
                         localPositionError,
                         localNormalErrorDegrees,
-                        true), active, contactGroupId)
+                        true), active, contactGroupId, true)
                 },
                 TechniqueAction.Block => new[]
                 {
@@ -164,11 +164,12 @@ namespace Volleyball.Presentation
             string key,
             ContactSurfaceFrame current,
             bool active,
-            int contactGroupId)
+            int contactGroupId,
+            bool twoSided = false)
         {
             var previous = _previous.TryGetValue(key, out var stored) ? stored : current;
             _previous[key] = current;
-            return new ContactSurfaceSnapshot(previous, current, active, contactGroupId);
+            return new ContactSurfaceSnapshot(previous, current, active, contactGroupId, twoSided);
         }
 
         private static ContactSurfaceFrame ToFrame(

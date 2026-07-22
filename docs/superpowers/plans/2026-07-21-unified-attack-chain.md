@@ -386,7 +386,7 @@ git commit -m "feat: record set quality and attack attribution"
 - Create: `docs/changes/2026-07-21-001-unified-attack-chain.md`
 - Modify: `docs/changes/README.md`
 
-- [ ] **Step 1: Write the failing 100-first-pass and 20-set tests.**
+- [x] **Step 1: Write the failing 100-first-pass and 20-set tests.**
 
 ```csharp
 [UnityTest]
@@ -401,17 +401,17 @@ public IEnumerator Formal6v6_InSystemAttackChainMeetsInitialThresholds()
 
 Add the equivalent 3v3 test. Add a symmetric 20-set test asserting Blue wins 9-11 inclusive and every non-A chain has a replay reason.
 
-- [ ] **Step 2: Run red and retain the baseline log.**
+- [x] **Step 2: Run red and retain the baseline log.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode -testFilter "Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests" -testResults "$PWD/TestResults/AttackChainCalibration-red.xml" -logFile "$PWD/TestResults/AttackChainCalibration-red.log"`
 
 Expected: initial harness compile failure, then threshold failures that do not coincide with structural-test failures.
 
-- [ ] **Step 3: Set mirrored reaches and implement the deterministic harness.**
+- [x] **Step 3: Set mirrored reaches and implement the deterministic harness.**
 
 Use identical Blue/Orange defaults: attackers, outsides, and opposites 3.42-3.52; middles 3.48-3.55; setters 3.20-3.28; defenders/liberos 3.20. The harness runs the ordinary scene/director pipeline, controls only seed and first-pass quality, reads public counters, and attaches `MatchReplayRecorder` for abnormal chains. It must not modify outgoing velocity, bypass contacts, or edit success counters.
 
-- [ ] **Step 4: Tune only bounded coefficients and verify all criteria.**
+- [x] **Step 4: Tune only bounded coefficients and verify all criteria.**
 
 Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; mkdir -p TestResults; "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode -testResults "$PWD/TestResults/UnifiedAttack-EditMode.xml" -logFile "$PWD/TestResults/UnifiedAttack-EditMode.log"`
 
@@ -419,7 +419,7 @@ Run: `UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"; "$UNITY" -batc
 
 Expected: both XML reports have `failed="0"`; 100 in-system first passes meet 95%+ attackability and <2% A-grade no-contact errors; all 20 symmetric sets finish with Blue winning 9-11; every abnormal replay chain has a reason.
 
-- [ ] **Step 5: Create the required change record and commit.**
+- [x] **Step 5: Create the required change record and commit.**
 
 Create `docs/changes/2026-07-21-001-unified-attack-chain.md` from `docs/changes/TEMPLATE.md`, mark it `跨模块（重点）` because the Shared contract has a new eighth `maxAttackReach` field, update the change index, and update 3v3/6v6 verification instructions.
 

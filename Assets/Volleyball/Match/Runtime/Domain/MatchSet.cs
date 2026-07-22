@@ -347,11 +347,16 @@ namespace Volleyball.Domain
 
     public sealed class MatchSetRules
     {
+        public const int AbsoluteMaximumScore = 50;
+
         public static MatchSetRules ThreeVsThree { get; } = new MatchSetRules(15, 2);
 
         public static MatchSetRules FormalIndoor { get; } = new MatchSetRules(25, 2);
 
-        public MatchSetRules(int targetScore, int minimumLead, int maximumScore = 50)
+        public MatchSetRules(
+            int targetScore,
+            int minimumLead,
+            int maximumScore = AbsoluteMaximumScore)
         {
             if (targetScore <= 0)
             {
@@ -363,7 +368,7 @@ namespace Volleyball.Domain
                 throw new ArgumentOutOfRangeException(nameof(minimumLead));
             }
 
-            if (maximumScore < targetScore)
+            if (maximumScore < targetScore || maximumScore > AbsoluteMaximumScore)
             {
                 throw new ArgumentOutOfRangeException(nameof(maximumScore));
             }

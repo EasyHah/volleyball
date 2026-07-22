@@ -103,12 +103,14 @@ namespace Volleyball.Domain.Simulation
             ContactSurfaceFrame previous,
             ContactSurfaceFrame current,
             bool active,
-            int contactGroupId)
+            int contactGroupId,
+            bool twoSided = false)
         {
             Previous = previous;
             Current = current;
             Active = active;
             ContactGroupId = contactGroupId;
+            TwoSided = twoSided;
         }
 
         public ContactSurfaceFrame Previous { get; }
@@ -118,6 +120,8 @@ namespace Volleyball.Domain.Simulation
         public bool Active { get; }
 
         public int ContactGroupId { get; }
+
+        public bool TwoSided { get; }
 
         public ContactSurfaceFrame At(float alpha)
         {
