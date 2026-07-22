@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using NUnit.Framework;
 using Volleyball.Career.Application;
 using Volleyball.Career.Domain;
@@ -252,7 +251,7 @@ namespace Volleyball.Career.EditModeTests
                 slot1,
                 resolve,
                 slot2);
-            AssertNoPendingMatchRuntimeSurface();
+            AssertPendingMatchRuntimeSurfaceIsDomainOnly();
         }
 
         private static void AssertExactReceipts(
@@ -387,30 +386,14 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(receipt.OutcomeSummary.CoachTrustDelta, Is.EqualTo(trust));
         }
 
-        private static void AssertNoPendingMatchRuntimeSurface()
+        private static void AssertPendingMatchRuntimeSurfaceIsDomainOnly()
         {
-            var runtimeTypes = typeof(CareerSaveSnapshot).Assembly.GetTypes();
             Assert.That(
-                runtimeTypes.Any(type => string.Equals(
-                    type.Name,
-                    "PendingMatch",
-                    StringComparison.Ordinal)),
-                Is.False);
+                typeof(CareerSaveSnapshot).GetProperty("PendingMatch"),
+                Is.Not.Null);
             Assert.That(
-                runtimeTypes.Any(type =>
-                    type.GetFields(BindingFlags.Public | BindingFlags.NonPublic |
-                                   BindingFlags.Instance | BindingFlags.Static)
-                        .Any(field => string.Equals(
-                            field.Name,
-                            "PendingMatch",
-                            StringComparison.Ordinal)) ||
-                    type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic |
-                                       BindingFlags.Instance | BindingFlags.Static)
-                        .Any(property => string.Equals(
-                            property.Name,
-                            "PendingMatch",
-                            StringComparison.Ordinal))),
-                Is.False);
+                typeof(PendingCareerMatch).Namespace,
+                Is.EqualTo("Volleyball.Career.Domain"));
         }
 
         private static void AssertSealedOnDisk(

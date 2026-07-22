@@ -10,7 +10,8 @@ namespace Volleyball.Career.Domain
         Tryout = 1,
         Planning = 2,
         Planned = 3,
-        AwaitingEventChoice = 4
+        AwaitingEventChoice = 4,
+        AwaitingMatch = 5
     }
 
     public enum CareerPhase
@@ -139,22 +140,23 @@ namespace Volleyball.Career.Domain
             var slotActionIds = new HashSet<SlotActionId>();
             var occurrenceIds = new HashSet<OccurrenceId>();
             var matchCount = 0;
+            var nonNullCount = 0;
             for (var index = 0; index < slots.Count; index++)
             {
                 var action = slots[index];
                 if (action == null)
                 {
-                    if (isConfirmed || index == 2)
+                    if (isConfirmed)
                     {
                         throw new ArgumentException(
-                            index == 2
-                                ? "Schema V1 always requires its match in slot 3."
-                                : "A confirmed week plan cannot contain an empty slot.",
+                            "A confirmed week plan cannot contain an empty slot.",
                             parameterName);
                     }
 
                     continue;
                 }
+
+                nonNullCount++;
 
                 if (!slotActionIds.Add(action.SlotActionId))
                 {
@@ -189,7 +191,12 @@ namespace Volleyball.Career.Domain
                     parameterName);
             }
 
-            if (matchCount != 1 || !slots[2].IsMatch)
+            if (nonNullCount == 0 && !isConfirmed)
+            {
+                return;
+            }
+
+            if (matchCount != 1 || slots[2] == null || !slots[2].IsMatch)
             {
                 throw new ArgumentException(
                     "Schema V1 requires the only match in slot 3.",
@@ -480,6 +487,25 @@ namespace Volleyball.Career.Domain
             CareerWeekPlanState weekPlan,
             int nextSlotNumber,
             PendingCareerEvent pendingEvent)
+            : this(
+                kind,
+                phase,
+                tryoutStage,
+                weekPlan,
+                nextSlotNumber,
+                pendingEvent,
+                null)
+        {
+        }
+
+        public CareerProgressionState(
+            CareerProgressionKind kind,
+            CareerPhase phase,
+            int tryoutStage,
+            CareerWeekPlanState weekPlan,
+            int nextSlotNumber,
+            PendingCareerEvent pendingEvent,
+            Guid? matchSessionId)
         {
             CareerSaveModelGuard.DefinedEnum(kind, nameof(kind));
             CareerSaveModelGuard.DefinedEnum(phase, nameof(phase));
@@ -491,7 +517,8 @@ namespace Volleyball.Career.Domain
                 tryoutStage,
                 copiedWeekPlan,
                 nextSlotNumber,
-                copiedPendingEvent);
+                copiedPendingEvent,
+                matchSessionId);
 
             Kind = kind;
             Phase = phase;
@@ -499,6 +526,7 @@ namespace Volleyball.Career.Domain
             WeekPlan = copiedWeekPlan;
             NextSlotNumber = nextSlotNumber;
             PendingEvent = copiedPendingEvent;
+            MatchSessionId = matchSessionId;
         }
 
         public CareerProgressionKind Kind { get; }
@@ -512,6 +540,8 @@ namespace Volleyball.Career.Domain
         public int NextSlotNumber { get; }
 
         public PendingCareerEvent PendingEvent { get; }
+
+        public Guid? MatchSessionId { get; }
 
         public static CareerProgressionState Created()
         {
@@ -572,6 +602,20 @@ namespace Volleyball.Career.Domain
                 pendingEvent);
         }
 
+        public static CareerProgressionState AwaitingMatch(
+            CareerWeekPlanState confirmedPlan,
+            Guid sessionId)
+        {
+            return new CareerProgressionState(
+                CareerProgressionKind.AwaitingMatch,
+                CareerPhase.University,
+                0,
+                confirmedPlan,
+                0,
+                null,
+                sessionId);
+        }
+
         internal CareerProgressionState Copy()
         {
             return new CareerProgressionState(
@@ -580,7 +624,8 @@ namespace Volleyball.Career.Domain
                 TryoutStage,
                 WeekPlan,
                 NextSlotNumber,
-                PendingEvent);
+                PendingEvent,
+                MatchSessionId);
         }
 
         private static void ValidateCombination(
@@ -588,22 +633,23 @@ namespace Volleyball.Career.Domain
             int tryoutStage,
             CareerWeekPlanState weekPlan,
             int nextSlotNumber,
-            PendingCareerEvent pendingEvent)
+            PendingCareerEvent pendingEvent,
+            Guid? matchSessionId)
         {
             switch (kind)
             {
                 case CareerProgressionKind.CareerCreated:
-                    RequireNoPlanOrEvent(tryoutStage, weekPlan, nextSlotNumber, pendingEvent, nameof(kind));
+                    RequireNoPlanOrEvent(tryoutStage, weekPlan, nextSlotNumber, pendingEvent, matchSessionId, nameof(kind));
                     return;
 
                 case CareerProgressionKind.Tryout:
                     CareerSaveModelGuard.InclusiveRange(tryoutStage, 1, 3, nameof(tryoutStage));
-                    RequireNoPlanOrEvent(0, weekPlan, nextSlotNumber, pendingEvent, nameof(kind));
+                    RequireNoPlanOrEvent(0, weekPlan, nextSlotNumber, pendingEvent, matchSessionId, nameof(kind));
                     return;
 
                 case CareerProgressionKind.Planning:
                     RequireWeekPlan(weekPlan, expectedConfirmed: false, nameof(kind));
-                    RequireDefaults(tryoutStage, nextSlotNumber, pendingEvent, nameof(kind));
+                    RequireDefaults(tryoutStage, nextSlotNumber, pendingEvent, matchSessionId, nameof(kind));
                     return;
 
                 case CareerProgressionKind.Planned:
@@ -613,7 +659,7 @@ namespace Volleyball.Career.Domain
                         1,
                         CareerWeekPlan.SlotCount,
                         nameof(nextSlotNumber));
-                    RequireDefaults(tryoutStage, 0, pendingEvent, nameof(kind));
+                    RequireDefaults(tryoutStage, 0, pendingEvent, matchSessionId, nameof(kind));
                     return;
 
                 case CareerProgressionKind.AwaitingEventChoice:
@@ -623,7 +669,26 @@ namespace Volleyball.Career.Domain
                         throw new ArgumentNullException(nameof(pendingEvent));
                     }
 
-                    RequireDefaults(tryoutStage, nextSlotNumber, pendingEvent, nameof(kind), true);
+                    RequireDefaults(tryoutStage, nextSlotNumber, pendingEvent, matchSessionId, nameof(kind), true);
+                    return;
+
+                case CareerProgressionKind.AwaitingMatch:
+                    RequireWeekPlan(weekPlan, expectedConfirmed: true, nameof(kind));
+                    if (weekPlan.Season != 1 || weekPlan.Week != 1)
+                    {
+                        throw new ArgumentException(
+                            "The first slice may await only the university season 1 week 1 match.",
+                            nameof(weekPlan));
+                    }
+
+                    if (!matchSessionId.HasValue || matchSessionId.Value == Guid.Empty)
+                    {
+                        throw new ArgumentException(
+                            "AwaitingMatch requires a non-empty match session ID.",
+                            nameof(matchSessionId));
+                    }
+
+                    RequireDefaults(tryoutStage, nextSlotNumber, pendingEvent, matchSessionId, nameof(kind), false, true);
                     return;
 
                 default:
@@ -636,9 +701,10 @@ namespace Volleyball.Career.Domain
             CareerWeekPlanState weekPlan,
             int nextSlotNumber,
             PendingCareerEvent pendingEvent,
+            Guid? matchSessionId,
             string parameterName)
         {
-            RequireDefaults(ignoredTryoutStage, nextSlotNumber, pendingEvent, parameterName);
+            RequireDefaults(ignoredTryoutStage, nextSlotNumber, pendingEvent, matchSessionId, parameterName);
             if (weekPlan != null)
             {
                 throw new ArgumentException(
@@ -651,11 +717,14 @@ namespace Volleyball.Career.Domain
             int tryoutStage,
             int nextSlotNumber,
             PendingCareerEvent pendingEvent,
+            Guid? matchSessionId,
             string parameterName,
-            bool allowPendingEvent = false)
+            bool allowPendingEvent = false,
+            bool allowMatchSession = false)
         {
             if (tryoutStage != 0 || nextSlotNumber != 0 ||
-                (!allowPendingEvent && pendingEvent != null))
+                (!allowPendingEvent && pendingEvent != null) ||
+                (!allowMatchSession && matchSessionId.HasValue))
             {
                 throw new ArgumentException(
                     "The progression kind contains fields that do not belong to it.",

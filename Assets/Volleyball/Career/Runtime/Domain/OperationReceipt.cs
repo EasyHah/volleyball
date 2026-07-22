@@ -10,7 +10,8 @@ namespace Volleyball.Career.Domain
         ConfirmTryoutStage = 1,
         ConfirmWeekPlan = 2,
         ExecuteWeekAction = 3,
-        ResolveEventChoice = 4
+        ResolveEventChoice = 4,
+        CreatePendingMatch = 5
     }
 
     public enum OperationOutcomeKind
@@ -19,7 +20,8 @@ namespace Volleyball.Career.Domain
         TryoutAdvanced = 1,
         WeekPlanConfirmed = 2,
         SlotCompleted = 3,
-        EventChoiceApplied = 4
+        EventChoiceApplied = 4,
+        PendingMatchCreated = 5
     }
 
     public sealed class OperationOutcomeSummary
@@ -33,7 +35,9 @@ namespace Volleyball.Career.Domain
             CareerAttributeGrowthDelta growthExperienceDelta,
             int? fatigueDelta,
             int? mindsetDelta,
-            int? coachTrustDelta)
+            int? coachTrustDelta,
+            Guid? matchSessionId = null,
+            Sha256Digest? contextDigest = null)
         {
             CareerSaveModelGuard.DefinedEnum(outcomeKind, nameof(outcomeKind));
             if (tryoutResolvedOutputs == null)
@@ -59,7 +63,8 @@ namespace Volleyball.Career.Domain
                 case OperationOutcomeKind.CareerCreated:
                 case OperationOutcomeKind.WeekPlanConfirmed:
                     if (copiedOutputs.Count != 0 || growthExperienceDelta != null ||
-                        fatigueDelta.HasValue || mindsetDelta.HasValue || coachTrustDelta.HasValue)
+                        fatigueDelta.HasValue || mindsetDelta.HasValue || coachTrustDelta.HasValue ||
+                        matchSessionId.HasValue || contextDigest.HasValue)
                     {
                         throw new ArgumentException(
                             "This outcome requires an empty summary.",
@@ -70,7 +75,8 @@ namespace Volleyball.Career.Domain
 
                 case OperationOutcomeKind.TryoutAdvanced:
                     if (copiedOutputs.Count == 0 || growthExperienceDelta != null ||
-                        fatigueDelta.HasValue || mindsetDelta.HasValue || coachTrustDelta.HasValue)
+                        fatigueDelta.HasValue || mindsetDelta.HasValue || coachTrustDelta.HasValue ||
+                        matchSessionId.HasValue || contextDigest.HasValue)
                     {
                         throw new ArgumentException(
                             "A tryout outcome requires only a non-empty ordered output list.",
@@ -83,7 +89,7 @@ namespace Volleyball.Career.Domain
                 case OperationOutcomeKind.EventChoiceApplied:
                     if (copiedOutputs.Count != 0 || growthExperienceDelta == null ||
                         !fatigueDelta.HasValue || !mindsetDelta.HasValue ||
-                        !coachTrustDelta.HasValue)
+                        !coachTrustDelta.HasValue || matchSessionId.HasValue || contextDigest.HasValue)
                     {
                         throw new ArgumentException(
                             "Action and event outcomes require complete applied deltas.",
@@ -107,6 +113,19 @@ namespace Volleyball.Career.Domain
                         nameof(coachTrustDelta));
                     break;
 
+                case OperationOutcomeKind.PendingMatchCreated:
+                    if (copiedOutputs.Count != 0 || growthExperienceDelta != null ||
+                        fatigueDelta.HasValue || mindsetDelta.HasValue || coachTrustDelta.HasValue ||
+                        !matchSessionId.HasValue || matchSessionId.Value == Guid.Empty ||
+                        !contextDigest.HasValue || string.IsNullOrEmpty(contextDigest.Value.Value))
+                    {
+                        throw new ArgumentException(
+                            "A pending-match outcome requires only its session and context digest.",
+                            nameof(outcomeKind));
+                    }
+
+                    break;
+
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(outcomeKind),
@@ -121,6 +140,8 @@ namespace Volleyball.Career.Domain
             FatigueDelta = fatigueDelta;
             MindsetDelta = mindsetDelta;
             CoachTrustDelta = coachTrustDelta;
+            MatchSessionId = matchSessionId;
+            ContextDigest = contextDigest;
         }
 
         public OperationOutcomeKind OutcomeKind { get; }
@@ -135,6 +156,10 @@ namespace Volleyball.Career.Domain
         public int? MindsetDelta { get; }
 
         public int? CoachTrustDelta { get; }
+
+        public Guid? MatchSessionId { get; }
+
+        public Sha256Digest? ContextDigest { get; }
 
         public static OperationOutcomeSummary ForCareerCreated()
         {
@@ -186,6 +211,23 @@ namespace Volleyball.Career.Domain
                 coachTrustDelta);
         }
 
+        public static OperationOutcomeSummary ForPendingMatchCreated(
+            Guid sessionId,
+            Sha256Digest contextDigest)
+        {
+            CareerSaveModelGuard.StableId(sessionId, nameof(sessionId));
+            PendingCareerMatch.RequireDigest(contextDigest, nameof(contextDigest));
+            return new OperationOutcomeSummary(
+                OperationOutcomeKind.PendingMatchCreated,
+                Array.Empty<TryoutResolvedOutput>(),
+                null,
+                null,
+                null,
+                null,
+                sessionId,
+                contextDigest);
+        }
+
         internal OperationOutcomeSummary Copy()
         {
             return new OperationOutcomeSummary(
@@ -194,7 +236,9 @@ namespace Volleyball.Career.Domain
                 GrowthExperienceDelta,
                 FatigueDelta,
                 MindsetDelta,
-                CoachTrustDelta);
+                CoachTrustDelta,
+                MatchSessionId,
+                ContextDigest);
         }
 
         private static OperationOutcomeSummary Empty(OperationOutcomeKind outcomeKind)
@@ -241,7 +285,10 @@ namespace Volleyball.Career.Domain
             SlotActionId? slotActionId,
             OccurrenceId? actionOccurrenceId,
             OccurrenceId? eventOccurrenceId,
-            string optionId)
+            string optionId,
+            Guid? matchSessionId,
+            string scheduleItemId,
+            Sha256Digest? contextDigest)
         {
             OperationKind = operationKind;
             TryoutStage = tryoutStage;
@@ -252,6 +299,9 @@ namespace Volleyball.Career.Domain
             ActionOccurrenceId = actionOccurrenceId;
             EventOccurrenceId = eventOccurrenceId;
             OptionId = optionId;
+            MatchSessionId = matchSessionId;
+            ScheduleItemId = scheduleItemId;
+            ContextDigest = contextDigest;
         }
 
         public OperationKind OperationKind { get; }
@@ -272,11 +322,20 @@ namespace Volleyball.Career.Domain
 
         public string OptionId { get; }
 
+        public Guid? MatchSessionId { get; }
+
+        public string ScheduleItemId { get; }
+
+        public Sha256Digest? ContextDigest { get; }
+
         public static OperationReceiptTarget ForCreateCareer()
         {
             return new OperationReceiptTarget(
                 OperationKind.CreateCareer,
                 0,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -302,6 +361,9 @@ namespace Volleyball.Career.Domain
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null);
         }
 
@@ -314,6 +376,9 @@ namespace Volleyball.Career.Domain
                 null,
                 null,
                 weekPlanId,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -338,6 +403,9 @@ namespace Volleyball.Career.Domain
                 weekPlanId,
                 slotActionId,
                 actionOccurrenceId,
+                null,
+                null,
+                null,
                 null,
                 null);
         }
@@ -368,7 +436,38 @@ namespace Volleyball.Career.Domain
                 sourceSlotActionId,
                 sourceActionOccurrenceId,
                 eventOccurrenceId,
-                CareerSaveModelGuard.BusinessId(optionId, nameof(optionId)));
+                CareerSaveModelGuard.BusinessId(optionId, nameof(optionId)),
+                null,
+                null,
+                null);
+        }
+
+        public static OperationReceiptTarget ForPendingMatch(
+            WeekPlanId weekPlanId,
+            SlotActionId slotActionId,
+            OccurrenceId actionOccurrenceId,
+            Guid sessionId,
+            string scheduleItemId,
+            Sha256Digest contextDigest)
+        {
+            CareerSaveModelGuard.StableId(weekPlanId.Value, nameof(weekPlanId));
+            CareerSaveModelGuard.StableId(slotActionId.Value, nameof(slotActionId));
+            CareerSaveModelGuard.StableId(actionOccurrenceId.Value, nameof(actionOccurrenceId));
+            CareerSaveModelGuard.StableId(sessionId, nameof(sessionId));
+            PendingCareerMatch.RequireDigest(contextDigest, nameof(contextDigest));
+            return new OperationReceiptTarget(
+                OperationKind.CreatePendingMatch,
+                0,
+                null,
+                null,
+                weekPlanId,
+                slotActionId,
+                actionOccurrenceId,
+                null,
+                null,
+                sessionId,
+                CareerSaveModelGuard.BusinessId(scheduleItemId, nameof(scheduleItemId)),
+                contextDigest);
         }
 
         internal OperationReceiptTarget Copy()
@@ -382,7 +481,10 @@ namespace Volleyball.Career.Domain
                 SlotActionId,
                 ActionOccurrenceId,
                 EventOccurrenceId,
-                OptionId);
+                OptionId,
+                MatchSessionId,
+                ScheduleItemId,
+                ContextDigest);
         }
     }
 
@@ -500,6 +602,8 @@ namespace Volleyball.Career.Domain
                     return OperationOutcomeKind.SlotCompleted;
                 case OperationKind.ResolveEventChoice:
                     return OperationOutcomeKind.EventChoiceApplied;
+                case OperationKind.CreatePendingMatch:
+                    return OperationOutcomeKind.PendingMatchCreated;
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(operationKind),

@@ -288,6 +288,10 @@ namespace Volleyball.Career.Domain
     {
         private readonly OperationReceipt[] _operationReceipts;
         private readonly ReadOnlyCollection<OperationReceipt> _readOnlyOperationReceipts;
+        private readonly CareerMatchHistoryEntry[] _matchHistory;
+        private readonly ReadOnlyCollection<CareerMatchHistoryEntry> _readOnlyMatchHistory;
+        private readonly CareerSettlementReceipt[] _settlementReceipts;
+        private readonly ReadOnlyCollection<CareerSettlementReceipt> _readOnlySettlementReceipts;
 
         public CareerSaveSnapshot(
             CareerSaveVersions versions,
@@ -305,6 +309,47 @@ namespace Volleyball.Career.Domain
             int? mindset,
             int? coachTrust,
             IEnumerable<OperationReceipt> operationReceipts)
+            : this(
+                versions,
+                identity,
+                careerSeed,
+                careerName,
+                playerDraft,
+                onboarding,
+                progression,
+                trainingEmphases,
+                player,
+                teamId,
+                potentialGrade,
+                fatigue,
+                mindset,
+                coachTrust,
+                operationReceipts,
+                null,
+                Array.Empty<CareerMatchHistoryEntry>(),
+                Array.Empty<CareerSettlementReceipt>())
+        {
+        }
+
+        public CareerSaveSnapshot(
+            CareerSaveVersions versions,
+            CareerSaveIdentity identity,
+            CareerSeed careerSeed,
+            string careerName,
+            CareerPlayerDraft playerDraft,
+            TryoutOnboardingState onboarding,
+            CareerProgressionState progression,
+            TrainingEmphasisLedger trainingEmphases,
+            CareerPlayerRecord player,
+            TeamId? teamId,
+            PotentialGrade? potentialGrade,
+            int? fatigue,
+            int? mindset,
+            int? coachTrust,
+            IEnumerable<OperationReceipt> operationReceipts,
+            PendingCareerMatch pendingMatch,
+            IEnumerable<CareerMatchHistoryEntry> matchHistory,
+            IEnumerable<CareerSettlementReceipt> settlementReceipts)
         {
             if (versions == null)
             {
@@ -347,10 +392,23 @@ namespace Volleyball.Career.Domain
                 throw new ArgumentNullException(nameof(operationReceipts));
             }
 
+            if (matchHistory == null)
+            {
+                throw new ArgumentNullException(nameof(matchHistory));
+            }
+
+            if (settlementReceipts == null)
+            {
+                throw new ArgumentNullException(nameof(settlementReceipts));
+            }
+
             var copiedOnboarding = onboarding.Copy();
             var copiedProgression = progression.Copy();
             var copiedTrainingEmphases = new TrainingEmphasisLedger(
                 trainingEmphases.Contributions);
+            var copiedPendingMatch = pendingMatch?.Copy();
+            var copiedMatchHistory = CopyHistory(matchHistory);
+            var copiedSettlementReceipts = CopySettlementReceipts(settlementReceipts);
             ValidateCompletePlayerState(
                 copiedOnboarding,
                 copiedProgression,
@@ -370,6 +428,15 @@ namespace Volleyball.Career.Domain
             ValidateTrainingEmphases(copiedProgression, copiedTrainingEmphases);
 
             var copiedReceipts = CopyAndValidateReceipts(operationReceipts, identity);
+            ValidateMatchLifecycle(
+                versions,
+                identity,
+                copiedProgression,
+                copiedTrainingEmphases,
+                copiedReceipts,
+                copiedPendingMatch,
+                copiedMatchHistory,
+                copiedSettlementReceipts);
             ValidateOnboardingRecovery(copiedOnboarding, copiedReceipts);
             ValidateCurrentPlanRecovery(copiedProgression, copiedReceipts);
             ValidateReceiptRevisionChain(
@@ -405,6 +472,11 @@ namespace Volleyball.Career.Domain
             CoachTrust = coachTrust;
             _operationReceipts = copiedReceipts;
             _readOnlyOperationReceipts = Array.AsReadOnly(_operationReceipts);
+            PendingMatch = copiedPendingMatch;
+            _matchHistory = copiedMatchHistory;
+            _readOnlyMatchHistory = Array.AsReadOnly(_matchHistory);
+            _settlementReceipts = copiedSettlementReceipts;
+            _readOnlySettlementReceipts = Array.AsReadOnly(_settlementReceipts);
         }
 
         public CareerSaveVersions Versions { get; }
@@ -437,7 +509,472 @@ namespace Volleyball.Career.Domain
 
         public IReadOnlyList<OperationReceipt> OperationReceipts => _readOnlyOperationReceipts;
 
+        public PendingCareerMatch PendingMatch { get; }
+
+        public IReadOnlyList<CareerMatchHistoryEntry> MatchHistory => _readOnlyMatchHistory;
+
+        public IReadOnlyList<CareerSettlementReceipt> SettlementReceipts =>
+            _readOnlySettlementReceipts;
+
         public bool HasCompletePlayer => Player != null;
+
+        private static CareerMatchHistoryEntry[] CopyHistory(
+            IEnumerable<CareerMatchHistoryEntry> history)
+        {
+            var copied = new List<CareerMatchHistoryEntry>();
+            foreach (var entry in history)
+            {
+                if (entry == null)
+                {
+                    throw new ArgumentException(
+                        "Match history cannot contain null.",
+                        nameof(history));
+                }
+
+                copied.Add(entry.Copy());
+            }
+
+            return copied.ToArray();
+        }
+
+        private static CareerSettlementReceipt[] CopySettlementReceipts(
+            IEnumerable<CareerSettlementReceipt> receipts)
+        {
+            var copied = new List<CareerSettlementReceipt>();
+            foreach (var receipt in receipts)
+            {
+                if (receipt == null)
+                {
+                    throw new ArgumentException(
+                        "Settlement receipts cannot contain null.",
+                        nameof(receipts));
+                }
+
+                copied.Add(receipt.Copy());
+            }
+
+            return copied.ToArray();
+        }
+
+        private static void ValidateMatchLifecycle(
+            CareerSaveVersions versions,
+            CareerSaveIdentity identity,
+            CareerProgressionState progression,
+            TrainingEmphasisLedger trainingEmphases,
+            IReadOnlyList<OperationReceipt> operationReceipts,
+            PendingCareerMatch pendingMatch,
+            IReadOnlyList<CareerMatchHistoryEntry> history,
+            IReadOnlyList<CareerSettlementReceipt> settlementReceipts)
+        {
+            var isAwaitingMatch = progression.Kind == CareerProgressionKind.AwaitingMatch;
+            if (isAwaitingMatch != (pendingMatch != null))
+            {
+                throw new ArgumentException(
+                    "AwaitingMatch progression and PendingMatch must coexist.",
+                    nameof(pendingMatch));
+            }
+
+            if (pendingMatch != null)
+            {
+                ValidatePendingMatch(
+                    versions,
+                    identity,
+                    progression,
+                    trainingEmphases,
+                    operationReceipts,
+                    pendingMatch);
+            }
+
+            var historyBySession = new Dictionary<Guid, CareerMatchHistoryEntry>();
+            for (var index = 0; index < history.Count; index++)
+            {
+                var entry = history[index];
+                if (!historyBySession.TryAdd(entry.SessionId, entry))
+                {
+                    throw new ArgumentException(
+                        "Match history session IDs must be unique.",
+                        nameof(history));
+                }
+
+                if (!entry.AppliedLineageId.Equals(identity.LineageId) ||
+                    entry.AppliedRevision > identity.Revision)
+                {
+                    throw new ArgumentException(
+                        "Match history must belong to this lineage and cannot be newer than the snapshot.",
+                        nameof(history));
+                }
+            }
+
+            var receiptBySession = new Dictionary<Guid, CareerSettlementReceipt>();
+            for (var index = 0; index < settlementReceipts.Count; index++)
+            {
+                var receipt = settlementReceipts[index];
+                if (!receiptBySession.TryAdd(receipt.SessionId, receipt))
+                {
+                    throw new ArgumentException(
+                        "Settlement receipt session IDs must be unique.",
+                        nameof(settlementReceipts));
+                }
+
+                if (!receipt.AppliedLineageId.Equals(identity.LineageId) ||
+                    receipt.AppliedRevision > identity.Revision)
+                {
+                    throw new ArgumentException(
+                        "Settlement receipts must belong to this lineage and cannot be newer than the snapshot.",
+                        nameof(settlementReceipts));
+                }
+            }
+
+            if (historyBySession.Count != receiptBySession.Count)
+            {
+                throw new ArgumentException(
+                    "Match history and settlement receipts must be one-to-one.",
+                    nameof(settlementReceipts));
+            }
+
+            foreach (var pair in historyBySession)
+            {
+                if (!receiptBySession.TryGetValue(pair.Key, out var receipt) ||
+                    !HistoryMatchesReceipt(pair.Value, receipt))
+                {
+                    throw new ArgumentException(
+                        "Every history entry must exactly match its settlement receipt.",
+                        nameof(settlementReceipts));
+                }
+
+                ValidateSettledCreationReceipt(pair.Value, operationReceipts);
+            }
+
+            if (pendingMatch != null && historyBySession.ContainsKey(pendingMatch.SessionId))
+            {
+                throw new ArgumentException(
+                    "A pending session cannot already be settled.",
+                    nameof(pendingMatch));
+            }
+
+            ValidateNoOrphanPendingCreationReceipts(
+                operationReceipts,
+                pendingMatch,
+                historyBySession);
+
+            var hasSettlementEvidence = history.Count != 0 || settlementReceipts.Count != 0;
+            if (hasSettlementEvidence)
+            {
+                var plan = progression.WeekPlan;
+                if (progression.Kind != CareerProgressionKind.Planning ||
+                    plan == null || plan.Season != 1 || plan.Week != 2 || plan.IsConfirmed ||
+                    plan.Slots[0] != null || plan.Slots[1] != null || plan.Slots[2] != null ||
+                    trainingEmphases.Contributions.Count != 0 || pendingMatch != null)
+                {
+                    throw new ArgumentException(
+                        "Settled first-match evidence requires the empty university season 1 week 2 Planning state.",
+                        nameof(progression));
+                }
+            }
+        }
+
+        private static void ValidatePendingMatch(
+            CareerSaveVersions versions,
+            CareerSaveIdentity identity,
+            CareerProgressionState progression,
+            TrainingEmphasisLedger trainingEmphases,
+            IReadOnlyList<OperationReceipt> operationReceipts,
+            PendingCareerMatch pendingMatch)
+        {
+            var plan = progression.WeekPlan;
+            var matchAction = plan?.Slots[2];
+            if (!progression.MatchSessionId.HasValue ||
+                progression.MatchSessionId.Value != pendingMatch.SessionId ||
+                plan == null || plan.Season != 1 || plan.Week != 1 || !plan.IsConfirmed ||
+                plan.Slots[0] == null || plan.Slots[1] == null ||
+                matchAction == null || !matchAction.IsMatch ||
+                !pendingMatch.SourceWeekPlanId.Equals(plan.PlanId) ||
+                !pendingMatch.SourceSlotActionId.Equals(matchAction.SlotActionId) ||
+                !pendingMatch.SourceActionOccurrenceId.Equals(matchAction.OccurrenceId) ||
+                !string.Equals(pendingMatch.ScheduleItemId, matchAction.ContentId, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "PendingMatch must exactly bind the completed first-week plan and slot 3 match.",
+                    nameof(pendingMatch));
+            }
+
+            if (!pendingMatch.CreatedLineageId.Equals(identity.LineageId) ||
+                pendingMatch.CreatedRevision != identity.Revision)
+            {
+                throw new ArgumentException(
+                    "PendingMatch creation identity must equal its containing snapshot identity.",
+                    nameof(pendingMatch));
+            }
+
+            if (pendingMatch.Versions.ContractVersion != CareerMatchLifecycleVersions.ContractV2 ||
+                pendingMatch.Versions.ContentVersion != versions.ContentVersion ||
+                pendingMatch.Versions.RulesetVersion != versions.RulesetVersion ||
+                pendingMatch.Versions.CareerRandomAlgorithmVersion !=
+                    versions.CareerRandomAlgorithmVersion)
+            {
+                throw new ArgumentException(
+                    "PendingMatch Career-applicable versions must equal snapshot versions.",
+                    nameof(pendingMatch));
+            }
+
+            var frozen = trainingEmphases.Freeze();
+            if (frozen.Count != pendingMatch.FrozenTrainingEmphases.Count)
+            {
+                throw new ArgumentException(
+                    "PendingMatch frozen emphasis must equal the current training ledger.",
+                    nameof(pendingMatch));
+            }
+
+            for (var index = 0; index < frozen.Count; index++)
+            {
+                var expected = frozen[index];
+                var actual = pendingMatch.FrozenTrainingEmphases[index];
+                if (expected.Direction != actual.Direction ||
+                    expected.TotalBonusBasisPoints != actual.TotalBonusBasisPoints ||
+                    !SlotIdsEqual(expected.SourceSlotActionIds, actual.SourceSlotActionIds))
+                {
+                    throw new ArgumentException(
+                        "PendingMatch frozen emphasis direction, source order and total are derived invariants.",
+                        nameof(pendingMatch));
+                }
+            }
+
+            OperationReceipt creationReceipt = null;
+            for (var index = 0; index < operationReceipts.Count; index++)
+            {
+                if (operationReceipts[index].OperationId.Equals(pendingMatch.CreationOperationId))
+                {
+                    creationReceipt = operationReceipts[index];
+                    break;
+                }
+            }
+
+            if (creationReceipt == null ||
+                creationReceipt.OperationKind != OperationKind.CreatePendingMatch ||
+                creationReceipt.AppliedRevision != pendingMatch.CreatedRevision ||
+                !creationReceipt.AppliedLineageId.Equals(pendingMatch.CreatedLineageId) ||
+                !PendingTargetMatches(creationReceipt.Target, pendingMatch) ||
+                creationReceipt.OutcomeKind != OperationOutcomeKind.PendingMatchCreated ||
+                creationReceipt.OutcomeSummary.MatchSessionId != pendingMatch.SessionId ||
+                !creationReceipt.OutcomeSummary.ContextDigest.HasValue ||
+                !creationReceipt.OutcomeSummary.ContextDigest.Value.Equals(pendingMatch.ContextDigest))
+            {
+                throw new ArgumentException(
+                    "PendingMatch requires its exact pending-creation operation receipt.",
+                    nameof(operationReceipts));
+            }
+        }
+
+        private static void ValidateNoOrphanPendingCreationReceipts(
+            IReadOnlyList<OperationReceipt> operationReceipts,
+            PendingCareerMatch pendingMatch,
+            IReadOnlyDictionary<Guid, CareerMatchHistoryEntry> historyBySession)
+        {
+            var expectedSessions = new HashSet<Guid>(historyBySession.Keys);
+            if (pendingMatch != null)
+            {
+                expectedSessions.Add(pendingMatch.SessionId);
+            }
+
+            var actualSessions = new HashSet<Guid>();
+            for (var index = 0; index < operationReceipts.Count; index++)
+            {
+                var receipt = operationReceipts[index];
+                if (receipt.OperationKind != OperationKind.CreatePendingMatch)
+                {
+                    continue;
+                }
+
+                if (!receipt.Target.MatchSessionId.HasValue ||
+                    !actualSessions.Add(receipt.Target.MatchSessionId.Value) ||
+                    !expectedSessions.Contains(receipt.Target.MatchSessionId.Value))
+                {
+                    throw new ArgumentException(
+                        "Every pending-creation operation receipt must belong to the current pending match or settled history.",
+                        nameof(operationReceipts));
+                }
+            }
+
+            if (!actualSessions.SetEquals(expectedSessions))
+            {
+                throw new ArgumentException(
+                    "Every pending or settled match requires exactly one pending-creation operation receipt.",
+                    nameof(operationReceipts));
+            }
+        }
+
+        private static bool PendingTargetMatches(
+            OperationReceiptTarget target,
+            PendingCareerMatch pending)
+        {
+            return target.MatchSessionId == pending.SessionId &&
+                   target.WeekPlanId.HasValue &&
+                   target.WeekPlanId.Value.Equals(pending.SourceWeekPlanId) &&
+                   target.SlotActionId.HasValue &&
+                   target.SlotActionId.Value.Equals(pending.SourceSlotActionId) &&
+                   target.ActionOccurrenceId.HasValue &&
+                   target.ActionOccurrenceId.Value.Equals(pending.SourceActionOccurrenceId) &&
+                   string.Equals(target.ScheduleItemId, pending.ScheduleItemId, StringComparison.Ordinal) &&
+                   target.ContextDigest.HasValue &&
+                   target.ContextDigest.Value.Equals(pending.ContextDigest);
+        }
+
+        private static bool HistoryMatchesReceipt(
+            CareerMatchHistoryEntry history,
+            CareerSettlementReceipt receipt)
+        {
+            return history.ContextDigest.Equals(receipt.ContextDigest) &&
+                   history.ResultDigest.Equals(receipt.ResultDigest) &&
+                   history.AppliedLineageId.Equals(receipt.AppliedLineageId) &&
+                   history.AppliedRevision == receipt.AppliedRevision &&
+                   history.SettledAtUtcMs == receipt.SettledAtUtcMs &&
+                   history.SettlementSummary.Equals(receipt.SettlementSummary);
+        }
+
+        private static void ValidateSettledCreationReceipt(
+            CareerMatchHistoryEntry history,
+            IReadOnlyList<OperationReceipt> operationReceipts)
+        {
+            OperationReceipt creation = null;
+            for (var index = 0; index < operationReceipts.Count; index++)
+            {
+                var candidate = operationReceipts[index];
+                if (candidate.OperationKind == OperationKind.CreatePendingMatch &&
+                    candidate.Target.MatchSessionId == history.SessionId)
+                {
+                    creation = candidate;
+                    break;
+                }
+            }
+
+            if (creation == null ||
+                !creation.Target.WeekPlanId.HasValue ||
+                !creation.Target.WeekPlanId.Value.Equals(history.SourceWeekPlanId) ||
+                !creation.Target.SlotActionId.HasValue ||
+                !creation.Target.SlotActionId.Value.Equals(history.SourceSlotActionId) ||
+                !string.Equals(
+                    creation.Target.ScheduleItemId,
+                    history.ScheduleItemId,
+                    StringComparison.Ordinal) ||
+                !creation.Target.ContextDigest.HasValue ||
+                !creation.Target.ContextDigest.Value.Equals(history.ContextDigest) ||
+                creation.OutcomeSummary.MatchSessionId != history.SessionId ||
+                !creation.OutcomeSummary.ContextDigest.HasValue ||
+                !creation.OutcomeSummary.ContextDigest.Value.Equals(history.ContextDigest) ||
+                !creation.AppliedLineageId.Equals(history.AppliedLineageId) ||
+                creation.AppliedRevision >= history.AppliedRevision)
+            {
+                throw new ArgumentException(
+                    "Settled match history requires its earlier exact pending-creation receipt.",
+                    nameof(operationReceipts));
+            }
+
+            ValidateSettledWeekOperationOrder(history, creation, operationReceipts);
+        }
+
+        private static void ValidateSettledWeekOperationOrder(
+            CareerMatchHistoryEntry history,
+            OperationReceipt creation,
+            IReadOnlyList<OperationReceipt> operationReceipts)
+        {
+            OperationReceipt confirmation = null;
+            OperationReceipt sourceAction = null;
+            OperationReceipt eventChoice = null;
+            OperationReceipt secondAction = null;
+            var actionCount = 0;
+            for (var index = 0; index < operationReceipts.Count; index++)
+            {
+                var receipt = operationReceipts[index];
+                var target = receipt.Target;
+                if (!target.WeekPlanId.HasValue ||
+                    !target.WeekPlanId.Value.Equals(history.SourceWeekPlanId))
+                {
+                    continue;
+                }
+
+                switch (receipt.OperationKind)
+                {
+                    case OperationKind.ConfirmWeekPlan:
+                        if (confirmation != null) throw InvalidSettledWeekChain();
+                        confirmation = receipt;
+                        break;
+                    case OperationKind.ResolveEventChoice:
+                        if (eventChoice != null) throw InvalidSettledWeekChain();
+                        eventChoice = receipt;
+                        break;
+                    case OperationKind.ExecuteWeekAction:
+                        actionCount++;
+                        break;
+                }
+            }
+
+            if (confirmation == null || eventChoice == null || actionCount != 2 ||
+                !eventChoice.Target.SlotActionId.HasValue ||
+                !eventChoice.Target.ActionOccurrenceId.HasValue)
+            {
+                throw InvalidSettledWeekChain();
+            }
+
+            for (var index = 0; index < operationReceipts.Count; index++)
+            {
+                var receipt = operationReceipts[index];
+                if (receipt.OperationKind != OperationKind.ExecuteWeekAction ||
+                    !receipt.Target.WeekPlanId.HasValue ||
+                    !receipt.Target.WeekPlanId.Value.Equals(history.SourceWeekPlanId))
+                {
+                    continue;
+                }
+
+                if (receipt.Target.SlotActionId.Equals(eventChoice.Target.SlotActionId) &&
+                    receipt.Target.ActionOccurrenceId.Equals(eventChoice.Target.ActionOccurrenceId))
+                {
+                    sourceAction = receipt;
+                }
+                else
+                {
+                    if (secondAction != null) throw InvalidSettledWeekChain();
+                    secondAction = receipt;
+                }
+            }
+
+            if (sourceAction == null || secondAction == null ||
+                creation.Target.SlotActionId.Equals(sourceAction.Target.SlotActionId) ||
+                creation.Target.SlotActionId.Equals(secondAction.Target.SlotActionId) ||
+                !(confirmation.AppliedRevision < sourceAction.AppliedRevision &&
+                  sourceAction.AppliedRevision < eventChoice.AppliedRevision &&
+                  eventChoice.AppliedRevision < secondAction.AppliedRevision &&
+                  secondAction.AppliedRevision < creation.AppliedRevision))
+            {
+                throw InvalidSettledWeekChain();
+            }
+        }
+
+        private static ArgumentException InvalidSettledWeekChain()
+        {
+            return new ArgumentException(
+                "A settled pending creation must follow confirmation, slot 1, event choice and slot 2 in strict order.",
+                "operationReceipts");
+        }
+
+        private static bool SlotIdsEqual(
+            IReadOnlyList<SlotActionId> left,
+            IReadOnlyList<SlotActionId> right)
+        {
+            if (left.Count != right.Count)
+            {
+                return false;
+            }
+
+            for (var index = 0; index < left.Count; index++)
+            {
+                if (!left[index].Equals(right[index]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         private static void ValidateWeekActionContent(CareerProgressionState progression)
         {
@@ -474,9 +1011,14 @@ namespace Volleyball.Career.Domain
             {
                 executedFreeSlots = 1;
             }
-            else if (progression.Kind == CareerProgressionKind.Planned)
+            else if (progression.Kind == CareerProgressionKind.Planned ||
+                     progression.Kind == CareerProgressionKind.AwaitingMatch)
             {
-                if (progression.NextSlotNumber == 2)
+                if (progression.Kind == CareerProgressionKind.AwaitingMatch)
+                {
+                    executedFreeSlots = 2;
+                }
+                else if (progression.NextSlotNumber == 2)
                 {
                     executedFreeSlots = 1;
                 }
@@ -705,6 +1247,8 @@ namespace Volleyball.Career.Domain
                 case OperationKind.ResolveEventChoice:
                     return "event|" + target.WeekPlanId.Value.Value.ToString("D") + "|" +
                            target.EventOccurrenceId.Value.Value.ToString("D");
+                case OperationKind.CreatePendingMatch:
+                    return "pending|" + target.MatchSessionId.Value.ToString("D");
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(target),
@@ -1013,6 +1557,19 @@ namespace Volleyball.Career.Domain
                 frontierRevision,
                 slotTwoReceipt,
                 "Slot 2 execution must strictly follow the fixed event choice.");
+            if (progression.Kind == CareerProgressionKind.AwaitingMatch)
+            {
+                var pendingReceipt = FindReceipt(
+                    receipts,
+                    OperationKind.CreatePendingMatch,
+                    plan.PlanId,
+                    plan.Slots[2].SlotActionId);
+                frontierRevision = RequireLaterRevision(
+                    frontierRevision,
+                    pendingReceipt,
+                    "Pending match creation must strictly follow slot 2 execution.");
+            }
+
             RequireFrontierRevision(
                 frontierRevision,
                 requiredBusinessFrontier,
@@ -1121,6 +1678,7 @@ namespace Volleyball.Career.Domain
             var slotOneExecuted = false;
             var slotTwoExecuted = false;
             var resolvedSlotOneEventCount = 0;
+            var pendingMatchCreationCount = 0;
 
             for (var index = 0; index < receipts.Count; index++)
             {
@@ -1167,6 +1725,17 @@ namespace Volleyball.Career.Domain
                         resolvedSlotOneEventCount++;
                         break;
 
+                    case OperationKind.CreatePendingMatch:
+                        if (!MatchesAction(target, plan.Slots[2]))
+                        {
+                            throw new ArgumentException(
+                                "Pending match creation must target current-plan slot 3 exactly.",
+                                nameof(receipts));
+                        }
+
+                        pendingMatchCreationCount++;
+                        break;
+
                     default:
                         throw new ArgumentException(
                             "This operation kind cannot target a week plan.",
@@ -1177,7 +1746,7 @@ namespace Volleyball.Career.Domain
             if (!plan.IsConfirmed)
             {
                 if (confirmCount != 0 || slotOneExecuted || slotTwoExecuted ||
-                    resolvedSlotOneEventCount != 0)
+                    resolvedSlotOneEventCount != 0 || pendingMatchCreationCount != 0)
                 {
                     throw new ArgumentException(
                         "An unconfirmed current plan cannot have confirmation, action or event receipts.",
@@ -1197,6 +1766,13 @@ namespace Volleyball.Career.Domain
             switch (progression.Kind)
             {
                 case CareerProgressionKind.Planned:
+                    if (pendingMatchCreationCount != 0)
+                    {
+                        throw new ArgumentException(
+                            "A Planned state cannot already have a pending-match creation receipt.",
+                            nameof(receipts));
+                    }
+
                     ValidatePlannedReceiptFrontier(
                         progression.NextSlotNumber,
                         slotOneExecuted,
@@ -1206,7 +1782,8 @@ namespace Volleyball.Career.Domain
                     return;
 
                 case CareerProgressionKind.AwaitingEventChoice:
-                    if (!slotOneExecuted || slotTwoExecuted || resolvedSlotOneEventCount != 0)
+                    if (!slotOneExecuted || slotTwoExecuted || resolvedSlotOneEventCount != 0 ||
+                        pendingMatchCreationCount != 0)
                     {
                         throw new ArgumentException(
                             "AwaitingEventChoice requires completed slot 1, no slot 2 execution and no resolved current event.",
@@ -1214,6 +1791,17 @@ namespace Volleyball.Career.Domain
                     }
 
                     ValidatePendingEventSource(progression.PendingEvent, plan);
+                    return;
+
+                case CareerProgressionKind.AwaitingMatch:
+                    if (!slotOneExecuted || !slotTwoExecuted || resolvedSlotOneEventCount != 1 ||
+                        pendingMatchCreationCount != 1)
+                    {
+                        throw new ArgumentException(
+                            "AwaitingMatch requires both free slots, the fixed event and one pending creation receipt.",
+                            nameof(receipts));
+                    }
+
                     return;
 
                 default:

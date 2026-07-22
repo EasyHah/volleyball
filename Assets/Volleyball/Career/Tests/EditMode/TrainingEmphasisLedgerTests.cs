@@ -86,8 +86,7 @@ namespace Volleyball.Career.EditModeTests
         [Test]
         public void EmphasisTypes_DoNotAliasPreMatchPriority()
         {
-            var names = typeof(TrainingEmphasisLedger).Assembly.GetTypes()
-                .Where(x => x.Namespace == "Volleyball.Career.Domain")
+            var names = new[] { typeof(TrainingEmphasisLedger), typeof(FrozenTrainingEmphasis) }
                 .SelectMany(x => x.GetMembers())
                 .Select(x => x.Name)
                 .ToArray();

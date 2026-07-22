@@ -99,7 +99,8 @@ namespace Volleyball.Career.EditModeTests
                         CareerProgressionKind.Tryout,
                         CareerProgressionKind.Planning,
                         CareerProgressionKind.Planned,
-                        CareerProgressionKind.AwaitingEventChoice
+                        CareerProgressionKind.AwaitingEventChoice,
+                        CareerProgressionKind.AwaitingMatch
                     }));
             Assert.That(typeof(CareerProgressionState).GetProperty("SlotNumber"), Is.Null);
             Assert.That(typeof(CareerProgressionState).GetProperty("OperationId"), Is.Null);

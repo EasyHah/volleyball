@@ -57,7 +57,10 @@ namespace Volleyball.Career.Domain
                 fatigue,
                 mindset,
                 coachTrust,
-                receipts);
+                receipts,
+                prior.PendingMatch,
+                prior.MatchHistory,
+                prior.SettlementReceipts);
         }
     }
 }
