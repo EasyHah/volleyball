@@ -42,6 +42,7 @@ namespace Volleyball.Career.EditModeTests
                 draft,
                 onboarding,
                 CareerProgressionState.Created(),
+                TrainingEmphasisLedger.Empty,
                 null,
                 null,
                 null,
@@ -105,6 +106,7 @@ namespace Volleyball.Career.EditModeTests
                 source.PlayerDraft,
                 onboarding,
                 CareerProgressionState.Tryout(2),
+                source.TrainingEmphases,
                 null,
                 null,
                 null,
@@ -142,12 +144,14 @@ namespace Volleyball.Career.EditModeTests
                     new CareerWeekActionState(
                         new SlotActionId(Guid.NewGuid()),
                         new OccurrenceId(Guid.NewGuid()),
-                        CareerWeekActionKind.SpecializedTraining),
+                        CareerWeekActionKind.SpecializedTraining,
+                        "week_action.specialized.spike"),
                     null,
                     new CareerWeekActionState(
                         new SlotActionId(Guid.NewGuid()),
                         new OccurrenceId(Guid.NewGuid()),
-                        CareerWeekActionKind.Match)
+                        CareerWeekActionKind.Match,
+                        "schedule.u1w1.match.01")
                 },
                 false);
             var receipts = new List<OperationReceipt>
@@ -203,6 +207,7 @@ namespace Volleyball.Career.EditModeTests
                 draft,
                 onboarding,
                 CareerProgressionState.Planning(plan),
+                TrainingEmphasisLedger.Empty,
                 player,
                 new TeamId("university-blue"),
                 PotentialGrade.B,
@@ -234,6 +239,7 @@ namespace Volleyball.Career.EditModeTests
                 source.PlayerDraft,
                 source.Onboarding,
                 source.Progression,
+                source.TrainingEmphases,
                 source.Player,
                 source.TeamId,
                 source.PotentialGrade,
@@ -241,6 +247,139 @@ namespace Volleyball.Career.EditModeTests
                 source.Mindset,
                 source.CoachTrust,
                 source.OperationReceipts);
+        }
+
+        public static CareerSaveSnapshot PlannedAfterFirstTraining(
+            ProfileId profileId,
+            SaveId saveId,
+            LineageId lineageId)
+        {
+            var planning = PlanningSnapshot(profileId, saveId, lineageId);
+            var plan = new CareerWeekPlanState(
+                planning.Progression.WeekPlan.PlanId,
+                1,
+                1,
+                new[]
+                {
+                    planning.Progression.WeekPlan.Slots[0],
+                    new CareerWeekActionState(
+                        new SlotActionId(Guid.NewGuid()),
+                        new OccurrenceId(Guid.NewGuid()),
+                        CareerWeekActionKind.StrengthTraining,
+                        "week_action.strength.jump"),
+                    planning.Progression.WeekPlan.Slots[2]
+                },
+                true);
+            var receipts = new List<OperationReceipt>(planning.OperationReceipts)
+            {
+                Receipt(
+                    OperationKind.ConfirmWeekPlan,
+                    OperationReceiptTarget.ForWeekPlanConfirmation(plan.PlanId),
+                    lineageId,
+                    5,
+                    OperationOutcomeSummary.ForWeekPlanConfirmed()),
+                Receipt(
+                    OperationKind.ExecuteWeekAction,
+                    OperationReceiptTarget.ForWeekAction(
+                        plan.PlanId,
+                        plan.Slots[0].SlotActionId,
+                        plan.Slots[0].OccurrenceId),
+                    lineageId,
+                    6,
+                    OperationOutcomeSummary.ForSlotCompleted(
+                        new CareerAttributeGrowthDelta(120, 0, 0, 0, 0, 0, 0, 0),
+                        8,
+                        0,
+                        0)),
+                Receipt(
+                    OperationKind.ResolveEventChoice,
+                    OperationReceiptTarget.ForEventChoice(
+                        plan.PlanId,
+                        plan.Slots[0].SlotActionId,
+                        plan.Slots[0].OccurrenceId,
+                        new OccurrenceId(Guid.NewGuid()),
+                        "event.team_meal.option.attend"),
+                    lineageId,
+                    7,
+                    OperationOutcomeSummary.ForEventChoiceApplied(
+                        new CareerAttributeGrowthDelta(0, 0, 0, 0, 0, 0, 0, 0),
+                        4,
+                        6,
+                        3))
+            };
+            var emphases = TrainingEmphasisLedger.Empty.AddExecutedTraining(
+                plan.Slots[0],
+                CareerWeekActionCatalogV1.Create());
+            return new CareerSaveSnapshot(
+                planning.Versions,
+                new CareerSaveIdentity(
+                    profileId,
+                    saveId,
+                    lineageId,
+                    7,
+                    planning.Identity.CreatedAtUtcMs,
+                    planning.Identity.UpdatedAtUtcMs + 3,
+                    Hash('0')),
+                planning.CareerSeed,
+                planning.CareerName,
+                planning.PlayerDraft,
+                planning.Onboarding,
+                CareerProgressionState.Planned(plan, 2),
+                emphases,
+                planning.Player,
+                planning.TeamId,
+                planning.PotentialGrade,
+                planning.Fatigue,
+                planning.Mindset,
+                planning.CoachTrust,
+                receipts);
+        }
+
+        public static CareerSaveSnapshot AfterSecondTraining(CareerSaveSnapshot source)
+        {
+            var plan = source.Progression.WeekPlan;
+            var receipts = new List<OperationReceipt>(source.OperationReceipts)
+            {
+                Receipt(
+                    OperationKind.ExecuteWeekAction,
+                    OperationReceiptTarget.ForWeekAction(
+                        plan.PlanId,
+                        plan.Slots[1].SlotActionId,
+                        plan.Slots[1].OccurrenceId),
+                    source.Identity.LineageId,
+                    source.Identity.Revision + 1,
+                    OperationOutcomeSummary.ForSlotCompleted(
+                        new CareerAttributeGrowthDelta(0, 0, 0, 0, 0, 0, 100, 0),
+                        12,
+                        0,
+                        0))
+            };
+            var emphases = source.TrainingEmphases.AddExecutedTraining(
+                plan.Slots[1],
+                CareerWeekActionCatalogV1.Create());
+            return new CareerSaveSnapshot(
+                source.Versions,
+                new CareerSaveIdentity(
+                    source.Identity.ProfileId,
+                    source.Identity.SaveId,
+                    source.Identity.LineageId,
+                    source.Identity.Revision + 1,
+                    source.Identity.CreatedAtUtcMs,
+                    source.Identity.UpdatedAtUtcMs + 1,
+                    Hash('0')),
+                source.CareerSeed,
+                source.CareerName,
+                source.PlayerDraft,
+                source.Onboarding,
+                CareerProgressionState.Planned(plan, 3),
+                emphases,
+                source.Player,
+                source.TeamId,
+                source.PotentialGrade,
+                source.Fatigue,
+                source.Mindset,
+                source.CoachTrust,
+                receipts);
         }
 
         public static LocalPlayerProfile Profile(
@@ -298,7 +437,7 @@ namespace Volleyball.Career.EditModeTests
                 new OperationId(Guid.NewGuid()),
                 operationKind,
                 target,
-                Hash((char)('a' + revision)),
+                Hash((char)('a' + (revision % 6))),
                 lineageId,
                 revision,
                 revision,

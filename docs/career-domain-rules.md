@@ -155,6 +155,29 @@ College Football 的学生生涯则证明非训练活动只有在存在明确期
 首个一周闭环使用配置规定的固定负荷。后续玩法验证篇才加入“标准 / 高强度”两档。负荷和成长修正
 全部来自版本化规则，不散落在 UI 或 ScriptableObject 的运行时状态中。
 
+### 5.2 第一周封闭内容与数值 V1
+
+`contentVersion = 1 / rulesetVersion = 1` 的行动内容按以下稳定顺序封闭；方向属于内容 ID，
+不扩张 `CareerWeekActionKind`：
+
+| content ID | 类别 | 方向 | 基础成长 XP | 疲劳 | 心态 | 信任 |
+| --- | --- | --- | ---: | ---: | --- | ---: |
+| `week_action.specialized.spike` | 专项训练 | spike | 120 | +8 | 0 | 0 |
+| `week_action.specialized.serve` | 专项训练 | serve | 120 | +8 | 0 | 0 |
+| `week_action.specialized.reception` | 专项训练 | reception | 120 | +8 | 0 | 0 |
+| `week_action.specialized.defense` | 专项训练 | defense | 120 | +8 | 0 | 0 |
+| `week_action.specialized.block` | 专项训练 | block | 120 | +8 | 0 | 0 |
+| `week_action.strength.movement` | 力量训练 | movement | 100 | +12 | 0 | 0 |
+| `week_action.strength.jump` | 力量训练 | jump | 100 | +12 | 0 | 0 |
+| `week_action.strength.stamina` | 力量训练 | stamina | 100 | +12 | 0 | 0 |
+| `week_action.team_practice.standard` | 团队合练 | 无 | 8 项各 20 | +6 | 0 | +5 |
+| `week_action.rest.standard` | 休息 | 无 | 0 | -18 | 每次最多 5 向 50 靠近 | 0 |
+| `schedule.u1w1.match.01` | 系统比赛 | 无 | 0 | 0 | 0 | 0 |
+
+潜力是本阶段唯一成长效率乘数：D/C/B/A/S 分别为
+`8000/9000/10000/11000/12000` basis points；正成长使用整数向下取整。成长只进入
+`GrowthExperience`，能力 basis points 不变；成长和状态均按合法上限截断并返回实际差值。
+
 学业和社交不是常驻行动。大学阶段的学业以后通过考试、补课或奖学金事件制造阶段性时间压力，
 不建立 GPA 或独立学业养成树。社交始终通过具体人物和情境事件出现。
 
@@ -174,6 +197,14 @@ College Football 的学生生涯则证明非训练活动只有在存在明确期
 
 普通聚会或对话不得直接随机增加扣球、弹跳等永久能力。选择前应显示主要收益和风险方向，
 具体数值可在配置上限内变化。相同存档状态与相同选择必须得到相同结果，不能通过反复读档刷新。
+
+首个事件内容封闭为 `event.team_meal`，选项为
+`event.team_meal.option.attend` 与 `event.team_meal.option.extra_practice`。各选项以自身稳定 ID
+作为 `event` 随机实体 ID，在 `[0,10000)` 解析：attend 的 `0..4999` 为疲劳/心态/信任
+`+2/+8/+2`，`5000..9999` 为 `+4/+6/+3`；extra_practice 的两个区间分别为 Spike 基础
+XP `+60/+80`、疲劳 `+8/+10`、心态 `+1/-2`、信任 `+5/+6`。只有 extra_practice
+产生永久成长 XP，且同样应用潜力乘数。规范 attend roll `6791` 解析为无成长、疲劳 `+4`、
+心态 `+6`、信任 `+3`（再按当前状态截断）。
 
 ## 7. 训练与比赛表现联动
 

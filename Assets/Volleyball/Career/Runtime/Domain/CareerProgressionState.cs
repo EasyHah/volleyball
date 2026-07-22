@@ -23,7 +23,8 @@ namespace Volleyball.Career.Domain
         public CareerWeekActionState(
             SlotActionId slotActionId,
             OccurrenceId occurrenceId,
-            CareerWeekActionKind kind)
+            CareerWeekActionKind kind,
+            string contentId)
         {
             CareerSaveModelGuard.StableId(slotActionId.Value, nameof(slotActionId));
             CareerSaveModelGuard.StableId(occurrenceId.Value, nameof(occurrenceId));
@@ -32,6 +33,7 @@ namespace Volleyball.Career.Domain
             SlotActionId = slotActionId;
             OccurrenceId = occurrenceId;
             Kind = kind;
+            ContentId = CareerSaveModelGuard.BusinessId(contentId, nameof(contentId));
         }
 
         public SlotActionId SlotActionId { get; }
@@ -40,11 +42,13 @@ namespace Volleyball.Career.Domain
 
         public CareerWeekActionKind Kind { get; }
 
+        public string ContentId { get; }
+
         public bool IsMatch => Kind == CareerWeekActionKind.Match;
 
         internal CareerWeekActionState Copy()
         {
-            return new CareerWeekActionState(SlotActionId, OccurrenceId, Kind);
+            return new CareerWeekActionState(SlotActionId, OccurrenceId, Kind, ContentId);
         }
     }
 
@@ -221,7 +225,8 @@ namespace Volleyball.Career.Domain
                     slots[index] = new CareerWeekActionState(
                         action.SlotActionId,
                         action.OccurrenceId,
-                        action.Kind);
+                        action.Kind,
+                        action.ContentId);
                 }
             }
 
@@ -266,6 +271,35 @@ namespace Volleyball.Career.Domain
         public long Jump { get; }
 
         public long Stamina { get; }
+
+        public long Total
+        {
+            get
+            {
+                checked
+                {
+                    return Spike + Serve + Reception + Defense +
+                           Block + Movement + Jump + Stamina;
+                }
+            }
+        }
+
+        public long Get(CareerTrainingDirection direction)
+        {
+            switch (direction)
+            {
+                case CareerTrainingDirection.Spike: return Spike;
+                case CareerTrainingDirection.Serve: return Serve;
+                case CareerTrainingDirection.Reception: return Reception;
+                case CareerTrainingDirection.Defense: return Defense;
+                case CareerTrainingDirection.Block: return Block;
+                case CareerTrainingDirection.Movement: return Movement;
+                case CareerTrainingDirection.Jump: return Jump;
+                case CareerTrainingDirection.Stamina: return Stamina;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(direction), direction, null);
+            }
+        }
 
         internal CareerAttributeGrowthDelta Copy()
         {

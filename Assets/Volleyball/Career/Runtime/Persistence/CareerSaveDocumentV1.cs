@@ -13,6 +13,7 @@ namespace Volleyball.Career.Persistence
         public CareerPlayerDraftDocumentV1 playerDraft;
         public TryoutOnboardingDocumentV1 onboarding;
         public CareerProgressionDocumentV1 progression;
+        public TrainingEmphasisContributionDocumentV1[] trainingEmphases;
         public CareerPlayerDocumentV1 player;
         public string teamId;
         public string potentialGrade;
@@ -117,6 +118,15 @@ namespace Volleyball.Career.Persistence
         public string slotActionId;
         public string occurrenceId;
         public string kind;
+        public string contentId;
+    }
+
+    [Serializable]
+    public sealed class TrainingEmphasisContributionDocumentV1
+    {
+        public string sourceSlotActionId;
+        public string direction;
+        public int bonusBasisPoints;
     }
 
     [Serializable]

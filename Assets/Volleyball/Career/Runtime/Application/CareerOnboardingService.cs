@@ -458,7 +458,8 @@ namespace Volleyball.Career.Application
             var match = new CareerWeekActionState(
                 command.EnrollmentIds.MatchSlotActionId,
                 command.EnrollmentIds.MatchOccurrenceId,
-                CareerWeekActionKind.Match);
+                CareerWeekActionKind.Match,
+                "schedule.u1w1.match.01");
             var plan = new CareerWeekPlanState(
                 command.EnrollmentIds.WeekPlanId,
                 1,

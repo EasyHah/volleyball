@@ -142,6 +142,135 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void Snapshot_RejectsEmphasesBeforeExecutionAndMissingOrForeignExecutedSources()
+        {
+            var arbitraryContribution = new TrainingEmphasisLedger(new[]
+            {
+                new TrainingEmphasisContribution(
+                    NewSlotActionId(),
+                    CareerTrainingDirection.Spike,
+                    1000)
+            });
+            Assert.That(
+                () => CreateSnapshot(
+                    CareerProgressionState.Created(),
+                    false,
+                    trainingEmphases: arbitraryContribution),
+                Throws.ArgumentException);
+
+            var draftPlan = CreateDraftPlan();
+            var draftContribution = new TrainingEmphasisLedger(new[]
+            {
+                new TrainingEmphasisContribution(
+                    draftPlan.Slots[0].SlotActionId,
+                    CareerTrainingDirection.Spike,
+                    1000)
+            });
+            Assert.That(
+                () => CreateSnapshot(
+                    CareerProgressionState.Planning(draftPlan),
+                    true,
+                    trainingEmphases: draftContribution),
+                Throws.ArgumentException);
+
+            var notExecutedPlan = CreateConfirmedPlan();
+            Assert.That(
+                () => CreateSnapshot(
+                    CareerProgressionState.Planned(notExecutedPlan, 1),
+                    true,
+                    trainingEmphases: new TrainingEmphasisLedger(new[]
+                    {
+                        new TrainingEmphasisContribution(
+                            notExecutedPlan.Slots[0].SlotActionId,
+                            CareerTrainingDirection.Spike,
+                            1000)
+                    })),
+                Throws.ArgumentException);
+
+            var plan = CreateConfirmedPlan();
+            var awaiting = CareerProgressionState.AwaitingEventChoice(
+                plan,
+                CreatePendingEvent(plan));
+            Assert.That(
+                () => CreateSnapshot(
+                    awaiting,
+                    true,
+                    trainingEmphases: TrainingEmphasisLedger.Empty),
+                Throws.ArgumentException);
+            Assert.That(
+                () => CreateSnapshot(
+                    awaiting,
+                    true,
+                    trainingEmphases: new TrainingEmphasisLedger(new[]
+                    {
+                        new TrainingEmphasisContribution(
+                            NewSlotActionId(),
+                            CareerTrainingDirection.Spike,
+                            1000)
+                    })),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void Snapshot_RejectsWrongEmphasisDirectionValueOrderRepeatAndNonTrainingSource()
+        {
+            var repeatedPlan = ConfirmedPlan(
+                NewActionState(CareerWeekActionKind.SpecializedTraining),
+                NewActionState(CareerWeekActionKind.SpecializedTraining));
+            var repeatedProgression = CareerProgressionState.Planned(repeatedPlan, 3);
+            Assert.That(
+                () => CreateSnapshot(
+                    repeatedProgression,
+                    true,
+                    trainingEmphases: new TrainingEmphasisLedger(new[]
+                    {
+                        new TrainingEmphasisContribution(repeatedPlan.Slots[0].SlotActionId, CareerTrainingDirection.Spike, 1000),
+                        new TrainingEmphasisContribution(repeatedPlan.Slots[1].SlotActionId, CareerTrainingDirection.Spike, 1000)
+                    })),
+                Throws.ArgumentException);
+
+            var distinctPlan = ConfirmedPlan(
+                NewActionState(CareerWeekActionKind.SpecializedTraining),
+                NewActionState(CareerWeekActionKind.StrengthTraining));
+            var distinctProgression = CareerProgressionState.Planned(distinctPlan, 3);
+            Assert.That(
+                () => CreateSnapshot(
+                    distinctProgression,
+                    true,
+                    trainingEmphases: new TrainingEmphasisLedger(new[]
+                    {
+                        new TrainingEmphasisContribution(distinctPlan.Slots[0].SlotActionId, CareerTrainingDirection.Serve, 1000),
+                        new TrainingEmphasisContribution(distinctPlan.Slots[1].SlotActionId, CareerTrainingDirection.Jump, 1000)
+                    })),
+                Throws.ArgumentException);
+            Assert.That(
+                () => CreateSnapshot(
+                    distinctProgression,
+                    true,
+                    trainingEmphases: new TrainingEmphasisLedger(new[]
+                    {
+                        new TrainingEmphasisContribution(distinctPlan.Slots[1].SlotActionId, CareerTrainingDirection.Jump, 1000),
+                        new TrainingEmphasisContribution(distinctPlan.Slots[0].SlotActionId, CareerTrainingDirection.Spike, 1000)
+                    })),
+                Throws.ArgumentException);
+
+            var nonTrainingPlan = ConfirmedPlan(
+                NewActionState(CareerWeekActionKind.TeamPractice),
+                NewActionState(CareerWeekActionKind.Rest));
+            Assert.That(
+                () => CreateSnapshot(
+                    CareerProgressionState.AwaitingEventChoice(
+                        nonTrainingPlan,
+                        CreatePendingEvent(nonTrainingPlan)),
+                    true,
+                    trainingEmphases: new TrainingEmphasisLedger(new[]
+                    {
+                        new TrainingEmphasisContribution(nonTrainingPlan.Slots[0].SlotActionId, CareerTrainingDirection.Spike, 1000)
+                    })),
+                Throws.ArgumentException);
+        }
+
+        [Test]
         public void WeekPlanState_EnforcesSchemaV1MatchLayout()
         {
             var first = NewActionState(CareerWeekActionKind.Rest);
@@ -205,11 +334,13 @@ namespace Volleyball.Career.EditModeTests
             var duplicateAction = new CareerWeekActionState(
                 first.SlotActionId,
                 NewOccurrenceId(),
-                CareerWeekActionKind.TeamPractice);
+                CareerWeekActionKind.TeamPractice,
+                "week_action.team_practice.standard");
             var duplicateOccurrence = new CareerWeekActionState(
                 NewSlotActionId(),
                 first.OccurrenceId,
-                CareerWeekActionKind.StrengthTraining);
+                CareerWeekActionKind.StrengthTraining,
+                "week_action.strength.jump");
 
             Assert.That(
                 () => new CareerWeekPlanState(
@@ -468,7 +599,8 @@ namespace Volleyball.Career.EditModeTests
                     new CareerWeekActionState(
                         NewSlotActionId(),
                         onboarding.Stages[0].OccurrenceId,
-                        CareerWeekActionKind.SpecializedTraining),
+                        CareerWeekActionKind.SpecializedTraining,
+                        "week_action.specialized.spike"),
                     NewActionState(CareerWeekActionKind.Rest),
                     NewActionState(CareerWeekActionKind.Match)
                 },
@@ -1193,7 +1325,8 @@ namespace Volleyball.Career.EditModeTests
             CareerPlayerRecord player = null,
             PotentialGrade potentialGrade = PotentialGrade.B,
             int fatigue = 20,
-            bool addOnboardingReceipts = true)
+            bool addOnboardingReceipts = true,
+            TrainingEmphasisLedger trainingEmphases = null)
         {
             identity = identity ?? CreateIdentity();
             draft = draft ?? CreateDraft();
@@ -1227,6 +1360,7 @@ namespace Volleyball.Career.EditModeTests
                 draft,
                 onboarding,
                 progression,
+                trainingEmphases ?? EmphasesFor(progression),
                 player,
                 includeCompletePlayer ? new TeamId("university-blue") : (TeamId?)null,
                 includeCompletePlayer ? potentialGrade : (PotentialGrade?)null,
@@ -1651,9 +1785,65 @@ namespace Volleyball.Career.EditModeTests
                 true);
         }
 
+        private static CareerWeekPlanState ConfirmedPlan(
+            CareerWeekActionState first,
+            CareerWeekActionState second)
+        {
+            return new CareerWeekPlanState(
+                NewWeekPlanId(),
+                1,
+                1,
+                new[]
+                {
+                    first,
+                    second,
+                    NewActionState(CareerWeekActionKind.Match)
+                },
+                true);
+        }
+
         private static CareerWeekActionState NewActionState(CareerWeekActionKind kind)
         {
-            return new CareerWeekActionState(NewSlotActionId(), NewOccurrenceId(), kind);
+            return new CareerWeekActionState(
+                NewSlotActionId(),
+                NewOccurrenceId(),
+                kind,
+                ContentIdFor(kind));
+        }
+
+        private static string ContentIdFor(CareerWeekActionKind kind)
+        {
+            switch (kind)
+            {
+                case CareerWeekActionKind.SpecializedTraining: return "week_action.specialized.spike";
+                case CareerWeekActionKind.StrengthTraining: return "week_action.strength.jump";
+                case CareerWeekActionKind.TeamPractice: return "week_action.team_practice.standard";
+                case CareerWeekActionKind.Rest: return "week_action.rest.standard";
+                case CareerWeekActionKind.Match: return "schedule.u1w1.match.01";
+                default: throw new ArgumentOutOfRangeException(nameof(kind));
+            }
+        }
+
+        private static TrainingEmphasisLedger EmphasesFor(CareerProgressionState progression)
+        {
+            var count = progression.Kind == CareerProgressionKind.AwaitingEventChoice
+                ? 1
+                : progression.Kind == CareerProgressionKind.Planned
+                    ? Math.Max(0, progression.NextSlotNumber - 1)
+                    : 0;
+            var result = TrainingEmphasisLedger.Empty;
+            var catalog = CareerWeekActionCatalogV1.Create();
+            for (var index = 0; index < count && index < 2; index++)
+            {
+                var action = progression.WeekPlan.Slots[index];
+                var definition = catalog.Find(action.ContentId);
+                if (definition.Direction.HasValue)
+                {
+                    result = result.AddExecutedTraining(action, catalog);
+                }
+            }
+
+            return result;
         }
 
         private static Sha256Digest Digest(char value = 'a')

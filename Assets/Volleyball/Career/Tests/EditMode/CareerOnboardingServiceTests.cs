@@ -177,7 +177,9 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(plan.Slots[0], Is.Null);
             Assert.That(plan.Slots[1], Is.Null);
             Assert.That(plan.Slots[2].Kind, Is.EqualTo(CareerWeekActionKind.Match));
+            Assert.That(plan.Slots[2].ContentId, Is.EqualTo("schedule.u1w1.match.01"));
             Assert.That(plan.Slots[2].OccurrenceId, Is.EqualTo(enrollment.MatchOccurrenceId));
+            Assert.That(stage3.Snapshot.TrainingEmphases.Contributions, Is.Empty);
             Assert.That(random.Count, Is.EqualTo(11));
             Assert.That(repository.CommitCount, Is.EqualTo(3));
 

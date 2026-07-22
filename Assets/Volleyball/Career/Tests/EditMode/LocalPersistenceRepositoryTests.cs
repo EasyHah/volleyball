@@ -91,6 +91,56 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void CareerRepository_CommitAndRecoveryPreserveTrainingEmphasisLedger()
+        {
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var lineageId = new LineageId(Guid.NewGuid());
+            var prior = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.PlannedAfterFirstTraining(
+                    profileId,
+                    saveId,
+                    lineageId));
+            var primaryPath = _paths.CareerPath(profileId, saveId);
+            _system.CreateDirectory(_paths.CareersDirectory(profileId));
+            _system.CreateFileDurably(primaryPath, CareerSaveJsonCodec.Serialize(prior));
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var loaded = repository.Load(profileId, saveId);
+            var next = CareerPersistenceTestData.AfterSecondTraining(loaded.Snapshot);
+            var operationId = next.OperationReceipts[next.OperationReceipts.Count - 1].OperationId;
+
+            var committed = repository.Commit(
+                profileId,
+                saveId,
+                loaded.Snapshot.Identity.VersionToken,
+                next,
+                operationId);
+
+            Assert.That(committed.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(committed.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(2));
+            Assert.That(committed.Snapshot.TrainingEmphases.Contributions[1].Direction,
+                Is.EqualTo(CareerTrainingDirection.Jump));
+
+            var corruptBytes = new byte[] { 0xff };
+            _system.OverwriteFileDurably(primaryPath, corruptBytes);
+            var recoveryAvailable = repository.Load(profileId, saveId);
+            var recovered = repository.RecoverFromBackup(
+                profileId,
+                saveId,
+                recoveryAvailable.RecoverableBackup.Value,
+                RawHash(corruptBytes),
+                new OperationId(Guid.NewGuid()),
+                committed.Snapshot.Identity.UpdatedAtUtcMs + 1,
+                new LineageId(Guid.NewGuid()));
+
+            Assert.That(recoveryAvailable.Kind, Is.EqualTo(PersistenceResultKind.RecoveryAvailable));
+            Assert.That(recovered.Kind, Is.EqualTo(PersistenceResultKind.Loaded));
+            Assert.That(recovered.Snapshot.TrainingEmphases.Contributions, Has.Count.EqualTo(1));
+            Assert.That(recovered.Snapshot.TrainingEmphases.Contributions[0].Direction,
+                Is.EqualTo(CareerTrainingDirection.Spike));
+        }
+
+        [Test]
         public void CareerRepository_ReplaceThrowAfterPublishUsesRescanAndCommits()
         {
             var faults = new FaultInjectingAtomicFileSystem(_system);

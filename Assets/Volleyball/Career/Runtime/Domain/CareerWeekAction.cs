@@ -106,7 +106,8 @@ namespace Volleyball.Career.Domain
         public CareerWeekAction(
             SlotActionId slotActionId,
             OccurrenceId occurrenceId,
-            CareerWeekActionKind kind)
+            CareerWeekActionKind kind,
+            string contentId)
         {
             CareerIdentityGuard.NotEmpty(slotActionId.Value, nameof(slotActionId));
             CareerIdentityGuard.NotEmpty(occurrenceId.Value, nameof(occurrenceId));
@@ -118,6 +119,7 @@ namespace Volleyball.Career.Domain
             SlotActionId = slotActionId;
             OccurrenceId = occurrenceId;
             Kind = kind;
+            ContentId = CareerSaveModelGuard.BusinessId(contentId, nameof(contentId));
         }
 
         public SlotActionId SlotActionId { get; }
@@ -125,6 +127,8 @@ namespace Volleyball.Career.Domain
         public OccurrenceId OccurrenceId { get; }
 
         public CareerWeekActionKind Kind { get; }
+
+        public string ContentId { get; }
 
         public bool IsMatch => Kind == CareerWeekActionKind.Match;
     }

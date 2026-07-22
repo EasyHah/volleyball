@@ -12,9 +12,9 @@ namespace Volleyball.Career.EditModeTests
     {
         private const long MaximumIJsonSafeInteger = 9007199254740991L;
         private const string GoldenHash =
-            "21e935e98a4fdc6f3158f22b5adb115f5e0eab94ce755a64ba4882d676b4a98a";
+            "d9e9464b0eeeea3c848efff9522e2d41e3c14db40de2c7db40b2daaa5378d237";
 
-        private const string GoldenBase64 =
+        private const string PreStage4GoldenBase64 =
             "eyJ2ZXJzaW9ucyI6eyJzY2hlbWFWZXJzaW9uIjoxLCJjb250ZW50VmVyc2lvbiI6MSwicnVsZXNldFZlcnNpb24iOjEsImNhcmVl" +
             "clJhbmRvbUFsZ29yaXRobVZlcnNpb24iOjF9LCJpZGVudGl0eSI6eyJwcm9maWxlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAw" +
             "MC0wMDAwMDAwMDAwMDEiLCJzYXZlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDIiLCJsaW5lYWdlSWQi" +
@@ -45,6 +45,9 @@ namespace Volleyball.Career.EditModeTests
             "MDk5MSwib3V0Y29tZUtpbmQiOiJjYXJlZXJfY3JlYXRlZCIsIm91dGNvbWVTdW1tYXJ5Ijp7InRyeW91dFJlc29sdmVkT3V0cHV0" +
             "cyI6W10sImdyb3d0aEV4cGVyaWVuY2VEZWx0YSI6bnVsbCwiZmF0aWd1ZURlbHRhIjpudWxsLCJtaW5kc2V0RGVsdGEiOm51bGws" +
             "ImNvYWNoVHJ1c3REZWx0YSI6bnVsbH19XX0=";
+
+        private const string GoldenBase64 =
+            "eyJ2ZXJzaW9ucyI6eyJzY2hlbWFWZXJzaW9uIjoxLCJjb250ZW50VmVyc2lvbiI6MSwicnVsZXNldFZlcnNpb24iOjEsImNhcmVlclJhbmRvbUFsZ29yaXRobVZlcnNpb24iOjF9LCJpZGVudGl0eSI6eyJwcm9maWxlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJzYXZlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDIiLCJsaW5lYWdlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDMiLCJyZXZpc2lvbiI6MSwicmVzdG9yZWRGcm9tVmVyc2lvblRva2VuIjpudWxsLCJjcmVhdGVkQXRVdGNNcyI6MCwidXBkYXRlZEF0VXRjTXMiOjkwMDcxOTkyNTQ3NDA5OTF9LCJpbnRlZ3JpdHkiOnsic25hcHNob3RIYXNoIjoiZDllOTQ2NGIwZWVlZWEzYzg0OGVmZmY5NTIyZTJkNDFlM2MxNGRiNDBkZTJjN2RiNDBiMmRhYWE1Mzc4ZDIzNyJ9LCJjYXJlZXJTZWVkIjoiMDAwMTAyMDMwNDA1MDYwNzA4MDkwYTBiMGMwZDBlMGYxMDExMTIxMzE0MTUxNjE3MTgxOTFhMWIxYzFkMWUxZiIsImNhcmVlck5hbWUiOiJFc2NhcGVzOlwiXFwvIENvbnRyb2xzOlx1MDAwMFx1MDAwMVx1MDAwMlx1MDAwM1x1MDAwNFx1MDAwNVx1MDAwNlx1MDAwN1xiXHRcblx1MDAwYlxmXHJcdTAwMGVcdTAwMGZcdTAwMTBcdTAwMTFcdTAwMTJcdTAwMTNcdTAwMTRcdTAwMTVcdTAwMTZcdTAwMTdcdTAwMThcdTAwMTlcdTAwMWFcdTAwMWJcdTAwMWNcdTAwMWRcdTAwMWVcdTAwMWYgVW5pY29kZTrpm6rwn5iAIMOpIGXMgSIsInBsYXllckRyYWZ0Ijp7InBsYXllcklkIjoicGxheWVyLmFscGhhIiwiZGlzcGxheU5hbWUiOiJQbGF5ZXIg6Zuq8J+YgCIsImplcnNleU51bWJlciI6MTJ9LCJvbmJvYXJkaW5nIjp7InN0YWdlcyI6W3sic3RhZ2VOdW1iZXIiOjEsIm9jY3VycmVuY2VJZCI6IjAwMDAwMDAwLTAwMDAtMDAwMC0wMDAwLTAwMDAwMDAwMDEwMSIsInJhbmRvbVZlcnNpb24iOjEsImNob2ljZUlkIjpudWxsLCJyZXNvbHZlZE91dHB1dHMiOltdfSx7InN0YWdlTnVtYmVyIjoyLCJvY2N1cnJlbmNlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAxMDIiLCJyYW5kb21WZXJzaW9uIjoxLCJjaG9pY2VJZCI6bnVsbCwicmVzb2x2ZWRPdXRwdXRzIjpbXX0seyJzdGFnZU51bWJlciI6Mywib2NjdXJyZW5jZUlkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMTAzIiwicmFuZG9tVmVyc2lvbiI6MSwiY2hvaWNlSWQiOm51bGwsInJlc29sdmVkT3V0cHV0cyI6W119XSwibmV4dFN0YWdlTnVtYmVyIjoxLCJpc0Zvcm1hbGx5RW5yb2xsZWQiOmZhbHNlfSwicHJvZ3Jlc3Npb24iOnsia2luZCI6ImNhcmVlcl9jcmVhdGVkIiwicGhhc2UiOiJ1bml2ZXJzaXR5IiwidHJ5b3V0U3RhZ2UiOjAsIndlZWtQbGFuIjpudWxsLCJuZXh0U2xvdE51bWJlciI6MCwicGVuZGluZ0V2ZW50IjpudWxsfSwidHJhaW5pbmdFbXBoYXNlcyI6W10sInBsYXllciI6bnVsbCwidGVhbUlkIjpudWxsLCJwb3RlbnRpYWxHcmFkZSI6bnVsbCwiZmF0aWd1ZSI6bnVsbCwibWluZHNldCI6bnVsbCwiY29hY2hUcnVzdCI6bnVsbCwib3BlcmF0aW9uUmVjZWlwdHMiOlt7Im9wZXJhdGlvbklkIjoiMDAwMDAwMDAtMDAwMC0wMDAwLTAwMDAtMDAwMDAwMDAwMjAwIiwib3BlcmF0aW9uS2luZCI6ImNyZWF0ZV9jYXJlZXIiLCJ0YXJnZXQiOnsidHJ5b3V0U3RhZ2UiOjAsInRyeW91dE9jY3VycmVuY2VJZCI6bnVsbCwiY2hvaWNlSWQiOm51bGwsIndlZWtQbGFuSWQiOm51bGwsInNsb3RBY3Rpb25JZCI6bnVsbCwiYWN0aW9uT2NjdXJyZW5jZUlkIjpudWxsLCJldmVudE9jY3VycmVuY2VJZCI6bnVsbCwib3B0aW9uSWQiOm51bGx9LCJpbnB1dEZpbmdlcnByaW50IjoiYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYSIsImFwcGxpZWRMaW5lYWdlSWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDMiLCJhcHBsaWVkUmV2aXNpb24iOjEsImNvbXBsZXRlZEF0VXRjTXMiOjkwMDcxOTkyNTQ3NDA5OTEsIm91dGNvbWVLaW5kIjoiY2FyZWVyX2NyZWF0ZWQiLCJvdXRjb21lU3VtbWFyeSI6eyJ0cnlvdXRSZXNvbHZlZE91dHB1dHMiOltdLCJncm93dGhFeHBlcmllbmNlRGVsdGEiOm51bGwsImZhdGlndWVEZWx0YSI6bnVsbCwibWluZHNldERlbHRhIjpudWxsLCJjb2FjaFRydXN0RGVsdGEiOm51bGx9fV19";
 
         [Test]
         public void GoldenSnapshot_HasIndependentCanonicalBytesAndHash()
@@ -84,6 +87,15 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(restored.Onboarding.Stages[0].ResolvedOutputs, Is.Empty);
             Assert.That(restored.Player, Is.Null);
             Assert.That(restored.TeamId, Is.Null);
+        }
+
+        [Test]
+        public void PreStage4IncompleteV1GoldenRequiresSaveRecreation()
+        {
+            Assert.That(
+                () => CareerSaveJsonCodec.Deserialize(
+                    Convert.FromBase64String(PreStage4GoldenBase64)),
+                Throws.TypeOf<FormatException>());
         }
 
         [TestCase(false)]
@@ -332,6 +344,7 @@ namespace Volleyball.Career.EditModeTests
                     12),
                 onboarding,
                 CareerProgressionState.Created(),
+                TrainingEmphasisLedger.Empty,
                 null,
                 null,
                 null,
@@ -453,6 +466,7 @@ namespace Volleyball.Career.EditModeTests
                 new CareerPlayerDraft(new PlayerId("player.alpha"), "Lin", 12),
                 onboarding,
                 progression,
+                TrainingEmphasisLedger.Empty,
                 Player(),
                 new TeamId("team.university-a"),
                 PotentialGrade.B,
@@ -494,7 +508,21 @@ namespace Volleyball.Career.EditModeTests
             return new CareerWeekActionState(
                 new SlotActionId(GuidValue(actionId)),
                 new OccurrenceId(GuidValue(occurrenceId)),
-                kind);
+                kind,
+                ContentIdFor(kind));
+        }
+
+        private static string ContentIdFor(CareerWeekActionKind kind)
+        {
+            switch (kind)
+            {
+                case CareerWeekActionKind.SpecializedTraining: return "week_action.specialized.spike";
+                case CareerWeekActionKind.StrengthTraining: return "week_action.strength.jump";
+                case CareerWeekActionKind.TeamPractice: return "week_action.team_practice.standard";
+                case CareerWeekActionKind.Rest: return "week_action.rest.standard";
+                case CareerWeekActionKind.Match: return "schedule.u1w1.match.01";
+                default: throw new ArgumentOutOfRangeException(nameof(kind));
+            }
         }
 
         private static PendingCareerEvent PendingEvent(CareerWeekPlanState plan)

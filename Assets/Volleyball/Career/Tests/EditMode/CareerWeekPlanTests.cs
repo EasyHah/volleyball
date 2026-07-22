@@ -124,11 +124,13 @@ namespace Volleyball.Career.EditModeTests
             var duplicateActionId = new CareerWeekAction(
                 first.SlotActionId,
                 new OccurrenceId(Guid.NewGuid()),
-                CareerWeekActionKind.StrengthTraining);
+                CareerWeekActionKind.StrengthTraining,
+                "week_action.strength.jump");
             var duplicateOccurrenceId = new CareerWeekAction(
                 new SlotActionId(Guid.NewGuid()),
                 first.OccurrenceId,
-                CareerWeekActionKind.TeamPractice);
+                CareerWeekActionKind.TeamPractice,
+                "week_action.team_practice.standard");
 
             Assert.That(
                 () => plan.ScheduleAction(1, duplicateActionId),
@@ -199,19 +201,22 @@ namespace Volleyball.Career.EditModeTests
                 () => new CareerWeekAction(
                     default,
                     new OccurrenceId(Guid.NewGuid()),
-                    CareerWeekActionKind.Rest),
+                    CareerWeekActionKind.Rest,
+                    "week_action.rest.standard"),
                 Throws.ArgumentException);
             Assert.That(
                 () => new CareerWeekAction(
                     new SlotActionId(Guid.NewGuid()),
                     default,
-                    CareerWeekActionKind.Rest),
+                    CareerWeekActionKind.Rest,
+                    "week_action.rest.standard"),
                 Throws.ArgumentException);
             Assert.That(
                 () => new CareerWeekAction(
                     new SlotActionId(Guid.NewGuid()),
                     new OccurrenceId(Guid.NewGuid()),
-                    (CareerWeekActionKind)99),
+                    (CareerWeekActionKind)99,
+                    "week_action.rest.standard"),
                 Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
@@ -225,7 +230,27 @@ namespace Volleyball.Career.EditModeTests
             return new CareerWeekAction(
                 new SlotActionId(Guid.NewGuid()),
                 new OccurrenceId(Guid.NewGuid()),
-                kind);
+                kind,
+                ContentIdFor(kind));
+        }
+
+        private static string ContentIdFor(CareerWeekActionKind kind)
+        {
+            switch (kind)
+            {
+                case CareerWeekActionKind.SpecializedTraining:
+                    return "week_action.specialized.spike";
+                case CareerWeekActionKind.StrengthTraining:
+                    return "week_action.strength.jump";
+                case CareerWeekActionKind.TeamPractice:
+                    return "week_action.team_practice.standard";
+                case CareerWeekActionKind.Rest:
+                    return "week_action.rest.standard";
+                case CareerWeekActionKind.Match:
+                    return "schedule.u1w1.match.01";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+            }
         }
     }
 }

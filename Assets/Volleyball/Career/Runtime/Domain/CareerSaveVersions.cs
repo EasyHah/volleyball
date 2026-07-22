@@ -147,7 +147,9 @@ namespace Volleyball.Career.Domain
             for (var index = 0; index < value.Length; index++)
             {
                 var character = value[index];
-                var valid = char.IsLetterOrDigit(character) ||
+                var valid = (character >= 'a' && character <= 'z') ||
+                            (character >= 'A' && character <= 'Z') ||
+                            (character >= '0' && character <= '9') ||
                             character == '-' ||
                             character == '_' ||
                             character == '.' ||

@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260722-002 | 2026-07-22 | 已完成 | Career.Domain / Application / Persistence / Tests / Docs | 模块内部 | [第一周领域与持久化基础](2026-07-22-002-career-week-domain-foundation.md) |
 | CHG-20260722-001 | 2026-07-22 | 已完成 | Career.Domain / Application / Persistence / Tests / Docs | 模块内部 | [实现生涯球员创建与大学试训](2026-07-22-001-career-player-tryout.md) |
 | CHG-20260721-004 | 2026-07-21 | 已完成 | Career.Application / Persistence / Tests / Docs | **跨模块（重点）** | [实现本地档案与生涯持久化](2026-07-21-004-career-local-persistence.md) |
 | CHG-20260721-003 | 2026-07-21 | 已完成 | Career.Domain / Application / Persistence / Tests / Bootstrap | **跨模块（重点）** | [建立正式生涯快照模型](2026-07-21-003-career-save-model.md) |

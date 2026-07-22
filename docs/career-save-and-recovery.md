@@ -177,8 +177,8 @@ CareerSaveSnapshot
 │  ├─ onboardingState
 │  ├─ weekPlan
 │  ├─ weekExecutionState
-│  ├─ pendingEvent
-│  └─ trainingEmphases[]
+│  └─ pendingEvent
+├─ trainingEmphases[]
 ├─ player(CareerPlayerAttributes) / team / coachTrust / fatigue / mindset
 ├─ schedule / matchHistory / aggregateStats
 ├─ notifications
@@ -218,6 +218,15 @@ Shared 门禁完成后的同一里程碑中，首个显式 schema 升级加入 `
 - 启动日志明确说明拒载原因，UI 要求开发者显式确认；
 - fixture 与 schema 基线在同一变更中更新；
 - 禁止让反序列化器静默填补会改变业务语义的缺失字段。
+
+**当前 pre-distribution Schema V1 决定（2026-07-22）**：首个可分发兼容基线尚未冻结，且此前
+不完整的 V1 无法保存行动方向或 `trainingEmphases[]`。因此本次在保持 `schemaVersion == 1`
+的前提下完成 V1：每个非空 `progression.weekPlan.slots[]` 按
+`slotActionId, occurrenceId, kind, contentId` 固定顺序写入必需 `contentId`；顶层在
+`progression` 后立即写入必需 `trainingEmphases` 数组（无贡献时也写 `[]`），数组项顺序为
+`sourceSlotActionId, direction, bonusBasisPoints`。缺少任一新字段的旧开发存档作为非规范 V1
+拒绝载入，必须由开发者显式删除并重新创建；不存在迁移器，也不得静默推断方向或强调项。
+这一处理只适用于尚无内部试玩保留基线、尚无外部分发构建的开发期。
 
 一旦产生需要保留的内部试玩档或首个外部分发构建，`schemaVersion` 进入兼容纪律：只允许 `N -> N+1` 的纯函数迁移器，逐级执行；每步验证输入版本、输出版本、稳定 ID、业务不变量与哈希，并有 golden fixture。迁移前创建唯一上一修订备份；迁移失败恢复原修订并隔离失败产物。不得保留一个“万能迁移到最新版”的跳跃迁移器。
 

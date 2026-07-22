@@ -61,6 +61,7 @@ namespace Volleyball.Career.Persistence
                 playerDraft = ToDocument(snapshot.PlayerDraft),
                 onboarding = ToDocument(snapshot.Onboarding),
                 progression = ToDocument(snapshot.Progression),
+                trainingEmphases = ToDocument(snapshot.TrainingEmphases),
                 player = ToDocument(snapshot.Player),
                 teamId = snapshot.TeamId.HasValue ? snapshot.TeamId.Value.Value : null,
                 potentialGrade = snapshot.PotentialGrade.HasValue
@@ -137,6 +138,7 @@ namespace Volleyball.Career.Persistence
                 ToDomain(Required(document.playerDraft, "playerDraft")),
                 ToDomain(Required(document.onboarding, "onboarding")),
                 ToDomain(Required(document.progression, "progression")),
+                ToDomain(Required(document.trainingEmphases, "trainingEmphases")),
                 player,
                 teamId,
                 potentialGrade,
@@ -308,6 +310,42 @@ namespace Volleyball.Career.Persistence
             };
         }
 
+        private static TrainingEmphasisContributionDocumentV1[] ToDocument(
+            TrainingEmphasisLedger ledger)
+        {
+            var result = new TrainingEmphasisContributionDocumentV1[ledger.Contributions.Count];
+            for (var index = 0; index < result.Length; index++)
+            {
+                var contribution = ledger.Contributions[index];
+                result[index] = new TrainingEmphasisContributionDocumentV1
+                {
+                    sourceSlotActionId = CanonicalGuid(contribution.SourceSlotActionId.Value),
+                    direction = CareerTrainingDirectionIds.Format(contribution.Direction),
+                    bonusBasisPoints = contribution.BonusBasisPoints
+                };
+            }
+
+            return result;
+        }
+
+        private static TrainingEmphasisLedger ToDomain(
+            TrainingEmphasisContributionDocumentV1[] documents)
+        {
+            var result = new TrainingEmphasisContribution[documents.Length];
+            for (var index = 0; index < result.Length; index++)
+            {
+                var document = Required(documents[index], "trainingEmphases[" + index + "]");
+                result[index] = new TrainingEmphasisContribution(
+                    new SlotActionId(ParseCanonicalGuid(
+                        document.sourceSlotActionId,
+                        "trainingEmphases[].sourceSlotActionId")),
+                    CareerTrainingDirectionIds.Parse(document.direction),
+                    document.bonusBasisPoints);
+            }
+
+            return new TrainingEmphasisLedger(result);
+        }
+
         private static CareerProgressionState ToDomain(CareerProgressionDocumentV1 document)
         {
             return new CareerProgressionState(
@@ -382,7 +420,8 @@ namespace Volleyball.Career.Persistence
             {
                 slotActionId = CanonicalGuid(action.SlotActionId.Value),
                 occurrenceId = CanonicalGuid(action.OccurrenceId.Value),
-                kind = FormatWeekActionKind(action.Kind)
+                kind = FormatWeekActionKind(action.Kind),
+                contentId = action.ContentId
             };
         }
 
@@ -400,7 +439,8 @@ namespace Volleyball.Career.Persistence
                 new OccurrenceId(ParseCanonicalGuid(
                     document.occurrenceId,
                     "progression.weekPlan.slots[].occurrenceId")),
-                ParseWeekActionKind(document.kind));
+                ParseWeekActionKind(document.kind),
+                document.contentId);
         }
 
         private static PendingCareerEventDocumentV1 ToDocument(PendingCareerEvent pendingEvent)

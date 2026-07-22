@@ -1153,6 +1153,7 @@ namespace Volleyball.Career.Persistence
                 backup.PlayerDraft,
                 backup.Onboarding,
                 backup.Progression,
+                backup.TrainingEmphases,
                 backup.Player,
                 backup.TeamId,
                 backup.PotentialGrade,

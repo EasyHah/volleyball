@@ -297,6 +297,7 @@ namespace Volleyball.Career.Domain
             CareerPlayerDraft playerDraft,
             TryoutOnboardingState onboarding,
             CareerProgressionState progression,
+            TrainingEmphasisLedger trainingEmphases,
             CareerPlayerRecord player,
             TeamId? teamId,
             PotentialGrade? potentialGrade,
@@ -336,6 +337,11 @@ namespace Volleyball.Career.Domain
                 throw new ArgumentNullException(nameof(progression));
             }
 
+            if (trainingEmphases == null)
+            {
+                throw new ArgumentNullException(nameof(trainingEmphases));
+            }
+
             if (operationReceipts == null)
             {
                 throw new ArgumentNullException(nameof(operationReceipts));
@@ -343,6 +349,8 @@ namespace Volleyball.Career.Domain
 
             var copiedOnboarding = onboarding.Copy();
             var copiedProgression = progression.Copy();
+            var copiedTrainingEmphases = new TrainingEmphasisLedger(
+                trainingEmphases.Contributions);
             ValidateCompletePlayerState(
                 copiedOnboarding,
                 copiedProgression,
@@ -358,6 +366,8 @@ namespace Volleyball.Career.Domain
                 copiedOnboarding,
                 copiedProgression.PendingEvent);
             ValidateOccurrenceRegistry(copiedOnboarding, copiedProgression);
+            ValidateWeekActionContent(copiedProgression);
+            ValidateTrainingEmphases(copiedProgression, copiedTrainingEmphases);
 
             var copiedReceipts = CopyAndValidateReceipts(operationReceipts, identity);
             ValidateOnboardingRecovery(copiedOnboarding, copiedReceipts);
@@ -386,6 +396,7 @@ namespace Volleyball.Career.Domain
             PlayerDraft = playerDraft.Copy();
             Onboarding = copiedOnboarding;
             Progression = copiedProgression;
+            TrainingEmphases = copiedTrainingEmphases;
             Player = CopyPlayer(player);
             TeamId = teamId;
             PotentialGrade = potentialGrade;
@@ -410,6 +421,8 @@ namespace Volleyball.Career.Domain
 
         public CareerProgressionState Progression { get; }
 
+        public TrainingEmphasisLedger TrainingEmphases { get; }
+
         public CareerPlayerRecord Player { get; }
 
         public TeamId? TeamId { get; }
@@ -425,6 +438,92 @@ namespace Volleyball.Career.Domain
         public IReadOnlyList<OperationReceipt> OperationReceipts => _readOnlyOperationReceipts;
 
         public bool HasCompletePlayer => Player != null;
+
+        private static void ValidateWeekActionContent(CareerProgressionState progression)
+        {
+            if (progression.WeekPlan == null)
+            {
+                return;
+            }
+
+            var catalog = CareerWeekActionCatalogV1.Create();
+            for (var index = 0; index < progression.WeekPlan.Slots.Count; index++)
+            {
+                var action = progression.WeekPlan.Slots[index];
+                if (action == null)
+                {
+                    continue;
+                }
+
+                var definition = catalog.Find(action.ContentId);
+                if (definition == null || definition.Kind != action.Kind)
+                {
+                    throw new ArgumentException(
+                        "Every Schema V1 week action must match the closed content catalog.",
+                        nameof(progression));
+                }
+            }
+        }
+
+        private static void ValidateTrainingEmphases(
+            CareerProgressionState progression,
+            TrainingEmphasisLedger actual)
+        {
+            var executedFreeSlots = 0;
+            if (progression.Kind == CareerProgressionKind.AwaitingEventChoice)
+            {
+                executedFreeSlots = 1;
+            }
+            else if (progression.Kind == CareerProgressionKind.Planned)
+            {
+                if (progression.NextSlotNumber == 2)
+                {
+                    executedFreeSlots = 1;
+                }
+                else if (progression.NextSlotNumber == 3)
+                {
+                    executedFreeSlots = 2;
+                }
+            }
+
+            var expected = TrainingEmphasisLedger.Empty;
+            if (executedFreeSlots != 0)
+            {
+                var catalog = CareerWeekActionCatalogV1.Create();
+                for (var index = 0; index < executedFreeSlots; index++)
+                {
+                    var action = progression.WeekPlan.Slots[index];
+                    var definition = catalog.Find(action.ContentId);
+                    if (definition.Direction.HasValue)
+                    {
+                        expected = expected.AddExecutedTraining(action, catalog);
+                    }
+                }
+            }
+
+            if (actual.Contributions.Count != expected.Contributions.Count)
+            {
+                throw new ArgumentException(
+                    "Training emphases must exactly match executed current-plan training sources.",
+                    nameof(actual));
+            }
+
+            for (var index = 0; index < expected.Contributions.Count; index++)
+            {
+                var actualContribution = actual.Contributions[index];
+                var expectedContribution = expected.Contributions[index];
+                if (!actualContribution.SourceSlotActionId.Equals(
+                        expectedContribution.SourceSlotActionId) ||
+                    actualContribution.Direction != expectedContribution.Direction ||
+                    actualContribution.BonusBasisPoints !=
+                        expectedContribution.BonusBasisPoints)
+                {
+                    throw new ArgumentException(
+                        "Training emphasis source, direction, order, repeat coefficient, and cap are derived invariants.",
+                        nameof(actual));
+                }
+            }
+        }
 
         private static void ValidateCompletePlayerState(
             TryoutOnboardingState onboarding,

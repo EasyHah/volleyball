@@ -26,6 +26,29 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(document.progression.kind, Is.EqualTo(ProgressionName(kind)));
         }
 
+        [TestCase(CareerProgressionKind.AwaitingEventChoice, 1)]
+        [TestCase(CareerProgressionKind.Planned, 2)]
+        public void RoundTrip_PreservesExecutedTrainingEmphasisContributions(
+            CareerProgressionKind kind,
+            int expectedCount)
+        {
+            var source = CreateSnapshot(kind, useTrainingPlan: true);
+
+            var document = CareerSaveSnapshotMapper.ToDocument(source);
+            var restored = CareerSaveSnapshotMapper.ToDomain(document);
+
+            AssertEquivalent(source, restored);
+            Assert.That(document.trainingEmphases, Has.Length.EqualTo(expectedCount));
+            Assert.That(restored.TrainingEmphases.Contributions, Has.Count.EqualTo(expectedCount));
+            Assert.That(restored.TrainingEmphases.Contributions[0].Direction,
+                Is.EqualTo(CareerTrainingDirection.Spike));
+            if (expectedCount == 2)
+            {
+                Assert.That(restored.TrainingEmphases.Contributions[1].Direction,
+                    Is.EqualTo(CareerTrainingDirection.Jump));
+            }
+        }
+
         [Test]
         public void RoundTrip_PreservesIncompleteAndCompletedOnboarding()
         {
@@ -78,6 +101,7 @@ namespace Volleyball.Career.EditModeTests
                 source.PlayerDraft,
                 source.Onboarding,
                 source.Progression,
+                source.TrainingEmphases,
                 source.Player,
                 source.TeamId,
                 source.PotentialGrade,
@@ -535,14 +559,16 @@ namespace Volleyball.Career.EditModeTests
                 Throws.InstanceOf<ArgumentException>());
         }
 
-        private static CareerSaveSnapshot CreateSnapshot(CareerProgressionKind kind)
+        private static CareerSaveSnapshot CreateSnapshot(
+            CareerProgressionKind kind,
+            bool useTrainingPlan = false)
         {
             var lineageId = new LineageId(GuidValue(3));
             var plan = kind == CareerProgressionKind.Planning
-                ? CreatePlan(false)
+                ? CreatePlan(false, useTrainingPlan)
                 : kind == CareerProgressionKind.Planned ||
                   kind == CareerProgressionKind.AwaitingEventChoice
-                    ? CreatePlan(true)
+                    ? CreatePlan(true, useTrainingPlan)
                     : null;
             var progression = CreateProgression(kind, plan);
             var onboarding = CreateOnboarding(kind);
@@ -566,6 +592,7 @@ namespace Volleyball.Career.EditModeTests
                 draft,
                 onboarding,
                 progression,
+                EmphasesFor(progression),
                 includePlayer ? CreatePlayer() : null,
                 includePlayer ? (TeamId?)new TeamId("team.university-a") : null,
                 includePlayer ? (PotentialGrade?)PotentialGrade.B : null,
@@ -658,13 +685,20 @@ namespace Volleyball.Career.EditModeTests
                 Array.Empty<TryoutResolvedOutput>());
         }
 
-        private static CareerWeekPlanState CreatePlan(bool confirmed)
+        private static CareerWeekPlanState CreatePlan(bool confirmed, bool useTrainingPlan = false)
         {
             return new CareerWeekPlanState(
                 new WeekPlanId(GuidValue(10)),
                 1,
                 2,
-                confirmed
+                confirmed && useTrainingPlan
+                    ? new[]
+                    {
+                        CreateAction(11, 41, CareerWeekActionKind.SpecializedTraining),
+                        CreateAction(12, 42, CareerWeekActionKind.StrengthTraining),
+                        CreateAction(13, 43, CareerWeekActionKind.Match)
+                    }
+                    : confirmed
                     ? new[]
                     {
                         CreateAction(11, 41, CareerWeekActionKind.TeamPractice),
@@ -688,7 +722,43 @@ namespace Volleyball.Career.EditModeTests
             return new CareerWeekActionState(
                 new SlotActionId(GuidValue(actionId)),
                 new OccurrenceId(GuidValue(occurrenceId)),
-                kind);
+                kind,
+                ContentIdFor(kind));
+        }
+
+        private static string ContentIdFor(CareerWeekActionKind kind)
+        {
+            switch (kind)
+            {
+                case CareerWeekActionKind.SpecializedTraining: return "week_action.specialized.spike";
+                case CareerWeekActionKind.StrengthTraining: return "week_action.strength.jump";
+                case CareerWeekActionKind.TeamPractice: return "week_action.team_practice.standard";
+                case CareerWeekActionKind.Rest: return "week_action.rest.standard";
+                case CareerWeekActionKind.Match: return "schedule.u1w1.match.01";
+                default: throw new ArgumentOutOfRangeException(nameof(kind));
+            }
+        }
+
+        private static TrainingEmphasisLedger EmphasesFor(CareerProgressionState progression)
+        {
+            var count = progression.Kind == CareerProgressionKind.AwaitingEventChoice
+                ? 1
+                : progression.Kind == CareerProgressionKind.Planned
+                    ? Math.Max(0, progression.NextSlotNumber - 1)
+                    : 0;
+            var result = TrainingEmphasisLedger.Empty;
+            var catalog = CareerWeekActionCatalogV1.Create();
+            for (var index = 0; index < count && index < 2; index++)
+            {
+                var action = progression.WeekPlan.Slots[index];
+                var definition = catalog.Find(action.ContentId);
+                if (definition.Direction.HasValue)
+                {
+                    result = result.AddExecutedTraining(action, catalog);
+                }
+            }
+
+            return result;
         }
 
         private static PendingCareerEvent CreatePendingEvent(CareerWeekPlanState plan)
@@ -996,6 +1066,17 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(actual.PlayerDraft.JerseyNumber, Is.EqualTo(expected.PlayerDraft.JerseyNumber));
             AssertOnboardingEquivalent(expected.Onboarding, actual.Onboarding);
             AssertProgressionEquivalent(expected.Progression, actual.Progression);
+            Assert.That(actual.TrainingEmphases.Contributions.Count,
+                Is.EqualTo(expected.TrainingEmphases.Contributions.Count));
+            for (var index = 0; index < expected.TrainingEmphases.Contributions.Count; index++)
+            {
+                Assert.That(actual.TrainingEmphases.Contributions[index].SourceSlotActionId,
+                    Is.EqualTo(expected.TrainingEmphases.Contributions[index].SourceSlotActionId));
+                Assert.That(actual.TrainingEmphases.Contributions[index].Direction,
+                    Is.EqualTo(expected.TrainingEmphases.Contributions[index].Direction));
+                Assert.That(actual.TrainingEmphases.Contributions[index].BonusBasisPoints,
+                    Is.EqualTo(expected.TrainingEmphases.Contributions[index].BonusBasisPoints));
+            }
             AssertPlayerEquivalent(expected.Player, actual.Player);
             Assert.That(actual.TeamId, Is.EqualTo(expected.TeamId));
             Assert.That(actual.PotentialGrade, Is.EqualTo(expected.PotentialGrade));
@@ -1079,6 +1160,7 @@ namespace Volleyball.Career.EditModeTests
                     Assert.That(actualSlot.SlotActionId, Is.EqualTo(expectedSlot.SlotActionId));
                     Assert.That(actualSlot.OccurrenceId, Is.EqualTo(expectedSlot.OccurrenceId));
                     Assert.That(actualSlot.Kind, Is.EqualTo(expectedSlot.Kind));
+                    Assert.That(actualSlot.ContentId, Is.EqualTo(expectedSlot.ContentId));
                 }
             }
         }

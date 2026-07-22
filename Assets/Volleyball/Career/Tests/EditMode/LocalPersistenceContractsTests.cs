@@ -169,6 +169,7 @@ namespace Volleyball.Career.EditModeTests
                 draft,
                 onboarding,
                 CareerProgressionState.Created(),
+                TrainingEmphasisLedger.Empty,
                 null,
                 null,
                 null,

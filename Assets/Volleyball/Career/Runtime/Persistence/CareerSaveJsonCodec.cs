@@ -130,6 +130,8 @@ namespace Volleyball.Career.Persistence
             WriteOnboarding(writer, document.onboarding);
             writer.WritePropertyName("progression");
             WriteProgression(writer, document.progression);
+            writer.WritePropertyName("trainingEmphases");
+            WriteTrainingEmphases(writer, document.trainingEmphases);
             writer.WritePropertyName("player");
             WritePlayer(writer, document.player);
             writer.WritePropertyName("teamId");
@@ -370,7 +372,32 @@ namespace Volleyball.Career.Persistence
             writer.WriteString(document.occurrenceId);
             writer.WritePropertyName("kind");
             writer.WriteString(document.kind);
+            writer.WritePropertyName("contentId");
+            writer.WriteString(document.contentId);
             writer.WriteEndObject();
+        }
+
+        private static void WriteTrainingEmphases(
+            CanonicalJsonWriter writer,
+            TrainingEmphasisContributionDocumentV1[] documents)
+        {
+            RequireWriteValue(documents, "trainingEmphases");
+            writer.WriteStartArray();
+            for (var index = 0; index < documents.Length; index++)
+            {
+                var document = documents[index];
+                RequireWriteValue(document, "trainingEmphases[" + index + "]");
+                writer.WriteStartObject();
+                writer.WritePropertyName("sourceSlotActionId");
+                writer.WriteString(document.sourceSlotActionId);
+                writer.WritePropertyName("direction");
+                writer.WriteString(document.direction);
+                writer.WritePropertyName("bonusBasisPoints");
+                writer.WriteInt64(document.bonusBasisPoints);
+                writer.WriteEndObject();
+            }
+
+            writer.WriteEndArray();
         }
 
         private static void WritePendingEvent(
@@ -611,6 +638,7 @@ namespace Volleyball.Career.Persistence
                 "playerDraft",
                 "onboarding",
                 "progression",
+                "trainingEmphases",
                 "player",
                 "teamId",
                 "potentialGrade",
@@ -629,6 +657,9 @@ namespace Volleyball.Career.Persistence
                 playerDraft = ReadPlayerDraft(document.Get("playerDraft"), "$.playerDraft"),
                 onboarding = ReadOnboarding(document.Get("onboarding"), "$.onboarding"),
                 progression = ReadProgression(document.Get("progression"), "$.progression"),
+                trainingEmphases = ReadTrainingEmphases(
+                    document.Get("trainingEmphases"),
+                    "$.trainingEmphases"),
                 player = ReadPlayer(document.Get("player"), "$.player"),
                 teamId = NullableString(document.Get("teamId"), "$.teamId"),
                 potentialGrade = NullableString(
@@ -907,7 +938,8 @@ namespace Volleyball.Career.Persistence
                 path,
                 "slotActionId",
                 "occurrenceId",
-                "kind");
+                "kind",
+                "contentId");
             return new CareerWeekActionDocumentV1
             {
                 slotActionId = RequiredString(
@@ -916,8 +948,41 @@ namespace Volleyball.Career.Persistence
                 occurrenceId = RequiredString(
                     document.Get("occurrenceId"),
                     path + ".occurrenceId"),
-                kind = RequiredString(document.Get("kind"), path + ".kind")
+                kind = RequiredString(document.Get("kind"), path + ".kind"),
+                contentId = RequiredString(document.Get("contentId"), path + ".contentId")
             };
+        }
+
+        private static TrainingEmphasisContributionDocumentV1[] ReadTrainingEmphases(
+            StrictJsonValue value,
+            string path)
+        {
+            var values = RequiredArray(value, path);
+            var result = new TrainingEmphasisContributionDocumentV1[values.Count];
+            for (var index = 0; index < result.Length; index++)
+            {
+                var itemPath = path + "[" + index + "]";
+                var document = ExactObject(
+                    values[index],
+                    itemPath,
+                    "sourceSlotActionId",
+                    "direction",
+                    "bonusBasisPoints");
+                result[index] = new TrainingEmphasisContributionDocumentV1
+                {
+                    sourceSlotActionId = RequiredString(
+                        document.Get("sourceSlotActionId"),
+                        itemPath + ".sourceSlotActionId"),
+                    direction = RequiredString(
+                        document.Get("direction"),
+                        itemPath + ".direction"),
+                    bonusBasisPoints = Int32(
+                        document.Get("bonusBasisPoints"),
+                        itemPath + ".bonusBasisPoints")
+                };
+            }
+
+            return result;
         }
 
         private static PendingCareerEventDocumentV1 ReadPendingEvent(
