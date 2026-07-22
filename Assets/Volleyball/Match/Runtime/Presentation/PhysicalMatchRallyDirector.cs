@@ -164,7 +164,7 @@ namespace Volleyball.Presentation
         private readonly Dictionary<PlayerId, PrototypePlayerAgent> _players =
             new Dictionary<PlayerId, PrototypePlayerAgent>();
         private readonly PhysicalRallyTacticPlanner _tacticPlanner =
-            new PhysicalRallyTacticPlanner(7351);
+            new PhysicalRallyTacticPlanner();
         private readonly TeamRallyDecisionPlanner _decisionPlanner =
             new TeamRallyDecisionPlanner(7351);
 
@@ -500,7 +500,7 @@ namespace Volleyball.Presentation
             {
                 _blockImpactFeedback.Initialize(ballTrail);
             }
-            ApplyTactics(_tacticPlanner.Create(_tacticRevision), true);
+            ApplyTactics(_tacticPlanner.Create(), true);
             RenderScore();
 
             _ball.ContactCandidateResolver = ResolveCandidate;
@@ -1971,7 +1971,7 @@ namespace Volleyball.Presentation
             }
 
             _tacticRevision++;
-            ApplyTactics(_tacticPlanner.Create(_tacticRevision), false);
+            ApplyTactics(_tacticPlanner.Create(), false);
             StartCoroutine(StartInitialLoop(0.55f));
         }
 

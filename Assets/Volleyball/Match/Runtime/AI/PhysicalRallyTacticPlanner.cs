@@ -199,17 +199,8 @@ namespace Volleyball.AI
 
     public sealed class PhysicalRallyTacticPlanner
     {
-        public PhysicalRallyTacticPlanner(int seed)
+        public PhysicalRallyTactics Create()
         {
-        }
-
-        public PhysicalRallyTactics Create(int revision)
-        {
-            if (revision < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(revision));
-            }
-
             var blueSet = SetRoute.LeftPin;
             var blueSpike = SpikeRoute.CrossCourt;
             var orangeSet = SetRoute.LeftPin;
