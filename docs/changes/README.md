@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260722-002 | 2026-07-22 | 进行中 | Match / Docs | 模块内部 | [几何进攻与拦网对抗](2026-07-22-002-geometric-attack-block-counterplay.md) |
 | CHG-20260721-001 | 2026-07-21 | 已完成 | Shared / Match / Docs | **跨模块（重点）** | [统一进攻链 V2、50 分封顶与全手臂拦网](2026-07-21-001-unified-attack-chain.md) |
 | CHG-20260720-001 | 2026-07-20 | 已完成 | Match / Docs | 模块内部 | [Match Replay V1 回放产物与 HTML 查看器](2026-07-20-001-match-replay-v1.md) |
 | CHG-20260719-005 | 2026-07-19 | 已完成 | Match / Docs / Build Settings | 模块内部 | [正式室内 6v6 单局](2026-07-19-005-formal-indoor-6v6.md) |

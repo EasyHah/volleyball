@@ -37,6 +37,48 @@ namespace Volleyball.EditModeTests
         {
             var provisionalApproach = new AttackApproachPlan(
                 new SimVector3(-1f, 0f, -2.8f),
+                new SimVector3(0f, 0f, -1.2f),
+                1.89f,
+                0.9f,
+                0.1f);
+            var provisionalContact = AttackContactPlanner.Plan(new AttackContactInput(
+                3.50f,
+                0.9f,
+                1f,
+                SetQualityGrade.A,
+                provisionalApproach.Takeoff,
+                0.75f,
+                1f));
+            var actualCenter = new SimVector3(0.16f, 3.40f, -1.35f);
+            var quality = SetQualityAssessment.Evaluate(
+                new SetQualityInput(0.19f, 0.08f, 0.1f, 2.05f, 0.85f));
+
+            var replan = SetAttackReplanner.Replan(
+                provisionalApproach,
+                provisionalContact,
+                actualCenter,
+                0.85f,
+                3.50f,
+                PlayerRole.Attacker,
+                TeamId.Blue,
+                1f,
+                quality);
+
+            Assert.That(quality.Grade, Is.EqualTo(SetQualityGrade.B));
+            Assert.That(replan.Approach.Takeoff.X, Is.EqualTo(actualCenter.X));
+            Assert.That(replan.Approach.Takeoff.Z, Is.InRange(-1.50f, -0.75f));
+            Assert.That(replan.Approach.Takeoff, Is.Not.EqualTo(provisionalApproach.Takeoff));
+            Assert.That(replan.ContactPlan.Takeoff, Is.EqualTo(replan.Approach.Takeoff));
+            Assert.That(replan.ContactPlan.ContactCenter, Is.EqualTo(actualCenter));
+            Assert.That(replan.ContactPlan.Outcome, Is.EqualTo(AttackContactOutcome.AdjustedAttack));
+            Assert.That(replan.OpensSpikeContactWindow, Is.True);
+        }
+
+        [Test]
+        public void Replan_BTrajectoryDoesNotOpenSpikeWindowWhenActualBallIsBeyondTakeoffBand()
+        {
+            var provisionalApproach = new AttackApproachPlan(
+                new SimVector3(-1f, 0f, -2.8f),
                 new SimVector3(0f, 0f, -2.2f),
                 1.17f,
                 0.9f,
@@ -64,14 +106,14 @@ namespace Volleyball.EditModeTests
                 1f,
                 quality);
 
-            Assert.That(quality.Grade, Is.EqualTo(SetQualityGrade.B));
-            Assert.That(replan.Approach.Takeoff.X, Is.EqualTo(actualCenter.X));
             Assert.That(replan.Approach.Takeoff.Z, Is.InRange(-1.50f, -0.75f));
-            Assert.That(replan.Approach.Takeoff, Is.Not.EqualTo(provisionalApproach.Takeoff));
-            Assert.That(replan.ContactPlan.Takeoff, Is.EqualTo(replan.Approach.Takeoff));
-            Assert.That(replan.ContactPlan.ContactCenter.Z, Is.InRange(-1.50f, -0.75f));
-            Assert.That(replan.ContactPlan.Outcome, Is.EqualTo(AttackContactOutcome.AdjustedAttack));
-            Assert.That(replan.OpensSpikeContactWindow, Is.True);
+            Assert.That(replan.ContactPlan.ContactCenter, Is.EqualTo(actualCenter));
+            Assert.That(
+                GroundDistance(replan.ContactPlan.ContactCenter, replan.ContactPlan.Takeoff),
+                Is.GreaterThan(2f));
+            Assert.That(replan.ContactPlan.Outcome, Is.EqualTo(AttackContactOutcome.Handling));
+            Assert.That(replan.OpensSpikeContactWindow, Is.False);
+            Assert.That(replan.Outcome, Is.EqualTo(AttackOutcome.NoNormalAttack));
         }
 
         [Test]
@@ -161,6 +203,13 @@ namespace Volleyball.EditModeTests
                     attacker,
                     fallback),
                 Is.EqualTo(fallback));
+        }
+
+        private static float GroundDistance(SimVector3 a, SimVector3 b)
+        {
+            var dx = a.X - b.X;
+            var dz = a.Z - b.Z;
+            return (float)System.Math.Sqrt((dx * dx) + (dz * dz));
         }
     }
 }

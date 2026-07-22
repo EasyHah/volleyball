@@ -201,6 +201,8 @@ namespace Volleyball.AI
 
     public static class SetAttackReplanner
     {
+        private const float MaximumAttackHorizontalReach = 1.25f;
+
         public static SetAttackReplan Replan(
             AttackApproachPlan provisionalApproach,
             AttackContactPlan provisionalContact,
@@ -251,15 +253,20 @@ namespace Volleyball.AI
                 takeoff,
                 requiredSeconds,
                 actualArrivalSeconds));
+            var actualHorizontalReach = GroundDistance(actualContactCenter, takeoff);
+            var isHorizontallyAttackable = actualHorizontalReach <= MaximumAttackHorizontalReach;
+            var outcome = isHorizontallyAttackable
+                ? planned.Outcome
+                : AttackContactOutcome.Handling;
             var reachableCenter = new SimVector3(
                 actualContactCenter.X,
                 Clamp(
                     actualContactCenter.Y,
-                    planned.Outcome == AttackContactOutcome.Handling
+                    outcome == AttackContactOutcome.Handling
                         ? 0f
                         : AttackContactPlanner.MinimumAttackReach,
                     maxAttackReach),
-                takeoff.Z);
+                actualContactCenter.Z);
             var contact = new AttackContactPlan(
                 takeoff,
                 reachableCenter,
@@ -267,13 +274,20 @@ namespace Volleyball.AI
                 planned.JumpTiming,
                 planned.RequiredApproachSeconds,
                 planned.AvailableApproachSeconds,
-                planned.Outcome);
-            var opensSpike = quality.IsAdjustable && planned.Outcome != AttackContactOutcome.Handling;
+                outcome);
+            var opensSpike = quality.IsAdjustable && outcome != AttackContactOutcome.Handling;
             return new SetAttackReplan(
                 approach,
                 contact,
                 opensSpike ? AttackOutcome.InPlay : AttackOutcome.NoNormalAttack,
                 opensSpike);
+        }
+
+        private static float GroundDistance(SimVector3 a, SimVector3 b)
+        {
+            var dx = a.X - b.X;
+            var dz = a.Z - b.Z;
+            return (float)Math.Sqrt((dx * dx) + (dz * dz));
         }
 
         private static float Clamp(float value, float minimum, float maximum)
