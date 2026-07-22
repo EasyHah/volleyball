@@ -298,9 +298,9 @@ namespace Volleyball.AI
         {
             return route switch
             {
-                SetRoute.LeftPin => new CourtPoint(-3.15f, sideSign * 2.45f),
-                SetRoute.MiddleQuick => new CourtPoint(-0.35f, sideSign * 2.05f),
-                SetRoute.RightPin => new CourtPoint(3.15f, sideSign * 2.45f),
+                SetRoute.LeftPin => new CourtPoint(-3.15f, sideSign * 1.20f),
+                SetRoute.MiddleQuick => new CourtPoint(-0.35f, sideSign * 0.65f),
+                SetRoute.RightPin => new CourtPoint(3.15f, sideSign * 1.20f),
                 SetRoute.BackSet => new CourtPoint(1.65f, sideSign * 4.15f),
                 _ => throw new ArgumentOutOfRangeException(nameof(route), route, null)
             };

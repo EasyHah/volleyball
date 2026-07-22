@@ -589,6 +589,57 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ContinueAttackPreparation_PreservesPreparedProgressTowardTakeoff()
+        {
+            var player = CreatePlayer("ContinuingAttackPreparation", TeamId.Blue, PlayerRole.Attacker);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(
+                    1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
+                player.transform.position = new Vector3(0f, 0f, -4.2f);
+                var preparedStart = new Vector3(0f, 0f, -3.1f);
+                var takeoff = new SimVector3(0f, 0f, -1.1f);
+                var contact = AttackContactPlanner.Plan(new AttackContactInput(
+                    3.42f, 1f, 1f, SetQualityGrade.A, takeoff, 0.4f, 1f));
+                var originalApproach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -3.9f),
+                    takeoff,
+                    2.8f,
+                    1f,
+                    0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.ScheduleAttackPreparation(2f, preparedStart, 1f);
+                player.CollectContacts(1.95f, 1f / 120f, contacts);
+                var preparedPosition = player.transform.position;
+
+                player.ContinueAttackPreparation(originalApproach, contact, 2.6f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2.6f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    708,
+                    contact.ContactCenter,
+                    movementStartSimulationTime: 1.95f,
+                    attackApproach: originalApproach,
+                    attackContactPlan: contact);
+                var remainingDistance = player.ScheduledMovementDistance;
+                player.CollectContacts(2.2f, 1f / 120f, contacts);
+
+                Assert.That(preparedPosition.z, Is.EqualTo(preparedStart.z).Within(0.05f));
+                Assert.That(remainingDistance, Is.LessThan(2.20f));
+                Assert.That(remainingDistance, Is.GreaterThan(1.7f));
+                Assert.That(player.transform.position.z, Is.GreaterThanOrEqualTo(preparedPosition.z - 0.001f));
+                Assert.That(player.ScheduledMovementTarget.z, Is.GreaterThan(preparedPosition.z));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void SetPreparation_ReplacesAnOldContactAndMovesWithoutAddingContactCandidates()
         {
             var gameObject = new GameObject("SetPreparationPlayer");
@@ -812,6 +863,57 @@ namespace Volleyball.EditModeTests
                     attackContactPlan: plan);
 
                 Assert.That(player.MovementShortfall, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledAttackApproach_ReplanAfterPreparationPreservesRemainingApproachProgress()
+        {
+            var player = CreatePlayer("PreparedReplanAttacker", TeamId.Blue, PlayerRole.OutsideHitter);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 1f, 1f, 1f));
+                var preparedStart = new Vector3(0f, 0f, -3.1f);
+                var takeoff = new SimVector3(0f, 0f, -1.1f);
+                var contact = AttackContactPlanner.Plan(new AttackContactInput(
+                    3.42f,
+                    1f,
+                    1f,
+                    SetQualityGrade.A,
+                    takeoff,
+                    0.4f,
+                    1f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -4.2f),
+                    takeoff,
+                    3.1f,
+                    1f,
+                    0f);
+                player.transform.position = new Vector3(0f, 0f, -4.2f);
+                player.ScheduleAttackPreparation(1f, preparedStart, 0f);
+                Collect(player, 0.9f);
+                var preparedPosition = player.transform.position;
+
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    1.4f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    708,
+                    contact.ContactCenter,
+                    movementStartSimulationTime: 1f,
+                    attackApproach: approach,
+                    attackContactPlan: contact);
+                var afterSchedulePosition = player.transform.position;
+
+                Assert.That(afterSchedulePosition.z, Is.GreaterThanOrEqualTo(preparedPosition.z - 0.001f));
+                Assert.That(
+                    player.ScheduledMovementDistance,
+                    Is.EqualTo(Mathf.Abs(takeoff.Z - preparedPosition.z)).Within(0.01f));
             }
             finally
             {

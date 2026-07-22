@@ -27,6 +27,7 @@ namespace Volleyball.PlayModeTests
             Assert.That(report.AGradeNoContactErrorRate, Is.LessThan(0.02f), report.NoContactDiagnostic);
             Assert.That(report.NormalSideSets, Is.Zero);
             Assert.That(report.NonAChainsWithoutReason, Is.Zero);
+            Assert.That(report.NearNetAttackPlans, Is.EqualTo(report.NormalAttackPlans));
         }
 
         [UnityTest]
@@ -44,6 +45,7 @@ namespace Volleyball.PlayModeTests
             Assert.That(report.AGradeNoContactErrorRate, Is.LessThan(0.02f), report.NoContactDiagnostic);
             Assert.That(report.NormalSideSets, Is.Zero);
             Assert.That(report.NonAChainsWithoutReason, Is.Zero);
+            Assert.That(report.NearNetAttackPlans, Is.EqualTo(report.NormalAttackPlans));
         }
 
         [UnityTest]
@@ -100,6 +102,8 @@ namespace Volleyball.PlayModeTests
             var gradeASetterSets = 0;
             var aGradeNoContactErrors = 0;
             var normalSideSets = 0;
+            var normalAttackPlans = 0;
+            var nearNetAttackPlans = 0;
             var totalSets = 0;
             var nonAWithoutReason = 0;
             var completedMatches = 0;
@@ -155,6 +159,8 @@ namespace Volleyball.PlayModeTests
                     gradeASetterSets += director.GradeASetterSets;
                     aGradeNoContactErrors += director.AGradeNoContactErrors;
                     normalSideSets += director.NormalSideSets;
+                    normalAttackPlans += director.NormalAttackPlans;
+                    nearNetAttackPlans += director.NearNetAttackPlans;
                     totalSets += director.TotalSets;
                     if (!string.IsNullOrWhiteSpace(director.LastAGradeNoContactDiagnostic))
                     {
@@ -178,6 +184,8 @@ namespace Volleyball.PlayModeTests
                 inSystemSets == 0 ? 0f : (float)inSystemAttackableSets / inSystemSets,
                 gradeASetterSets == 0 ? 0f : (float)aGradeNoContactErrors / gradeASetterSets,
                 normalSideSets,
+                normalAttackPlans,
+                nearNetAttackPlans,
                 nonAWithoutReason,
                 $"matches={completedMatches}; produced={totalSets}; inSystem={inSystemSets}; " +
                 lastNoContactDiagnostic);
@@ -187,7 +195,8 @@ namespace Volleyball.PlayModeTests
                 $"sets={totalSets} inSystem={inSystemSets} " +
                 $"attackableRate={report.AttackableSetRate:0.000} " +
                 $"aNoContactRate={report.AGradeNoContactErrorRate:0.000} " +
-                $"normalSide={report.NormalSideSets}");
+                $"normalSide={report.NormalSideSets} " +
+                $"nearNetAttackPlans={report.NearNetAttackPlans}/{report.NormalAttackPlans}");
             Assert.That(inSystemSets, Is.GreaterThanOrEqualTo(targetInSystemSets),
                 $"{sceneName} produced only {inSystemSets}/{targetInSystemSets} " +
                 $"in-system set contacts ({totalSets} total across {completedMatches} matches) " +
@@ -243,12 +252,16 @@ namespace Volleyball.PlayModeTests
                 float attackableSetRate,
                 float aGradeNoContactErrorRate,
                 int normalSideSets,
+                int normalAttackPlans,
+                int nearNetAttackPlans,
                 int nonAChainsWithoutReason,
                 string noContactDiagnostic)
             {
                 AttackableSetRate = attackableSetRate;
                 AGradeNoContactErrorRate = aGradeNoContactErrorRate;
                 NormalSideSets = normalSideSets;
+                NormalAttackPlans = normalAttackPlans;
+                NearNetAttackPlans = nearNetAttackPlans;
                 NonAChainsWithoutReason = nonAChainsWithoutReason;
                 NoContactDiagnostic = noContactDiagnostic;
             }
@@ -256,6 +269,8 @@ namespace Volleyball.PlayModeTests
             public float AttackableSetRate { get; }
             public float AGradeNoContactErrorRate { get; }
             public int NormalSideSets { get; }
+            public int NormalAttackPlans { get; }
+            public int NearNetAttackPlans { get; }
             public int NonAChainsWithoutReason { get; }
             public string NoContactDiagnostic { get; }
         }

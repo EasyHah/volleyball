@@ -35,6 +35,15 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Create_PlacesBaselineAttackersInsideNearNetAttackBand()
+        {
+            var tactics = new PhysicalRallyTacticPlanner().Create();
+
+            Assert.That(-tactics.Blue.AttackerPosition.Z, Is.InRange(0.75f, 1.50f));
+            Assert.That(tactics.Orange.AttackerPosition.Z, Is.InRange(0.75f, 1.50f));
+        }
+
+        [Test]
         public void Create_BlueBlockCoverageTracksOrangeAttackLane()
         {
             var tactics = new PhysicalRallyTacticPlanner().Create();

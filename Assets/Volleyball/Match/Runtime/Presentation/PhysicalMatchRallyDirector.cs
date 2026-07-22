@@ -279,6 +279,10 @@ namespace Volleyball.Presentation
 
         public int NormalSideSets { get; private set; }
 
+        public int NormalAttackPlans { get; private set; }
+
+        public int NearNetAttackPlans { get; private set; }
+
         public string LastAGradeNoContactDiagnostic { get; private set; } = string.Empty;
 
         public float GradeASetRate => TotalSets == 0 ? 0f : (float)GradeASets / TotalSets;
@@ -1442,6 +1446,15 @@ namespace Volleyball.Presentation
 
             if (replan.OpensSpikeContactWindow)
             {
+                RecordNormalAttackPlanBand(
+                    provisionalDecision.Actor.Role,
+                    provisionalDecision.Actor.Team,
+                    setterDepthFromNet,
+                    replan.Approach.Takeoff);
+                attacker.ContinueAttackPreparation(
+                    resumedApproach,
+                    replan.ContactPlan,
+                    _ball.SimulationTime + Mathf.Max(0.1f, actualArrival.TimeSeconds));
                 ScheduleDecision(replacement, Mathf.Max(0.1f, actualArrival.TimeSeconds));
                 return;
             }
@@ -1450,6 +1463,23 @@ namespace Volleyball.Presentation
                 replacement,
                 replan,
                 Mathf.Max(0.1f, actualArrival.TimeSeconds));
+        }
+
+        private void RecordNormalAttackPlanBand(
+            PlayerRole attackerRole,
+            TeamId attackingTeam,
+            float setterDepthFromNet,
+            SimVector3 takeoff)
+        {
+            var band = AttackBandPolicy.Resolve(attackerRole, setterDepthFromNet);
+            var localTakeoff = new TeamCourtFrame(attackingTeam).ToLocal(takeoff);
+            var takeoffDepth = -localTakeoff.Z;
+            NormalAttackPlans++;
+            if (takeoffDepth + 0.0001f >= band.NearDepth &&
+                takeoffDepth <= band.FarDepth + 0.0001f)
+            {
+                NearNetAttackPlans++;
+            }
         }
 
         private void RecordSetCalibration(

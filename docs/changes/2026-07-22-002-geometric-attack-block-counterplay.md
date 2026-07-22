@@ -6,7 +6,7 @@
 - 影响模块：Match / Docs
 - 交互级别：模块内部
 - 关联分支：`codex/geometric-counterplay`
-- 关联提交或 PR：`d5391ab`、`2c3d871`、`a21a350`
+- 关联提交或 PR：`d5391ab`、`2c3d871`、`a21a350`、`7c9e580`
 
 ## 改动摘要
 
@@ -34,6 +34,8 @@
   - 实际传球重规划时，起跳点约束到角色攻击带；二传超过 4m 时攻击带按规则后移。
   - 正常扣球接触中心保留真实球预测位置；若真实球相对近网起跳点已超出可处理范围，则不开
     正常扣球窗口，避免把深球凭空搬到近网接触。
+  - 攻手在二传确认前已完成的助跑准备会被保留；实际传球后的攻击调度从当前位置继续推向
+    起跳点，不再回到旧的助跑起点。
 
 ## 跨模块交互重点
 
@@ -55,6 +57,9 @@
 - `Volleyball.EditModeTests.PhysicalRallyTacticPlannerTests`：9/9 通过。
 - `Volleyball.EditModeTests.AttackBandPolicyTests`：通过。
 - `Volleyball.EditModeTests.SetQualityAssessmentTests`：通过。
+- `Volleyball.EditModeTests.PrototypePlayerContactSourceTests`：28/28 通过。
+- `Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests`：3/3 通过；6v6 与 3v3 各记录
+  `nearNetAttackPlans=100/100`，`AGradeNoContactErrorRate=0.000`。
 - Task 2 初始实现后曾运行完整 EditMode：312/312 通过；后续总回归将在本改造完成后补记。
 
 ## 回滚与风险

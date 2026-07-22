@@ -109,6 +109,7 @@ namespace Volleyball.Presentation
         private AttackContactPlan _attackContactPlan;
         private Vector3 _attackTakeoffPosition;
         private Vector3 _attackContactRootPosition;
+        private bool _continueAttackPreparation;
         private bool _physicalBlockActivationLogged;
         private BlockArmContactVolumes _blockArmContactVolumes;
         private bool _isControlledHandling;
@@ -220,21 +221,34 @@ namespace Volleyball.Presentation
             _attackApproach = attackApproach.GetValueOrDefault();
             _hasAttackContactPlan = attackContactPlan.HasValue;
             _attackContactPlan = attackContactPlan.GetValueOrDefault();
-            var requestedMovementTarget = attackApproach.HasValue
-                ? ToUnity(attackApproach.Value.ApproachStart)
-                : movementTarget.GetValueOrDefault(transform.position);
-            ConfigureScheduledMovement(
-                requestedMovementTarget,
-                movementStartSimulationTime + executionError.ReactionDelay,
-                action == TechniqueAction.Attack
-                    ? _actionTimeline.ActualContactTime
-                    : scheduledSimulationTime,
-                action,
-                attackApproach.HasValue ? 0.72f : (float?)null);
+            var continuePreparedAttack = attackApproach.HasValue &&
+                                         (_continueAttackPreparation ||
+                                          (_hasSupportAction && _supportAction == TechniqueAction.Attack));
+            if (continuePreparedAttack)
+            {
+                ConfigureContinuationMovement(
+                    ToUnity(attackApproach.Value.Takeoff),
+                    _actionTimeline.ActualContactTime);
+            }
+            else
+            {
+                var requestedMovementTarget = attackApproach.HasValue
+                    ? ToUnity(attackApproach.Value.ApproachStart)
+                    : movementTarget.GetValueOrDefault(transform.position);
+                ConfigureScheduledMovement(
+                    requestedMovementTarget,
+                    movementStartSimulationTime + executionError.ReactionDelay,
+                    action == TechniqueAction.Attack
+                        ? _actionTimeline.ActualContactTime
+                        : scheduledSimulationTime,
+                    action,
+                    attackApproach.HasValue ? 0.72f : (float?)null);
+            }
             if (attackApproach.HasValue)
             {
                 ConfigureAttackApproach(attackApproach.Value);
             }
+            _continueAttackPreparation = false;
             _motionOrigin = _movementTargetPosition;
             _motionForward = transform.forward;
             var authoritativeContactCenter = attackContactPlan?.ContactCenter ?? plannedContactCenter;
@@ -280,10 +294,28 @@ namespace Volleyball.Presentation
                 TechniqueAction.Set);
         }
 
+        public void ContinueAttackPreparation(
+            AttackApproachPlan approach,
+            AttackContactPlan contactPlan,
+            float actualContactTime)
+        {
+            if (!contactPlan.Takeoff.Equals(approach.Takeoff))
+            {
+                throw new ArgumentException(
+                    "Attack approach and contact plan must use the same takeoff.",
+                    nameof(contactPlan));
+            }
+
+            contactPlan.Validate();
+            _continueAttackPreparation = true;
+            ConfigureContinuationMovement(ToUnity(approach.Takeoff), actualContactTime);
+        }
+
         public void CancelScheduledContact()
         {
             _hasScheduledContact = false;
             _hasPlannedContactCenter = false;
+            _continueAttackPreparation = false;
             _actionTimeline = null;
             _hasSupportAction = false;
             _supportTimeline = null;
@@ -1179,6 +1211,26 @@ namespace Volleyball.Presentation
             _hasScheduledMovement = Vector3.Distance(
                 _movementStartPosition,
                 _movementTargetPosition) > 0.01f;
+        }
+
+        private void ConfigureContinuationMovement(
+            Vector3 requestedTakeoff,
+            float scheduledContactTime)
+        {
+            _movementStartPosition = ConstrainGroundPosition(transform.position);
+            _movementStartSimulationTime = _supportTimeline != null
+                ? Mathf.Min(_supportTimeline.ActualContactTime, scheduledContactTime)
+                : scheduledContactTime;
+            _movementEndSimulationTime = Mathf.Max(
+                _movementStartSimulationTime + 0.01f,
+                scheduledContactTime - 0.38f);
+            var requestedTarget = ConstrainGroundPosition(requestedTakeoff);
+            _movementTargetPosition = requestedTarget;
+            ScheduledMovementDistance = Vector3.Distance(
+                _movementStartPosition,
+                _movementTargetPosition);
+            MovementShortfall = 0f;
+            _hasScheduledMovement = ScheduledMovementDistance > 0.01f;
         }
 
         private Vector3 EvaluateScheduledMovement(float simulationTime, out bool complete)
