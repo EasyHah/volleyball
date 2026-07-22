@@ -1361,12 +1361,22 @@ namespace Volleyball.Presentation
                 Mathf.Abs(actualArrival.Position.Z),
                 actualArrival.TimeSeconds));
             var attacker = _players[provisionalDecision.Actor];
+            var setter = _players[setterActor];
+            var setterPosition = new SimVector3(
+                setter.transform.position.x,
+                setter.transform.position.y,
+                setter.transform.position.z);
+            var setterDepthFromNet = new TeamCourtFrame(provisionalDecision.Actor.Team)
+                .ToLocal(setterPosition).Z * -1f;
             var replan = SetAttackReplanner.Replan(
                 provisionalDecision.AttackApproach.Value,
                 plannedContact,
                 actualArrival.Position,
                 actualArrival.TimeSeconds,
                 attacker.Ability.MaxAttackReach,
+                provisionalDecision.Actor.Role,
+                provisionalDecision.Actor.Team,
+                setterDepthFromNet,
                 quality);
             var resumedApproachStart = new SimVector3(
                 attacker.transform.position.x,

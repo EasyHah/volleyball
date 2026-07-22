@@ -207,6 +207,9 @@ namespace Volleyball.AI
             SimVector3 actualContactCenter,
             float actualArrivalSeconds,
             float maxAttackReach,
+            PlayerRole attackerRole,
+            TeamId attackingTeam,
+            float setterDepthFromNet,
             SetQualityAssessment quality)
         {
             provisionalContact.Validate();
@@ -227,7 +230,8 @@ namespace Volleyball.AI
                 throw new ArgumentOutOfRangeException(nameof(maxAttackReach));
             }
 
-            var takeoff = new SimVector3(actualContactCenter.X, 0f, actualContactCenter.Z);
+            var takeoff = AttackBandPolicy.Resolve(attackerRole, setterDepthFromNet)
+                .ConstrainTakeoff(attackingTeam, actualContactCenter);
             var shift = takeoff - provisionalApproach.Takeoff;
             var approach = new AttackApproachPlan(
                 provisionalApproach.ApproachStart + shift,
@@ -255,7 +259,7 @@ namespace Volleyball.AI
                         ? 0f
                         : AttackContactPlanner.MinimumAttackReach,
                     maxAttackReach),
-                actualContactCenter.Z);
+                takeoff.Z);
             var contact = new AttackContactPlan(
                 takeoff,
                 reachableCenter,
