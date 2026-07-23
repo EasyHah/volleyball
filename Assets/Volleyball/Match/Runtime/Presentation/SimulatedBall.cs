@@ -294,6 +294,9 @@ namespace Volleyball.Presentation
         public Func<BallContactCandidate, SweptBallHit, float, BallContactResolution>
             ContactCandidateResolver { get; set; }
 
+        public Func<BallContactCandidate, SweptBallHit, float, BallContactResolution>
+            SelectedContactCommitter { get; set; }
+
         public BallState State { get; private set; }
 
         public BallSimulationDiagnostics Diagnostics => new BallSimulationDiagnostics(
@@ -441,13 +444,23 @@ namespace Volleyball.Presentation
 
             if (hasPlayer && playerHit.TimeFraction <= environmentFraction)
             {
-                if (playerResolution.Disposition == BallContactDisposition.Fault)
+                var selectedResolution = SelectedContactCommitter?.Invoke(
+                                             playerCandidate,
+                                             playerHit,
+                                             contactSimulationTime) ??
+                                         playerResolution;
+                if (selectedResolution.Disposition == BallContactDisposition.Fault)
                 {
                     PlayerContactRejected?.Invoke(new PlayerContactRejectedEvent(
                         playerCandidate,
                         playerHit,
                         contactSimulationTime,
-                        playerResolution.Reason));
+                        selectedResolution.Reason));
+                    UpdateMaximumSpeed();
+                    return;
+                }
+                if (selectedResolution.Disposition == BallContactDisposition.Ignore)
+                {
                     UpdateMaximumSpeed();
                     return;
                 }

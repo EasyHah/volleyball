@@ -30,11 +30,6 @@ namespace Volleyball.Presentation
             {
                 throw new ArgumentOutOfRangeException(nameof(mode));
             }
-            if (mode == V3RulesMode.Authority)
-            {
-                throw new NotSupportedException(
-                    "V3 authority is not available until the authority gate is configured.");
-            }
 
             ValidateEligibility(_context, eligibility);
             Mode = mode;
@@ -65,19 +60,82 @@ namespace Volleyball.Presentation
             RallyContactClassificationV3 classification,
             long contactGroup)
         {
-            var eligibleActor = _eligibility.For(actor);
+            return CommitContact(actor, side, classification, contactGroup);
+        }
+
+        public RuleTransitionV3 EvaluateContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup)
+        {
+            var contact = CreateContact(actor, side, classification, contactGroup);
+            var eligibilityRejection = EvaluateEligibility(contact);
+            return eligibilityRejection ?? _engine.CanAttempt(contact);
+        }
+
+        public RuleTransitionV3 CommitContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup)
+        {
+            var contact = CreateContact(actor, side, classification, contactGroup);
+            var eligibilityRejection = EvaluateEligibility(contact);
+            return eligibilityRejection ?? _engine.Apply(contact);
+        }
+
+        private ActualContactEventV3 CreateContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup)
+        {
+            var contact = new ActualContactEventV3(actor, side, classification, contactGroup);
+            OnCourtPlayerEligibilityV3 eligibleActor;
+            try
+            {
+                eligibleActor = _eligibility.For(actor);
+            }
+            catch (KeyNotFoundException)
+            {
+                return contact;
+            }
+
             if (eligibleActor.Side != side)
             {
                 throw new ArgumentException(
-                    "The observed contact side must match the actor's on-court side.",
+                    "The contact side must match the actor's on-court side.",
                     nameof(side));
             }
 
-            return _engine.Apply(new ActualContactEventV3(
-                actor,
-                side,
-                classification,
-                contactGroup));
+            return contact;
+        }
+
+        private RuleTransitionV3 EvaluateEligibility(ActualContactEventV3 contact)
+        {
+            OnCourtPlayerEligibilityV3 eligibleActor;
+            try
+            {
+                eligibleActor = _eligibility.For(contact.Actor.Value);
+            }
+            catch (KeyNotFoundException)
+            {
+                return Reject(RuleRejectionReasonV3.ActorNotOnCourt);
+            }
+
+            if (contact.Classification == RallyContactClassificationV3.BlockContact &&
+                !BlockEligibilityRulesV3.CanAttempt(eligibleActor).IsEligible)
+            {
+                return Reject(RuleRejectionReasonV3.ActionIneligible);
+            }
+
+            return null;
+        }
+
+        private RuleTransitionV3 Reject(RuleRejectionReasonV3 reason)
+        {
+            return RuleTransitionV3.Reject(reason, _engine.State);
         }
 
         private static void ValidateEligibility(

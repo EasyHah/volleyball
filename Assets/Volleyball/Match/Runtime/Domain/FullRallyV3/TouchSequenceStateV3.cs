@@ -118,6 +118,20 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public TouchSequenceStateV3 Before { get; }
 
         public TouchSequenceStateV3 After { get; }
+
+        public static RuleTransitionV3 Reject(
+            RuleRejectionReasonV3 rejectionReason,
+            TouchSequenceStateV3 state)
+        {
+            if (rejectionReason == RuleRejectionReasonV3.None)
+            {
+                throw new ArgumentException(
+                    "A rejected transition requires a rejection reason.",
+                    nameof(rejectionReason));
+            }
+
+            return new RuleTransitionV3(false, rejectionReason, state, state);
+        }
     }
 
     public sealed class TouchSequenceStateV3

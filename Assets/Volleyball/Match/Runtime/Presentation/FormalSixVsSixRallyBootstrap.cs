@@ -38,7 +38,7 @@ namespace Volleyball.Presentation
                 configuration: Configuration);
             director.ConfigureV3Rules(
                 MatchContextV3.UpgradeFromV2(context),
-                V3RulesMode.Shadow);
+                V3RulesMode.Authority);
             var rosterDisplay = gameObject.AddComponent<MatchRosterDisplay>();
             rosterDisplay.Initialize(director, agents);
             var cameras = gameObject.AddComponent<RallyCameraController>();

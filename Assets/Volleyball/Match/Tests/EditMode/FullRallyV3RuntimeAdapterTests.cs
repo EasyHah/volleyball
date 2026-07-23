@@ -114,18 +114,117 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void AuthorityMode_IsRejectedUntilAuthorityGateExists()
+        public void AuthorityMode_CanBeConfiguredAtTheExplicitGate()
         {
             var context = CreateContext();
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
 
+            var adapter = new FullRallyV3RulesRuntimeAdapter(
+                context,
+                eligibility,
+                TeamSide.Home,
+                V3RulesMode.Authority);
+
+            Assert.That(adapter.Mode, Is.EqualTo(V3RulesMode.Authority));
+        }
+
+        [Test]
+        public void EvaluateContact_IsPureAcrossMultipleCandidatesAndCommitAdvancesOnce()
+        {
+            var context = CreateContext();
+            var adapter = new FullRallyV3RulesRuntimeAdapter(
+                context,
+                CreateEligibility(context, HomeRotation, AwayRotation),
+                TeamSide.Home,
+                V3RulesMode.Authority);
+
+            var firstEvaluation = adapter.EvaluateContact(
+                HomeRotation[0],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                801);
+            var secondEvaluation = adapter.EvaluateContact(
+                HomeRotation[0],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                802);
+
+            Assert.That(firstEvaluation.Accepted, Is.True);
+            Assert.That(secondEvaluation.Accepted, Is.True);
+            Assert.That(firstEvaluation.Before.CountedHits, Is.Zero);
+            Assert.That(secondEvaluation.Before.CountedHits, Is.Zero);
+
+            var committed = adapter.CommitContact(
+                HomeRotation[0],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                801);
+            var afterCommit = adapter.EvaluateContact(
+                HomeRotation[0],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                802);
+
+            Assert.That(committed.Accepted, Is.True);
+            Assert.That(committed.After.CountedHits, Is.EqualTo(1));
             Assert.That(
-                () => new FullRallyV3RulesRuntimeAdapter(
-                    context,
-                    eligibility,
-                    TeamSide.Home,
-                    V3RulesMode.Authority),
-                Throws.TypeOf<NotSupportedException>());
+                afterCommit.RejectionReason,
+                Is.EqualTo(RuleRejectionReasonV3.ConsecutiveCountedContact));
+        }
+
+        [Test]
+        public void AuthorityCommit_BlockThenSameBlockerFirstCountedContact_IsAccepted()
+        {
+            var context = CreateContext();
+            var adapter = new FullRallyV3RulesRuntimeAdapter(
+                context,
+                CreateEligibility(context, HomeRotation, AwayRotation),
+                TeamSide.Home,
+                V3RulesMode.Authority);
+
+            var block = adapter.CommitContact(
+                HomeRotation[1],
+                TeamSide.Home,
+                RallyContactClassificationV3.BlockContact,
+                811);
+            var countedContact = adapter.CommitContact(
+                HomeRotation[1],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                812);
+
+            Assert.That(block.Accepted, Is.True);
+            Assert.That(countedContact.Accepted, Is.True);
+            Assert.That(countedContact.Before.CountedHits, Is.Zero);
+            Assert.That(countedContact.After.CountedHits, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EvaluateContact_BackRowBlocker_IsRejectedWithoutAdvancingRules()
+        {
+            var context = CreateContext();
+            var adapter = new FullRallyV3RulesRuntimeAdapter(
+                context,
+                CreateEligibility(context, HomeRotation, AwayRotation),
+                TeamSide.Home,
+                V3RulesMode.Authority);
+
+            var evaluation = adapter.EvaluateContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.BlockContact,
+                821);
+            var laterTeamContact = adapter.EvaluateContact(
+                HomeRotation[0],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                822);
+
+            Assert.That(evaluation.Accepted, Is.False);
+            Assert.That(
+                evaluation.RejectionReason,
+                Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+            Assert.That(laterTeamContact.Before.CountedHits, Is.Zero);
         }
 
         [Test]

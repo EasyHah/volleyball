@@ -122,6 +122,27 @@ namespace Volleyball.EditModeTests
             Assert.That(state.ContactWindow, Is.SameAs(window));
         }
 
+        [Test]
+        public void SynchronizeAuthoritativeContact_UpdatesCompatibilityStateAfterLegacyRejection()
+        {
+            var state = new RallyTouchState(TeamId.Blue);
+            state.OpenWindow(Window(BlueSetter, TechniqueAction.Set, 1f, 2f));
+            Assert.That(
+                state.Evaluate(BlueAttacker, TechniqueAction.Attack, 1f).Disposition,
+                Is.EqualTo(RallyContactDisposition.Ignore));
+
+            state.SynchronizeAuthoritativeContact(
+                BlueAttacker,
+                TechniqueAction.Attack,
+                authoritativeCountedTouches: 1);
+
+            Assert.That(state.PossessionTeam, Is.EqualTo(TeamId.Blue));
+            Assert.That(state.CountedTeamTouches, Is.EqualTo(1));
+            Assert.That(state.LastCountedActor, Is.EqualTo(BlueAttacker));
+            Assert.That(state.LastPhysicalTouch, Is.EqualTo(BlueAttacker));
+            Assert.That(state.ContactWindow, Is.Null);
+        }
+
         [TestCase(1f)]
         [TestCase(2f)]
         public void Accept_AtWindowBoundary_IsAccepted(float contactTime)

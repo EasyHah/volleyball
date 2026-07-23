@@ -95,7 +95,7 @@ Block 是物理触球并更新最后触球球员/队伍，也计入该球员的�
 | --- | --- | --- |
 | R-REF-001, R-REF-006 | `MatchSet` | `MatchSetTests` |
 | R-GOV-001 | `PhysicalRallyTacticPlanner` | `PhysicalRallyTacticPlannerTests` |
-| R-REF-002, R-REF-003 | `RallyTouchState`、`SimulatedBall` | `RallyTouchStateTests`、接触 PlayMode 测试 |
+| R-REF-002, R-REF-003 | 正式 6v6：`RallyRulesEngineV3`、`SimulatedBall`；旧版 3v3：`RallyTouchState`、`SimulatedBall` | `FullRallyV3RulesEngineTests`、`SimulatedBallTests`、正式 6v6 / 3v3 PlayMode 测试 |
 | R-REF-004, R-REF-005 | `PhysicalMatchRallyDirector`、`MatchRallyReferee` | `MatchRallyRefereeTests`、物理回合 PlayMode 测试 |
 | R-PLAY-001--003 | `PrototypePlayerAgent`、`PhysicalMatchRallyDirector` | 边界、轮转和拦网测试 |
 | R-OFF-001--005 | `TeamRallyDecisionPlanner`、`SetFlightSolver`、`PhysicalMatchRallyDirector` | 传球、助跑、攻击链和校准测试 |

@@ -213,6 +213,9 @@ namespace Volleyball.Presentation
         private int _contactGroupSequence = 3000;
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
         private MatchContextV3 _v3Context;
+        private PendingV3AuthorityContact _pendingV3AuthorityContact;
+        private StablePlayerId? _lastAcceptedV3Actor;
+        private RallyContactClassificationV3? _lastAcceptedV3Classification;
         private RallyTacticalWeights _activeTacticalWeights;
         private PhysicalMatchConfiguration _configuration;
         private string _status = "Preparing dynamic physical 3v3";
@@ -600,16 +603,16 @@ namespace Volleyball.Presentation
             {
                 throw new ArgumentOutOfRangeException(nameof(mode));
             }
-            if (mode == V3RulesMode.Authority)
-            {
-                throw new NotSupportedException(
-                    "V3 authority is not available until the authority gate is configured.");
-            }
 
             if (mode == V3RulesMode.Disabled)
             {
                 _v3RulesAdapter = null;
                 _v3Context = null;
+                _pendingV3AuthorityContact = null;
+                if (_ball != null)
+                {
+                    _ball.SelectedContactCommitter = null;
+                }
                 V3RulesMode = V3RulesMode.Disabled;
                 ResetV3Diagnostics();
                 return;
@@ -642,6 +645,13 @@ namespace Volleyball.Presentation
             _v3RulesAdapter = adapter;
             _v3Context = upgradedContext;
             V3RulesMode = mode;
+            _pendingV3AuthorityContact = null;
+            if (_ball != null)
+            {
+                _ball.SelectedContactCommitter = mode == V3RulesMode.Authority
+                    ? CommitSelectedCandidateV3
+                    : null;
+            }
             ResetV3Diagnostics();
         }
 
@@ -652,6 +662,8 @@ namespace Volleyball.Presentation
             V3RuleIntentionalCorrections = 0;
             V3RuleUnexpectedMismatches = 0;
             LastV3RuleDiagnostic = string.Empty;
+            _lastAcceptedV3Actor = null;
+            _lastAcceptedV3Classification = null;
         }
 
         public void ConfigureInSystemFirstPassCalibration(bool enabled)
@@ -669,6 +681,7 @@ namespace Volleyball.Presentation
             }
 
             _ball.ContactCandidateResolver = null;
+            _ball.SelectedContactCommitter = null;
             _ball.PlayerContactRejected -= HandleRejectedPlayerContact;
             _ball.PlayerContact -= HandlePlayerContact;
             _ball.EnvironmentContact -= HandleEnvironmentContact;
@@ -779,6 +792,9 @@ namespace Volleyball.Presentation
                 _v3RulesAdapter.BeginRally(
                     CreateV3Eligibility(_v3Context),
                     _set.ServingSide);
+                _pendingV3AuthorityContact = null;
+                _lastAcceptedV3Actor = null;
+                _lastAcceptedV3Classification = null;
             }
             _scheduledDecision = null;
             _plannedAttackDecision = null;
@@ -1369,6 +1385,15 @@ namespace Volleyball.Presentation
                 return BallContactResolution.Ignore();
             }
 
+            if (V3RulesMode == V3RulesMode.Authority)
+            {
+                return ToBallContactResolution(_v3RulesAdapter.EvaluateContact(
+                    StableId(candidate.Actor.Value),
+                    ToSide(candidate.Actor.Value.Team),
+                    ToV3Classification(candidate.Action),
+                    hit.ContactGroupId));
+            }
+
             var evaluation = _touchState.Evaluate(
                 candidate.Actor.Value,
                 candidate.Action,
@@ -1379,6 +1404,83 @@ namespace Volleyball.Presentation
                 RallyContactDisposition.Fault => BallContactResolution.Fault(evaluation.Reason.ToString()),
                 _ => BallContactResolution.Ignore()
             };
+        }
+
+        private BallContactResolution CommitSelectedCandidateV3(
+            BallContactCandidate candidate,
+            SweptBallHit hit,
+            float contactSimulationTime)
+        {
+            if (!candidate.Actor.HasValue)
+            {
+                return BallContactResolution.Accept();
+            }
+            if (V3RulesMode != V3RulesMode.Authority || _v3RulesAdapter == null)
+            {
+                throw new InvalidOperationException(
+                    "The selected V3 contact committer requires Authority mode.");
+            }
+
+            var actor = candidate.Actor.Value;
+            var stableActor = StableId(actor);
+            var classification = ToV3Classification(candidate.Action);
+            var transition = _v3RulesAdapter.CommitContact(
+                stableActor,
+                ToSide(actor.Team),
+                classification,
+                hit.ContactGroupId);
+            var resolution = ToBallContactResolution(transition);
+            if (!transition.Accepted)
+            {
+                _pendingV3AuthorityContact = null;
+                return resolution;
+            }
+
+            RallyContactEvaluation? legacyEvaluation = null;
+            string diagnosticExceptionType = null;
+            try
+            {
+                legacyEvaluation = _touchState.Evaluate(
+                    actor,
+                    candidate.Action,
+                    contactSimulationTime);
+            }
+            catch (Exception exception)
+            {
+                diagnosticExceptionType = exception.GetType().FullName;
+            }
+
+            var legacyOutcome = legacyEvaluation.HasValue
+                ? ToLegacyOutcome(legacyEvaluation.Value)
+                : null;
+            var scenario = DetermineShadowScenario(
+                stableActor,
+                classification,
+                legacyOutcome);
+            _pendingV3AuthorityContact = new PendingV3AuthorityContact(
+                actor,
+                candidate.Action,
+                hit.ContactGroupId,
+                contactSimulationTime,
+                transition,
+                legacyEvaluation,
+                legacyOutcome,
+                scenario,
+                diagnosticExceptionType);
+            return resolution;
+        }
+
+        private static BallContactResolution ToBallContactResolution(RuleTransitionV3 transition)
+        {
+            if (transition.Accepted)
+            {
+                return BallContactResolution.Accept();
+            }
+
+            return transition.RejectionReason == RuleRejectionReasonV3.DuplicateContactGroup ||
+                   transition.RejectionReason == RuleRejectionReasonV3.RallyClosed
+                ? BallContactResolution.Ignore()
+                : BallContactResolution.Fault(transition.RejectionReason.ToString());
         }
 
         private void HandleRejectedPlayerContact(PlayerContactRejectedEvent rejected)
@@ -1409,13 +1511,32 @@ namespace Volleyball.Presentation
             }
 
             var actorId = contact.Candidate.Actor.Value;
-            var accepted = _touchState.Accept(
-                actorId,
-                contact.Candidate.Action,
-                contact.ContactSimulationTime);
-            if (accepted.Disposition != RallyContactDisposition.Accept)
+            PendingV3AuthorityContact authorityContact = null;
+            if (V3RulesMode == V3RulesMode.Authority)
             {
-                return;
+                authorityContact = _pendingV3AuthorityContact;
+                _pendingV3AuthorityContact = null;
+                if (authorityContact == null ||
+                    !authorityContact.Actor.Equals(actorId) ||
+                    authorityContact.Action != contact.Candidate.Action ||
+                    authorityContact.ContactGroup != contact.Hit.ContactGroupId)
+                {
+                    throw new InvalidOperationException(
+                        "The accepted physical contact does not match the committed V3 contact.");
+                }
+
+                SynchronizeLegacyCompatibility(authorityContact);
+            }
+            else
+            {
+                var accepted = _touchState.Accept(
+                    actorId,
+                    contact.Candidate.Action,
+                    contact.ContactSimulationTime);
+                if (accepted.Disposition != RallyContactDisposition.Accept)
+                {
+                    return;
+                }
             }
 
             var actor = _players[actorId];
@@ -1518,7 +1639,11 @@ namespace Volleyball.Presentation
                     break;
             }
 
-            ObserveAcceptedContactV3(actorId, contact.Candidate.Action, contact.Hit.ContactGroupId);
+            ObserveAcceptedContactV3(
+                actorId,
+                contact.Candidate.Action,
+                contact.Hit.ContactGroupId,
+                authorityContact);
             NotifyReplay(
                 ReplayContactAccepted,
                 new ReplayContactEvent(
@@ -1533,39 +1658,201 @@ namespace Volleyball.Presentation
         private void ObserveAcceptedContactV3(
             PlayerId actor,
             TechniqueAction action,
-            int contactGroup)
+            int contactGroup,
+            PendingV3AuthorityContact authorityContact)
         {
             if (_v3RulesAdapter == null)
             {
                 return;
             }
 
-            var transition = _v3RulesAdapter.ObserveAcceptedContact(
-                StableId(actor),
-                ToSide(actor.Team),
-                ToV3Classification(action),
-                contactGroup);
-            var comparison = LegacyRulesShadowComparatorV3.Compare(
-                LegacyRuleOutcomeV3.Accept(),
-                transition,
-                ShadowScenarioV3.Other);
-            V3RuleTransitions++;
-            switch (comparison.DifferenceKind)
+            RuleTransitionV3 transition;
+            LegacyRuleOutcomeV3 legacyOutcome;
+            ShadowScenarioV3 scenario;
+            string diagnosticExceptionType;
+            if (V3RulesMode == V3RulesMode.Authority)
             {
-                case RulesShadowDifferenceKindV3.ExactParity:
-                    V3RuleParityMatches++;
-                    break;
-                case RulesShadowDifferenceKindV3.IntentionalV3Correction:
-                    V3RuleIntentionalCorrections++;
-                    break;
-                case RulesShadowDifferenceKindV3.UnexpectedMismatch:
-                    V3RuleUnexpectedMismatches++;
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
+                transition = authorityContact.Transition;
+                legacyOutcome = authorityContact.LegacyOutcome;
+                scenario = authorityContact.Scenario;
+                diagnosticExceptionType = authorityContact.DiagnosticExceptionType;
+            }
+            else
+            {
+                transition = _v3RulesAdapter.ObserveAcceptedContact(
+                    StableId(actor),
+                    ToSide(actor.Team),
+                    ToV3Classification(action),
+                    contactGroup);
+                legacyOutcome = LegacyRuleOutcomeV3.Accept();
+                scenario = DetermineShadowScenario(
+                    StableId(actor),
+                    ToV3Classification(action),
+                    legacyOutcome);
+                diagnosticExceptionType = null;
             }
 
-            LastV3RuleDiagnostic = comparison.Diagnostic;
+            V3RuleTransitions++;
+            try
+            {
+                if (!string.IsNullOrEmpty(diagnosticExceptionType))
+                {
+                    throw new InvalidOperationException(diagnosticExceptionType);
+                }
+
+                var comparison = LegacyRulesShadowComparatorV3.Compare(
+                    legacyOutcome,
+                    transition,
+                    scenario);
+                switch (comparison.DifferenceKind)
+                {
+                    case RulesShadowDifferenceKindV3.ExactParity:
+                        V3RuleParityMatches++;
+                        break;
+                    case RulesShadowDifferenceKindV3.IntentionalV3Correction:
+                        V3RuleIntentionalCorrections++;
+                        break;
+                    case RulesShadowDifferenceKindV3.UnexpectedMismatch:
+                        V3RuleUnexpectedMismatches++;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                LastV3RuleDiagnostic = comparison.Diagnostic;
+            }
+            catch (Exception exception)
+            {
+                if (string.IsNullOrEmpty(diagnosticExceptionType))
+                {
+                    diagnosticExceptionType = exception.GetType().FullName;
+                }
+
+                V3RuleUnexpectedMismatches++;
+                LastV3RuleDiagnostic =
+                    $"scenario={scenario};exceptionType={diagnosticExceptionType};" +
+                    $"actor={StableId(actor).Value};classification={ToV3Classification(action)};" +
+                    $"contactGroup={contactGroup}";
+            }
+
+            _lastAcceptedV3Actor = StableId(actor);
+            _lastAcceptedV3Classification = ToV3Classification(action);
+        }
+
+        private void SynchronizeLegacyCompatibility(PendingV3AuthorityContact authorityContact)
+        {
+            try
+            {
+                if (authorityContact.LegacyEvaluation.HasValue &&
+                    authorityContact.LegacyEvaluation.Value.Disposition ==
+                    RallyContactDisposition.Accept)
+                {
+                    var accepted = _touchState.Accept(
+                        authorityContact.Actor,
+                        authorityContact.Action,
+                        authorityContact.ContactSimulationTime);
+                    if (accepted.Disposition == RallyContactDisposition.Accept)
+                    {
+                        return;
+                    }
+                }
+
+                _touchState.SynchronizeAuthoritativeContact(
+                    authorityContact.Actor,
+                    authorityContact.Action,
+                    authorityContact.Transition.After.CountedHits);
+            }
+            catch (Exception exception)
+            {
+                authorityContact.SetDiagnosticException(exception.GetType().FullName);
+            }
+        }
+
+        private ShadowScenarioV3 DetermineShadowScenario(
+            StablePlayerId actor,
+            RallyContactClassificationV3 classification,
+            LegacyRuleOutcomeV3 legacyOutcome)
+        {
+            if (_lastAcceptedV3Actor.HasValue &&
+                _lastAcceptedV3Actor.Value.Equals(actor) &&
+                _lastAcceptedV3Classification == RallyContactClassificationV3.BlockContact &&
+                classification == RallyContactClassificationV3.TeamContact &&
+                legacyOutcome?.Disposition == LegacyRuleDispositionV3.Fault &&
+                legacyOutcome.Reason == "ConsecutiveCountedTouch")
+            {
+                return ShadowScenarioV3.BlockerFirstCountedContact;
+            }
+
+            if (classification == RallyContactClassificationV3.TeamContact &&
+                legacyOutcome?.Disposition == LegacyRuleDispositionV3.Ignore &&
+                legacyOutcome.Reason == "WrongAction")
+            {
+                return ShadowScenarioV3.IncidentalCountedContact;
+            }
+
+            return ShadowScenarioV3.Other;
+        }
+
+        private static LegacyRuleOutcomeV3 ToLegacyOutcome(RallyContactEvaluation evaluation)
+        {
+            return evaluation.Disposition switch
+            {
+                RallyContactDisposition.Accept => LegacyRuleOutcomeV3.Accept(),
+                RallyContactDisposition.Fault =>
+                    LegacyRuleOutcomeV3.Fault(evaluation.Reason.ToString()),
+                _ => LegacyRuleOutcomeV3.Ignore(evaluation.Reason.ToString())
+            };
+        }
+
+        private sealed class PendingV3AuthorityContact
+        {
+            public PendingV3AuthorityContact(
+                PlayerId actor,
+                TechniqueAction action,
+                int contactGroup,
+                float contactSimulationTime,
+                RuleTransitionV3 transition,
+                RallyContactEvaluation? legacyEvaluation,
+                LegacyRuleOutcomeV3 legacyOutcome,
+                ShadowScenarioV3 scenario,
+                string diagnosticExceptionType)
+            {
+                Actor = actor;
+                Action = action;
+                ContactGroup = contactGroup;
+                ContactSimulationTime = contactSimulationTime;
+                Transition = transition;
+                LegacyEvaluation = legacyEvaluation;
+                LegacyOutcome = legacyOutcome;
+                Scenario = scenario;
+                DiagnosticExceptionType = diagnosticExceptionType;
+            }
+
+            public PlayerId Actor { get; }
+
+            public TechniqueAction Action { get; }
+
+            public int ContactGroup { get; }
+
+            public float ContactSimulationTime { get; }
+
+            public RuleTransitionV3 Transition { get; }
+
+            public RallyContactEvaluation? LegacyEvaluation { get; }
+
+            public LegacyRuleOutcomeV3 LegacyOutcome { get; }
+
+            public ShadowScenarioV3 Scenario { get; }
+
+            public string DiagnosticExceptionType { get; private set; }
+
+            public void SetDiagnosticException(string exceptionType)
+            {
+                if (string.IsNullOrEmpty(DiagnosticExceptionType))
+                {
+                    DiagnosticExceptionType = exceptionType;
+                }
+            }
         }
 
         private static RallyContactClassificationV3 ToV3Classification(TechniqueAction action)

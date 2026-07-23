@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
@@ -147,6 +148,69 @@ namespace Volleyball.EditModeTests
                 Assert.That(rejected.Reason, Is.EqualTo("fourth counted touch"));
                 Assert.That(rejected.Candidate.Actor.Value.Role, Is.EqualTo(PlayerRole.Defender));
                 Assert.That(rejected.ContactSimulationTime, Is.GreaterThan(0f));
+                Assert.That(ball.State.LastContactGroupId, Is.Null);
+                Assert.That(ball.State.Velocity.Y, Is.LessThan(0f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void AdvanceSimulation_EvaluatesEveryCollisionButCommitsOnlyChosenEarliestContact()
+        {
+            var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
+            try
+            {
+                var evaluatedGroups = new List<int>();
+                var committedGroups = new List<int>();
+                ball.ContactCandidateResolver = (_, hit, __) =>
+                {
+                    evaluatedGroups.Add(hit.ContactGroupId);
+                    return BallContactResolution.Accept();
+                };
+                ball.SelectedContactCommitter = (_, hit, __) =>
+                {
+                    committedGroups.Add(hit.ContactGroupId);
+                    return BallContactResolution.Accept();
+                };
+                ball.Launch(new Vector3(0f, -40f, 0f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(evaluatedGroups, Is.EquivalentTo(new[] { 77, 78 }));
+                Assert.That(committedGroups, Is.EqualTo(new[] { 77 }));
+                Assert.That(ball.State.LastContactGroupId, Is.EqualTo(77));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void AdvanceSimulation_SelectedCommitRejectionRaisesFaultBeforeVelocityResponse()
+        {
+            var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
+            try
+            {
+                var commits = 0;
+                PlayerContactRejectedEvent rejected = default;
+                ball.ContactCandidateResolver = (_, __, ___) => BallContactResolution.Accept();
+                ball.SelectedContactCommitter = (_, __, ___) =>
+                {
+                    commits++;
+                    return BallContactResolution.Fault("authority fourth counted contact");
+                };
+                ball.PlayerContactRejected += value => rejected = value;
+                ball.Launch(new Vector3(0f, -40f, 0f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(commits, Is.EqualTo(1));
+                Assert.That(rejected.Reason, Is.EqualTo("authority fourth counted contact"));
+                Assert.That(rejected.Candidate.Actor.Value.Role, Is.EqualTo(PlayerRole.Defender));
                 Assert.That(ball.State.LastContactGroupId, Is.Null);
                 Assert.That(ball.State.Velocity.Y, Is.LessThan(0f));
             }

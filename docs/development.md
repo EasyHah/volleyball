@@ -192,6 +192,27 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
   -logFile "$PWD/TestResults/Formal6v6.log"
 ```
 
+Formal 6v6 configures `V3RulesMode.Authority`; the legacy 3v3 scene remains
+`Disabled` with no V3 adapter. Run the Phase 1 authority gate and retain its
+local XML evidence with Unity `6000.0.43f1`:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+mkdir -p TestResults
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
+  -testResults "$PWD/TestResults/FullRallyV3-Phase1-final-edit.xml" \
+  -logFile "$PWD/TestResults/FullRallyV3-Phase1-final-edit.log"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testResults "$PWD/TestResults/FullRallyV3-Phase1-final-play.xml" \
+  -logFile "$PWD/TestResults/FullRallyV3-Phase1-final-play.log"
+```
+
+The expected local artifacts are
+`TestResults/FullRallyV3-Phase1-final-edit.xml` and
+`TestResults/FullRallyV3-Phase1-final-play.xml`. The formal PlayMode assertions
+require one V3 transition and replay event per committed accepted contact, zero
+unexpected mismatches, and one score advance per completed rally.
+
 Run the unified attack-chain calibration (100 in-system setter contacts in each
 scene plus 20 symmetric formal sets) with:
 

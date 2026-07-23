@@ -1,11 +1,11 @@
 # CHG-20260723-001：Full Rally V3 架构与 Shared 契约预留
 
 - 日期：2026-07-23
-- 状态：已完成
+- 状态：Phase 0 接口与 Phase 1 事实、资格、规则及正式 6v6 权威闸门已完成
 - 负责人：Shared / Match
 - 影响模块：Shared / Match / Career / Docs
 - 交互级别：跨模块（重点）
-- 关联分支：`geometric-counterplay`（设计稿）/ `main`（Phase 0 接口落地）
+- 关联分支：`geometric-counterplay`（设计稿）/ `codex/full-rally-v3-phase-1`
 - 关联提交或 PR：本地提交（见当前 commit）
 
 > [!IMPORTANT]
@@ -21,8 +21,9 @@ Phase 0 接口闸门：V3 契约族、canonical hash 拆分、V2->V3 能力迁�
 decision、deterministic work budget、Replay V2 方向、shared execution envelope 和 shared
 trajectory prediction contract。
 
-本记录声明 Phase 0 接口、测试夹具和跨模块协作边界已落地，不表示 Full Rally V3 planner、
-cache、完整 replay payload、平衡公式或游戏内执行已实现。GPU backend 不进入当前 Phase 0/P1；
+本记录声明 Phase 0 接口、测试夹具和跨模块协作边界，以及 Phase 1 的世界事实、场上资格、
+实际触球转换、动作资格、边界规则、shadow 比较与正式 6v6 权威闸门已落地。不表示 Full Rally
+V3 planner、cache、完整 replay payload 或平衡公式已实现。GPU backend 不进入当前 Phase 0/P1；
 第一版以 CPU deterministic backend 为权威。
 
 SP/GM 审查结论：用户原始 P0 四条仍是核心阻塞项；GM 追加的 Replay 契约方向、hash 拆族、
@@ -37,6 +38,15 @@ shared trajectory artifact 是 Phase 0 interface addenda。它们必须在接口
   - 实施计划：`docs/superpowers/plans/2026-07-23-full-rally-v3-phase-0-interfaces.md`
   - 本交接文档：`docs/changes/2026-07-23-001-full-rally-v3-architecture.md`
   - 索引：`docs/changes/README.md`
+  - Phase 1 规则事实：`Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/RallyWorldSnapshotV3.cs`
+  - Phase 1 场上资格：`OnCourtEligibilitySnapshot.cs`、`OnCourtLineupRulesV3.cs`
+  - Phase 1 触球规则：`TouchSequenceStateV3.cs`、`RallyRulesEngineV3.cs`
+  - Phase 1 动作与边界：`ActionEligibilityRulesV3.cs`、`BoundaryAndNetRulesV3.cs`
+  - Phase 1 shadow：`LegacyRulesShadowComparatorV3.cs`
+  - Phase 1 运行时适配：`Assets/Volleyball/Match/Runtime/Presentation/FullRallyV3RulesRuntimeAdapter.cs`
+  - Phase 1 测试：`FullRallyV3WorldSnapshotTests.cs`、`FullRallyV3EligibilityTests.cs`、
+    `FullRallyV3RulesEngineTests.cs`、`FullRallyV3ShadowRulesTests.cs`、
+    `FullRallyV3RuntimeAdapterTests.cs`
 - 新增或修改的公开类型/字段：
   - 已新增 `ContractVersions.MatchV3 = 3` 和 `ContractVersions.ReplayV2 = 2`。
   - 已新增 `PlayerAbilitySnapshotV3`、`PlayerSnapshotV3`、`TeamSnapshotV3`、`MatchContextV3`、
@@ -51,6 +61,12 @@ shared trajectory artifact 是 Phase 0 interface addenda。它们必须在接口
     compatibility estimate 状态。
   - 已新增 Match 侧 Phase 0 占位契约：`ExecutionEnvelopeV3`、`PlanCoverageDecision`、
     `DeterministicWorkBudgetV3`、`BallTrajectoryArtifactV3`。
+  - 已新增 `RallyWorldSnapshotV3`、`OnCourtEligibilitySnapshot`、`OnCourtLineupRulesV3`、
+    `TouchSequenceStateV3`、`RallyRulesEngineV3`、`ActionEligibilityRulesV3`、
+    `BoundaryAndNetRulesV3`、`LegacyRulesShadowComparatorV3`。
+  - 已新增 `FullRallyV3RulesRuntimeAdapter.EvaluateContact` / `CommitContact` 纯查询与提交边界。
+  - `SimulatedBall.SelectedContactCommitter` 只在选出最早且未忽略的真实碰撞后调用一次，并在任何
+    接触响应前返回权威结果。
 - 行为变化：
   - 每次 accepted contact 先推进 rules transition，再 deterministic 判断 covered branch、
     local revision、scoped replan、global replan 或 terminal no-plan。
@@ -58,6 +74,11 @@ shared trajectory artifact 是 Phase 0 interface addenda。它们必须在接口
   - planner 与 executor 必须共享同一份 execution envelope；两队 gate-5 必须读取同一份
     authoritative trajectory prediction artifact。
   - V2 能力迁移只能作为 compatibility estimate，并记录 provenance 与 collapsed axes 限制。
+  - 正式 6v6 显式配置 `V3RulesMode.Authority`；碰撞候选筛选只查询 V3，选中碰撞只提交一次，
+    旧规则仅保留兼容状态和诊断比较，不能否决已由 V3 接受的物理事件。
+  - 旧版 3v3 继续使用 `V3RulesMode.Disabled` 和空 V3 adapter，行为边界不变。
+  - V3 拒绝在球速响应前映射为 fault/ignore；计数、比较、回放接触和规则转换按已提交接受触球
+    各发生一次。
 
 ## 跨模块交互重点
 
@@ -77,7 +98,7 @@ shared trajectory artifact 是 Phase 0 interface addenda。它们必须在接口
 ## 验证
 
 - [x] EditMode 测试
-- [ ] PlayMode 测试
+- [x] PlayMode 测试
 - [ ] 手动场景验证
 - [x] 序列化、存档或迁移验证（如适用）
 
@@ -93,12 +114,25 @@ Phase 0 接口已完成的最低验证：
   `BallTrajectoryArtifactV3` deterministic identity。
 - 已覆盖 deterministic work budget 不用 wall-clock 改变 deterministic decision。
 
+Phase 1 最终验证使用 Unity `6000.0.43f1`：
+
+- 全量 EditMode：`TestResults/FullRallyV3-Phase1-final-edit.xml`，433/433 passed，
+  failed/inconclusive/skipped 均为 0。
+- 全量 PlayMode：`TestResults/FullRallyV3-Phase1-final-play.xml`，21/21 passed，
+  failed/inconclusive/skipped 均为 0，耗时 445.685 秒。
+- 正式 6v6 完整单局为 25:9，50 次已提交接受触球对应 50 次 V3 transition 与 50 次
+  `ReplayContactAccepted`；parity 50、intentional correction 0、unexpected mismatch 0。
+- 正式 6v6 每个 `ReplayRallyResolved` 恰对应一次比分增长；旧版 3v3 仍验证 Disabled、
+  零 V3 计数和空 adapter。
+- authority 回归覆盖同一拦网者的首个计数触球、拦网反弹后任一方重新获得三次触球，以及第四次
+  计数触球在响应前被拒绝且不改变出球速度。
+
 后续阶段仍需补齐：
 
 - `CanonicalMatchReplayHashV2` / frame hash 的完整 payload inclusion/exclusion 表。
-- shanked pass、block touch、terminal event 等真实 executor/planner 场景测试。
+- shanked pass、terminal event 等更多真实 executor/planner 场景测试。
 - 两队 gate-5 共享物理预测 cache 的真实实现与 perf calibration。
-- PlayMode 与手动场景验证。
+- 手动场景验证。
 
 ## 回滚与风险
 
@@ -109,3 +143,8 @@ Phase 0 只锁名称、版本、hash 边界、diagnostic hooks 和验收 fixture
 性能风险先用 CPU deterministic backend、bounded work、scoped/diff replanning、shared trajectory
 cache 和 gate pruning 控制。GPU 不作为当前权威执行路径；未来若加入 GPU backend，必须保持可复现
 canonical artifacts 和 replay 行为。
+
+Phase 1 已用实际场上资格执行 Block 资格判断。Attack 资格事实需要起跳点、触球点、进攻线和网高；
+当前 `BallContactCandidate` 只有碰撞面、动作与 actor，未携带权威起跳点。Task 7 没有伪造几何，
+因此正式运行时的 above-net/front-zone Attack 资格接线留给补充该碰撞事实的后续阶段；完成前不得
+宣称该几何限制已经由 V3 authority 执行。
