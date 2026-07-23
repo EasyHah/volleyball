@@ -83,6 +83,31 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AdvanceSimulation_AttackResponseIgnoresVisualPalmVelocityWithoutChangingSweptHit()
+        {
+            var gameObject = new GameObject("SimulatedBallStableAttackResponse");
+            try
+            {
+                gameObject.transform.position = new Vector3(0f, 1.3f, 0f);
+                var ball = gameObject.AddComponent<SimulatedBall>();
+                ball.RegisterContactSource(new MovingAttackContactSource());
+                PlayerBallContactEvent accepted = default;
+                ball.PlayerContact += contact => accepted = contact;
+                ball.Launch(new Vector3(0f, -40f, 0f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(accepted.Hit.Normal, Is.EqualTo(SimVector3.Up));
+                Assert.That(accepted.Hit.SurfaceVelocity.Z, Is.GreaterThan(5f));
+                Assert.That(accepted.PhysicalResponse.PhysicalOutgoing.Z, Is.EqualTo(0f).Within(0.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void AdvanceSimulation_IgnoresRejectedEarlyCandidateBeforeApplyingResponse()
         {
             var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
@@ -257,6 +282,37 @@ namespace Volleyball.EditModeTests
                     new SimVector3(0f, 8f, 2f),
                     SimVector3.Up,
                     new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+            }
+        }
+
+        private sealed class MovingAttackContactSource : IBallContactSource
+        {
+            public void CollectContacts(
+                float simulationTime,
+                float deltaSeconds,
+                System.Collections.Generic.ICollection<BallContactCandidate> contacts)
+            {
+                var previous = new ContactSurfaceFrame(
+                    new SimVector3(0f, 1f, 0f),
+                    SimVector3.Up,
+                    new SimVector3(1f, 0f, 0f),
+                    new SimVector3(0f, 0f, 1f),
+                    1f,
+                    1f);
+                var current = new ContactSurfaceFrame(
+                    new SimVector3(0f, 1f, 0.1f),
+                    SimVector3.Up,
+                    new SimVector3(1f, 0f, 0f),
+                    new SimVector3(0f, 0f, 1f),
+                    1f,
+                    1f);
+                contacts.Add(new BallContactCandidate(
+                    new ContactSurfaceSnapshot(previous, current, true, 82),
+                    TechniqueAction.Attack,
+                    1f,
+                    new SimVector3(0f, -6f, 23f),
+                    new SimVector3(0f, -1f, 4f).Normalized,
+                    new ContactResponseParameters(0.55f, 0.42f, 0.18f, 0.08f)));
             }
         }
 

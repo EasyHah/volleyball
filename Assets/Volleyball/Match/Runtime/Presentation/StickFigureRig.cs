@@ -400,7 +400,7 @@ namespace Volleyball.Presentation
 
             SetTargets(StickFigurePose.Spike,
                 ("LeftShoulder", new Vector3(-118f, 0f, 12f)),
-                ("RightShoulder", new Vector3(-140f, 0f, -18f)),
+                ("RightShoulder", new Vector3(-135f, 0f, -18f)),
                 ("LeftElbow", new Vector3(-55f, 0f, 0f)),
                 ("RightElbow", Vector3.zero),
                 ("Torso", new Vector3(-12f, 0f, -6f)));

@@ -1062,7 +1062,7 @@ namespace Volleyball.Presentation
                     Rig.SetPoseTransition(
                         StickFigurePose.SpikeWindup,
                         StickFigurePose.Spike,
-                        sample.PhaseProgress * 0.75f,
+                        sample.PhaseProgress,
                         TechniqueAction.Attack,
                         _executionError.ContactPositionError,
                         _executionError.ContactNormalErrorDegrees,
@@ -1072,7 +1072,7 @@ namespace Volleyball.Presentation
                     Rig.SetPoseTransition(
                         StickFigurePose.SpikeWindup,
                         StickFigurePose.Spike,
-                        0.75f + (sample.PhaseProgress * 0.5f),
+                        1f,
                         TechniqueAction.Attack,
                         _executionError.ContactPositionError,
                         _executionError.ContactNormalErrorDegrees,

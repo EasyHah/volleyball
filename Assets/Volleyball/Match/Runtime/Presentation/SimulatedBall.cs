@@ -452,7 +452,16 @@ namespace Volleyball.Presentation
                     return;
                 }
 
-                var physical = ContactResponse.Apply(State, playerHit, playerCandidate.ResponseParameters);
+                var physical = playerCandidate.Action == TechniqueAction.Attack
+                    ? ContactResponse.ApplyWithSurfaceVelocity(
+                        State,
+                        playerHit,
+                        SimVector3.Zero,
+                        playerCandidate.ResponseParameters)
+                    : ContactResponse.Apply(
+                        State,
+                        playerHit,
+                        playerCandidate.ResponseParameters);
                 var technique = TechniqueControlPolicy.Apply(new TechniqueControlInput(
                     playerCandidate.Action,
                     physical.PhysicalOutgoing,
