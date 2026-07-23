@@ -735,6 +735,71 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PreviewBlockArmFrames_MatchesScheduledArmHeightAtContact()
+        {
+            var player = CreatePlayer("PreviewJumpingBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                const float contactTime = 10f;
+                var rootTarget = player.ResolveBlockRootTarget(
+                    new SimVector3(0.75f, 2.7f, 0f),
+                    new Vector3(0.75f, 0f, -PrototypePlayerAgent.NetClearance));
+                player.Rig.SetPose(StickFigurePose.Block, 1f);
+                var preview = player.PreviewBlockArmFrames(contactTime, rootTarget);
+                player.ScheduleBlockContact(
+                    contactTime,
+                    rootTarget,
+                    9f,
+                    new SimVector3(0f, 2f, 8f),
+                    705);
+
+                var actual = Collect(player, contactTime);
+                var previewCenterHeight = 0f;
+                var actualCenterHeight = 0f;
+                for (var index = 0; index < preview.Count; index++)
+                {
+                    previewCenterHeight += (preview[index].Start.Y + preview[index].End.Y) * 0.5f;
+                    actualCenterHeight +=
+                        (actual[index].Capsule.Current.Start.Y +
+                         actual[index].Capsule.Current.End.Y) * 0.5f;
+                }
+
+                previewCenterHeight /= preview.Count;
+                actualCenterHeight /= actual.Count;
+                Assert.That(previewCenterHeight, Is.EqualTo(actualCenterHeight).Within(0.03f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ResolveBlockRootTarget_UsesLessJumpForALowerInterception()
+        {
+            var player = CreatePlayer("HeightAwareBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                var nominal = new Vector3(0.75f, 0f, -PrototypePlayerAgent.NetClearance);
+
+                var low = player.ResolveBlockRootTarget(
+                    new SimVector3(0.75f, 2.25f, 0f),
+                    nominal);
+                var high = player.ResolveBlockRootTarget(
+                    new SimVector3(0.75f, 2.85f, 0f),
+                    nominal);
+
+                Assert.That(low.y, Is.GreaterThanOrEqualTo(0f));
+                Assert.That(low.y, Is.LessThan(high.y));
+                Assert.That(high.y, Is.LessThanOrEqualTo(0.5f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void ScheduledBlockContact_ReorientsPreviousSetFacingTowardTheNet()
         {
             var player = CreatePlayer("ReorientedBlocker", TeamId.Orange, PlayerRole.Setter);

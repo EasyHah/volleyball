@@ -29,6 +29,27 @@ namespace Volleyball.EditModeTests
             Assert.That(repeated, Is.EqualTo(first));
         }
 
+        [Test]
+        public void Select_PinAttackAvoidsAnUnexecutableExtremeCrossCourtVelocity()
+        {
+            var selected = AttackRouteSelector.Select(new AttackRouteSelectionInput(
+                TeamId.Orange,
+                new SimVector3(-4.03f, 3.36f, 1.51f),
+                normalFlightSeconds: 0.45f,
+                predictedArms: new[]
+                {
+                    new ContactCapsuleFrame(
+                        new SimVector3(-3.93f, 2.55f, 0f),
+                        new SimVector3(-3.93f, 3.65f, 0f),
+                        0.18f)
+                },
+                parameters: new BallSimulationParameters(-9.8f, 0.9995f),
+                fixedStepSeconds: 1f / 120f));
+
+            Assert.That(selected.InitialVelocity.Magnitude, Is.LessThan(19f));
+            Assert.That(selected.FlightSeconds, Is.LessThan(0.8f));
+        }
+
         private static ContactCapsuleFrame[] CentralBlockArms()
         {
             return new[]

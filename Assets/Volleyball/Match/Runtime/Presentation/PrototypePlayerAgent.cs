@@ -68,6 +68,8 @@ namespace Volleyball.Presentation
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
+        public bool EmergencyReceiveWindowEnabled => _hasEmergencyReceiveWindow;
+
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
 
         private ActionTimeline _actionTimeline;
@@ -103,6 +105,7 @@ namespace Volleyball.Presentation
         private bool _hasPhysicalBlockContact;
         private SimVector3 _physicalBlockTargetVelocity;
         private int _physicalBlockContactGroupId;
+        private float _physicalBlockContactRootHeight;
         private bool _hasAttackApproach;
         private AttackApproachPlan _attackApproach;
         private bool _hasAttackContactPlan;
@@ -411,6 +414,9 @@ namespace Volleyball.Presentation
                 scheduledSimulationTime,
                 movementTarget,
                 movementStartSimulationTime);
+            _physicalBlockContactRootHeight = movementTarget.y > 0f
+                ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
+                : MaximumBlockContactRootHeight();
             _physicalBlockTargetVelocity = targetVelocity;
             _physicalBlockContactGroupId = contactGroupId;
             _hasPhysicalBlockContact = true;
@@ -449,6 +455,9 @@ namespace Volleyball.Presentation
                 previousTarget,
                 ConstrainGroundPosition(movementTarget),
                 0.549f);
+            _physicalBlockContactRootHeight = movementTarget.y > 0f
+                ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
+                : MaximumBlockContactRootHeight();
             BlockRetargetDistance = Vector3.Distance(previousTarget, _supportTargetPosition);
             _supportEndSimulationTime = Mathf.Max(
                 _supportStartSimulationTime + 0.01f,
@@ -586,6 +595,31 @@ namespace Volleyball.Presentation
                 transform.rotation = savedRotation;
                 Rig.RestoreLocalRotations(savedRotations);
             }
+        }
+
+        public Vector3 ResolveBlockRootTarget(
+            SimVector3 desiredContactCenter,
+            Vector3 nominalRootTarget)
+        {
+            if (!desiredContactCenter.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(nameof(desiredContactCenter));
+            }
+
+            nominalRootTarget.y = 0f;
+            var frames = PreviewBlockArmFrames(0f, nominalRootTarget);
+            var centerHeight = 0f;
+            for (var index = 0; index < frames.Count; index++)
+            {
+                centerHeight += (frames[index].Start.Y + frames[index].End.Y) * 0.5f;
+            }
+
+            centerHeight /= frames.Count;
+            nominalRootTarget.y = Mathf.Clamp(
+                desiredContactCenter.Y - centerHeight,
+                0f,
+                MaximumBlockContactRootHeight());
+            return nominalRootTarget;
         }
 
         public Vector3 ResolveContactRootTarget(
@@ -1326,11 +1360,24 @@ namespace Volleyball.Presentation
 
         private float EvaluateSupportBlockJump(float simulationTime)
         {
-            var takeoffTime = _supportTimeline.ActualContactTime - 0.22f;
-            var landingTime = _supportTimeline.ActualContactTime + 0.28f;
+            var contactTime = _supportTimeline.ActualContactTime;
+            var takeoffTime = contactTime - 0.22f;
+            var landingTime = contactTime + 0.28f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
+            var contactProgress = 0.22f / 0.50f;
+            var shape = 4f * jumpProgress * (1f - jumpProgress);
+            var contactShape = 4f * contactProgress * (1f - contactProgress);
+            var contactRootHeight = _hasPhysicalBlockContact
+                ? _physicalBlockContactRootHeight
+                : MaximumBlockContactRootHeight();
+            return contactRootHeight * shape / contactShape;
+        }
+
+        private float MaximumBlockContactRootHeight()
+        {
             var jumpHeight = 0.30f + (Ability.Jump * 0.20f);
-            return jumpHeight * 4f * jumpProgress * (1f - jumpProgress);
+            var contactProgress = 0.22f / 0.50f;
+            return jumpHeight * 4f * contactProgress * (1f - contactProgress);
         }
 
         private Vector3 ConstrainGroundPosition(Vector3 position)

@@ -232,7 +232,9 @@ namespace Volleyball.AI
                 return false;
             }
 
-            score = minimumClearance;
+            score = minimumClearance -
+                    RouteTempoCost(route) -
+                    (Math.Max(0f, velocity.InitialVelocity.Magnitude - 19f) * 0.75f);
             selection = new AttackRouteSelection(
                 route,
                 target,
@@ -285,6 +287,17 @@ namespace Volleyball.AI
         private static float WholeStepDuration(float seconds, float fixedStepSeconds)
         {
             return Math.Max(1, (int)Math.Round(seconds / fixedStepSeconds)) * fixedStepSeconds;
+        }
+
+        private static float RouteTempoCost(GeometricAttackRoute route)
+        {
+            return route switch
+            {
+                GeometricAttackRoute.OverHand => 4.00f,
+                GeometricAttackRoute.EdgeLeft => 0.05f,
+                GeometricAttackRoute.EdgeRight => 0.05f,
+                _ => 0f
+            };
         }
 
         private static float Clamp(float value, float minimum, float maximum)

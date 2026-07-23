@@ -178,7 +178,10 @@ namespace Volleyball.Presentation
         private TeamRallyDecision _scheduledDecision;
         private TeamRallyDecision _plannedAttackDecision;
         private PlayerId? _scheduledPrimaryActor;
-        private PlayerId? _scheduledBlocker;
+        private readonly HashSet<PlayerId> _scheduledBlockers = new HashSet<PlayerId>();
+        private PlayerId? _scheduledBlockPrimary;
+        private bool _awaitingPostBlockCrossing;
+        private TeamId? _postBlockerTeam;
         private TeamId? _pendingCrossingTeam;
         private float _expectedContactTime;
         private float _scheduledSetFlightSeconds;
@@ -247,6 +250,20 @@ namespace Volleyball.Presentation
             : _blockImpactFeedback.PlayedCount;
 
         public int PostBlockContinuations { get; private set; }
+
+        public int PostBlockPossessionDeferrals { get; private set; }
+
+        public int PrematurePostBlockReceiveWindows { get; private set; }
+
+        public int PrematurePostBlockEmergencyWindows { get; private set; }
+
+        public int PostBlockGroundPoints { get; private set; }
+
+        public int ScheduledMultiBlockUnits { get; private set; }
+
+        public int ScheduledBackRowBlockers { get; private set; }
+
+        public int MaximumScheduledBlockers { get; private set; }
 
         public int NonSetterSetContacts { get; private set; }
 
@@ -673,7 +690,10 @@ namespace Volleyball.Presentation
             _scheduledDecision = null;
             _plannedAttackDecision = null;
             _scheduledPrimaryActor = null;
-            _scheduledBlocker = null;
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = null;
+            _awaitingPostBlockCrossing = false;
+            _postBlockerTeam = null;
             _pendingCrossingTeam = null;
             _contactDeadlineActive = false;
             _lastTouchWasBackSetAttack = false;
@@ -721,6 +741,12 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            var prematurePostBlockPossession = _awaitingPostBlockCrossing;
+            if (prematurePostBlockPossession)
+            {
+                PrematurePostBlockReceiveWindows++;
+            }
+
             DisableEmergencyReceiveWindows(TeamId.Blue);
             DisableEmergencyReceiveWindows(TeamId.Orange);
             DisablePhysicalBlockWindows();
@@ -729,6 +755,16 @@ namespace Volleyball.Presentation
             _controlledHandlingActive = false;
             _activeSetChain = false;
             BeginPossessionDecision(team, availableSeconds);
+            if (prematurePostBlockPossession)
+            {
+                foreach (var player in _players.Values)
+                {
+                    if (player.EmergencyReceiveWindowEnabled)
+                    {
+                        PrematurePostBlockEmergencyWindows++;
+                    }
+                }
+            }
             Debug.Log(
                 $"[{_configuration.LogTag}] possession team={team} touches=0 " +
                 $"available={availableSeconds:0.00}");
@@ -1655,7 +1691,7 @@ namespace Volleyball.Presentation
         {
             _scheduledDecision = decision;
             _scheduledPrimaryActor = decision.Actor;
-            _scheduledBlocker = null;
+            _scheduledBlockers.Clear();
             _contactDeadlineActive = true;
             _controlledHandlingActive = true;
             _expectedContactTime = _ball.SimulationTime + arrivalSeconds;
@@ -1750,32 +1786,64 @@ namespace Volleyball.Presentation
                     1.5f,
                     out var intercept))
             {
-                _scheduledBlocker = null;
+                _scheduledBlockers.Clear();
+                _scheduledBlockPrimary = null;
                 return;
             }
 
             var defendingTeam = Opponent(attackingTeam);
-            var blocker = SelectBlocker(defendingTeam, intercept.Point);
+            var blockTime = attackContactTime + intercept.TimeSeconds;
+            var availableSeconds = Mathf.Max(0f, blockTime - _ball.SimulationTime);
             var blockTarget = BlockRootTarget(defendingTeam, intercept.Point);
-            _players[blocker].ScheduleBlockContact(
-                attackContactTime + intercept.TimeSeconds,
-                blockTarget,
-                _ball.SimulationTime,
-                BlockReboundVelocity(attackingTeam),
-                NextContactGroup());
-            _scheduledBlocker = blocker;
-            BlockSupportAssignments++;
+            var unit = SelectBlockUnit(
+                defendingTeam,
+                ToSimulation(blockTarget),
+                availableSeconds);
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = unit.Blockers.Count == 0
+                ? (PlayerId?)null
+                : unit.Blockers[0].Id;
+            for (var index = 0; index < unit.Blockers.Count; index++)
+            {
+                var blocker = unit.Blockers[index];
+                var target = UnitBlockRootTarget(
+                    defendingTeam,
+                    intercept.Point,
+                    blocker,
+                    unit.Blockers[0]);
+                target = _players[blocker.Id].ResolveBlockRootTarget(intercept.Point, target);
+                _players[blocker.Id].ScheduleBlockContact(
+                    blockTime,
+                    target,
+                    _ball.SimulationTime,
+                    BlockReboundVelocity(attackingTeam),
+                    NextContactGroup());
+                _scheduledBlockers.Add(blocker.Id);
+                BlockSupportAssignments++;
+                if (_configuration.RosterSize == 6 && !IsFrontRow(blocker.Id))
+                {
+                    ScheduledBackRowBlockers++;
+                }
+            }
 
-            var cover = SelectCoverPlayer(defendingTeam, blocker, intercept.Point);
-            _players[cover].ScheduleSupportAction(
-                TechniqueAction.Receive,
-                attackContactTime + intercept.TimeSeconds + 0.12f,
-                CoverageTarget(defendingTeam, intercept.Point),
-                _ball.SimulationTime);
-            CoverageSupportAssignments++;
+            MaximumScheduledBlockers = Mathf.Max(MaximumScheduledBlockers, _scheduledBlockers.Count);
+            if (_scheduledBlockers.Count >= 2)
+            {
+                ScheduledMultiBlockUnits++;
+            }
+
+            if (TrySelectCoverPlayer(defendingTeam, _scheduledBlockers, intercept.Point, out var cover))
+            {
+                _players[cover].ScheduleSupportAction(
+                    TechniqueAction.Receive,
+                    blockTime + 0.12f,
+                    CoverageTarget(defendingTeam, intercept.Point),
+                    _ball.SimulationTime);
+                CoverageSupportAssignments++;
+            }
             Debug.Log(
-                $"[{_configuration.LogTag}] block-plan team={defendingTeam} blocker={blocker.Role} " +
-                $"cover={cover.Role} intercept=({intercept.Point.X:0.00}," +
+                $"[{_configuration.LogTag}] block-plan team={defendingTeam} " +
+                $"blockers={_scheduledBlockers.Count} intercept=({intercept.Point.X:0.00}," +
                 $"{intercept.Point.Y:0.00},{intercept.Point.Z:0.00})");
         }
 
@@ -1787,7 +1855,7 @@ namespace Volleyball.Presentation
             _scheduledDecision = null;
             _scheduledPrimaryActor = null;
             _contactDeadlineActive = false;
-            if (!_scheduledBlocker.HasValue ||
+            if (_scheduledBlockers.Count == 0 ||
                 !NetPlaneInterception.TryPredict(
                     _ball.State,
                     SimulationParameters,
@@ -1795,25 +1863,46 @@ namespace Volleyball.Presentation
                     1.5f,
                     out var intercept))
             {
-                _scheduledBlocker = null;
+                _scheduledBlockers.Clear();
+                _scheduledBlockPrimary = null;
                 return;
             }
 
-            var blocker = _scheduledBlocker.Value;
             var blockTime = attackContact.ContactSimulationTime + intercept.TimeSeconds;
-            _players[blocker].RetargetBlockContact(
-                blockTime,
-                BlockRootTarget(blocker.Team, intercept.Point),
-                BlockReboundVelocity(attackingTeam));
-            var appliedBlockTime = _players[blocker].PhysicalBlockContactTime;
+            var blockers = OrderedScheduledBlockers();
+            var primary = _scheduledBlockPrimary.HasValue &&
+                          _scheduledBlockers.Contains(_scheduledBlockPrimary.Value)
+                ? _scheduledBlockPrimary.Value
+                : blockers[0];
+            var primarySnapshot = BlockSnapshot(primary);
+            var appliedBlockTime = float.MaxValue;
+            foreach (var blocker in blockers)
+            {
+                var blockerSnapshot = BlockSnapshot(blocker);
+                var target = UnitBlockRootTarget(
+                    blocker.Team,
+                    intercept.Point,
+                    blockerSnapshot,
+                    primarySnapshot);
+                target = _players[blocker].ResolveBlockRootTarget(intercept.Point, target);
+                _players[blocker].RetargetBlockContact(
+                    blockTime,
+                    target,
+                    BlockReboundVelocity(attackingTeam));
+                appliedBlockTime = Mathf.Min(
+                    appliedBlockTime,
+                    _players[blocker].PhysicalBlockContactTime);
+            }
+
             _touchState.OpenWindow(new RallyContactWindow(
-                blocker.Team,
+                blockers[0].Team,
                 TechniqueAction.Block,
                 appliedBlockTime - ContactWindowLead,
                 appliedBlockTime + ContactWindowTail,
-                new[] { blocker }));
+                blockers));
             Debug.Log(
-                $"[{_configuration.LogTag}] block-window team={blocker.Team} actor={blocker.Role} " +
+                $"[{_configuration.LogTag}] block-window team={blockers[0].Team} " +
+                $"actors={blockers.Count} " +
                 $"attack={attackDecision.Actor.Role} " +
                 $"time={appliedBlockTime:0.00} predicted={blockTime:0.00} " +
                 $"intercept=({intercept.Point.X:0.00},{intercept.Point.Y:0.00}," +
@@ -1823,8 +1912,9 @@ namespace Volleyball.Presentation
         private void HandleAcceptedBlock(PlayerBallContactEvent contact)
         {
             var blocker = contact.Candidate.Actor.Value;
-            _players[blocker].DisableBlockContactWindow();
-            _scheduledBlocker = null;
+            DisablePhysicalBlockWindows();
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = null;
             _scheduledPrimaryActor = null;
             _scheduledDecision = null;
             _plannedAttackDecision = null;
@@ -1839,17 +1929,14 @@ namespace Volleyball.Presentation
             _status = $"{blocker.Team} {blocker.Role} BLOCK  " +
                       $"speed {contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} m/s";
 
-            var reboundTeam = contact.TechniqueResponse.FinalOutgoing.Z < -0.01f
-                ? TeamId.Blue
-                : contact.TechniqueResponse.FinalOutgoing.Z > 0.01f
-                    ? TeamId.Orange
-                    : blocker.Team;
+            _awaitingPostBlockCrossing = true;
+            _postBlockerTeam = blocker.Team;
+            PostBlockPossessionDeferrals++;
             PostBlockContinuations++;
             Debug.Log(
                 $"[{_configuration.LogTag}] block-contact team={blocker.Team} actor={blocker.Role} " +
-                $"rebound={reboundTeam} speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} " +
+                $"awaiting-crossing speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0} " +
                 $"effect={BlockImpactEffects}");
-            BeginPossession(reboundTeam, ReceiveLeadTime());
         }
 
         private void HandleEnvironmentContact(EnvironmentCollisionHit hit)
@@ -1885,6 +1972,14 @@ namespace Volleyball.Presentation
                 hit.ContactPoint,
                 CourtBuilder.HalfWidth,
                 _configuration.CourtHalfLength);
+            if (_awaitingPostBlockCrossing &&
+                _postBlockerTeam.HasValue &&
+                outcome.Winner == ToSide(_postBlockerTeam.Value))
+            {
+                PostBlockGroundPoints++;
+            }
+            _awaitingPostBlockCrossing = false;
+            _postBlockerTeam = null;
             AttributeAttackFault(last.Value, outcome);
             ResolveRally(
                 outcome,
@@ -1933,6 +2028,12 @@ namespace Volleyball.Presentation
             {
                 _pendingCrossingTeam = receivingTeam;
                 return;
+            }
+
+            if (_awaitingPostBlockCrossing)
+            {
+                _awaitingPostBlockCrossing = false;
+                _postBlockerTeam = null;
             }
 
             BeginPossession(receivingTeam, ReceiveLeadTime());
@@ -2037,7 +2138,10 @@ namespace Volleyball.Presentation
             _scheduledDecision = null;
             _plannedAttackDecision = null;
             _scheduledPrimaryActor = null;
-            _scheduledBlocker = null;
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = null;
+            _awaitingPostBlockCrossing = false;
+            _postBlockerTeam = null;
             DisableEmergencyReceiveWindows(TeamId.Blue);
             DisableEmergencyReceiveWindows(TeamId.Orange);
             foreach (var player in _players.Values)
@@ -2078,7 +2182,11 @@ namespace Volleyball.Presentation
                 Debug.Log(
                     $"[{_configuration.LogTag}] RESULT score={_set.HomeScore}:{_set.AwayScore} " +
                     $"contacts={SuccessfulContacts} blocks={PhysicalBlockContacts} " +
-                    $"nonSetterSets={NonSetterSetContacts} defenderAttacks={DefenderAttackContacts}");
+                    $"multiBlocks={ScheduledMultiBlockUnits} maxBlockers={MaximumScheduledBlockers} " +
+                    $"routes={GeometricLineRoutes}/{GeometricCrossCourtRoutes}/" +
+                    $"{GeometricOverHandRoutes}/{GeometricEdgeLeftRoutes}/" +
+                    $"{GeometricEdgeRightRoutes} nonSetterSets={NonSetterSetContacts} " +
+                    $"defenderAttacks={DefenderAttackContacts}");
                 return;
             }
 
@@ -2196,10 +2304,61 @@ namespace Volleyball.Presentation
                 attackContactCenter.X,
                 Mathf.Max(CourtBuilder.NetHeight + 0.35f, attackContactCenter.Y - 0.2f),
                 0f);
-            var blocker = SelectBlocker(defendingTeam, intercept);
-            return _players[blocker].PreviewBlockArmFrames(
-                predictionTime,
-                BlockRootTarget(defendingTeam, intercept));
+            var rootTarget = BlockRootTarget(defendingTeam, intercept);
+            var unit = SelectBlockUnit(
+                defendingTeam,
+                ToSimulation(rootTarget),
+                Mathf.Max(0f, predictionTime - _ball.SimulationTime));
+            if (unit.Blockers.Count == 0)
+            {
+                return Array.Empty<ContactCapsuleFrame>();
+            }
+
+            var frames = new List<ContactCapsuleFrame>(unit.Blockers.Count * 6);
+            var primary = unit.Blockers[0];
+            foreach (var blocker in unit.Blockers)
+            {
+                var target = UnitBlockRootTarget(
+                    defendingTeam,
+                    intercept,
+                    blocker,
+                    primary);
+                target = _players[blocker.Id].ResolveBlockRootTarget(intercept, target);
+                frames.AddRange(_players[blocker.Id].PreviewBlockArmFrames(
+                    predictionTime,
+                    target));
+            }
+
+            return frames;
+        }
+
+        private BlockUnitPlan SelectBlockUnit(
+            TeamId defendingTeam,
+            SimVector3 blockTarget,
+            float availableSeconds)
+        {
+            var candidates = new List<BlockCandidateSnapshot>();
+            foreach (var pair in _players)
+            {
+                if (pair.Key.Team != defendingTeam)
+                {
+                    continue;
+                }
+
+                var player = pair.Value;
+                candidates.Add(new BlockCandidateSnapshot(
+                    pair.Key,
+                    ToSimulation(player.transform.position),
+                    BaseMovementSpeed * (0.65f + (player.Ability.Mobility * 0.5f)),
+                    player.Ability.Jump,
+                    _configuration.RosterSize != 6 || IsFrontRow(pair.Key)));
+            }
+
+            return BlockUnitPlanner.Select(
+                candidates,
+                blockTarget,
+                availableSeconds,
+                requireFrontRow: _configuration.RosterSize == 6);
         }
 
         private void RecordGeometricAttackRoute(GeometricAttackRoute route)
@@ -2300,10 +2459,14 @@ namespace Volleyball.Presentation
             return best;
         }
 
-        private PlayerId SelectCoverPlayer(TeamId team, PlayerId blocker, SimVector3 intercept)
+        private bool TrySelectCoverPlayer(
+            TeamId team,
+            ISet<PlayerId> blockers,
+            SimVector3 intercept,
+            out PlayerId cover)
         {
             var target = CoverageTarget(team, intercept);
-            var best = default(PlayerId);
+            cover = default;
             var found = false;
             var bestDistance = float.PositiveInfinity;
             foreach (var pair in _players)
@@ -2314,7 +2477,7 @@ namespace Volleyball.Presentation
                     continue;
                 }
 
-                if (id.Equals(blocker))
+                if (blockers.Contains(id))
                 {
                     continue;
                 }
@@ -2322,15 +2485,13 @@ namespace Volleyball.Presentation
                 var distance = Vector3.Distance(pair.Value.transform.position, target);
                 if (distance < bestDistance)
                 {
-                    best = id;
+                    cover = id;
                     bestDistance = distance;
                     found = true;
                 }
             }
 
-            return found
-                ? best
-                : FindPlayer(team, role => role == PlayerRole.Defender).Id;
+            return found;
         }
 
         private PrototypePlayerAgent FindPlayer(TeamId team, Predicate<PlayerRole> preferredRole)
@@ -2374,6 +2535,44 @@ namespace Volleyball.Presentation
             return new Vector3(Mathf.Clamp(intercept.X, -4.1f, 4.1f), 0f, worldDepth);
         }
 
+        private static Vector3 UnitBlockRootTarget(
+            TeamId team,
+            SimVector3 intercept,
+            BlockCandidateSnapshot blocker,
+            BlockCandidateSnapshot primary)
+        {
+            var target = BlockRootTarget(team, intercept);
+            var laneOffset = blocker.Id.Equals(primary.Id)
+                ? 0f
+                : blocker.Position.X < primary.Position.X ? -0.42f : 0.42f;
+            target.x = Mathf.Clamp(target.x + laneOffset, -4.1f, 4.1f);
+            return target;
+        }
+
+        private List<PlayerId> OrderedScheduledBlockers()
+        {
+            var blockers = new List<PlayerId>(_scheduledBlockers);
+            blockers.Sort((left, right) =>
+            {
+                var slot = left.RosterSlot.CompareTo(right.RosterSlot);
+                return slot != 0
+                    ? slot
+                    : ((int)left.Role).CompareTo((int)right.Role);
+            });
+            return blockers;
+        }
+
+        private BlockCandidateSnapshot BlockSnapshot(PlayerId blocker)
+        {
+            var player = _players[blocker];
+            return new BlockCandidateSnapshot(
+                blocker,
+                ToSimulation(player.transform.position),
+                BaseMovementSpeed * (0.65f + (player.Ability.Mobility * 0.5f)),
+                player.Ability.Jump,
+                _configuration.RosterSize != 6 || IsFrontRow(blocker));
+        }
+
         private static Vector3 CoverageTarget(TeamId team, SimVector3 intercept)
         {
             var worldDepth = team == TeamId.Blue ? -3.6f : 3.6f;
@@ -2393,7 +2592,8 @@ namespace Volleyball.Presentation
             {
                 player.DisableBlockContactWindow();
             }
-            _scheduledBlocker = null;
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = null;
         }
 
         private void DisableEmergencyReceiveWindows(TeamId team)
