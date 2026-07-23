@@ -256,15 +256,6 @@ namespace Volleyball.Match.Domain.FullRallyV3
         }
     }
 
-    public sealed class TouchSequenceStateV3
-    {
-        private TouchSequenceStateV3()
-        {
-        }
-
-        public static TouchSequenceStateV3 Initial { get; } = new TouchSequenceStateV3();
-    }
-
     public sealed class CourtConfigurationV3
     {
         public CourtConfigurationV3()
