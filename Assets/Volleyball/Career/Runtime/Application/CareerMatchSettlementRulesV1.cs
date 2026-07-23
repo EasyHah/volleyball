@@ -47,6 +47,13 @@ namespace Volleyball.Career.Application
                 throw new ArgumentNullException(nameof(currentPlayer));
             }
 
+            if (currentPlayer.Attributes == null)
+            {
+                throw new ArgumentNullException(
+                    nameof(currentPlayer),
+                    "The current Career player must have attributes.");
+            }
+
             ValidateStatus(currentFatigue, nameof(currentFatigue));
             ValidateStatus(currentMindset, nameof(currentMindset));
             ValidateStatus(currentCoachTrust, nameof(currentCoachTrust));

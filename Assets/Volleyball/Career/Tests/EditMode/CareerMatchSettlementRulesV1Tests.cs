@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.Serialization;
 using System.Text;
 using NUnit.Framework;
 using Volleyball.Career.Application;
@@ -128,6 +129,8 @@ namespace Volleyball.Career.EditModeTests
                 Player(pending.ProtagonistPlayerId));
 
             AssertRequested(summary, spike, serve, reception, defense, block, movement, jump, stamina);
+            Assert.That(summary.PriorityExecuted, Is.True,
+                "Every priority must be explicitly executed by the frozen formal fixture.");
         }
 
         [Test]
@@ -443,60 +446,89 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void Errors_GrantLearningXpAndDoNotSubtractForStability()
+        public void Errors_AddOneLearningXpAndStabilityDoesNotChangeGrowth()
         {
             var pending = Pending(priority: CareerMatchPriority.StaminaControl);
-            var protagonist = Protagonist(
+            var baseline = Protagonist(
+                spike: new CareerSpikeFacts(1, 0, 0),
+                serve: new CareerServeFacts(1, 0, 0));
+            var errorsWithNeutralStability = Protagonist(
+                spike: new CareerSpikeFacts(1, 0, 1),
+                serve: new CareerServeFacts(1, 0, 1),
+                reception: new CareerReceptionFacts(1, 0, 0, 0, 0, 1));
+            var errorsWithNegativeStability = Protagonist(
                 spike: new CareerSpikeFacts(1, 0, 1),
                 serve: new CareerServeFacts(1, 0, 1),
                 reception: new CareerReceptionFacts(1, 0, 0, 0, 0, 1),
                 stability: new CareerStabilityFacts(1, 0, 1, 0, 0));
 
-            var summary = Calculate(
+            var baselineSummary = Calculate(
                 pending,
-                Facts(pending, protagonist),
+                Facts(pending, baseline),
+                Player(pending.ProtagonistPlayerId));
+            var neutralSummary = Calculate(
+                pending,
+                Facts(pending, errorsWithNeutralStability),
+                Player(pending.ProtagonistPlayerId));
+            var negativeSummary = Calculate(
+                pending,
+                Facts(pending, errorsWithNegativeStability),
                 Player(pending.ProtagonistPlayerId));
 
-            Assert.That(summary.GrowthChanges[(int)CareerAttributeKind.Spike].RequestedDelta,
-                Is.EqualTo(3));
-            Assert.That(summary.GrowthChanges[(int)CareerAttributeKind.Serve].RequestedDelta,
-                Is.EqualTo(3));
-            Assert.That(summary.GrowthChanges[(int)CareerAttributeKind.Reception].RequestedDelta,
+            Assert.That(
+                neutralSummary.GrowthChanges[(int)CareerAttributeKind.Spike].RequestedDelta -
+                baselineSummary.GrowthChanges[(int)CareerAttributeKind.Spike].RequestedDelta,
                 Is.EqualTo(1));
+            Assert.That(
+                neutralSummary.GrowthChanges[(int)CareerAttributeKind.Serve].RequestedDelta -
+                baselineSummary.GrowthChanges[(int)CareerAttributeKind.Serve].RequestedDelta,
+                Is.EqualTo(1));
+            Assert.That(
+                neutralSummary.GrowthChanges[(int)CareerAttributeKind.Reception].RequestedDelta -
+                baselineSummary.GrowthChanges[(int)CareerAttributeKind.Reception].RequestedDelta,
+                Is.EqualTo(1));
+            Assert.That(
+                negativeSummary.GrowthChanges.Select(change => change.RequestedDelta),
+                Is.EqualTo(neutralSummary.GrowthChanges.Select(change => change.RequestedDelta)));
+            Assert.That(negativeSummary.MatchMindsetChange.RequestedDelta,
+                Is.EqualTo(neutralSummary.MatchMindsetChange.RequestedDelta - 1));
+            Assert.That(negativeSummary.MatchCoachTrustChange.RequestedDelta,
+                Is.EqualTo(neutralSummary.MatchCoachTrustChange.RequestedDelta - 1));
         }
 
         [Test]
         public void Summary_MapsFactsReasonsPriorityChangesAndExplicitZeroWeekend()
         {
             var pending = Pending(priority: CareerMatchPriority.AttackFirst);
-            var facts = Facts(pending, FixtureProtagonistFacts());
+            var facts = Facts(
+                pending,
+                FixtureProtagonistFacts(),
+                sets: new[]
+                {
+                    new CareerMatchSetScore(1, 25, 21, true),
+                    new CareerMatchSetScore(2, 25, 23, true)
+                },
+                rallyCount: 94);
+            var attributes = DistinctAttributes();
 
             var summary = Calculate(
                 pending,
                 facts,
-                Player(pending.ProtagonistPlayerId),
+                Player(pending.ProtagonistPlayerId, attributes),
                 fatigue: 40,
                 mindset: 50,
                 coachTrust: 60);
 
-            Assert.That(summary.Sets.Count, Is.EqualTo(1));
+            Assert.That(summary.Sets.Count, Is.EqualTo(2));
             Assert.That(summary.Sets[0].SetNumber, Is.EqualTo(1));
             Assert.That(summary.Sets[0].HomePoints, Is.EqualTo(25));
             Assert.That(summary.Sets[0].AwayPoints, Is.EqualTo(21));
             Assert.That(summary.Sets[0].IsComplete, Is.True);
-            Assert.That(summary.ProtagonistFacts.Spike.Attempts, Is.EqualTo(12));
-            Assert.That(summary.ProtagonistFacts.Serve,
-                Is.EqualTo(new CareerServeFactSummary(5, 1, 1)));
-            Assert.That(summary.ProtagonistFacts.Reception,
-                Is.EqualTo(new CareerReceptionFactSummary(8, 3, 2, 1, 1, 1)));
-            Assert.That(summary.ProtagonistFacts.Defense,
-                Is.EqualTo(new CareerDefenseFactSummary(6, 4)));
-            Assert.That(summary.ProtagonistFacts.Block,
-                Is.EqualTo(new CareerBlockFactSummary(3, 2, 1)));
-            Assert.That(summary.ProtagonistFacts.Load.MovementDistanceMillimeters,
-                Is.EqualTo(254000));
-            Assert.That(summary.ProtagonistFacts.Stability,
-                Is.EqualTo(new CareerStabilityFactSummary(5, 3, 1, 1, 2)));
+            Assert.That(summary.Sets[1].SetNumber, Is.EqualTo(2));
+            Assert.That(summary.Sets[1].HomePoints, Is.EqualTo(25));
+            Assert.That(summary.Sets[1].AwayPoints, Is.EqualTo(23));
+            Assert.That(summary.Sets[1].IsComplete, Is.True);
+            AssertFixtureProtagonistFacts(summary.ProtagonistFacts);
             Assert.That(summary.SelectedPriority, Is.EqualTo(CareerMatchPriority.AttackFirst));
             Assert.That(summary.PriorityExecuted, Is.True);
             Assert.That(summary.Won, Is.True);
@@ -520,9 +552,32 @@ namespace Volleyball.Career.EditModeTests
             AssertZeroWeekend(summary.WeekendFatigueChange, summary.MatchFatigueChange.NewValue);
             AssertZeroWeekend(summary.WeekendMindsetChange, summary.MatchMindsetChange.NewValue);
             AssertZeroWeekend(summary.WeekendCoachTrustChange, summary.MatchCoachTrustChange.NewValue);
-            Assert.That(summary.BeforeAttributes, Is.EqualTo(Player(pending.ProtagonistPlayerId).Attributes));
-            Assert.That(summary.AppliedGrowthExperienceDelta.Spike,
-                Is.EqualTo(summary.GrowthChanges[0].ActualDelta));
+            AssertCompleteGrowthMapping(
+                summary,
+                attributes,
+                73, 20, 30, 22, 15, 26, 52, 82);
+        }
+
+        [Test]
+        public void Calculate_RejectsMissingCurrentPlayerAttributesBeforeAnyConsequence()
+        {
+            var pending = Pending();
+            var facts = Facts(pending, Protagonist());
+            var corrupted = (CareerPlayerRecord)FormatterServices.GetUninitializedObject(
+                typeof(CareerPlayerRecord));
+            Assert.That(corrupted.Attributes, Is.Null);
+
+            var exception = Assert.Throws<ArgumentNullException>(() =>
+                CareerMatchSettlementRulesV1.Calculate(
+                    pending,
+                    facts,
+                    corrupted,
+                    PotentialGrade.B,
+                    50,
+                    50,
+                    50));
+
+            Assert.That(exception.ParamName, Is.EqualTo("currentPlayer"));
         }
 
         [TestCase(1, true, true)]
@@ -947,6 +1002,19 @@ namespace Volleyball.Career.EditModeTests
                 stamina);
         }
 
+        private static CareerPlayerAttributes DistinctAttributes()
+        {
+            return new CareerPlayerAttributes(
+                new CareerAttributeProgress(4100, 101),
+                new CareerAttributeProgress(4200, 202),
+                new CareerAttributeProgress(4300, 303),
+                new CareerAttributeProgress(4400, 404),
+                new CareerAttributeProgress(4500, 505),
+                new CareerAttributeProgress(4600, 606),
+                new CareerAttributeProgress(4700, 707),
+                new CareerAttributeProgress(4800, 808));
+        }
+
         private static FrozenCareerTrainingEmphasis Emphasis(
             CareerTrainingDirection direction,
             int totalBonusBasisPoints)
@@ -985,6 +1053,77 @@ namespace Volleyball.Career.EditModeTests
         {
             Assert.That(summary.GrowthChanges.Select(change => change.RequestedDelta),
                 Is.EqualTo(expected));
+        }
+
+        private static void AssertFixtureProtagonistFacts(
+            CareerProtagonistMatchFacts facts)
+        {
+            Assert.That(facts.Spike.Attempts, Is.EqualTo(12));
+            Assert.That(facts.Spike.Points, Is.EqualTo(7));
+            Assert.That(facts.Spike.Errors, Is.EqualTo(1));
+            Assert.That(facts.Serve.Attempts, Is.EqualTo(5));
+            Assert.That(facts.Serve.Aces, Is.EqualTo(1));
+            Assert.That(facts.Serve.Errors, Is.EqualTo(1));
+            Assert.That(facts.Reception.Attempts, Is.EqualTo(8));
+            Assert.That(facts.Reception.Perfect, Is.EqualTo(3));
+            Assert.That(facts.Reception.Positive, Is.EqualTo(2));
+            Assert.That(facts.Reception.Neutral, Is.EqualTo(1));
+            Assert.That(facts.Reception.Negative, Is.EqualTo(1));
+            Assert.That(facts.Reception.Errors, Is.EqualTo(1));
+            Assert.That(facts.Defense.Attempts, Is.EqualTo(6));
+            Assert.That(facts.Defense.Successes, Is.EqualTo(4));
+            Assert.That(facts.Block.Attempts, Is.EqualTo(3));
+            Assert.That(facts.Block.EffectiveTouches, Is.EqualTo(2));
+            Assert.That(facts.Block.Points, Is.EqualTo(1));
+            Assert.That(facts.Load.RalliesPlayed, Is.EqualTo(44));
+            Assert.That(facts.Load.ActiveDurationMilliseconds, Is.EqualTo(505000));
+            Assert.That(facts.Load.MovementDistanceMillimeters, Is.EqualTo(254000));
+            Assert.That(facts.Load.JumpCount, Is.EqualTo(28));
+            Assert.That(facts.Load.HighLoadJumpCount, Is.EqualTo(9));
+            Assert.That(facts.Load.LandingLoadBasisPoints, Is.EqualTo(5400));
+            Assert.That(facts.Load.TotalWorkloadBasisPoints, Is.EqualTo(7200));
+            Assert.That(facts.Stability.CriticalActions, Is.EqualTo(5));
+            Assert.That(facts.Stability.CriticalSuccesses, Is.EqualTo(3));
+            Assert.That(facts.Stability.CriticalErrors, Is.EqualTo(1));
+            Assert.That(facts.Stability.ErrorStreakEpisodes, Is.EqualTo(1));
+            Assert.That(facts.Stability.LongestErrorStreak, Is.EqualTo(2));
+        }
+
+        private static void AssertCompleteGrowthMapping(
+            CareerSettlementSummary summary,
+            CareerPlayerAttributes beforeAttributes,
+            params long[] expectedApplied)
+        {
+            Assert.That(expectedApplied.Length, Is.EqualTo(8));
+            Assert.That(summary.GrowthChanges.Count, Is.EqualTo(8));
+            for (var index = 0; index < 8; index++)
+            {
+                var kind = (CareerAttributeKind)index;
+                var before = beforeAttributes.Get(kind);
+                var change = summary.GrowthChanges[index];
+                Assert.That(change.Attribute, Is.EqualTo(kind));
+                Assert.That(change.Before, Is.EqualTo(before));
+                Assert.That(change.RequestedDelta, Is.EqualTo(expectedApplied[index]));
+                Assert.That(change.ActualDelta, Is.EqualTo(expectedApplied[index]));
+                Assert.That(change.After.AbilityBasisPoints,
+                    Is.EqualTo(before.AbilityBasisPoints));
+                Assert.That(change.After.GrowthExperience,
+                    Is.EqualTo(before.GrowthExperience + expectedApplied[index]));
+                Assert.That(summary.BeforeAttributes.Get(kind), Is.EqualTo(before));
+                Assert.That(summary.AfterAttributes.Get(kind), Is.EqualTo(change.After));
+            }
+
+            Assert.That(new[]
+            {
+                summary.AppliedGrowthExperienceDelta.Spike,
+                summary.AppliedGrowthExperienceDelta.Serve,
+                summary.AppliedGrowthExperienceDelta.Reception,
+                summary.AppliedGrowthExperienceDelta.Defense,
+                summary.AppliedGrowthExperienceDelta.Block,
+                summary.AppliedGrowthExperienceDelta.Movement,
+                summary.AppliedGrowthExperienceDelta.Jump,
+                summary.AppliedGrowthExperienceDelta.Stamina
+            }, Is.EqualTo(expectedApplied));
         }
 
         private static void AssertChange(
