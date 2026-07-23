@@ -80,6 +80,60 @@ namespace Volleyball.Shared.Contracts
             return result;
         }
 
+        public static string SerializeV3(MatchContextV3 context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            context.Validate();
+            return SerializeValue(context);
+        }
+
+        public static string SerializeV3(MatchResultV3 result)
+        {
+            if (result == null)
+            {
+                throw new ArgumentNullException(nameof(result));
+            }
+
+            result.Validate();
+            return SerializeValue(result);
+        }
+
+        public static MatchContextV3 DeserializeContextV3(string json)
+        {
+            var context = DeserializeValue<MatchContextV3>(json);
+            context.Validate();
+            return context;
+        }
+
+        public static MatchResultV3 DeserializeResultV3(string json)
+        {
+            var result = DeserializeValue<MatchResultV3>(json);
+            result.Validate();
+            return result;
+        }
+
+        public static string SerializeReplayV2(MatchReplayV2 replay)
+        {
+            if (replay == null)
+            {
+                throw new ArgumentNullException(nameof(replay));
+            }
+
+            replay.Validate();
+            return SerializeValue(replay);
+        }
+
+        public static MatchReplayV2 DeserializeReplayV2(string json)
+        {
+            var replay = DeserializeValue<MatchReplayV2>(json);
+            replay.Validate();
+            return replay;
+        }
+
         private static string SerializeValue<T>(T value)
         {
             try

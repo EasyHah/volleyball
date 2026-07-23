@@ -24,6 +24,8 @@ namespace Volleyball.Shared.Contracts
     {
         public const int MatchV1 = 1;
         public const int MatchV2 = 2;
+        public const int MatchV3 = 3;
+        public const int ReplayV2 = 2;
 
         public static bool SupportsMatch(int version)
         {

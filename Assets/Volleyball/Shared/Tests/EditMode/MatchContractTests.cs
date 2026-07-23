@@ -192,6 +192,232 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(restored.ContextHash, Is.EqualTo(context.ContextHash));
         }
 
+        [Test]
+        public void ContractVersions_ReserveV3ContextAndReplayV2()
+        {
+            Assert.That(ContractVersions.MatchV3, Is.EqualTo(3));
+            Assert.That(ContractVersions.ReplayV2, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void PlayerAbilitySnapshotV3_MigrationIsDeterministicAndRecordsProvenance()
+        {
+            var source = new PlayerAbilitySnapshotV2(0.7f, 0.6f, 0.8f, 0.5f, 0.9f, 0.75f, 0.85f, 3.42f);
+
+            var first = PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(source, PlayerPosition.OutsideHitter);
+            var second = PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(source, PlayerPosition.OutsideHitter);
+
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(first.SourceVersion, Is.EqualTo(ContractVersions.MatchV2));
+            Assert.That(first.MigrationVersion, Is.EqualTo(PlayerAbilitySnapshotV3.CurrentMigrationVersion));
+            Assert.That(first.IsCompatibilityEstimate, Is.True);
+            Assert.That(first.CompatibilityCollapsedAxes, Is.Empty);
+        }
+
+        [Test]
+        public void PlayerAbilitySnapshotV3_MigrationDistinguishesAttackControlAndSoftTouchWhenRoleProxyExists()
+        {
+            var source = new PlayerAbilitySnapshotV2(0.7f, 0.6f, 0.8f, 0.5f, 0.9f, 0.75f, 0.85f, 3.42f);
+
+            var hitter = PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(source, PlayerPosition.OutsideHitter);
+            var setter = PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(source, PlayerPosition.Setter);
+
+            Assert.That(hitter.AttackControl, Is.Not.EqualTo(hitter.SoftTouch));
+            Assert.That(setter.AttackControl, Is.Not.EqualTo(setter.SoftTouch));
+        }
+
+        [Test]
+        public void PlayerAbilitySnapshotV3_MigrationRejectsNullSource()
+        {
+            Assert.That(
+                () => PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(null, PlayerPosition.Setter),
+                Throws.TypeOf<ArgumentNullException>());
+        }
+
+        [Test]
+        public void PlayerAbilitySnapshotV3_MigrationRejectsUndefinedPosition()
+        {
+            var source = new PlayerAbilitySnapshotV2(0.7f, 0.6f, 0.8f, 0.5f, 0.9f, 0.75f, 0.85f, 3.42f);
+
+            Assert.That(
+                () => PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(source, (PlayerPosition)999),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void MatchContextV3_ConstructsWithStableHashAndAllV3AbilityFields()
+        {
+            var sessionId = new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4");
+
+            var first = CreateContextV3(sessionId, 7351);
+            var second = CreateContextV3(sessionId, 7351);
+
+            Assert.That(first.ContractVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(first.ContextHash, Is.EqualTo(second.ContextHash));
+            Assert.That(first.ContextHash, Has.Length.EqualTo(64));
+            Assert.That(first.ContextHash, Is.EqualTo(CanonicalMatchContextHashV3.Compute(first)));
+            Assert.That(first.Home.Players[0].Ability.Mobility, Is.EqualTo(0.71f));
+            Assert.That(first.Home.Players[0].Ability.Reaction, Is.EqualTo(0.72f));
+            Assert.That(first.Home.Players[0].Ability.Jump, Is.EqualTo(0.73f));
+            Assert.That(first.Home.Players[0].Ability.MaxAttackReach, Is.EqualTo(3.42f));
+            Assert.That(first.Home.Players[0].Ability.ReceiveTechnique, Is.EqualTo(0.74f));
+            Assert.That(first.Home.Players[0].Ability.SetTechnique, Is.EqualTo(0.75f));
+            Assert.That(first.Home.Players[0].Ability.AttackControl, Is.EqualTo(0.76f));
+            Assert.That(first.Home.Players[0].Ability.AttackPower, Is.EqualTo(0.77f));
+            Assert.That(first.Home.Players[0].Ability.SoftTouch, Is.EqualTo(0.78f));
+            Assert.That(first.Home.Players[0].Ability.BlockTechnique, Is.EqualTo(0.79f));
+            Assert.That(first.Home.Players[0].Ability.CourtAwareness, Is.EqualTo(0.80f));
+            Assert.That(first.Home.Players[0].Ability.SourceVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(first.Home.Players[0].Ability.MigrationVersion, Is.Zero);
+            Assert.That(first.Home.Players[0].Ability.IsCompatibilityEstimate, Is.False);
+            Assert.That(first.Home.Players[0].Ability.CompatibilityCollapsedAxes, Is.EqualTo(new[] { "none" }));
+        }
+
+        [Test]
+        public void MatchContextV3_HashIncludesAbilityProvenanceAndCompatibilityFields()
+        {
+            var sessionId = new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4");
+
+            var native = CreateContextV3(sessionId, 7351);
+            var compatibilityEstimate = MatchContextV3.Create(
+                sessionId,
+                7351,
+                CreateTeamV3("team-blue", TeamSide.Home, "blue", sourceVersion: ContractVersions.MatchV2, migrationVersion: 1, isCompatibilityEstimate: true),
+                CreateTeamV3("team-orange", TeamSide.Away, "orange", sourceVersion: ContractVersions.MatchV2, migrationVersion: 1, isCompatibilityEstimate: true));
+
+            Assert.That(compatibilityEstimate.ContextHash, Is.Not.EqualTo(native.ContextHash));
+        }
+
+        [Test]
+        public void MatchContextV3_UpgradeFromV2UsesExplicitMigration()
+        {
+            var legacy = CreateContextV2(new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"), 7351);
+
+            var upgraded = MatchContextV3.UpgradeFromV2(legacy);
+
+            Assert.That(upgraded.ContractVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(upgraded.ContextHash, Is.EqualTo(CanonicalMatchContextHashV3.Compute(upgraded)));
+            Assert.That(upgraded.Home.Players[0].Ability.SourceVersion, Is.EqualTo(ContractVersions.MatchV2));
+            Assert.That(upgraded.Home.Players[0].Ability.MigrationVersion, Is.EqualTo(PlayerAbilitySnapshotV3.CurrentMigrationVersion));
+            Assert.That(upgraded.Home.Players[0].Ability.IsCompatibilityEstimate, Is.True);
+            Assert.That(upgraded.Home.Players[0].Ability.AttackControl, Is.EqualTo(
+                PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(
+                    legacy.Home.Players[0].Ability,
+                    legacy.Home.Players[0].Position).AttackControl));
+            Assert.That(upgraded.Home.Players[0].Ability.SoftTouch, Is.EqualTo(
+                PlayerAbilitySnapshotV3.LegacyV2ToPlayerAbilitySnapshotV3(
+                    legacy.Home.Players[0].Ability,
+                    legacy.Home.Players[0].Position).SoftTouch));
+        }
+
+        [Test]
+        public void MatchResultV3_UsesV3ContextIdentityAndValidatesWinner()
+        {
+            var context = CreateContextV3(Guid.NewGuid(), 99);
+            var result = MatchResultV3.Create(
+                context,
+                context.Home.TeamId,
+                homeScore: 25,
+                awayScore: 21,
+                new[] { new PlayerMatchStatsV3(context.Home.Players[0].PlayerId, 6, 12, 1, 0.72f) });
+
+            Assert.DoesNotThrow(() => result.ValidateAgainst(context));
+            Assert.That(result.ContractVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(result.ContextHash, Is.EqualTo(context.ContextHash));
+            Assert.That(result.ResultHash, Is.EqualTo(CanonicalMatchResultHashV3.Compute(result)));
+            Assert.That(
+                () => MatchResultV3.Create(
+                    context,
+                    context.Away.TeamId,
+                    homeScore: 25,
+                    awayScore: 21,
+                    new[] { new PlayerMatchStatsV3(context.Home.Players[0].PlayerId, 6, 12, 1, 0.72f) }),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("higher final score"));
+        }
+
+        [Test]
+        public void MatchContextV3_RoundTripsThroughContractJson()
+        {
+            var context = CreateContextV3(new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"), 7351);
+
+            var restored = ContractJson.DeserializeContextV3(ContractJson.SerializeV3(context));
+
+            Assert.That(restored.ContractVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(restored.SessionId, Is.EqualTo(context.SessionId));
+            Assert.That(restored.Seed, Is.EqualTo(context.Seed));
+            Assert.That(restored.ContextHash, Is.EqualTo(context.ContextHash));
+            Assert.That(restored.ContextHash, Is.EqualTo(CanonicalMatchContextHashV3.Compute(restored)));
+            Assert.That(restored.Home.Players[0].Ability.AttackControl, Is.EqualTo(0.76f));
+            Assert.That(restored.Home.Players[0].Ability.SoftTouch, Is.EqualTo(0.78f));
+            Assert.That(restored.Home.Players[0].Ability.CompatibilityCollapsedAxes, Is.EqualTo(new[] { "none" }));
+        }
+
+        [Test]
+        public void MatchResultV3_RoundTripsThroughContractJson()
+        {
+            var context = CreateContextV3(Guid.NewGuid(), 99);
+            var result = MatchResultV3.Create(
+                context,
+                context.Home.TeamId,
+                homeScore: 25,
+                awayScore: 21,
+                new[] { new PlayerMatchStatsV3(context.Home.Players[0].PlayerId, 6, 12, 1, 0.72f) });
+
+            var restored = ContractJson.DeserializeResultV3(ContractJson.SerializeV3(result));
+
+            Assert.DoesNotThrow(() => restored.ValidateAgainst(context));
+            Assert.That(restored.ContractVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(restored.ContextHash, Is.EqualTo(context.ContextHash));
+            Assert.That(restored.ResultHash, Is.EqualTo(result.ResultHash));
+            Assert.That(restored.ResultHash, Is.EqualTo(CanonicalMatchResultHashV3.Compute(restored)));
+            Assert.That(restored.PlayerStats[0].Workload, Is.EqualTo(0.72f));
+        }
+
+        [Test]
+        public void ContractJson_DoesNotDeserializeV2AsV3OrV3AsV2()
+        {
+            var v2Context = CreateContextV2(Guid.NewGuid(), 7);
+            var v3Context = CreateContextV3(Guid.NewGuid(), 7);
+            var v2Json = ContractJson.SerializeV2(v2Context);
+            var v3Json = ContractJson.SerializeV3(v3Context);
+            var v2ResultJson = ContractJson.SerializeV2(MatchResultV2.Create(
+                v2Context,
+                v2Context.Home.TeamId,
+                homeScore: 25,
+                awayScore: 21,
+                new[] { new PlayerMatchStatsV2(v2Context.Home.Players[0].PlayerId, 6, 12, 1, 0.72f) }));
+            var v3ResultJson = ContractJson.SerializeV3(MatchResultV3.Create(
+                v3Context,
+                v3Context.Home.TeamId,
+                homeScore: 25,
+                awayScore: 21,
+                new[] { new PlayerMatchStatsV3(v3Context.Home.Players[0].PlayerId, 6, 12, 1, 0.72f) }));
+
+            Assert.That(() => ContractJson.DeserializeContextV3(v2Json), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => ContractJson.DeserializeContextV2(v3Json), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => ContractJson.DeserializeResultV3(v2ResultJson), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => ContractJson.DeserializeResultV2(v3ResultJson), Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void MatchReplayV2_RoundTripsWithFormatVersionAndReservedDiagnostics()
+        {
+            var replay = MatchReplayV2.Create(
+                "replay-001",
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                new[] { "PlanCoverageDecision", "ExecutionEnvelopeV3", "BallTrajectoryArtifactV3" });
+
+            var restored = ContractJson.DeserializeReplayV2(ContractJson.SerializeReplayV2(replay));
+
+            Assert.That(restored.FormatVersion, Is.EqualTo(ContractVersions.ReplayV2));
+            Assert.That(restored.ReplayId, Is.EqualTo("replay-001"));
+            Assert.That(restored.ContextHash, Is.EqualTo(replay.ContextHash));
+            Assert.That(restored.ReservedSections, Does.Contain("PlanCoverageDecision"));
+            Assert.That(restored.ReservedSections, Does.Contain("ExecutionEnvelopeV3"));
+            Assert.That(restored.ReservedSections, Does.Contain("BallTrajectoryArtifactV3"));
+        }
+
         private static MatchContextV1 CreateContext(Guid sessionId, int seed)
         {
             return MatchContextV1.Create(
@@ -285,6 +511,68 @@ namespace Volleyball.Shared.EditModeTests
                     0.86f,
                     0.87f,
                     maxAttackReach));
+        }
+
+        private static MatchContextV3 CreateContextV3(Guid sessionId, int seed)
+        {
+            return MatchContextV3.Create(
+                sessionId,
+                seed,
+                CreateTeamV3("team-blue", TeamSide.Home, "blue"),
+                CreateTeamV3("team-orange", TeamSide.Away, "orange"));
+        }
+
+        private static TeamSnapshotV3 CreateTeamV3(
+            string teamId,
+            TeamSide side,
+            string playerPrefix,
+            int sourceVersion = ContractVersions.MatchV3,
+            int migrationVersion = 0,
+            bool isCompatibilityEstimate = false)
+        {
+            return new TeamSnapshotV3(
+                new TeamId(teamId),
+                side == TeamSide.Home ? "Blue Team" : "Orange Team",
+                side,
+                new[]
+                {
+                    CreatePlayerV3(playerPrefix + "-setter", "Setter", 1, PlayerPosition.Setter, 3.42f, sourceVersion, migrationVersion, isCompatibilityEstimate),
+                    CreatePlayerV3(playerPrefix + "-attacker", "Attacker", 2, PlayerPosition.OutsideHitter, 3.42f, sourceVersion, migrationVersion, isCompatibilityEstimate),
+                    CreatePlayerV3(playerPrefix + "-defender", "Defender", 3, PlayerPosition.Defender, 3.20f, sourceVersion, migrationVersion, isCompatibilityEstimate)
+                });
+        }
+
+        private static PlayerSnapshotV3 CreatePlayerV3(
+            string playerId,
+            string name,
+            int jersey,
+            PlayerPosition position,
+            float maxAttackReach,
+            int sourceVersion,
+            int migrationVersion,
+            bool isCompatibilityEstimate)
+        {
+            return new PlayerSnapshotV3(
+                new PlayerId(playerId),
+                name,
+                jersey,
+                position,
+                new PlayerAbilitySnapshotV3(
+                    0.71f,
+                    0.72f,
+                    0.73f,
+                    maxAttackReach,
+                    0.74f,
+                    0.75f,
+                    0.76f,
+                    0.77f,
+                    0.78f,
+                    0.79f,
+                    0.80f,
+                    sourceVersion,
+                    migrationVersion,
+                    isCompatibilityEstimate,
+                    isCompatibilityEstimate ? new[] { "attackTechnique" } : new[] { "none" }));
         }
     }
 }
