@@ -46,5 +46,52 @@ namespace Volleyball.EditModeTests
             Assert.That(ball.Velocity.X, Is.EqualTo(3f).Within(0.0001f));
             Assert.That(ball.Velocity.Y, Is.EqualTo(4f).Within(0.0001f));
         }
+
+        [Test]
+        public void ApplyWithSurfaceVelocity_UsesStableResponseVelocityInsteadOfVisualMotion()
+        {
+            var firstBall = new BallState(
+                new SimVector3(0f, 2f, 0f),
+                new SimVector3(0f, -5f, 0f),
+                0.12f);
+            var secondBall = new BallState(
+                new SimVector3(0f, 2f, 0f),
+                new SimVector3(0f, -5f, 0f),
+                0.12f);
+            var firstHit = HitWithSurfaceVelocity(new SimVector3(8f, 0f, 0f), 21);
+            var secondHit = HitWithSurfaceVelocity(new SimVector3(-4f, 3f, 7f), 22);
+            var parameters = new ContactResponseParameters(0.55f, 0.42f, 0.18f, 0.08f);
+
+            var first = ContactResponse.ApplyWithSurfaceVelocity(
+                firstBall,
+                firstHit,
+                SimVector3.Zero,
+                parameters);
+            var second = ContactResponse.ApplyWithSurfaceVelocity(
+                secondBall,
+                secondHit,
+                SimVector3.Zero,
+                parameters);
+
+            Assert.That(
+                (first.PhysicalOutgoing - second.PhysicalOutgoing).Magnitude,
+                Is.LessThan(0.0001f));
+            Assert.That(firstBall.LastContactGroupId, Is.EqualTo(21));
+            Assert.That(secondBall.LastContactGroupId, Is.EqualTo(22));
+        }
+
+        private static SweptBallHit HitWithSurfaceVelocity(
+            SimVector3 surfaceVelocity,
+            int contactGroupId)
+        {
+            return new SweptBallHit(
+                0.5f,
+                new SimVector3(0f, 2f, 0f),
+                SimVector3.Zero,
+                SimVector3.Up,
+                surfaceVelocity,
+                contactGroupId,
+                1f);
+        }
     }
 }

@@ -199,25 +199,12 @@ namespace Volleyball.AI
 
     public sealed class PhysicalRallyTacticPlanner
     {
-        private readonly int _seed;
-
-        public PhysicalRallyTacticPlanner(int seed)
+        public PhysicalRallyTactics Create()
         {
-            _seed = seed;
-        }
-
-        public PhysicalRallyTactics Create(int revision)
-        {
-            if (revision < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(revision));
-            }
-
-            var random = new Random(unchecked(_seed + (revision * 104729)));
-            var blueSet = (SetRoute)random.Next(0, 4);
-            var blueSpike = (SpikeRoute)random.Next(0, 4);
-            var orangeSet = (SetRoute)random.Next(0, 4);
-            var orangeSpike = (SpikeRoute)random.Next(0, 4);
+            var blueSet = SetRoute.LeftPin;
+            var blueSpike = SpikeRoute.CrossCourt;
+            var orangeSet = SetRoute.LeftPin;
+            var orangeSpike = SpikeRoute.CrossCourt;
             var blueAttack = AttackPosition(blueSet, -1f);
             var orangeAttack = AttackPosition(orangeSet, 1f);
             var blueDefense = DefensePosition(orangeSpike, orangeAttack, -1f);
@@ -311,9 +298,9 @@ namespace Volleyball.AI
         {
             return route switch
             {
-                SetRoute.LeftPin => new CourtPoint(-3.15f, sideSign * 2.45f),
-                SetRoute.MiddleQuick => new CourtPoint(-0.35f, sideSign * 2.05f),
-                SetRoute.RightPin => new CourtPoint(3.15f, sideSign * 2.45f),
+                SetRoute.LeftPin => new CourtPoint(-3.15f, sideSign * 1.20f),
+                SetRoute.MiddleQuick => new CourtPoint(-0.35f, sideSign * 0.65f),
+                SetRoute.RightPin => new CourtPoint(3.15f, sideSign * 1.20f),
                 SetRoute.BackSet => new CourtPoint(1.65f, sideSign * 4.15f),
                 _ => throw new ArgumentOutOfRangeException(nameof(route), route, null)
             };

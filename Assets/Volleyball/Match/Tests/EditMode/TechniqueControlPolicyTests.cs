@@ -92,6 +92,21 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Apply_PerfectAttackContactCanCorrectPastSixtyDegrees()
+        {
+            var target = new SimVector3(0f, -6f, 23f);
+            var result = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Attack,
+                new SimVector3(0f, 8f, -2f),
+                target,
+                target.Normalized,
+                1f,
+                1f));
+
+            Assert.That((result.FinalOutgoing - target).Magnitude, Is.LessThan(0.0001f));
+        }
+
+        [Test]
         public void Apply_DoesNotUseTargetThatOpposesActualStrikeDirection()
         {
             var physical = new SimVector3(0f, 8f, 0f);

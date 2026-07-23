@@ -117,10 +117,17 @@ namespace Volleyball.AI
                 requestedDirection = input.StrikeDirection;
             }
 
+            var maximumDirectionCorrection = profile.MaximumDirectionCorrectionDegrees;
+            if (input.Action == TechniqueAction.Attack && input.ContactQuality > 0.75f)
+            {
+                var centeredControl = Math.Min(1f, (input.ContactQuality - 0.75f) / 0.25f);
+                maximumDirectionCorrection += (180f - maximumDirectionCorrection) * centeredControl;
+            }
+
             var constrainedDirection = RotateTowards(
                 physicalDirection,
                 requestedDirection,
-                profile.MaximumDirectionCorrectionDegrees);
+                maximumDirectionCorrection);
             var minimumSpeed = Math.Max(0f, physicalSpeed - profile.MaximumSpeedChange);
             var maximumSpeed = Math.Min(profile.MaximumOutgoingSpeed, physicalSpeed + profile.MaximumSpeedChange);
             var constrainedSpeed = Math.Max(minimumSpeed, Math.Min(maximumSpeed, requestedSpeed));

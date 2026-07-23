@@ -86,13 +86,13 @@ namespace Volleyball.PlayModeTests
             Assert.That(blockFeedback.LastReboundSpeed, Is.GreaterThan(0f));
             Assert.That(blockFeedback.VisibleElementCount, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.PostBlockContinuations, Is.GreaterThan(0));
+            Assert.That(director.ScheduledMultiBlockUnits, Is.GreaterThan(0));
             Assert.That(director.BlueAttackContacts, Is.GreaterThan(0));
             Assert.That(director.OrangeAttackContacts, Is.GreaterThan(0));
             Assert.That(director.AiDecisionRequests, Is.GreaterThan(0));
             Assert.That(director.AiDecisionRequests, Is.EqualTo(aiSource.RequestCount));
             Assert.That(director.AiDecisionFallbacks, Is.Zero);
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.001f));
-            Assert.That(director.NonSetterSetContacts, Is.GreaterThan(0));
             Assert.That(director.DefenderAttackContacts, Is.GreaterThan(0));
             Assert.That(director.IllegalContactFaults, Is.GreaterThanOrEqualTo(0));
             Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(0.70f));
@@ -114,6 +114,84 @@ namespace Volleyball.PlayModeTests
             Assert.That(Camera.main.orthographic, Is.True);
             Assert.That(cameras.ViewSwitchCount, Is.GreaterThanOrEqualTo(4));
 
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator AcceptedBlock_DefersReceiveUntilCrossingAndLetsGroundRefereeScore()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            var originalTimeScale = Time.timeScale;
+            try
+            {
+                var timeout = Time.realtimeSinceStartup + 120f;
+                while (director.PostBlockGroundPoints == 0 &&
+                       director.ResultV2 == null &&
+                       Time.realtimeSinceStartup < timeout)
+                {
+                    Time.timeScale = 8f;
+                    yield return null;
+                }
+
+                Assert.That(director.PostBlockPossessionDeferrals, Is.GreaterThan(0));
+                Assert.That(director.PrematurePostBlockReceiveWindows, Is.Zero);
+                Assert.That(director.PrematurePostBlockEmergencyWindows, Is.Zero);
+                Assert.That(director.PostBlockGroundPoints, Is.GreaterThan(0));
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator InfeasibleSetters_ProduceARealNonSetterOrganizationContact()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            var originalTimeScale = Time.timeScale;
+            foreach (var player in players)
+            {
+                if (player.Id.Role != PlayerRole.Setter)
+                {
+                    continue;
+                }
+
+                var ability = player.Ability;
+                player.SetAbility(new PlayerAbilityProfile(
+                    mobility: 0f,
+                    reaction: 0f,
+                    jump: ability.Jump,
+                    receiveTechnique: ability.ReceiveTechnique,
+                    setTechnique: 0f,
+                    attackTechnique: ability.AttackTechnique,
+                    attackPower: ability.AttackPower,
+                    maxAttackReach: ability.MaxAttackReach));
+            }
+
+            director.ConfigureAiDecisionSource(
+                new ImmediateLocalWeightSource(),
+                realTimeTimeoutSeconds: 0.5f,
+                restoreDurationSeconds: 0.04f);
+            try
+            {
+                var timeout = Time.realtimeSinceStartup + 120f;
+                while (director.NonSetterSetContacts == 0 &&
+                       director.ResultV2 == null &&
+                       Time.realtimeSinceStartup < timeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(director.NonSetterSetContacts, Is.GreaterThan(0));
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
         }
 
         [UnityTest]

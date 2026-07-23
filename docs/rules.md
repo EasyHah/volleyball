@@ -94,18 +94,14 @@ Block 是物理触球并更新最后触球球员/队伍，也计入该球员的�
 | 规则 | 当前主要权威实现 | 最低验证 |
 | --- | --- | --- |
 | R-REF-001, R-REF-006 | `MatchSet` | `MatchSetTests` |
+| R-GOV-001 | `PhysicalRallyTacticPlanner` | `PhysicalRallyTacticPlannerTests` |
 | R-REF-002, R-REF-003 | `RallyTouchState`、`SimulatedBall` | `RallyTouchStateTests`、接触 PlayMode 测试 |
 | R-REF-004, R-REF-005 | `PhysicalMatchRallyDirector`、`MatchRallyReferee` | `MatchRallyRefereeTests`、物理回合 PlayMode 测试 |
 | R-PLAY-001--003 | `PrototypePlayerAgent`、`PhysicalMatchRallyDirector` | 边界、轮转和拦网测试 |
 | R-OFF-001--005 | `TeamRallyDecisionPlanner`、`SetFlightSolver`、`PhysicalMatchRallyDirector` | 传球、助跑、攻击链和校准测试 |
 
-截至本文创建时，以下遗留实现不符合本规则，必须在对应改造中移除或替换：
-
-| 不符合项 | 与之冲突的规则 | 处理要求 |
-| --- | --- | --- |
-| `PhysicalRallyTacticPlanner` 以固定种子 `Random` 选择传攻路线 | R-GOV-001 | 改为由球、球员、拦网几何与能力状态导出的确定性选择 |
-| 接受 Block 后立即调用 `BeginPossession` | R-REF-004 | 延后至合法越网事件；直接落地仍走既有裁判结算 |
-| 实际二传重规划把实际球位置作为新的起跳点，并重置助跑起点 | R-OFF-002、R-OFF-004 | 将起跳点约束到攻击带，并保留已完成助跑 |
+当前没有已登记且仍未解决的规则偏差。新增临时偏差时，必须写明冲突规则、
+处理要求和明确移除路径。
 
 ## 修改检查清单
 

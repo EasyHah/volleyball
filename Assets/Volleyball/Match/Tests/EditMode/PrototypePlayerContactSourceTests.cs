@@ -589,6 +589,57 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ContinueAttackPreparation_PreservesPreparedProgressTowardTakeoff()
+        {
+            var player = CreatePlayer("ContinuingAttackPreparation", TeamId.Blue, PlayerRole.Attacker);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(
+                    1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
+                player.transform.position = new Vector3(0f, 0f, -4.2f);
+                var preparedStart = new Vector3(0f, 0f, -3.1f);
+                var takeoff = new SimVector3(0f, 0f, -1.1f);
+                var contact = AttackContactPlanner.Plan(new AttackContactInput(
+                    3.42f, 1f, 1f, SetQualityGrade.A, takeoff, 0.4f, 1f));
+                var originalApproach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -3.9f),
+                    takeoff,
+                    2.8f,
+                    1f,
+                    0f);
+                var contacts = new List<BallContactCandidate>();
+
+                player.ScheduleAttackPreparation(2f, preparedStart, 1f);
+                player.CollectContacts(1.95f, 1f / 120f, contacts);
+                var preparedPosition = player.transform.position;
+
+                player.ContinueAttackPreparation(originalApproach, contact, 2.6f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2.6f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    708,
+                    contact.ContactCenter,
+                    movementStartSimulationTime: 1.95f,
+                    attackApproach: originalApproach,
+                    attackContactPlan: contact);
+                var remainingDistance = player.ScheduledMovementDistance;
+                player.CollectContacts(2.2f, 1f / 120f, contacts);
+
+                Assert.That(preparedPosition.z, Is.EqualTo(preparedStart.z).Within(0.05f));
+                Assert.That(remainingDistance, Is.LessThan(2.20f));
+                Assert.That(remainingDistance, Is.GreaterThan(1.7f));
+                Assert.That(player.transform.position.z, Is.GreaterThanOrEqualTo(preparedPosition.z - 0.001f));
+                Assert.That(player.ScheduledMovementTarget.z, Is.GreaterThan(preparedPosition.z));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void SetPreparation_ReplacesAnOldContactAndMovesWithoutAddingContactCandidates()
         {
             var gameObject = new GameObject("SetPreparationPlayer");
@@ -648,6 +699,99 @@ namespace Volleyball.EditModeTests
                     candidate.Capsule.Active));
                 Assert.That(player.transform.position.y, Is.GreaterThan(0.2f));
                 Assert.That(player.PhysicalBlockContactAssignments, Is.EqualTo(1));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void PreviewBlockArmFrames_ReturnsBlockPoseWithoutMutatingPlayerState()
+        {
+            var player = CreatePlayer("PreviewBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                player.transform.position = new Vector3(-1.5f, 0f, -3f);
+                player.Rig.SetPose(StickFigurePose.Receive, 1f);
+                var savedPosition = player.transform.position;
+                var savedRotations = player.Rig.CaptureLocalRotations();
+
+                var frames = player.PreviewBlockArmFrames(
+                    4.25f,
+                    new Vector3(0.75f, 0f, -PrototypePlayerAgent.NetClearance));
+
+                Assert.That(frames.Count, Is.EqualTo(6));
+                Assert.That(player.transform.position, Is.EqualTo(savedPosition));
+                foreach (var pair in savedRotations)
+                {
+                    Assert.That(player.Rig.GetJoint(pair.Key).localRotation, Is.EqualTo(pair.Value));
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void PreviewBlockArmFrames_MatchesScheduledArmHeightAtContact()
+        {
+            var player = CreatePlayer("PreviewJumpingBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                const float contactTime = 10f;
+                var rootTarget = player.ResolveBlockRootTarget(
+                    new SimVector3(0.75f, 2.7f, 0f),
+                    new Vector3(0.75f, 0f, -PrototypePlayerAgent.NetClearance));
+                player.Rig.SetPose(StickFigurePose.Block, 1f);
+                var preview = player.PreviewBlockArmFrames(contactTime, rootTarget);
+                player.ScheduleBlockContact(
+                    contactTime,
+                    rootTarget,
+                    9f,
+                    new SimVector3(0f, 2f, 8f),
+                    705);
+
+                var actual = Collect(player, contactTime);
+                var previewCenterHeight = 0f;
+                var actualCenterHeight = 0f;
+                for (var index = 0; index < preview.Count; index++)
+                {
+                    previewCenterHeight += (preview[index].Start.Y + preview[index].End.Y) * 0.5f;
+                    actualCenterHeight +=
+                        (actual[index].Capsule.Current.Start.Y +
+                         actual[index].Capsule.Current.End.Y) * 0.5f;
+                }
+
+                previewCenterHeight /= preview.Count;
+                actualCenterHeight /= actual.Count;
+                Assert.That(previewCenterHeight, Is.EqualTo(actualCenterHeight).Within(0.03f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ResolveBlockRootTarget_UsesLessJumpForALowerInterception()
+        {
+            var player = CreatePlayer("HeightAwareBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                var nominal = new Vector3(0.75f, 0f, -PrototypePlayerAgent.NetClearance);
+
+                var low = player.ResolveBlockRootTarget(
+                    new SimVector3(0.75f, 2.25f, 0f),
+                    nominal);
+                var high = player.ResolveBlockRootTarget(
+                    new SimVector3(0.75f, 2.85f, 0f),
+                    nominal);
+
+                Assert.That(low.y, Is.GreaterThanOrEqualTo(0f));
+                Assert.That(low.y, Is.LessThan(high.y));
+                Assert.That(high.y, Is.LessThanOrEqualTo(0.5f));
             }
             finally
             {
@@ -812,6 +956,57 @@ namespace Volleyball.EditModeTests
                     attackContactPlan: plan);
 
                 Assert.That(player.MovementShortfall, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledAttackApproach_ReplanAfterPreparationPreservesRemainingApproachProgress()
+        {
+            var player = CreatePlayer("PreparedReplanAttacker", TeamId.Blue, PlayerRole.OutsideHitter);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 1f, 1f, 1f));
+                var preparedStart = new Vector3(0f, 0f, -3.1f);
+                var takeoff = new SimVector3(0f, 0f, -1.1f);
+                var contact = AttackContactPlanner.Plan(new AttackContactInput(
+                    3.42f,
+                    1f,
+                    1f,
+                    SetQualityGrade.A,
+                    takeoff,
+                    0.4f,
+                    1f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -4.2f),
+                    takeoff,
+                    3.1f,
+                    1f,
+                    0f);
+                player.transform.position = new Vector3(0f, 0f, -4.2f);
+                player.ScheduleAttackPreparation(1f, preparedStart, 0f);
+                Collect(player, 0.9f);
+                var preparedPosition = player.transform.position;
+
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    1.4f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    708,
+                    contact.ContactCenter,
+                    movementStartSimulationTime: 1f,
+                    attackApproach: approach,
+                    attackContactPlan: contact);
+                var afterSchedulePosition = player.transform.position;
+
+                Assert.That(afterSchedulePosition.z, Is.GreaterThanOrEqualTo(preparedPosition.z - 0.001f));
+                Assert.That(
+                    player.ScheduledMovementDistance,
+                    Is.EqualTo(Mathf.Abs(takeoff.Z - preparedPosition.z)).Within(0.01f));
             }
             finally
             {

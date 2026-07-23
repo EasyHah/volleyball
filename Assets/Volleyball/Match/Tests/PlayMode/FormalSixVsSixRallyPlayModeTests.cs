@@ -73,6 +73,8 @@ namespace Volleyball.PlayModeTests
             Assert.DoesNotThrow(() => director.ResultV2.ValidateAgainst(director.MatchContextV2));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
+            Assert.That(director.ScheduledMultiBlockUnits, Is.GreaterThan(0));
+            Assert.That(director.ScheduledBackRowBlockers, Is.Zero);
             Assert.That(director.BlueAttackContacts, Is.GreaterThan(0));
             Assert.That(director.OrangeAttackContacts, Is.GreaterThan(0));
             Assert.That(director.HomeRotationOffset + director.AwayRotationOffset,

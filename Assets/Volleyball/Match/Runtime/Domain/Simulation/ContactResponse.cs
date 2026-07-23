@@ -62,12 +62,29 @@ namespace Volleyball.Domain.Simulation
             SweptBallHit hit,
             ContactResponseParameters parameters)
         {
+            return ApplyWithSurfaceVelocity(ball, hit, hit.SurfaceVelocity, parameters);
+        }
+
+        public static ContactResponseResult ApplyWithSurfaceVelocity(
+            BallState ball,
+            SweptBallHit hit,
+            SimVector3 responseSurfaceVelocity,
+            ContactResponseParameters parameters)
+        {
             if (ball == null)
             {
                 throw new ArgumentNullException(nameof(ball));
             }
 
-            var relativeIncoming = ball.Velocity - hit.SurfaceVelocity;
+            if (!responseSurfaceVelocity.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(responseSurfaceVelocity),
+                    responseSurfaceVelocity,
+                    "Response surface velocity must be finite.");
+            }
+
+            var relativeIncoming = ball.Velocity - responseSurfaceVelocity;
             var incomingNormalSpeed = SimVector3.Dot(relativeIncoming, hit.Normal);
             var incomingNormal = hit.Normal * incomingNormalSpeed;
             var incomingTangent = relativeIncoming - incomingNormal;
@@ -76,8 +93,7 @@ namespace Volleyball.Domain.Simulation
                 : SimVector3.Zero;
             var outgoingTangent = incomingTangent * (1f - parameters.TangentialFriction);
             var physicalOutgoing = outgoingNormal + outgoingTangent +
-                                   (hit.SurfaceVelocity * parameters.VelocityTransfer);
-
+                                   (responseSurfaceVelocity * parameters.VelocityTransfer);
             ball.Position = hit.ImpactCenter;
             ball.PreviousPosition = hit.ImpactCenter;
             ball.Velocity = physicalOutgoing;

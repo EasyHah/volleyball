@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using NUnit.Framework;
 using Volleyball.AI;
 using Volleyball.Domain.Prototype;
@@ -8,154 +7,62 @@ namespace Volleyball.EditModeTests
     public sealed class PhysicalRallyTacticPlannerTests
     {
         [Test]
-        public void Create_ReplaysExactlyForSameSeedAndRevision()
+        public void Create_ReturnsTheFixedBaseline()
         {
-            var planner = new PhysicalRallyTacticPlanner(7351);
+            var planner = new PhysicalRallyTacticPlanner();
+            var tactics = planner.Create();
 
-            Assert.That(planner.Create(8), Is.EqualTo(planner.Create(8)));
-            Assert.That(
-                new PhysicalRallyTacticPlanner(999).Create(8),
-                Is.Not.EqualTo(planner.Create(8)));
-        }
-
-        [Test]
-        public void Create_CoversMultipleSetSpikeAndMovementRoutes()
-        {
-            var planner = new PhysicalRallyTacticPlanner(7351);
-            var sets = new HashSet<SetRoute>();
-            var spikes = new HashSet<SpikeRoute>();
-            var attackPositions = new HashSet<float>();
-            var defensePositions = new HashSet<float>();
-
-            for (var revision = 0; revision < 32; revision++)
-            {
-                var tactics = planner.Create(revision);
-                sets.Add(tactics.Blue.SetRoute);
-                sets.Add(tactics.Orange.SetRoute);
-                spikes.Add(tactics.Blue.SpikeRoute);
-                spikes.Add(tactics.Orange.SpikeRoute);
-                attackPositions.Add(tactics.Blue.AttackerPosition.X);
-                defensePositions.Add(tactics.Orange.DefenderPosition.X);
-            }
-
-            Assert.That(sets.Count, Is.EqualTo(4));
-            Assert.That(spikes.Count, Is.EqualTo(4));
-            Assert.That(attackPositions.Count, Is.GreaterThanOrEqualTo(4));
-            Assert.That(defensePositions.Count, Is.GreaterThanOrEqualTo(4));
+            Assert.That(tactics.Blue.SetRoute, Is.EqualTo(SetRoute.LeftPin));
+            Assert.That(tactics.Blue.SpikeRoute, Is.EqualTo(SpikeRoute.CrossCourt));
+            Assert.That(tactics.Orange.SetRoute, Is.EqualTo(SetRoute.LeftPin));
+            Assert.That(tactics.Orange.SpikeRoute, Is.EqualTo(SpikeRoute.CrossCourt));
         }
 
         [Test]
         public void Create_MapsRoutesToRhythmMetadataInsteadOfFixedSetDurations()
         {
-            var planner = new PhysicalRallyTacticPlanner(7351);
-            for (var revision = 0; revision < 64; revision++)
-            {
-                var tactics = planner.Create(revision);
-                AssertRhythm(tactics.Blue);
-                AssertRhythm(tactics.Orange);
-            }
+            var tactics = new PhysicalRallyTacticPlanner().Create();
+            AssertRhythm(tactics.Blue);
+            AssertRhythm(tactics.Orange);
         }
 
         [Test]
         public void Create_KeepsEveryMovementTargetInsidePlayableCourt()
         {
-            var planner = new PhysicalRallyTacticPlanner(7351);
-            for (var revision = 0; revision < 64; revision++)
-            {
-                var tactics = planner.Create(revision);
-                AssertInside(tactics.Blue);
-                AssertInside(tactics.Orange);
-            }
+            var tactics = new PhysicalRallyTacticPlanner().Create();
+            AssertInside(tactics.Blue);
+            AssertInside(tactics.Orange);
         }
 
         [Test]
-        public void Create_BackSetPlacesAttackerBehindSetterForEitherTeam()
+        public void Create_PlacesBaselineAttackersInsideNearNetAttackBand()
         {
-            var planner = new PhysicalRallyTacticPlanner(7351);
-            var blueBackSets = 0;
-            var orangeBackSets = 0;
+            var tactics = new PhysicalRallyTacticPlanner().Create();
 
-            for (var revision = 0; revision < 64; revision++)
-            {
-                var tactics = planner.Create(revision);
-                if (tactics.Blue.SetRoute == SetRoute.BackSet)
-                {
-                    blueBackSets++;
-                    Assert.That(
-                        tactics.Blue.AttackerPosition.Z,
-                        Is.LessThan(tactics.Blue.SetterPosition.Z));
-                }
-
-                if (tactics.Orange.SetRoute == SetRoute.BackSet)
-                {
-                    orangeBackSets++;
-                    Assert.That(
-                        tactics.Orange.AttackerPosition.Z,
-                        Is.GreaterThan(tactics.Orange.SetterPosition.Z));
-                }
-            }
-
-            Assert.That(blueBackSets, Is.GreaterThan(0));
-            Assert.That(orangeBackSets, Is.GreaterThan(0));
-        }
-
-        [Test]
-        public void Create_BackSetUsesLongerAttackFlightThanFrontRowSpike()
-        {
-            var planner = new PhysicalRallyTacticPlanner(7351);
-            var checkedBackSets = 0;
-
-            for (var revision = 0; revision < 64; revision++)
-            {
-                var tactics = planner.Create(revision);
-                if (tactics.Blue.SetRoute == SetRoute.BackSet &&
-                    tactics.Blue.SpikeRoute != SpikeRoute.RollShot)
-                {
-                    checkedBackSets++;
-                    Assert.That(tactics.Blue.AttackFlightSeconds, Is.EqualTo(0.625f).Within(0.0001f));
-                }
-
-                if (tactics.Orange.SetRoute == SetRoute.BackSet &&
-                    tactics.Orange.SpikeRoute != SpikeRoute.RollShot)
-                {
-                    checkedBackSets++;
-                    Assert.That(tactics.Orange.AttackFlightSeconds, Is.EqualTo(0.625f).Within(0.0001f));
-                }
-            }
-
-            Assert.That(checkedBackSets, Is.GreaterThan(0));
+            Assert.That(-tactics.Blue.AttackerPosition.Z, Is.InRange(0.75f, 1.50f));
+            Assert.That(tactics.Orange.AttackerPosition.Z, Is.InRange(0.75f, 1.50f));
         }
 
         [Test]
         public void Create_BlueBlockCoverageTracksOrangeAttackLane()
         {
-            var planner = new PhysicalRallyTacticPlanner(7351);
+            var tactics = new PhysicalRallyTacticPlanner().Create();
 
-            for (var revision = 0; revision < 64; revision++)
-            {
-                var tactics = planner.Create(revision);
-
-                Assert.That(
-                    tactics.Blue.BlockPosition.X,
-                    Is.EqualTo(tactics.Orange.AttackerPosition.X).Within(0.001f));
-                Assert.That(tactics.Blue.BlockPosition.Z, Is.LessThan(0f));
-            }
+            Assert.That(
+                tactics.Blue.BlockPosition.X,
+                Is.EqualTo(tactics.Orange.AttackerPosition.X).Within(0.001f));
+            Assert.That(tactics.Blue.BlockPosition.Z, Is.LessThan(0f));
         }
 
         [Test]
         public void Create_OrangeBlockCoverageTracksBlueAttackLane()
         {
-            var planner = new PhysicalRallyTacticPlanner(7351);
+            var tactics = new PhysicalRallyTacticPlanner().Create();
 
-            for (var revision = 0; revision < 64; revision++)
-            {
-                var tactics = planner.Create(revision);
-
-                Assert.That(
-                    tactics.Orange.BlockPosition.X,
-                    Is.EqualTo(tactics.Blue.AttackerPosition.X).Within(0.001f));
-                Assert.That(tactics.Orange.BlockPosition.Z, Is.GreaterThan(0f));
-            }
+            Assert.That(
+                tactics.Orange.BlockPosition.X,
+                Is.EqualTo(tactics.Blue.AttackerPosition.X).Within(0.001f));
+            Assert.That(tactics.Orange.BlockPosition.Z, Is.GreaterThan(0f));
         }
 
         [Test]
