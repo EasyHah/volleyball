@@ -543,7 +543,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: all EditMode tests PASS.
 
-- [ ] **Step 2: Run complete PlayMode regression**
+- [x] **Step 2: Run complete PlayMode regression**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -567,23 +567,20 @@ git status --short
 
 Expected: no whitespace error; only the intended change record/rules edits remain before the final commit.
 
-- [ ] **Step 5: Commit verification documentation**
+- [x] **Step 5: Commit verification documentation**
 
 ```bash
 git add docs/rules.md docs/changes/2026-07-22-002-geometric-attack-block-counterplay.md
 git commit -m "docs: verify geometric attack block counterplay"
 ```
 
-**Checkpoint 2026-07-23:** Task 5 is complete in commit `603b471`.
-Task 6 EditMode passed 335/335 and the full PlayMode suite passed 17/18.
-The remaining failure is
-`PhysicsContactTrainingPlayModeTests.TrainingScene_CompletesReceiveSetAndAttackWithPhysicalContacts`:
-the attack ball center is at local Z `-0.044m` versus the historical `> 0.25m`
-assertion. Advancing the spike pose far enough to satisfy that assertion reduced
-the outgoing Z-direction ratio from the required `> 0.9` to about `0.652`, so the
-experimental pose changes were reverted. Resolve the coupling between visible
-arm extension and the physical contact normal before completing Task 6 Steps 2
-and 5.
+**Completed 2026-07-23:** Task 5 is complete in commit `603b471`. Commit
+`c692fdb` separates Attack impulse response from visual palm velocity, completes
+the spike pose, and gives near-perfect contacts enough direction correction to
+preserve the planned outgoing path. Final regression passed 338/338 EditMode and
+18/18 PlayMode tests. The fixed-seed results were 15:8 in 3v3 and 25:10 in 6v6;
+both 100-set calibration runs remained 100% attackable with zero A-grade
+no-contact errors.
 
 ## Plan Self-Review
 
