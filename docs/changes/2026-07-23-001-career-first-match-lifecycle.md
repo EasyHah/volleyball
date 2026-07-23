@@ -9,7 +9,7 @@
 - 关联提交：6C1 `7452f8283bb24175b4de03fcbb494c1e36942691`；
   6C2 `b7b0e3aea932bd74982c932e2b7ed3458b0900c5`；
   6C2 roster 修正 `810a0f177072f5d881644fcac76974f3a426cf7c`；
-  6C3 提交主题 `feat(career): settle first match atomically`
+  6C3 提交主题 `feat(career): settle first week atomically`
 
 > [!IMPORTANT]
 > 本次完成 Career 首场固定 6v6 fixture 从 canonical context 持久化、执行、失败重试到
