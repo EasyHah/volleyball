@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260723-001 | 2026-07-23 | 已完成 | Career.Domain / Career.Application / Career.MatchIntegration / Tests / Docs | **跨模块（重点）** | [Career 首场比赛持久化生命周期](2026-07-23-001-career-first-match-lifecycle.md) |
 | CHG-20260722-007 | 2026-07-22 | 已完成 | Career.Application / Career.MatchIntegration / Shared.MatchV2 / Docs | **跨模块（重点）** | [Career Match V2 自有端口、映射与动态 fixture runner](2026-07-22-007-career-match-integration.md) |
 | CHG-20260722-006 | 2026-07-22 | 已完成 | Shared.MatchV2 / Career.MatchIntegration / Match / Docs | **跨模块（重点）** | [Shared Match V2 规范契约、golden fixture 与复核证据加固](2026-07-22-006-shared-match-v2-contract.md) |
 | CHG-20260722-005 | 2026-07-22 | 已完成 | Career.Application / Persistence integration tests / Docs | 模块内部 | [第一周事件选择、真实持久化赛前管线与八轴应用证明](2026-07-22-005-career-week-event-pipeline.md) |
