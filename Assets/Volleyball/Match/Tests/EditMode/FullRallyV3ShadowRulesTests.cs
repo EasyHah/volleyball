@@ -1,5 +1,7 @@
 using System;
 using System.Globalization;
+using System.Reflection;
+using System.Runtime.Serialization;
 using NUnit.Framework;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
@@ -48,6 +50,27 @@ namespace Volleyball.EditModeTests
             var result = LegacyRulesShadowComparatorV3.Compare(
                 LegacyRuleOutcomeV3.Fault("ConsecutiveCountedTouch"),
                 engine.CanAttempt(Contact(HomeSetter, TeamSide.Home, RallyContactClassificationV3.TeamContact, 2)),
+                ShadowScenarioV3.Other);
+
+            Assert.That(result.DifferenceKind, Is.EqualTo(RulesShadowDifferenceKindV3.ExactParity));
+        }
+
+        [TestCase(true, RuleRejectionReasonV3.None, LegacyRuleDispositionV3.Accept, "None")]
+        [TestCase(false, RuleRejectionReasonV3.DuplicateContactGroup, LegacyRuleDispositionV3.Ignore, "DuplicateContactGroup")]
+        [TestCase(false, RuleRejectionReasonV3.RallyClosed, LegacyRuleDispositionV3.Ignore, "WindowClosed")]
+        [TestCase(false, RuleRejectionReasonV3.ConsecutiveCountedContact, LegacyRuleDispositionV3.Fault, "ConsecutiveCountedTouch")]
+        [TestCase(false, RuleRejectionReasonV3.FourthCountedContact, LegacyRuleDispositionV3.Fault, "FourthCountedTouch")]
+        [TestCase(false, RuleRejectionReasonV3.ActorNotOnCourt, LegacyRuleDispositionV3.Fault, "WrongActor")]
+        [TestCase(false, RuleRejectionReasonV3.ActionIneligible, LegacyRuleDispositionV3.Fault, "WrongAction")]
+        public void Compare_CurrentV3ReasonMappings_AreExactParity(
+            bool accepted,
+            RuleRejectionReasonV3 v3Reason,
+            LegacyRuleDispositionV3 legacyDisposition,
+            string legacyReason)
+        {
+            var result = LegacyRulesShadowComparatorV3.Compare(
+                new LegacyRuleOutcomeV3(legacyDisposition, legacyReason),
+                CreateUncheckedTransition(accepted, v3Reason),
                 ShadowScenarioV3.Other);
 
             Assert.That(result.DifferenceKind, Is.EqualTo(RulesShadowDifferenceKindV3.ExactParity));
@@ -170,6 +193,21 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Compare_RejectedTransitionDiagnosticUsesNoneContactFactsInFixedOrder()
+        {
+            var engine = RallyRulesEngineV3.Open(TeamSide.Home);
+            engine.Apply(Contact(HomeSetter, TeamSide.Home, RallyContactClassificationV3.TeamContact, 17));
+
+            var result = LegacyRulesShadowComparatorV3.Compare(
+                LegacyRuleOutcomeV3.Ignore("DuplicateContactGroup"),
+                engine.CanAttempt(Contact(HomeSetter, TeamSide.Home, RallyContactClassificationV3.TeamContact, 17)),
+                ShadowScenarioV3.Other);
+
+            Assert.That(result.Diagnostic, Is.EqualTo(
+                "scenario=Other;legacyDisposition=Ignore;legacyReason=DuplicateContactGroup;v3Accepted=False;v3Reason=DuplicateContactGroup;actor=none;classification=none;contactGroup=none"));
+        }
+
+        [Test]
         public void Compare_RequiresLegacyOutcomeAndV3Transition()
         {
             Assert.Throws<ArgumentNullException>(() => LegacyRulesShadowComparatorV3.Compare(
@@ -193,6 +231,31 @@ namespace Volleyball.EditModeTests
                 " "));
         }
 
+        [Test]
+        public void RuleTransition_RejectsInconsistentAcceptanceAndReasonCombinations()
+        {
+            Assert.That(ConstructorException(true, RuleRejectionReasonV3.ConsecutiveCountedContact),
+                Is.TypeOf<ArgumentException>());
+            Assert.That(ConstructorException(false, RuleRejectionReasonV3.None),
+                Is.TypeOf<ArgumentException>());
+        }
+
+        [Test]
+        public void RuleTransition_RejectsUndefinedRejectionReason()
+        {
+            Assert.That(ConstructorException(false, (RuleRejectionReasonV3)999),
+                Is.TypeOf<ArgumentOutOfRangeException>());
+        }
+
+        [Test]
+        public void Compare_RejectsInconsistentTransitionFromAnotherAssemblyVersion()
+        {
+            Assert.Throws<ArgumentException>(() => LegacyRulesShadowComparatorV3.Compare(
+                LegacyRuleOutcomeV3.Accept(),
+                CreateMalformedTransition(true, RuleRejectionReasonV3.ConsecutiveCountedContact),
+                ShadowScenarioV3.Other));
+        }
+
         private static RuleTransitionV3 AcceptedV3Transition()
         {
             return RallyRulesEngineV3.Open(TeamSide.Home)
@@ -213,6 +276,60 @@ namespace Volleyball.EditModeTests
             long contactGroup)
         {
             return new ActualContactEventV3(actor, team, classification, contactGroup);
+        }
+
+        private static Exception ConstructorException(bool accepted, RuleRejectionReasonV3 reason)
+        {
+            try
+            {
+                CreateUncheckedTransition(accepted, reason);
+                return null;
+            }
+            catch (TargetInvocationException exception)
+            {
+                return exception.InnerException;
+            }
+        }
+
+        private static RuleTransitionV3 CreateUncheckedTransition(bool accepted, RuleRejectionReasonV3 reason)
+        {
+            var constructor = typeof(RuleTransitionV3).GetConstructor(
+                BindingFlags.Instance | BindingFlags.NonPublic,
+                null,
+                new[]
+                {
+                    typeof(bool),
+                    typeof(RuleRejectionReasonV3),
+                    typeof(TouchSequenceStateV3),
+                    typeof(TouchSequenceStateV3)
+                },
+                null);
+
+            return (RuleTransitionV3)constructor.Invoke(new object[]
+            {
+                accepted,
+                reason,
+                TouchSequenceStateV3.Initial,
+                TouchSequenceStateV3.Initial
+            });
+        }
+
+        private static RuleTransitionV3 CreateMalformedTransition(bool accepted, RuleRejectionReasonV3 reason)
+        {
+            var transition = (RuleTransitionV3)FormatterServices.GetUninitializedObject(typeof(RuleTransitionV3));
+            SetAutoProperty(transition, "Accepted", accepted);
+            SetAutoProperty(transition, "RejectionReason", reason);
+            SetAutoProperty(transition, "Before", TouchSequenceStateV3.Initial);
+            SetAutoProperty(transition, "After", TouchSequenceStateV3.Initial);
+            return transition;
+        }
+
+        private static void SetAutoProperty<T>(RuleTransitionV3 transition, string propertyName, T value)
+        {
+            var field = typeof(RuleTransitionV3).GetField(
+                "<" + propertyName + ">k__BackingField",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            field.SetValue(transition, value);
         }
     }
 }

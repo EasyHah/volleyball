@@ -94,6 +94,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 throw new ArgumentNullException(nameof(v3Transition));
             }
 
+            ValidateTransition(v3Transition);
+
             if (!Enum.IsDefined(typeof(ShadowScenarioV3), scenario))
             {
                 throw new ArgumentOutOfRangeException(nameof(scenario), "Shadow scenario is not supported.");
@@ -108,6 +110,28 @@ namespace Volleyball.Match.Domain.FullRallyV3
             return new RulesShadowComparisonV3(
                 differenceKind,
                 CreateDiagnostic(legacyOutcome, v3Transition, scenario));
+        }
+
+        private static void ValidateTransition(RuleTransitionV3 transition)
+        {
+            if (!Enum.IsDefined(typeof(RuleRejectionReasonV3), transition.RejectionReason))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(transition),
+                    "V3 rejection reason is not supported.");
+            }
+
+            if (transition.Accepted != (transition.RejectionReason == RuleRejectionReasonV3.None))
+            {
+                throw new ArgumentException(
+                    "Accepted V3 transitions require None; rejected V3 transitions require a rejection reason.",
+                    nameof(transition));
+            }
+
+            if (transition.Before == null || transition.After == null)
+            {
+                throw new ArgumentException("V3 transition states are required.", nameof(transition));
+            }
         }
 
         private static bool IsExactParity(LegacyRuleOutcomeV3 legacyOutcome, RuleTransitionV3 v3Transition)

@@ -93,6 +93,18 @@ namespace Volleyball.Match.Domain.FullRallyV3
             TouchSequenceStateV3 before,
             TouchSequenceStateV3 after)
         {
+            if (!Enum.IsDefined(typeof(RuleRejectionReasonV3), rejectionReason))
+            {
+                throw new ArgumentOutOfRangeException(nameof(rejectionReason), "Rejection reason is not supported.");
+            }
+
+            if (accepted != (rejectionReason == RuleRejectionReasonV3.None))
+            {
+                throw new ArgumentException(
+                    "Accepted transitions require None; rejected transitions require a rejection reason.",
+                    nameof(rejectionReason));
+            }
+
             Accepted = accepted;
             RejectionReason = rejectionReason;
             Before = before ?? throw new ArgumentNullException(nameof(before));
