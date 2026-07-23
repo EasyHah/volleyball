@@ -97,11 +97,10 @@ namespace Volleyball.Career.MatchIntegration
                 throw new MatchV2ContractException("The fixture version tuple does not match the template.");
             }
 
-            if (incoming.MatchSeed != template.MatchSeed ||
-                !string.Equals(incoming.CompetitionId, template.CompetitionId, StringComparison.Ordinal) ||
+            if (!string.Equals(incoming.CompetitionId, template.CompetitionId, StringComparison.Ordinal) ||
                 !string.Equals(incoming.ScheduleItemId, template.ScheduleItemId, StringComparison.Ordinal))
             {
-                throw new MatchV2ContractException("The fixture seed or schedule identity does not match.");
+                throw new MatchV2ContractException("The fixture schedule identity does not match.");
             }
 
             if (!FormatsEqual(incoming.Format, template.Format))

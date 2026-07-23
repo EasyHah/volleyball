@@ -412,9 +412,15 @@ namespace Volleyball.Career.Application
 
     public interface ICareerMatchExecutor
     {
-        Task<CareerMatchFacts> ExecuteAsync(
-            CareerMatchLaunch launch,
+        CareerCanonicalMatchContext Encode(CareerMatchLaunch launch);
+
+        Task<CareerMatchExecutionOutcome> ExecuteAsync(
+            CareerCanonicalMatchContext context,
             CancellationToken cancellationToken);
+
+        CareerMatchExecutionOutcome DecodeAndValidate(
+            byte[] canonicalContextUtf8,
+            byte[] canonicalResultUtf8);
     }
 
     internal static class CareerMatchGuard

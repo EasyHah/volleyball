@@ -13,16 +13,109 @@ namespace Volleyball.Career.EditModeTests
     public sealed class CareerMatchContractsTests
     {
         [Test]
-        public void MatchPort_HasTheExactCareerOwnedAsynchronousSignature()
+        public void MatchPort_HasTheExactCareerOwnedPersistedExecutionSignature()
         {
-            var method = typeof(ICareerMatchExecutor).GetMethod(nameof(ICareerMatchExecutor.ExecuteAsync));
+            var methods = typeof(ICareerMatchExecutor).GetMethods()
+                .OrderBy(method => method.Name)
+                .ToArray();
 
-            Assert.That(method, Is.Not.Null);
-            Assert.That(method.ReturnType, Is.EqualTo(typeof(Task<CareerMatchFacts>)));
-            Assert.That(method.GetParameters().Select(parameter => parameter.ParameterType),
-                Is.EqualTo(new[] { typeof(CareerMatchLaunch), typeof(CancellationToken) }));
+            Assert.That(methods.Select(method => method.Name), Is.EqualTo(new[]
+            {
+                nameof(ICareerMatchExecutor.DecodeAndValidate),
+                nameof(ICareerMatchExecutor.Encode),
+                nameof(ICareerMatchExecutor.ExecuteAsync)
+            }));
+            Assert.That(methods[0].ReturnType, Is.EqualTo(typeof(CareerMatchExecutionOutcome)));
+            Assert.That(methods[0].GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[] { typeof(byte[]), typeof(byte[]) }));
+            Assert.That(methods[1].ReturnType, Is.EqualTo(typeof(CareerCanonicalMatchContext)));
+            Assert.That(methods[1].GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[] { typeof(CareerMatchLaunch) }));
+            Assert.That(methods[2].ReturnType, Is.EqualTo(typeof(Task<CareerMatchExecutionOutcome>)));
+            Assert.That(methods[2].GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[] { typeof(CareerCanonicalMatchContext), typeof(CancellationToken) }));
             Assert.That(typeof(ICareerMatchExecutor).Assembly, Is.EqualTo(typeof(CareerMatchLaunch).Assembly));
             Assert.That(typeof(CareerMatchLaunch).Assembly, Is.EqualTo(typeof(CareerMatchFacts).Assembly));
+            Assert.That(typeof(CareerCanonicalMatchContext).Assembly,
+                Is.EqualTo(typeof(CareerMatchLaunch).Assembly));
+            Assert.That(typeof(CareerMatchExecutionOutcome).Assembly,
+                Is.EqualTo(typeof(CareerMatchLaunch).Assembly));
+        }
+
+        [Test]
+        public void PersistedExecutionContracts_DefensivelyCopyBytesAndPreserveCorrelatedEvidence()
+        {
+            var contextBytes = new byte[] { 1, 2, 3 };
+            var resultBytes = new byte[] { 4, 5, 6 };
+            var contextDigest = new Sha256Digest(new string('a', 64));
+            var resultDigest = new Sha256Digest(new string('b', 64));
+            var context = new CareerCanonicalMatchContext(
+                CareerMatchTestData.SessionId,
+                contextDigest,
+                contextBytes);
+            var facts = CareerMatchTestData.Facts();
+            var outcome = new CareerMatchExecutionOutcome(
+                context,
+                resultDigest,
+                resultBytes,
+                facts);
+
+            contextBytes[0] = 99;
+            resultBytes[0] = 99;
+            var exposedContext = context.CanonicalContextUtf8;
+            var exposedResult = outcome.CanonicalResultUtf8;
+            exposedContext[1] = 88;
+            exposedResult[1] = 88;
+
+            Assert.That(context.SessionId, Is.EqualTo(CareerMatchTestData.SessionId));
+            Assert.That(context.ContextDigest, Is.EqualTo(contextDigest));
+            Assert.That(context.CanonicalContextUtf8, Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(outcome.Context, Is.SameAs(context));
+            Assert.That(outcome.ResultDigest, Is.EqualTo(resultDigest));
+            Assert.That(outcome.CanonicalResultUtf8, Is.EqualTo(new byte[] { 4, 5, 6 }));
+            Assert.That(outcome.Facts, Is.SameAs(facts));
+        }
+
+        [Test]
+        public void PersistedExecutionContracts_RejectInvalidBytesDigestsAndCorrelations()
+        {
+            var contextDigest = new Sha256Digest(new string('a', 64));
+            var resultDigest = new Sha256Digest(new string('b', 64));
+            var context = new CareerCanonicalMatchContext(
+                CareerMatchTestData.SessionId,
+                contextDigest,
+                new byte[] { 1 });
+            var facts = CareerMatchTestData.Facts();
+
+            Assert.Catch<ArgumentException>(() => new CareerCanonicalMatchContext(
+                Guid.Empty, contextDigest, new byte[] { 1 }));
+            Assert.Catch<ArgumentException>(() => new CareerCanonicalMatchContext(
+                CareerMatchTestData.SessionId, default(Sha256Digest), new byte[] { 1 }));
+            Assert.Throws<ArgumentNullException>(() => new CareerCanonicalMatchContext(
+                CareerMatchTestData.SessionId, contextDigest, null));
+            Assert.Catch<ArgumentException>(() => new CareerCanonicalMatchContext(
+                CareerMatchTestData.SessionId, contextDigest, Array.Empty<byte>()));
+
+            Assert.Throws<ArgumentNullException>(() => new CareerMatchExecutionOutcome(
+                null, resultDigest, new byte[] { 1 }, facts));
+            Assert.Catch<ArgumentException>(() => new CareerMatchExecutionOutcome(
+                context, default(Sha256Digest), new byte[] { 1 }, facts));
+            Assert.Throws<ArgumentNullException>(() => new CareerMatchExecutionOutcome(
+                context, resultDigest, null, facts));
+            Assert.Catch<ArgumentException>(() => new CareerMatchExecutionOutcome(
+                context, resultDigest, Array.Empty<byte>(), facts));
+            Assert.Throws<ArgumentNullException>(() => new CareerMatchExecutionOutcome(
+                context, resultDigest, new byte[] { 1 }, null));
+
+            var wrongSessionFacts = CareerMatchTestData.Facts(CareerMatchTestData.Launch(
+                sessionId: Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")));
+            Assert.Catch<ArgumentException>(() => new CareerMatchExecutionOutcome(
+                context, resultDigest, new byte[] { 1 }, wrongSessionFacts));
+            Assert.Catch<ArgumentException>(() => new CareerMatchExecutionOutcome(
+                context,
+                new Sha256Digest(new string('c', 64)),
+                new byte[] { 1 },
+                facts));
         }
 
         [Test]

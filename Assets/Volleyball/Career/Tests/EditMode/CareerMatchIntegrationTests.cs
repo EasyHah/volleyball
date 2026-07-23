@@ -380,17 +380,62 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void FixtureRunner_RejectsWrongFixtureSeedCompetitionScheduleFormatAndPositionTopology()
+        public void FixtureRunner_RejectsWrongFixtureIdentityScheduleFormatAndPositionTopology()
         {
             var runner = Runner();
             AssertRunnerRejected(runner, V2Context(fixtureId: "fixture.unsupported"));
             AssertRunnerRejected(runner, V2Context(fixtureVersion: 2));
-            AssertRunnerRejected(runner, V2Context(matchSeed: 12u));
             AssertRunnerRejected(runner, V2Context(competitionId: "competition.other"));
             AssertRunnerRejected(runner, V2Context(scheduleItemId: "schedule.other"));
             AssertRunnerRejected(runner, V2Context(
                 format: new MatchFormatV2("indoor_6v6", 6, 1, 15, 2)));
             AssertRunnerRejected(runner, V2Context(teams: SwappedPositionTeams()));
+        }
+
+        [Test]
+        public async Task FixtureRunner_AcceptsEveryUintSeedWithStableFactsAndDistinctSemanticHashes()
+        {
+            var realDerivedSeed = checked((uint)new CareerDeterministicRandom().NextInt64(
+                new CareerRandomRequest(
+                    1,
+                    CareerSeed.Parse(
+                        "000102030405060708090a0b0c0d0e0f" +
+                        "101112131415161718191a1b1c1d1e1f"),
+                    "match_seed",
+                    2,
+                    3,
+                    "schedule.u2w3.match.07",
+                    new OccurrenceId(
+                        Guid.Parse("00000000-0000-0000-0000-000000000005")),
+                    0),
+                0,
+                4294967296L));
+            var seeds = new[]
+            {
+                0u,
+                CareerMatchTestData.MatchSeed,
+                uint.MaxValue,
+                realDerivedSeed
+            };
+            Assert.That(seeds.Distinct().Count(), Is.EqualTo(4),
+                "The real domain-derived sample must exercise a fourth seed.");
+
+            var runner = Runner();
+            var contexts = seeds.Select(seed => V2Context(matchSeed: seed)).ToArray();
+            var results = new MatchResultV2[contexts.Length];
+            for (var index = 0; index < contexts.Length; index++)
+            {
+                results[index] = await runner.ExecuteAsync(contexts[index], CancellationToken.None);
+            }
+
+            Assert.That(contexts.Select(context => context.ContextHash).Distinct().Count(),
+                Is.EqualTo(seeds.Length));
+            Assert.That(results.Select(result => result.ResultHash).Distinct().Count(),
+                Is.EqualTo(seeds.Length));
+            for (var index = 1; index < results.Length; index++)
+            {
+                AssertFixturePayloadEqual(results[0], results[index]);
+            }
         }
 
         [Test]
@@ -490,7 +535,7 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public async Task Executor_MapsAwaitsValidatesAndForwardsTheExactToken()
+        public async Task Executor_ExecutesTheExactPersistedContextAndReturnsCanonicalEvidence()
         {
             var actualRunner = Runner();
             var recordingRunner = new DelegateRunner(async (context, token) =>
@@ -500,47 +545,144 @@ namespace Volleyball.Career.EditModeTests
             });
             var executor = new CareerMatchExecutorV2(recordingRunner);
             using var source = new CancellationTokenSource();
+            var canonicalContext = executor.Encode(CareerMatchTestData.Launch());
+            var persistedContextBytes = canonicalContext.CanonicalContextUtf8;
 
-            var facts = await executor.ExecuteAsync(CareerMatchTestData.Launch(), source.Token);
+            var outcome = await executor.ExecuteAsync(canonicalContext, source.Token);
+            var decodedResult = MatchContractV2Json.DeserializeResult(
+                outcome.CanonicalResultUtf8,
+                recordingRunner.ReceivedContext);
 
             Assert.That(recordingRunner.ReceivedToken, Is.EqualTo(source.Token));
             Assert.That(recordingRunner.ReceivedContext, Is.Not.Null);
-            Assert.That(facts.ContextDigest.Value, Is.EqualTo(recordingRunner.ReceivedContext.ContextHash));
-            Assert.That(facts.WinnerTeamId, Is.EqualTo(new TeamId("team.university.first")));
-            Assert.That(facts.PlayerFacts, Has.Count.EqualTo(12));
+            Assert.That(MatchContractV2Json.SerializeContext(recordingRunner.ReceivedContext),
+                Is.EqualTo(persistedContextBytes),
+                "The runner must receive the DTO decoded from the exact persisted bytes.");
+            Assert.That(canonicalContext.ContextDigest.Value,
+                Is.EqualTo(recordingRunner.ReceivedContext.ContextHash));
+            Assert.That(canonicalContext.ContextDigest.Value, Is.Not.EqualTo(Hash(persistedContextBytes)),
+                "The envelope owns the embedded semantic V2 hash, not a full-file SHA-256.");
+            Assert.That(outcome.Context, Is.SameAs(canonicalContext));
+            Assert.That(outcome.ResultDigest.Value, Is.EqualTo(decodedResult.ResultHash));
+            Assert.That(outcome.ResultDigest.Value, Is.Not.EqualTo(Hash(outcome.CanonicalResultUtf8)),
+                "The outcome owns the embedded semantic V2 hash, not a full-file SHA-256.");
+            Assert.That(outcome.Facts.ContextDigest, Is.EqualTo(canonicalContext.ContextDigest));
+            Assert.That(outcome.Facts.ResultDigest, Is.EqualTo(outcome.ResultDigest));
+            Assert.That(outcome.Facts.WinnerTeamId, Is.EqualTo(new TeamId("team.university.first")));
+            Assert.That(outcome.Facts.PlayerFacts, Has.Count.EqualTo(12));
+        }
+
+        [Test]
+        public void Executor_RejectsTamperedEnvelopeHashSessionAndNonCanonicalBytesBeforeRunner()
+        {
+            var runner = new DelegateRunner((_, __) =>
+                Task.FromException<MatchResultV2>(
+                    new AssertionException("A rejected envelope must not reach the runner.")));
+            var executor = new CareerMatchExecutorV2(runner);
+            var canonical = executor.Encode(CareerMatchTestData.Launch());
+            var bytes = canonical.CanonicalContextUtf8;
+            var tamperedBytes = new CareerMatchV2Mapper().ToContext(
+                CareerMatchTestData.Launch(matchSeed: 12u));
+            var nonCanonicalBytes = bytes.Concat(new byte[] { 0x20 }).ToArray();
+
+            Assert.ThrowsAsync<MatchV2ContractException>(async () =>
+                await executor.ExecuteAsync(
+                    new CareerCanonicalMatchContext(
+                        canonical.SessionId,
+                        canonical.ContextDigest,
+                        MatchContractV2Json.SerializeContext(tamperedBytes)),
+                    CancellationToken.None));
+            Assert.ThrowsAsync<MatchV2ContractException>(async () =>
+                await executor.ExecuteAsync(
+                    new CareerCanonicalMatchContext(
+                        canonical.SessionId,
+                        new Sha256Digest(new string('c', 64)),
+                        bytes),
+                    CancellationToken.None));
+            Assert.ThrowsAsync<MatchV2ContractException>(async () =>
+                await executor.ExecuteAsync(
+                    new CareerCanonicalMatchContext(
+                        Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
+                        canonical.ContextDigest,
+                        bytes),
+                    CancellationToken.None));
+            Assert.ThrowsAsync<MatchV2ContractException>(async () =>
+                await executor.ExecuteAsync(
+                    new CareerCanonicalMatchContext(
+                        canonical.SessionId,
+                        canonical.ContextDigest,
+                        nonCanonicalBytes),
+                    CancellationToken.None));
+            Assert.That(runner.CallCount, Is.Zero);
+        }
+
+        [Test]
+        public async Task Executor_DecodesValidEvidenceAndRejectsNonCanonicalOrWrongPairs()
+        {
+            var executor = new CareerMatchExecutorV2(Runner());
+            var firstContext = executor.Encode(CareerMatchTestData.Launch());
+            var firstOutcome = await executor.ExecuteAsync(firstContext, CancellationToken.None);
+
+            var decoded = executor.DecodeAndValidate(
+                firstContext.CanonicalContextUtf8,
+                firstOutcome.CanonicalResultUtf8);
+
+            Assert.That(decoded.Context.SessionId, Is.EqualTo(firstContext.SessionId));
+            Assert.That(decoded.Context.ContextDigest, Is.EqualTo(firstContext.ContextDigest));
+            Assert.That(decoded.ResultDigest, Is.EqualTo(firstOutcome.ResultDigest));
+            Assert.That(decoded.CanonicalResultUtf8, Is.EqualTo(firstOutcome.CanonicalResultUtf8));
+
+            var nonCanonicalContext =
+                firstContext.CanonicalContextUtf8.Concat(new byte[] { 0x20 }).ToArray();
+            var nonCanonicalResult =
+                firstOutcome.CanonicalResultUtf8.Concat(new byte[] { 0x20 }).ToArray();
+            Assert.Throws<MatchV2ContractException>(() =>
+                executor.DecodeAndValidate(nonCanonicalContext, firstOutcome.CanonicalResultUtf8));
+            Assert.Throws<MatchV2ContractException>(() =>
+                executor.DecodeAndValidate(firstContext.CanonicalContextUtf8, nonCanonicalResult));
+
+            var secondContext = executor.Encode(CareerMatchTestData.Launch(
+                sessionId: Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")));
+            var secondOutcome =
+                await executor.ExecuteAsync(secondContext, CancellationToken.None);
+            Assert.Throws<MatchV2ContractException>(() =>
+                executor.DecodeAndValidate(
+                    firstContext.CanonicalContextUtf8,
+                    secondOutcome.CanonicalResultUtf8));
         }
 
         [Test]
         public void Executor_PropagatesCancellationOrdinaryErrorsNullAndWrongOwnerResults()
         {
             var launch = CareerMatchTestData.Launch();
+            var persisted = new CareerMatchExecutorV2(Runner()).Encode(launch);
             using var source = new CancellationTokenSource();
             source.Cancel();
             var canceled = new CareerMatchExecutorV2(new DelegateRunner(
                 (_, token) => Task.FromCanceled<MatchResultV2>(token)));
             Assert.ThrowsAsync<TaskCanceledException>(async () =>
-                await canceled.ExecuteAsync(launch, source.Token));
+                await canceled.ExecuteAsync(persisted, source.Token));
 
             var expected = new InvalidOperationException("runner failed");
             var failed = new CareerMatchExecutorV2(new DelegateRunner(
                 (_, __) => Task.FromException<MatchResultV2>(expected)));
             var thrown = Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await failed.ExecuteAsync(launch, CancellationToken.None));
+                await failed.ExecuteAsync(persisted, CancellationToken.None));
             Assert.That(thrown, Is.SameAs(expected));
 
             var nullRunner = new CareerMatchExecutorV2(new DelegateRunner(
                 (_, __) => Task.FromResult<MatchResultV2>(null)));
             Assert.ThrowsAsync<InvalidOperationException>(async () =>
-                await nullRunner.ExecuteAsync(launch, CancellationToken.None));
+                await nullRunner.ExecuteAsync(persisted, CancellationToken.None));
 
             var otherContext = DynamicContext(
                 "team.other.home", "team.other.away", "other.home", "other.away",
-                Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc"));
+                Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd"));
             var otherResult = Runner().ExecuteAsync(otherContext, CancellationToken.None).Result;
             var wrongOwner = new CareerMatchExecutorV2(new DelegateRunner(
                 (_, __) => Task.FromResult(otherResult)));
             Assert.ThrowsAsync<MatchV2ContractException>(async () =>
-                await wrongOwner.ExecuteAsync(launch, CancellationToken.None));
+                await wrongOwner.ExecuteAsync(persisted, CancellationToken.None));
         }
 
         [Test]
@@ -551,28 +693,57 @@ namespace Volleyball.Career.EditModeTests
             runnerSource.Cancel();
             var executor = new CareerMatchExecutorV2(new DelegateRunner(
                 (_, __) => Task.FromCanceled<MatchResultV2>(runnerSource.Token)));
+            var persisted = executor.Encode(CareerMatchTestData.Launch());
 
             var exception = Assert.ThrowsAsync<TaskCanceledException>(async () =>
-                await executor.ExecuteAsync(CareerMatchTestData.Launch(), callerSource.Token));
+                await executor.ExecuteAsync(persisted, callerSource.Token));
 
             Assert.That(callerSource.IsCancellationRequested, Is.False);
             Assert.That(exception.CancellationToken, Is.EqualTo(runnerSource.Token));
         }
 
         [Test]
-        public void Executor_RejectsNullRunnerAndReturnsCanceledOrNullLaunchTasks()
+        public void Executor_ObservesCallerCancellationWhenTheRunnerIgnoresItAndReturnsAResult()
+        {
+            using var callerSource = new CancellationTokenSource();
+            var actualRunner = Runner();
+            var ignoringRunner = new DelegateRunner(async (context, _) =>
+            {
+                callerSource.Cancel();
+                return await actualRunner.ExecuteAsync(context, CancellationToken.None);
+            });
+            var executor = new CareerMatchExecutorV2(ignoringRunner);
+            var persisted = executor.Encode(CareerMatchTestData.Launch());
+
+            var exception = Assert.ThrowsAsync<TaskCanceledException>(async () =>
+                await executor.ExecuteAsync(persisted, callerSource.Token));
+
+            Assert.That(exception.CancellationToken, Is.EqualTo(callerSource.Token));
+            Assert.That(ignoringRunner.CallCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Executor_RejectsNullsAndReturnsCanceledOrNullContextTasks()
         {
             Assert.Throws<ArgumentNullException>(() => new CareerMatchExecutorV2(null));
             var executor = new CareerMatchExecutorV2(Runner());
-            Task<CareerMatchFacts> nullLaunchTask = null;
-            Assert.DoesNotThrow(() => nullLaunchTask = executor.ExecuteAsync(null, CancellationToken.None));
-            Assert.ThrowsAsync<ArgumentNullException>(async () => await nullLaunchTask);
+            Assert.Throws<ArgumentNullException>(() => executor.Encode(null));
+            Assert.Throws<ArgumentNullException>(() =>
+                executor.DecodeAndValidate(null, new byte[] { 1 }));
+            Assert.Throws<ArgumentNullException>(() =>
+                executor.DecodeAndValidate(new byte[] { 1 }, null));
+
+            Task<CareerMatchExecutionOutcome> nullContextTask = null;
+            Assert.DoesNotThrow(() =>
+                nullContextTask = executor.ExecuteAsync(null, CancellationToken.None));
+            Assert.ThrowsAsync<ArgumentNullException>(async () => await nullContextTask);
 
             using var source = new CancellationTokenSource();
             source.Cancel();
-            Task<CareerMatchFacts> canceledTask = null;
+            Task<CareerMatchExecutionOutcome> canceledTask = null;
+            var persisted = executor.Encode(CareerMatchTestData.Launch());
             Assert.DoesNotThrow(() => canceledTask = executor.ExecuteAsync(
-                CareerMatchTestData.Launch(), source.Token));
+                persisted, source.Token));
             Assert.That(canceledTask.IsCanceled, Is.True);
             Assert.ThrowsAsync<TaskCanceledException>(async () => await canceledTask);
         }
@@ -776,6 +947,96 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(actual.Stability.LongestErrorStreak, Is.EqualTo(expected.Stability.LongestErrorStreak));
         }
 
+        private static void AssertFixturePayloadEqual(MatchResultV2 expected, MatchResultV2 actual)
+        {
+            Assert.That(actual.Status, Is.EqualTo(expected.Status));
+            Assert.That(actual.WinnerTeamId, Is.EqualTo(expected.WinnerTeamId));
+            Assert.That(actual.RallyCount, Is.EqualTo(expected.RallyCount));
+            Assert.That(actual.Sets.Select(set => new[]
+            {
+                set.SetNumber,
+                set.HomePoints,
+                set.AwayPoints,
+                set.IsComplete ? 1 : 0
+            }), Is.EqualTo(expected.Sets.Select(set => new[]
+            {
+                set.SetNumber,
+                set.HomePoints,
+                set.AwayPoints,
+                set.IsComplete ? 1 : 0
+            })));
+            Assert.That(actual.PlayerFacts.Select(facts => facts.PlayerId),
+                Is.EqualTo(expected.PlayerFacts.Select(facts => facts.PlayerId)));
+            for (var index = 0; index < expected.PlayerFacts.Count; index++)
+            {
+                AssertV2FactEqual(expected.PlayerFacts[index], actual.PlayerFacts[index]);
+            }
+        }
+
+        private static void AssertV2FactEqual(MatchPlayerFactsV2 expected, MatchPlayerFactsV2 actual)
+        {
+            Assert.That(actual.PlayerId, Is.EqualTo(expected.PlayerId));
+            Assert.That(new[] { actual.Spike.Attempts, actual.Spike.Points, actual.Spike.Errors },
+                Is.EqualTo(new[] { expected.Spike.Attempts, expected.Spike.Points, expected.Spike.Errors }));
+            Assert.That(new[] { actual.Serve.Attempts, actual.Serve.Aces, actual.Serve.Errors },
+                Is.EqualTo(new[] { expected.Serve.Attempts, expected.Serve.Aces, expected.Serve.Errors }));
+            Assert.That(new[]
+            {
+                actual.Reception.Attempts,
+                actual.Reception.Perfect,
+                actual.Reception.Positive,
+                actual.Reception.Neutral,
+                actual.Reception.Negative,
+                actual.Reception.Errors
+            }, Is.EqualTo(new[]
+            {
+                expected.Reception.Attempts,
+                expected.Reception.Perfect,
+                expected.Reception.Positive,
+                expected.Reception.Neutral,
+                expected.Reception.Negative,
+                expected.Reception.Errors
+            }));
+            Assert.That(new[] { actual.Defense.Attempts, actual.Defense.Successes },
+                Is.EqualTo(new[] { expected.Defense.Attempts, expected.Defense.Successes }));
+            Assert.That(new[] { actual.Block.Attempts, actual.Block.EffectiveTouches, actual.Block.Points },
+                Is.EqualTo(new[] { expected.Block.Attempts, expected.Block.EffectiveTouches, expected.Block.Points }));
+            Assert.That(new[]
+            {
+                actual.Load.RalliesPlayed,
+                actual.Load.ActiveDurationMilliseconds,
+                actual.Load.MovementDistanceMillimeters,
+                actual.Load.JumpCount,
+                actual.Load.HighLoadJumpCount,
+                actual.Load.LandingLoadBasisPoints,
+                actual.Load.TotalWorkloadBasisPoints
+            }, Is.EqualTo(new[]
+            {
+                expected.Load.RalliesPlayed,
+                expected.Load.ActiveDurationMilliseconds,
+                expected.Load.MovementDistanceMillimeters,
+                expected.Load.JumpCount,
+                expected.Load.HighLoadJumpCount,
+                expected.Load.LandingLoadBasisPoints,
+                expected.Load.TotalWorkloadBasisPoints
+            }));
+            Assert.That(new[]
+            {
+                actual.Stability.CriticalActions,
+                actual.Stability.CriticalSuccesses,
+                actual.Stability.CriticalErrors,
+                actual.Stability.ErrorStreakEpisodes,
+                actual.Stability.LongestErrorStreak
+            }, Is.EqualTo(new[]
+            {
+                expected.Stability.CriticalActions,
+                expected.Stability.CriticalSuccesses,
+                expected.Stability.CriticalErrors,
+                expected.Stability.ErrorStreakEpisodes,
+                expected.Stability.LongestErrorStreak
+            }));
+        }
+
         private static void AssertRunnerRejected(FixtureMatchRunnerV2 runner, MatchContextV2 context)
         {
             Assert.ThrowsAsync<MatchV2ContractException>(async () =>
@@ -816,10 +1077,13 @@ namespace Volleyball.Career.EditModeTests
 
             public CancellationToken ReceivedToken { get; private set; }
 
+            public int CallCount { get; private set; }
+
             public Task<MatchResultV2> ExecuteAsync(
                 MatchContextV2 context,
                 CancellationToken cancellationToken)
             {
+                CallCount++;
                 ReceivedContext = context;
                 ReceivedToken = cancellationToken;
                 return _execute(context, cancellationToken);
