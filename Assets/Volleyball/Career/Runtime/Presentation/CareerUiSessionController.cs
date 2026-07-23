@@ -68,6 +68,7 @@ namespace Volleyball.Career.Presentation
                 Profiles = result.Profiles;
                 FeedbackCode = result.Code;
                 SaveState = CareerUiSaveState.Ready;
+                TryRestoreRecentCareer();
             }
             else
             {
@@ -115,6 +116,7 @@ namespace Volleyball.Career.Presentation
             }
 
             Profile = result.Profile;
+            TryClearRecentCareer();
             Snapshot = null;
             SettlementReceipt = null;
             PreMatchPreview = null;
@@ -150,6 +152,37 @@ namespace Volleyball.Career.Presentation
             }
             Notify();
             return true;
+        }
+
+        public bool RecoverCareer(SaveId saveId)
+        {
+            if (Profile == null || !BeginWrite())
+            {
+                return false;
+            }
+
+            var result = ExecuteWrite(
+                () => _useCases.RecoverCareer(Profile.ProfileId, saveId),
+                "recover_career");
+            EndWrite(result);
+            if (result.Succeeded && result.Snapshot != null)
+            {
+                Snapshot = result.Snapshot;
+                SettlementReceipt = LastReceipt(Snapshot);
+                ReloadProfile();
+                Route = AuthorityRoute(Snapshot);
+                if (Route == CareerUiRoute.PreMatch)
+                {
+                    LoadPreMatchPreview();
+                }
+            }
+            else
+            {
+                AdoptAuthoritativeFailure(result);
+            }
+
+            Notify();
+            return result.Succeeded;
         }
 
         public bool CreateCareer(
@@ -402,6 +435,7 @@ namespace Volleyball.Career.Presentation
                     Route = CareerUiRoute.ProfileHub;
                     break;
                 case CareerUiRoute.Onboarding:
+                    TryClearRecentCareer();
                     ReloadProfile();
                     Snapshot = null;
                     SettlementReceipt = null;
@@ -417,6 +451,7 @@ namespace Volleyball.Career.Presentation
                         return false;
                     }
 
+                    TryClearRecentCareer();
                     ReloadProfile();
                     Snapshot = null;
                     SettlementReceipt = null;
@@ -613,10 +648,58 @@ namespace Volleyball.Career.Presentation
                 return;
             }
 
-            var result = _useCases.LoadProfile(Profile.ProfileId);
-            if (result.Succeeded && result.Profile != null)
+            try
             {
-                Profile = result.Profile;
+                var result = _useCases.LoadProfile(Profile.ProfileId);
+                if (result.Succeeded && result.Profile != null)
+                {
+                    Profile = result.Profile;
+                }
+            }
+            catch (Exception)
+            {
+                // Profile index refresh is auxiliary after an authoritative Career write.
+            }
+        }
+
+        private void TryRestoreRecentCareer()
+        {
+            try
+            {
+                var recent = _useCases.LoadRecentCareer();
+                if (recent == null || !recent.Succeeded ||
+                    recent.Profile == null || recent.Snapshot == null)
+                {
+                    return;
+                }
+
+                Profile = recent.Profile;
+                Snapshot = recent.Snapshot;
+                SettlementReceipt = LastReceipt(Snapshot);
+                ShowsInitialResult = false;
+                FeedbackCode = recent.Code;
+                SaveState = CareerUiSaveState.Saved;
+                Route = AuthorityRoute(Snapshot);
+                if (Route == CareerUiRoute.PreMatch)
+                {
+                    LoadPreMatchPreview();
+                }
+            }
+            catch (Exception)
+            {
+                // The recent-session pointer is explicitly non-authoritative.
+            }
+        }
+
+        private void TryClearRecentCareer()
+        {
+            try
+            {
+                _useCases.ClearRecentCareer();
+            }
+            catch (Exception)
+            {
+                // A navigation hint must never block Career state transitions.
             }
         }
 

@@ -107,6 +107,18 @@ namespace Volleyball.Career.Presentation
                 snapshot,
                 null);
 
+        public static CareerUiUseCaseResult ForSession(
+            LocalPlayerProfile profile,
+            CareerSaveSnapshot snapshot,
+            string code = "loaded") =>
+            new CareerUiUseCaseResult(
+                profile != null && snapshot != null,
+                profile == null || snapshot == null ? "missing_session" : code,
+                null,
+                profile,
+                snapshot,
+                null);
+
         public static CareerUiUseCaseResult ForSettlement(
             CareerSaveSnapshot snapshot,
             CareerSettlementReceipt receipt,
@@ -128,9 +140,12 @@ namespace Volleyball.Career.Presentation
     public interface ICareerUiUseCases
     {
         CareerUiUseCaseResult LoadProfiles();
+        CareerUiUseCaseResult LoadRecentCareer();
+        void ClearRecentCareer();
         CareerUiUseCaseResult CreateProfile(string displayName);
         CareerUiUseCaseResult LoadProfile(ProfileId profileId);
         CareerUiUseCaseResult LoadCareer(ProfileId profileId, SaveId saveId);
+        CareerUiUseCaseResult RecoverCareer(ProfileId profileId, SaveId saveId);
         CareerUiUseCaseResult CreateCareer(
             ProfileId profileId,
             string careerName,

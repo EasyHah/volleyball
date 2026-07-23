@@ -22,6 +22,7 @@ namespace Volleyball.Career.Presentation
                 case "action.confirm": return "确认";
                 case "action.create": return "创建";
                 case "action.select": return "进入";
+                case "action.recover": return "确认从备份恢复";
                 case "action.execute": return "执行下一行动";
                 case "action.open_match": return "进入比赛准备";
                 case "action.last_summary": return "查看上一场比赛总结";
@@ -39,6 +40,7 @@ namespace Volleyball.Career.Presentation
                 case "career.create_title": return "新建职业生涯";
                 case "career.list_title": return "已有职业生涯";
                 case "career.unavailable": return "该存档当前不可载入";
+                case "career.recovery_available": return "主存档无法读取，已验证到唯一备份。恢复会保留损坏原件并建立新修订线。";
                 case "tryout.result_title": return "大学试训结果";
                 case "tryout.result_hint": return "初始结果已经保存。确认后进入第一周。";
                 case "tryout.stage_hint": return "选择本阶段的侧重点。选择会写入存档并影响初始能力。";
@@ -83,6 +85,9 @@ namespace Volleyball.Career.Presentation
                 case "save.read_only": return "只读／需要恢复";
                 case "feedback.ready": return "请选择或创建本地档案";
                 case "feedback.loaded": return "已载入";
+                case "feedback.recent_career_loaded": return "已恢复上次打开的职业生涯";
+                case "feedback.career_recovered": return "已从验证备份恢复，损坏原件已隔离";
+                case "feedback.career_recovered_index_warning": return "生涯已恢复，但列表索引需要下次启动重建";
                 case "feedback.saving": return "正在写入本地存档";
                 case "feedback.navigation_only": return "页面已切换，没有新增存档修订";
                 case "feedback.back": return "已返回上一层";

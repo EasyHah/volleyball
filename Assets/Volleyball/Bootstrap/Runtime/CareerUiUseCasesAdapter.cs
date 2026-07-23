@@ -16,6 +16,7 @@ namespace Volleyball.Bootstrap
         private readonly CareerWeekCommandService _week;
         private readonly CareerPendingMatchService _pending;
         private readonly CareerMatchSettlementService _settlement;
+        private readonly CareerRecentSessionStore _recentSessions;
         private readonly CareerWeekActionCatalog _actions;
         private readonly Func<Guid> _newGuid;
         private readonly Func<long> _utcNowMilliseconds;
@@ -26,6 +27,7 @@ namespace Volleyball.Bootstrap
             CareerWeekCommandService week,
             CareerPendingMatchService pending,
             CareerMatchSettlementService settlement,
+            CareerRecentSessionStore recentSessions,
             Func<Guid> newGuid = null,
             Func<long> utcNowMilliseconds = null)
         {
@@ -34,6 +36,8 @@ namespace Volleyball.Bootstrap
             _week = week ?? throw new ArgumentNullException(nameof(week));
             _pending = pending ?? throw new ArgumentNullException(nameof(pending));
             _settlement = settlement ?? throw new ArgumentNullException(nameof(settlement));
+            _recentSessions = recentSessions ??
+                throw new ArgumentNullException(nameof(recentSessions));
             _actions = CareerWeekActionCatalogV1.Create();
             _newGuid = newGuid ?? Guid.NewGuid;
             _utcNowMilliseconds = utcNowMilliseconds ??
@@ -49,6 +53,33 @@ namespace Volleyball.Bootstrap
                     result.Catalog.Profiles,
                     Code(result.PrimaryPersistenceKind))
                 : CareerUiUseCaseResult.Failure(LocalCode(result));
+        }
+
+        public CareerUiUseCaseResult LoadRecentCareer()
+        {
+            if (!_recentSessions.TryRead(out var profileId, out var saveId))
+            {
+                return CareerUiUseCaseResult.Failure("no_recent_career");
+            }
+
+            var profile = LoadProfile(profileId);
+            var career = LoadCareer(profileId, saveId);
+            if (!profile.Succeeded || profile.Profile == null ||
+                !career.Succeeded || career.Snapshot == null)
+            {
+                _recentSessions.Clear();
+                return CareerUiUseCaseResult.Failure("recent_career_unavailable");
+            }
+
+            return CareerUiUseCaseResult.ForSession(
+                profile.Profile,
+                career.Snapshot,
+                "recent_career_loaded");
+        }
+
+        public void ClearRecentCareer()
+        {
+            _recentSessions.Clear();
         }
 
         public CareerUiUseCaseResult CreateProfile(string displayName)
@@ -89,11 +120,37 @@ namespace Volleyball.Bootstrap
                 Envelope(),
                 profileId,
                 saveId));
-            return result.Status == CareerLocalUiWorkflowStatus.Completed && result.Snapshot != null
-                ? CareerUiUseCaseResult.ForCareer(
-                    result.Snapshot,
-                    Code(result.PrimaryPersistenceKind))
-                : CareerUiUseCaseResult.Failure(LocalCode(result));
+            if (result.Status != CareerLocalUiWorkflowStatus.Completed ||
+                result.Snapshot == null)
+            {
+                return CareerUiUseCaseResult.Failure(LocalCode(result));
+            }
+
+            _recentSessions.Remember(profileId, saveId);
+            return CareerUiUseCaseResult.ForCareer(
+                result.Snapshot,
+                Code(result.PrimaryPersistenceKind));
+        }
+
+        public CareerUiUseCaseResult RecoverCareer(ProfileId profileId, SaveId saveId)
+        {
+            var result = _local.RecoverCareer(new RecoverLocalCareerUiCommand(
+                Envelope(),
+                profileId,
+                saveId,
+                new LineageId(NewGuid())));
+            if (result.Status != CareerLocalUiWorkflowStatus.Completed ||
+                result.Snapshot == null)
+            {
+                return CareerUiUseCaseResult.Failure(
+                    "recovery_" + result.PrimaryPersistenceKind.ToString().ToLowerInvariant());
+            }
+
+            var indexed = RefreshIndex(profileId);
+            _recentSessions.Remember(profileId, saveId);
+            return CareerUiUseCaseResult.ForCareer(
+                result.Snapshot,
+                indexed ? "career_recovered" : "career_recovered_index_warning");
         }
 
         public CareerUiUseCaseResult CreateCareer(
@@ -126,6 +183,7 @@ namespace Volleyball.Bootstrap
             }
 
             var indexed = RefreshIndex(profileId);
+            _recentSessions.Remember(profileId, saveId);
             return CareerUiUseCaseResult.ForCareer(
                 result.Snapshot,
                 indexed ? "career_created" : "career_created_index_warning");

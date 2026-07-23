@@ -804,7 +804,10 @@ namespace Volleyball.Career.Persistence
             {
                 return Result(
                     PersistenceResultKind.RecoveryAvailable,
-                    recoverableBackup: backup.Snapshot.Identity.VersionToken);
+                    recoverableBackup: backup.Snapshot.Identity.VersionToken,
+                    unreadableMainFingerprint: UnreadableMainFingerprint(
+                        profileId,
+                        saveId));
             }
 
             if (backup.Kind == CandidateKind.Unsupported)
@@ -950,7 +953,10 @@ namespace Volleyball.Career.Persistence
             {
                 return Result(
                     PersistenceResultKind.RecoveryAvailable,
-                    recoverableBackup: backup.Snapshot.Identity.VersionToken);
+                    recoverableBackup: backup.Snapshot.Identity.VersionToken,
+                    unreadableMainFingerprint: UnreadableMainFingerprint(
+                        profileId,
+                        saveId));
             }
 
             return current.Kind == CandidateKind.Missing
@@ -1116,7 +1122,8 @@ namespace Volleyball.Career.Persistence
                     TryDelete(intentPath);
                     return Result(
                         PersistenceResultKind.RecoveryAvailable,
-                        recoverableBackup: backup.Snapshot.Identity.VersionToken);
+                        recoverableBackup: backup.Snapshot.Identity.VersionToken,
+                        unreadableMainFingerprint: intent.CorruptMainFingerprint);
                 }
 
                 var quarantinePath = Path.Combine(
@@ -1576,6 +1583,16 @@ namespace Volleyball.Career.Persistence
             }
         }
 
+        private Sha256Digest? UnreadableMainFingerprint(
+            ProfileId profileId,
+            SaveId saveId)
+        {
+            var mainPath = _paths.CareerPath(profileId, saveId);
+            return _fileSystem.FileExists(mainPath)
+                ? RawFingerprint(_fileSystem.ReadAllBytes(mainPath))
+                : (Sha256Digest?)null;
+        }
+
         private void TryDelete(string path)
         {
             try
@@ -1598,9 +1615,14 @@ namespace Volleyball.Career.Persistence
         private static CareerPersistenceResult Result(
             PersistenceResultKind kind,
             CareerSaveSnapshot snapshot = null,
-            CareerVersionToken? recoverableBackup = null)
+            CareerVersionToken? recoverableBackup = null,
+            Sha256Digest? unreadableMainFingerprint = null)
         {
-            return new CareerPersistenceResult(kind, snapshot, recoverableBackup);
+            return new CareerPersistenceResult(
+                kind,
+                snapshot,
+                recoverableBackup,
+                unreadableMainFingerprint);
         }
 
         private enum BackupConvergenceResult

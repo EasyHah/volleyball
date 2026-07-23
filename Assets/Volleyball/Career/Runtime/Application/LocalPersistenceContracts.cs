@@ -404,7 +404,8 @@ namespace Volleyball.Career.Application
         public CareerPersistenceResult(
             PersistenceResultKind kind,
             CareerSaveSnapshot snapshot = null,
-            CareerVersionToken? recoverableBackup = null)
+            CareerVersionToken? recoverableBackup = null,
+            Sha256Digest? unreadableMainFingerprint = null)
         {
             LocalPersistenceGuard.DefinedEnum(kind, nameof(kind));
             var requiresSnapshot = kind == PersistenceResultKind.Created ||
@@ -425,9 +426,18 @@ namespace Volleyball.Career.Application
                     nameof(recoverableBackup));
             }
 
+            if (unreadableMainFingerprint.HasValue &&
+                kind != PersistenceResultKind.RecoveryAvailable)
+            {
+                throw new ArgumentException(
+                    "Only RecoveryAvailable can carry unreadable main-file evidence.",
+                    nameof(unreadableMainFingerprint));
+            }
+
             Kind = kind;
             Snapshot = snapshot;
             RecoverableBackup = recoverableBackup;
+            UnreadableMainFingerprint = unreadableMainFingerprint;
         }
 
         public PersistenceResultKind Kind { get; }
@@ -435,6 +445,8 @@ namespace Volleyball.Career.Application
         public CareerSaveSnapshot Snapshot { get; }
 
         public CareerVersionToken? RecoverableBackup { get; }
+
+        public Sha256Digest? UnreadableMainFingerprint { get; }
     }
 
     public sealed class ProfilePersistenceResult

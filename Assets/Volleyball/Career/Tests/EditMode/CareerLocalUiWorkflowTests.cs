@@ -161,6 +161,51 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(_fileSystem.ReadAllBytes(tryoutPath), Is.EqualTo(tryoutBytesBefore));
         }
 
+        [Test]
+        public void RecoverCareer_UsesExactInspectedBackupAndCorruptMainEvidence()
+        {
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var originalLineage = new LineageId(Guid.NewGuid());
+            var recoveryLineage = new LineageId(Guid.NewGuid());
+            _workflow.CreateProfile(new CreateLocalProfileUiCommand(
+                Envelope(9, 400),
+                profileId,
+                "恢复测试"));
+            var backup = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.PlanningSnapshot(
+                    profileId,
+                    saveId,
+                    originalLineage));
+            _fileSystem.CreateDirectory(_paths.CareersDirectory(profileId));
+            _fileSystem.CreateFileDurably(
+                _paths.CareerBackupPath(profileId, saveId),
+                CareerSaveJsonCodec.Serialize(backup));
+            _fileSystem.CreateFileDurably(
+                _paths.CareerPath(profileId, saveId),
+                new byte[] { 0x7b, 0x22, 0x62, 0x72, 0x6f, 0x6b, 0x65, 0x6e });
+
+            var inspected = _careerRepository.Load(profileId, saveId);
+            var recovered = _workflow.RecoverCareer(new RecoverLocalCareerUiCommand(
+                Envelope(10, 500),
+                profileId,
+                saveId,
+                recoveryLineage));
+
+            Assert.That(inspected.Kind, Is.EqualTo(PersistenceResultKind.RecoveryAvailable));
+            Assert.That(inspected.RecoverableBackup, Is.EqualTo(backup.Identity.VersionToken));
+            Assert.That(inspected.UnreadableMainFingerprint.HasValue, Is.True);
+            Assert.That(recovered.Status, Is.EqualTo(CareerLocalUiWorkflowStatus.Completed));
+            Assert.That(recovered.Snapshot.Identity.LineageId, Is.EqualTo(recoveryLineage));
+            Assert.That(recovered.Snapshot.Identity.RestoredFromVersionToken,
+                Is.EqualTo(backup.Identity.VersionToken));
+            Assert.That(_careerRepository.Load(profileId, saveId).Snapshot.Identity.LineageId,
+                Is.EqualTo(recoveryLineage));
+            Assert.That(Directory.GetFiles(
+                _paths.CareerQuarantineDirectory(profileId)),
+                Has.Length.EqualTo(1));
+        }
+
         private static CareerUiCommandEnvelope Envelope(int suffix, long utcMs)
         {
             return new CareerUiCommandEnvelope(

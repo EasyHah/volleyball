@@ -87,6 +87,35 @@ namespace Volleyball.Career.Application
         public SaveId SaveId { get; }
     }
 
+    public sealed class RecoverLocalCareerUiCommand
+    {
+        public RecoverLocalCareerUiCommand(
+            CareerUiCommandEnvelope envelope,
+            ProfileId profileId,
+            SaveId saveId,
+            LineageId newLineageId)
+        {
+            Envelope = envelope ?? throw new ArgumentNullException(nameof(envelope));
+            CareerUiCommandGuard.ProfileId(profileId, nameof(profileId));
+            CareerUiCommandGuard.SaveId(saveId, nameof(saveId));
+            if (newLineageId.Value == Guid.Empty)
+            {
+                throw new ArgumentException(
+                    "A new recovery lineage is required.",
+                    nameof(newLineageId));
+            }
+
+            ProfileId = profileId;
+            SaveId = saveId;
+            NewLineageId = newLineageId;
+        }
+
+        public CareerUiCommandEnvelope Envelope { get; }
+        public ProfileId ProfileId { get; }
+        public SaveId SaveId { get; }
+        public LineageId NewLineageId { get; }
+    }
+
     public sealed class CareerLocalUiWorkflowResult
     {
         internal CareerLocalUiWorkflowResult(
@@ -260,6 +289,40 @@ namespace Volleyball.Career.Application
             }
 
             return LoadCareer(command, true);
+        }
+
+        public CareerLocalUiWorkflowResult RecoverCareer(
+            RecoverLocalCareerUiCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            var inspected = _careers.Load(command.ProfileId, command.SaveId);
+            if (inspected.Kind != PersistenceResultKind.RecoveryAvailable ||
+                !inspected.RecoverableBackup.HasValue)
+            {
+                return new CareerLocalUiWorkflowResult(
+                    CareerLocalUiWorkflowStatus.PersistenceFailure,
+                    inspected.Kind,
+                    snapshot: inspected.Snapshot);
+            }
+
+            var recovered = _careers.RecoverFromBackup(
+                command.ProfileId,
+                command.SaveId,
+                inspected.RecoverableBackup.Value,
+                inspected.UnreadableMainFingerprint,
+                command.Envelope.OperationId,
+                command.Envelope.CompletedAtUtcMs,
+                command.NewLineageId);
+            return new CareerLocalUiWorkflowResult(
+                IsReadable(recovered.Kind)
+                    ? CareerLocalUiWorkflowStatus.Completed
+                    : CareerLocalUiWorkflowStatus.PersistenceFailure,
+                recovered.Kind,
+                snapshot: recovered.Snapshot);
         }
 
         private CareerLocalUiWorkflowResult LoadCareer(

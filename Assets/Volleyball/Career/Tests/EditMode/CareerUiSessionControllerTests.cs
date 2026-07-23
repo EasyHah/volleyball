@@ -134,6 +134,38 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(controller.SaveState, Is.EqualTo(CareerUiSaveState.Failed));
         }
 
+        [Test]
+        public void InitializeRestoresRecentCareerAuthority()
+        {
+            var settled = CareerSaveV2LifecycleTestData.SettledSnapshot();
+            var useCases = new StubUseCases
+            {
+                RecentResult = CareerUiUseCaseResult.ForSession(
+                    ProfileRecord(),
+                    settled,
+                    "recent_career_loaded")
+            };
+            var controller = new CareerUiSessionController(useCases);
+
+            controller.Initialize();
+
+            Assert.That(controller.Profile, Is.Not.Null);
+            Assert.That(controller.Snapshot.Identity.VersionToken,
+                Is.EqualTo(settled.Identity.VersionToken));
+            Assert.That(controller.Route, Is.EqualTo(CareerUiRoute.WeekHome));
+            Assert.That(controller.SettlementReceipt, Is.Not.Null);
+        }
+
+        private static LocalPlayerProfile ProfileRecord() => new LocalPlayerProfile(
+            LocalPlayerProfile.CurrentSchemaVersion,
+            Profile,
+            1,
+            new Sha256Digest(new string('a', 64)),
+            "测试档案",
+            0,
+            0,
+            Array.Empty<CareerIndexEntry>());
+
         private sealed class StubUseCases : ICareerUiUseCases
         {
             public CareerUiUseCaseResult LoadCareerResult { get; set; }
@@ -143,9 +175,17 @@ namespace Volleyball.Career.EditModeTests
             public bool SaveThrows { get; set; }
             public bool MatchThrows { get; set; }
             public CareerUiUseCaseResult SaveResult { get; set; }
+            public CareerUiUseCaseResult RecentResult { get; set; }
 
             public CareerUiUseCaseResult LoadProfiles() =>
                 CareerUiUseCaseResult.ForProfiles(Array.Empty<LocalProfileCatalogEntry>());
+
+            public CareerUiUseCaseResult LoadRecentCareer() =>
+                RecentResult ?? CareerUiUseCaseResult.Failure("no_recent_career");
+
+            public void ClearRecentCareer()
+            {
+            }
 
             public CareerUiUseCaseResult CreateProfile(string displayName)
             {
@@ -158,6 +198,12 @@ namespace Volleyball.Career.EditModeTests
 
             public CareerUiUseCaseResult LoadCareer(ProfileId profileId, SaveId saveId) =>
                 LoadCareerResult;
+
+            public CareerUiUseCaseResult RecoverCareer(ProfileId profileId, SaveId saveId)
+            {
+                WriteCount++;
+                return CareerUiUseCaseResult.Failure("unused");
+            }
 
             public CareerUiUseCaseResult CreateCareer(
                 ProfileId profileId,

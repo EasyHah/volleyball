@@ -111,6 +111,13 @@ namespace Volleyball.Career.PlayModeTests
             public CareerUiUseCaseResult LoadProfiles() =>
                 CareerUiUseCaseResult.ForProfiles(Array.Empty<LocalProfileCatalogEntry>());
 
+            public CareerUiUseCaseResult LoadRecentCareer() =>
+                CareerUiUseCaseResult.Failure("no_recent_career");
+
+            public void ClearRecentCareer()
+            {
+            }
+
             public CareerUiUseCaseResult CreateProfile(string displayName) =>
                 CareerUiUseCaseResult.Failure("unused");
 
@@ -118,6 +125,9 @@ namespace Volleyball.Career.PlayModeTests
                 CareerUiUseCaseResult.ForProfile(Profile);
 
             public CareerUiUseCaseResult LoadCareer(ProfileId profileId, SaveId saveId) =>
+                CareerUiUseCaseResult.Failure("unused");
+
+            public CareerUiUseCaseResult RecoverCareer(ProfileId profileId, SaveId saveId) =>
                 CareerUiUseCaseResult.Failure("unused");
 
             public CareerUiUseCaseResult CreateCareer(

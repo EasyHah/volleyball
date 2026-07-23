@@ -300,7 +300,10 @@ namespace Volleyball.Career.Presentation
 
                     if (career.Loadability != CareerLoadability.Loadable)
                     {
-                        card.Add(Warning(CareerTextTable.Get("career.unavailable")));
+                        card.Add(Warning(CareerTextTable.Get(
+                            career.Loadability == CareerLoadability.RecoveryAvailable
+                                ? "career.recovery_available"
+                                : "career.unavailable")));
                     }
 
                     var select = ActionButton(
@@ -310,6 +313,12 @@ namespace Volleyball.Career.Presentation
                             captured.SaveId));
                     select.SetEnabled(career.Loadability == CareerLoadability.Loadable);
                     card.Add(select);
+                    if (career.Loadability == CareerLoadability.RecoveryAvailable)
+                    {
+                        card.Add(ActionButton(
+                            CareerTextTable.Get("action.recover"),
+                            () => _controller.RecoverCareer(captured.SaveId)));
+                    }
                     row.Add(card);
                 }
 
