@@ -72,37 +72,14 @@ namespace Volleyball.Match.Domain.FullRallyV3
         private readonly IReadOnlyList<OnCourtPlayerEligibilityV3> _players;
         private readonly IReadOnlyDictionary<PlayerId, OnCourtPlayerEligibilityV3> _playersById;
 
-        public OnCourtEligibilitySnapshot()
-            : this(Array.Empty<OnCourtPlayerEligibilityV3>(), false)
-        {
-        }
-
         internal OnCourtEligibilitySnapshot(IReadOnlyList<OnCourtPlayerEligibilityV3> players)
-            : this(players, true)
-        {
-        }
-
-        public IReadOnlyList<OnCourtPlayerEligibilityV3> Players => _players;
-
-        public OnCourtPlayerEligibilityV3 For(PlayerId playerId)
-        {
-            PlayerWorldSnapshotV3.RequirePlayerId(playerId, nameof(playerId));
-            if (!_playersById.TryGetValue(playerId, out var player))
-            {
-                throw new KeyNotFoundException("The player is not on court.");
-            }
-
-            return player;
-        }
-
-        private OnCourtEligibilitySnapshot(IReadOnlyList<OnCourtPlayerEligibilityV3> players, bool requireFormalSix)
         {
             if (players == null)
             {
                 throw new ArgumentNullException(nameof(players));
             }
 
-            if (requireFormalSix && players.Count != 12)
+            if (players.Count != 12)
             {
                 throw new ArgumentException("Exactly twelve on-court players are required.", nameof(players));
             }
@@ -136,13 +113,26 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 copy[index] = player;
             }
 
-            if (requireFormalSix && (homeCount != 6 || awayCount != 6))
+            if (homeCount != 6 || awayCount != 6)
             {
                 throw new ArgumentException("Exactly six on-court players per side are required.", nameof(players));
             }
 
             _players = new ReadOnlyCollection<OnCourtPlayerEligibilityV3>(copy);
             _playersById = new ReadOnlyDictionary<PlayerId, OnCourtPlayerEligibilityV3>(byId);
+        }
+
+        public IReadOnlyList<OnCourtPlayerEligibilityV3> Players => _players;
+
+        public OnCourtPlayerEligibilityV3 For(PlayerId playerId)
+        {
+            PlayerWorldSnapshotV3.RequirePlayerId(playerId, nameof(playerId));
+            if (!_playersById.TryGetValue(playerId, out var player))
+            {
+                throw new KeyNotFoundException("The player is not on court.");
+            }
+
+            return player;
         }
     }
 }

@@ -111,7 +111,7 @@ namespace Volleyball.EditModeTests
                 new BallWorldSnapshotV3(SimVector3.Zero, SimVector3.Zero, SimVector3.Zero, 0.1f, 0f),
                 players,
                 TouchSequenceStateV3.Initial,
-                new OnCourtEligibilitySnapshot(),
+                CreateFormalEligibility(),
                 new CourtConfigurationV3(),
                 new AcceptedRuleEventV3(),
                 eventSequence);
@@ -139,6 +139,42 @@ namespace Volleyball.EditModeTests
                 new PlayerId(playerId), side, PlayerPosition.Setter,
                 SimVector3.Zero, SimVector3.Zero, SimVector3.Up,
                 "ready", RallyCommitmentStateV3.Uncommitted, 0f);
+        }
+
+        private static OnCourtEligibilitySnapshot CreateFormalEligibility()
+        {
+            var homeIds = new[]
+            {
+                new PlayerId("home-1"), new PlayerId("home-2"), new PlayerId("home-3"),
+                new PlayerId("home-4"), new PlayerId("home-5"), new PlayerId("home-6")
+            };
+            var awayIds = new[]
+            {
+                new PlayerId("away-1"), new PlayerId("away-2"), new PlayerId("away-3"),
+                new PlayerId("away-4"), new PlayerId("away-5"), new PlayerId("away-6")
+            };
+            var context = MatchContextV3.Create(
+                Guid.Parse("5e19eac4-5d3d-4d52-9c8f-f4dd7680c7bd"),
+                31,
+                CreateEligibilityTeam("home", TeamSide.Home, homeIds),
+                CreateEligibilityTeam("away", TeamSide.Away, awayIds));
+            return OnCourtLineupRulesV3.Create(
+                context, homeIds, awayIds, homeIds[0], awayIds[0], Array.Empty<LiberoReplacementV3>());
+        }
+
+        private static TeamSnapshotV3 CreateEligibilityTeam(string teamId, TeamSide side, IReadOnlyList<PlayerId> playerIds)
+        {
+            var players = new PlayerSnapshotV3[playerIds.Count];
+            for (var index = 0; index < players.Length; index++)
+            {
+                players[index] = new PlayerSnapshotV3(
+                    playerIds[index], playerIds[index].Value, index + 1, PlayerPosition.Setter,
+                    new PlayerAbilitySnapshotV3(
+                        0.5f, 0.5f, 0.5f, 3.3f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
+                        ContractVersions.MatchV3, 0, false, Array.Empty<string>()));
+            }
+
+            return new TeamSnapshotV3(new TeamId(teamId), teamId, side, players);
         }
     }
 }
