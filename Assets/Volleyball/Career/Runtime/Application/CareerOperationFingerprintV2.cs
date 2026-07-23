@@ -235,6 +235,36 @@ namespace Volleyball.Career.Application
             return Encoding.UTF8.GetBytes(builder.ToString());
         }
 
+        public static byte[] Encode(CreatePendingMatchCommand command)
+        {
+            if (command == null)
+            {
+                throw new ArgumentNullException(nameof(command));
+            }
+
+            var builder = new StringBuilder(800);
+            builder.Append("{\"fingerprintSchemaVersion\":2,\"operationKind\":\"create_pending_match\"");
+            AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "expectedLineageId",
+                command.ExpectedVersionToken.LineageId.Value.ToString("D").ToLowerInvariant());
+            AppendInteger(builder, "expectedRevision", command.ExpectedVersionToken.Revision);
+            AppendString(builder, "expectedSnapshotHash", command.ExpectedVersionToken.SnapshotHash.Value);
+            AppendString(builder, "sessionId", command.SessionId.ToString("D").ToLowerInvariant());
+            AppendString(builder, "weekPlanId", command.WeekPlanId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "slotActionId", command.SlotActionId.Value.ToString("D").ToLowerInvariant());
+            AppendString(
+                builder,
+                "actionOccurrenceId",
+                command.ActionOccurrenceId.Value.ToString("D").ToLowerInvariant());
+            AppendString(builder, "preMatchPriority", FormatMatchPriority(command.PreMatchPriority));
+            AppendVersions(builder);
+            builder.Append('}');
+            return Encoding.UTF8.GetBytes(builder.ToString());
+        }
+
         public static Sha256Digest Hash(CreateCareerCommand command)
         {
             return HashBytes(Encode(command));
@@ -260,6 +290,23 @@ namespace Volleyball.Career.Application
         public static Sha256Digest Hash(ResolveEventChoiceCommand command)
         {
             return HashBytes(Encode(command));
+        }
+
+        public static Sha256Digest Hash(CreatePendingMatchCommand command)
+        {
+            return HashBytes(Encode(command));
+        }
+
+        private static string FormatMatchPriority(CareerMatchPriority priority)
+        {
+            switch (priority)
+            {
+                case CareerMatchPriority.AttackFirst: return "attack_first";
+                case CareerMatchPriority.FirstContactSecurity: return "first_contact_security";
+                case CareerMatchPriority.StaminaControl: return "stamina_control";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(priority), priority, null);
+            }
         }
 
         private static string FormatActionKind(CareerWeekActionKind kind)

@@ -19,6 +19,31 @@ namespace Volleyball.Career.Domain
             int coachTrust,
             IEnumerable<OperationReceipt> receipts)
         {
+            return Advance(
+                prior,
+                updatedAtUtcMs,
+                progression,
+                trainingEmphases,
+                playerAttributes,
+                fatigue,
+                mindset,
+                coachTrust,
+                receipts,
+                prior == null ? null : prior.PendingMatch);
+        }
+
+        public static CareerSaveSnapshot Advance(
+            CareerSaveSnapshot prior,
+            long updatedAtUtcMs,
+            CareerProgressionState progression,
+            TrainingEmphasisLedger trainingEmphases,
+            CareerPlayerAttributes playerAttributes,
+            int fatigue,
+            int mindset,
+            int coachTrust,
+            IEnumerable<OperationReceipt> receipts,
+            PendingCareerMatch pendingMatch)
+        {
             if (prior == null)
             {
                 throw new ArgumentNullException(nameof(prior));
@@ -58,7 +83,7 @@ namespace Volleyball.Career.Domain
                 mindset,
                 coachTrust,
                 receipts,
-                prior.PendingMatch,
+                pendingMatch,
                 prior.MatchHistory,
                 prior.SettlementReceipts);
         }

@@ -102,6 +102,11 @@ namespace Volleyball.Career.EditModeTests
                 Array.Empty<CareerSettlementReceipt>());
         }
 
+        public static CareerSaveSnapshot MatchReadySnapshot()
+        {
+            return MatchReadyBase();
+        }
+
         public static CareerSaveSnapshot SettledSnapshot()
         {
             var awaiting = AwaitingMatchSnapshot();
