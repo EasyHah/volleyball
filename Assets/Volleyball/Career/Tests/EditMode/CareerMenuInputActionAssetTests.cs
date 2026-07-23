@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -14,19 +15,70 @@ namespace Volleyball.Career.EditModeTests
     {
         private const string AssetPath =
             "Assets/Volleyball/Career/Runtime/Presentation/Input/CareerMenu.inputactions";
+        private const string PlayerUpdatesInEditModeFeature =
+            "RUN_PLAYER_UPDATES_IN_EDIT_MODE";
+
+        private static readonly string[] FrozenInputIds =
+        {
+            "75ac25e7-a0c1-4ac8-bb1c-c5f60590de13",
+            "fa903345-2208-4499-99ba-ea051ae4e24a",
+            "327436b6-c55a-484a-8601-252598e08e83",
+            "fa40f24b-76ad-4a63-82d7-a63b76bc4850",
+            "6c1734e9-23b5-4a60-b393-1bd5bedc03ba",
+            "5271325d-7709-4df1-a280-698668174a51",
+            "28672dd7-a7f1-480d-b425-952c6aedc9dc",
+            "f97eaa29-ab4e-45e6-bcbc-65cdd68482d4",
+            "d2979326-f3d6-4a5a-95b8-c95ebafd533f",
+            "9707decb-a747-4de1-900b-bd9c34637c27",
+            "deef8a6f-f0b7-485e-a212-7373af16ebac",
+            "2e66ae07-71f9-48d2-98a7-acf120b924f7",
+            "aa115987-2de8-45ac-8384-c576dfe2837a",
+            "c056576d-8978-48d9-9b3e-e35f2b33f459",
+            "bdc656e9-f096-4ef3-a12e-df3111c8acf0",
+            "824bb25b-8a26-4d4d-8b17-e45bfed31a6b",
+            "45effc5c-e070-490a-85c2-41cd36dd7919",
+            "a0408a6f-cc11-43c0-af30-526571f9d7f2",
+            "c7a86bd9-1989-4df3-b47d-f2d65b3496d8",
+            "5b38cce4-4717-4224-b2f5-b836aa9c5ebd",
+            "4e6bbe96-5774-439a-b3ec-ab48e301a005",
+            "65b9368b-2f65-4013-8bd0-21aac5a13d6a",
+            "ac01411d-744a-47ca-a23a-713cf9b75fc1",
+            "3f0f8f91-e576-454f-9301-78e113541876",
+            "e97d9ea4-5c2a-4d69-952e-6f866167df3c",
+            "c36ce87b-a652-4794-b764-ad2fc726cdfe",
+            "b7a43a40-e309-4aec-b963-5ebea648e80a",
+            "c7df8156-4adb-4a3f-b72d-ebba53585b60",
+            "97944980-f904-4f92-9e8a-2edbfdbd2817",
+            "1a04cc30-e14c-448c-bb91-61d24839f9dc",
+            "5ac6e52c-337b-4973-bc32-6ea2c39e27f6",
+            "0fd32bec-68fd-42cf-aedf-d98e25127c04",
+            "954635fb-7ff6-4ccd-b520-d607110ca30e"
+        };
 
         private readonly List<InputDevice> _addedDevices = new List<InputDevice>();
-        private InputActionMap _enabledMap;
-        private bool _playerUpdatesInEditModeEnabled;
+        private InputActionMap _trackedMap;
+        private bool _mapStateCaptured;
+        private bool _mapWasEnabled;
+        private bool _featureStateCaptured;
+        private bool _featureWasEnabled;
 
         [TearDown]
         public void TearDown()
         {
-            if (_enabledMap != null)
+            if (_mapStateCaptured && _trackedMap != null)
             {
-                _enabledMap.Disable();
-                _enabledMap = null;
+                if (_mapWasEnabled)
+                {
+                    _trackedMap.Enable();
+                }
+                else
+                {
+                    _trackedMap.Disable();
+                }
             }
+
+            _trackedMap = null;
+            _mapStateCaptured = false;
 
             for (var index = _addedDevices.Count - 1; index >= 0; index--)
             {
@@ -38,13 +90,14 @@ namespace Volleyball.Career.EditModeTests
             }
 
             _addedDevices.Clear();
-            if (_playerUpdatesInEditModeEnabled)
+            if (_featureStateCaptured)
             {
                 InputSystem.settings.SetInternalFeatureFlag(
-                    "RUN_PLAYER_UPDATES_IN_EDIT_MODE",
-                    false);
-                _playerUpdatesInEditModeEnabled = false;
+                    PlayerUpdatesInEditModeFeature,
+                    _featureWasEnabled);
             }
+
+            _featureStateCaptured = false;
 
             InputSystem.Update();
         }
@@ -69,6 +122,15 @@ namespace Volleyball.Career.EditModeTests
                 {
                     "Navigate", "Submit", "Cancel", "Back", "PageLeft", "PageRight"
                 }));
+            var actualIds = new[] { map.id }
+                .Concat(map.actions.Select(action => action.id))
+                .Concat(map.bindings.Select(binding => binding.id))
+                .Select(id => id.ToString("D"))
+                .ToArray();
+            Assert.That(actualIds, Is.EqualTo(FrozenInputIds));
+            Assert.That(actualIds, Has.None.EqualTo(Guid.Empty.ToString("D")));
+            Assert.That(actualIds.Distinct(StringComparer.Ordinal).Count(),
+                Is.EqualTo(actualIds.Length));
             Assert.That(
                 asset.controlSchemes.Select(scheme => scheme.name),
                 Is.EqualTo(new[] { "KeyboardMouse", "Gamepad" }));
@@ -128,11 +190,14 @@ namespace Volleyball.Career.EditModeTests
             var submit = map.FindAction("Submit", true);
             var keyboard = AddDevice<Keyboard>();
             var gamepad = AddDevice<Gamepad>();
+            _featureWasEnabled = IsFeatureEnabled(PlayerUpdatesInEditModeFeature);
+            _featureStateCaptured = true;
             InputSystem.settings.SetInternalFeatureFlag(
-                "RUN_PLAYER_UPDATES_IN_EDIT_MODE",
+                PlayerUpdatesInEditModeFeature,
                 true);
-            _playerUpdatesInEditModeEnabled = true;
-            _enabledMap = map;
+            _trackedMap = map;
+            _mapWasEnabled = map.enabled;
+            _mapStateCaptured = true;
             map.Enable();
 
             var focusIndex = 1;
@@ -196,6 +261,23 @@ namespace Volleyball.Career.EditModeTests
             var device = InputSystem.AddDevice<T>();
             _addedDevices.Add(device);
             return device;
+        }
+
+        private static bool IsFeatureEnabled(string featureName)
+        {
+            var method = typeof(InputSettings).GetMethod(
+                "IsFeatureEnabled",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (method == null)
+            {
+                throw new MissingMethodException(
+                    typeof(InputSettings).FullName,
+                    "IsFeatureEnabled");
+            }
+
+            return (bool)method.Invoke(
+                InputSystem.settings,
+                new object[] { featureName });
         }
 
         private static int MoveLinear(int current, Vector2 direction, int count)
