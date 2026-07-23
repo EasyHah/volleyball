@@ -7,8 +7,10 @@ using Volleyball.Domain;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
 using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
+using MatchContextV3 = Volleyball.Shared.Contracts.MatchContextV3;
 using MatchResultV1 = Volleyball.Shared.Contracts.MatchResultV1;
 using MatchResultV2 = Volleyball.Shared.Contracts.MatchResultV2;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
@@ -209,6 +211,8 @@ namespace Volleyball.Presentation
         private int _aiDecisionRequestVersion;
         private int _aiRequestSequence;
         private int _contactGroupSequence = 3000;
+        private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
+        private MatchContextV3 _v3Context;
         private RallyTacticalWeights _activeTacticalWeights;
         private PhysicalMatchConfiguration _configuration;
         private string _status = "Preparing dynamic physical 3v3";
@@ -216,6 +220,18 @@ namespace Volleyball.Presentation
         public int CompletedCycles { get; private set; }
 
         public int SuccessfulContacts { get; private set; }
+
+        public V3RulesMode V3RulesMode { get; private set; }
+
+        public int V3RuleTransitions { get; private set; }
+
+        public int V3RuleParityMatches { get; private set; }
+
+        public int V3RuleIntentionalCorrections { get; private set; }
+
+        public int V3RuleUnexpectedMismatches { get; private set; }
+
+        public string LastV3RuleDiagnostic { get; private set; } = string.Empty;
 
         public int MissedRallies { get; private set; }
 
@@ -567,6 +583,77 @@ namespace Volleyball.Presentation
                 minimumSimulationWindowSeconds);
         }
 
+        public void ConfigureV3Rules(MatchContextV3 context, V3RulesMode mode)
+        {
+            if (_set == null)
+            {
+                throw new InvalidOperationException(
+                    "V3 rules must be configured after normal match initialization.");
+            }
+            if (_rallyActive || _restartScheduled || _touchState != null || HasResult)
+            {
+                throw new InvalidOperationException(
+                    "V3 rules must be configured before the first rally starts.");
+            }
+
+            if (!Enum.IsDefined(typeof(V3RulesMode), mode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(mode));
+            }
+            if (mode == V3RulesMode.Authority)
+            {
+                throw new NotSupportedException(
+                    "V3 authority is not available until the authority gate is configured.");
+            }
+
+            if (mode == V3RulesMode.Disabled)
+            {
+                _v3RulesAdapter = null;
+                _v3Context = null;
+                V3RulesMode = V3RulesMode.Disabled;
+                ResetV3Diagnostics();
+                return;
+            }
+
+            if (_configuration.RosterSize != 6 || _set.ContextV2 == null)
+            {
+                throw new InvalidOperationException(
+                    "V3 rules can only be configured for a V2 formal six-player match.");
+            }
+
+            var upgradedContext = context ?? throw new ArgumentNullException(nameof(context));
+            var expectedContext = MatchContextV3.UpgradeFromV2(_set.ContextV2);
+            if (!string.Equals(
+                    upgradedContext.ContextHash,
+                    expectedContext.ContextHash,
+                    StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "The V3 context must be the explicit upgrade of the initialized V2 match.",
+                    nameof(context));
+            }
+
+            var eligibility = CreateV3Eligibility(upgradedContext);
+            var adapter = new FullRallyV3RulesRuntimeAdapter(
+                upgradedContext,
+                eligibility,
+                _set.ServingSide,
+                mode);
+            _v3RulesAdapter = adapter;
+            _v3Context = upgradedContext;
+            V3RulesMode = mode;
+            ResetV3Diagnostics();
+        }
+
+        private void ResetV3Diagnostics()
+        {
+            V3RuleTransitions = 0;
+            V3RuleParityMatches = 0;
+            V3RuleIntentionalCorrections = 0;
+            V3RuleUnexpectedMismatches = 0;
+            LastV3RuleDiagnostic = string.Empty;
+        }
+
         public void ConfigureInSystemFirstPassCalibration(bool enabled)
         {
             _forceInSystemReceiveExecution = enabled;
@@ -687,6 +774,12 @@ namespace Volleyball.Presentation
 
             var receivingTeam = FromSide(_set.ReceivingSide);
             _touchState = new RallyTouchState(receivingTeam);
+            if (_v3RulesAdapter != null)
+            {
+                _v3RulesAdapter.BeginRally(
+                    CreateV3Eligibility(_v3Context),
+                    _set.ServingSide);
+            }
             _scheduledDecision = null;
             _plannedAttackDecision = null;
             _scheduledPrimaryActor = null;
@@ -1425,6 +1518,7 @@ namespace Volleyball.Presentation
                     break;
             }
 
+            ObserveAcceptedContactV3(actorId, contact.Candidate.Action, contact.Hit.ContactGroupId);
             NotifyReplay(
                 ReplayContactAccepted,
                 new ReplayContactEvent(
@@ -1434,6 +1528,57 @@ namespace Volleyball.Presentation
                     StableId(actorId),
                     contact.Candidate.Action,
                     _pendingReplaySetChain));
+        }
+
+        private void ObserveAcceptedContactV3(
+            PlayerId actor,
+            TechniqueAction action,
+            int contactGroup)
+        {
+            if (_v3RulesAdapter == null)
+            {
+                return;
+            }
+
+            var transition = _v3RulesAdapter.ObserveAcceptedContact(
+                StableId(actor),
+                ToSide(actor.Team),
+                ToV3Classification(action),
+                contactGroup);
+            var comparison = LegacyRulesShadowComparatorV3.Compare(
+                LegacyRuleOutcomeV3.Accept(),
+                transition,
+                ShadowScenarioV3.Other);
+            V3RuleTransitions++;
+            switch (comparison.DifferenceKind)
+            {
+                case RulesShadowDifferenceKindV3.ExactParity:
+                    V3RuleParityMatches++;
+                    break;
+                case RulesShadowDifferenceKindV3.IntentionalV3Correction:
+                    V3RuleIntentionalCorrections++;
+                    break;
+                case RulesShadowDifferenceKindV3.UnexpectedMismatch:
+                    V3RuleUnexpectedMismatches++;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+
+            LastV3RuleDiagnostic = comparison.Diagnostic;
+        }
+
+        private static RallyContactClassificationV3 ToV3Classification(TechniqueAction action)
+        {
+            return action switch
+            {
+                TechniqueAction.Block => RallyContactClassificationV3.BlockContact,
+                TechniqueAction.Serve => RallyContactClassificationV3.ServeContact,
+                TechniqueAction.Receive => RallyContactClassificationV3.TeamContact,
+                TechniqueAction.Set => RallyContactClassificationV3.TeamContact,
+                TechniqueAction.Attack => RallyContactClassificationV3.TeamContact,
+                _ => throw new ArgumentOutOfRangeException(nameof(action))
+            };
         }
 
         private void ScheduleAttackFromActualSet(
@@ -1767,6 +1912,28 @@ namespace Volleyball.Presentation
             var x = left.X - right.X;
             var z = left.Z - right.Z;
             return Mathf.Sqrt((x * x) + (z * z));
+        }
+
+        private StablePlayerId[] RotationOrder(TeamSide side)
+        {
+            var rotation = new StablePlayerId[6];
+            for (var position = 1; position <= rotation.Length; position++)
+            {
+                rotation[position - 1] = _set.PlayerAtRotationPosition(side, position);
+            }
+
+            return rotation;
+        }
+
+        private OnCourtEligibilitySnapshot CreateV3Eligibility(MatchContextV3 context)
+        {
+            return OnCourtLineupRulesV3.Create(
+                context,
+                RotationOrder(TeamSide.Home),
+                RotationOrder(TeamSide.Away),
+                _set.ServerFor(TeamSide.Home),
+                _set.ServerFor(TeamSide.Away),
+                Array.Empty<LiberoReplacementV3>());
         }
 
         private void PreparePhysicalBlock(

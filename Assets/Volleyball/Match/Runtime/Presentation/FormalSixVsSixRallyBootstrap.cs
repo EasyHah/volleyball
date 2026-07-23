@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
+using MatchContextV3 = Volleyball.Shared.Contracts.MatchContextV3;
 using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
 using PlayerAbilitySnapshotV2 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV2;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
@@ -35,6 +36,9 @@ namespace Volleyball.Presentation
                 context,
                 scoreDisplay,
                 configuration: Configuration);
+            director.ConfigureV3Rules(
+                MatchContextV3.UpgradeFromV2(context),
+                V3RulesMode.Shadow);
             var rosterDisplay = gameObject.AddComponent<MatchRosterDisplay>();
             rosterDisplay.Initialize(director, agents);
             var cameras = gameObject.AddComponent<RallyCameraController>();

@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -33,6 +34,7 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.CourtHalfLength, Is.EqualTo(9f));
             Assert.That(director.MatchContextV2, Is.Not.Null);
             Assert.That(director.MatchContext, Is.Null);
+            Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Shadow));
             Assert.That(players, Has.Some.Matches<PrototypePlayerAgent>(
                 player => player.Id.Role == PlayerRole.MiddleBlocker && player.Ability.MaxAttackReach == 3.48f));
             AssertRoster(players, director);
@@ -71,6 +73,18 @@ namespace Volleyball.PlayModeTests
                 Is.GreaterThanOrEqualTo(2));
             Assert.That(director.ResultV2.PlayerStats, Has.Count.EqualTo(12));
             Assert.DoesNotThrow(() => director.ResultV2.ValidateAgainst(director.MatchContextV2));
+            Assert.That(director.V3RuleTransitions, Is.GreaterThan(0));
+            Assert.That(director.V3RuleTransitions, Is.EqualTo(director.SuccessfulContacts));
+            Assert.That(director.V3RuleParityMatches, Is.EqualTo(director.V3RuleTransitions));
+            Assert.That(director.V3RuleIntentionalCorrections, Is.Zero);
+            Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero);
+            Assert.That(director.LastV3RuleDiagnostic, Is.Not.Empty);
+            Assert.That(
+                director.ResultV2.PlayerStats.Sum(stat => stat.Contacts),
+                Is.EqualTo(
+                    director.SuccessfulContacts +
+                    director.ResultV2.HomeScore +
+                    director.ResultV2.AwayScore));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.ScheduledMultiBlockUnits, Is.GreaterThan(0));
