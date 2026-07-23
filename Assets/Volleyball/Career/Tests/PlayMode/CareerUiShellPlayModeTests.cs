@@ -163,6 +163,15 @@ namespace Volleyball.Career.PlayModeTests
 
             public CareerUiUseCaseResult SaveNow(CareerSaveSnapshot snapshot) =>
                 CareerUiUseCaseResult.Failure("unused");
+
+            public CareerUiUseCaseResult ExportDiagnostics(
+                CareerSaveSnapshot snapshot,
+                CareerUiRoute route,
+                string feedbackCode) =>
+                CareerUiUseCaseResult.ForCommand("diagnostics_exported");
+
+            public CareerUiUseCaseResult ArmNextWriteFailure() =>
+                CareerUiUseCaseResult.ForCommand("next_write_failure_armed");
         }
     }
 }

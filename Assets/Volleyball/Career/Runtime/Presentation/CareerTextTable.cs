@@ -28,6 +28,9 @@ namespace Volleyball.Career.Presentation
                 case "action.last_summary": return "查看上一场比赛总结";
                 case "action.retry_match": return "重试本场比赛";
                 case "action.close_notice": return "完成周末结算";
+                case "action.reload": return "重新载入权威存档";
+                case "action.simulate_failure": return "模拟下一次写入失败";
+                case "action.export_diagnostics": return "导出诊断报告";
                 case "field.profile_name": return "档案名称";
                 case "field.career_name": return "生涯名称";
                 case "field.player_name": return "球员姓名";
@@ -98,13 +101,20 @@ namespace Volleyball.Career.Presentation
                 case "feedback.pending_match_requires_retry": return "存在未完成比赛，不能返回";
                 case "feedback.summary_requires_confirmation": return "请先确认本页结果";
                 case "feedback.match_cancelled": return "比赛已取消，可从赛前页面重试";
+                case "feedback.reloaded_authority": return "已重新载入磁盘中的权威存档";
+                case "feedback.diagnostics_exported": return "诊断报告已导出到本地 Diagnostics 目录";
+                case "feedback.diagnostics_export_failed": return "诊断报告导出失败";
+                case "feedback.next_write_failure_armed": return "已准备模拟下一次权威写入失败";
+                case "feedback.simulated_persistence_failure": return "已模拟写入失败，权威存档未改变";
                 case "feedback.unknown_failure": return "操作未完成，请查看开发诊断";
                 case "diagnostics.title": return "开发诊断";
                 case "diagnostics.route": return "页面";
                 case "diagnostics.feedback": return "反馈码";
                 case "diagnostics.revision": return "存档修订";
-                case "diagnostics.profile_id": return "档案 ID";
-                case "diagnostics.save_id": return "存档 ID";
+                case "diagnostics.profile_state": return "档案";
+                case "diagnostics.save_state": return "生涯存档";
+                case "diagnostics.selected": return "已选择";
+                case "diagnostics.not_selected": return "未选择";
                 default: return id;
             }
         }

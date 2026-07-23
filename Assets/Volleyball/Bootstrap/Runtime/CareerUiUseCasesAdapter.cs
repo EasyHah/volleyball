@@ -6,6 +6,7 @@ using Volleyball.Career.Domain;
 using Volleyball.Career.MatchIntegration;
 using Volleyball.Career.Presentation;
 using Volleyball.Shared.Contracts;
+using UnityEngine;
 
 namespace Volleyball.Bootstrap
 {
@@ -17,9 +18,11 @@ namespace Volleyball.Bootstrap
         private readonly CareerPendingMatchService _pending;
         private readonly CareerMatchSettlementService _settlement;
         private readonly CareerRecentSessionStore _recentSessions;
+        private readonly CareerDiagnosticExporter _diagnostics;
         private readonly CareerWeekActionCatalog _actions;
         private readonly Func<Guid> _newGuid;
         private readonly Func<long> _utcNowMilliseconds;
+        private int _failNextWrite;
 
         public CareerUiUseCasesAdapter(
             CareerLocalUiWorkflow local,
@@ -28,6 +31,7 @@ namespace Volleyball.Bootstrap
             CareerPendingMatchService pending,
             CareerMatchSettlementService settlement,
             CareerRecentSessionStore recentSessions,
+            CareerDiagnosticExporter diagnostics,
             Func<Guid> newGuid = null,
             Func<long> utcNowMilliseconds = null)
         {
@@ -38,6 +42,7 @@ namespace Volleyball.Bootstrap
             _settlement = settlement ?? throw new ArgumentNullException(nameof(settlement));
             _recentSessions = recentSessions ??
                 throw new ArgumentNullException(nameof(recentSessions));
+            _diagnostics = diagnostics ?? throw new ArgumentNullException(nameof(diagnostics));
             _actions = CareerWeekActionCatalogV1.Create();
             _newGuid = newGuid ?? Guid.NewGuid;
             _utcNowMilliseconds = utcNowMilliseconds ??
@@ -86,10 +91,13 @@ namespace Volleyball.Bootstrap
         {
             try
             {
-                var result = _local.CreateProfile(new CreateLocalProfileUiCommand(
+                var command = new CreateLocalProfileUiCommand(
                     Envelope(),
                     new ProfileId(NewGuid()),
-                    displayName));
+                    displayName);
+                var injected = ConsumeInjectedFailure(null);
+                if (injected != null) return injected;
+                var result = _local.CreateProfile(command);
                 return result.Status == CareerLocalUiWorkflowStatus.Completed &&
                        result.Profile != null && result.Catalog != null
                     ? CareerUiUseCaseResult.ForProfile(
@@ -134,11 +142,14 @@ namespace Volleyball.Bootstrap
 
         public CareerUiUseCaseResult RecoverCareer(ProfileId profileId, SaveId saveId)
         {
-            var result = _local.RecoverCareer(new RecoverLocalCareerUiCommand(
+            var command = new RecoverLocalCareerUiCommand(
                 Envelope(),
                 profileId,
                 saveId,
-                new LineageId(NewGuid())));
+                new LineageId(NewGuid()));
+            var injected = ConsumeInjectedFailure(null);
+            if (injected != null) return injected;
+            var result = _local.RecoverCareer(command);
             if (result.Status != CareerLocalUiWorkflowStatus.Completed ||
                 result.Snapshot == null)
             {
@@ -160,7 +171,7 @@ namespace Volleyball.Bootstrap
             int jerseyNumber)
         {
             var saveId = new SaveId(NewGuid());
-            var result = _onboarding.CreateCareer(new CreateCareerCommand(
+            var command = new CreateCareerCommand(
                 profileId,
                 saveId,
                 new LineageId(NewGuid()),
@@ -175,7 +186,10 @@ namespace Volleyball.Bootstrap
                     new OccurrenceId(NewGuid())
                 },
                 new OperationId(NewGuid()),
-                Now()));
+                Now());
+            var injected = ConsumeInjectedFailure(null);
+            if (injected != null) return injected;
+            var result = _onboarding.CreateCareer(command);
             if (!IsApplied(result.Status) || result.Snapshot == null)
             {
                 return CareerUiUseCaseResult.Failure(
@@ -205,7 +219,7 @@ namespace Volleyball.Bootstrap
                     new SlotActionId(NewGuid()),
                     new OccurrenceId(NewGuid()))
                 : null;
-            var result = _onboarding.ConfirmTryoutStage(new ConfirmTryoutStageCommand(
+            var command = new ConfirmTryoutStageCommand(
                 snapshot.Identity.ProfileId,
                 snapshot.Identity.SaveId,
                 snapshot.Identity.VersionToken,
@@ -213,7 +227,10 @@ namespace Volleyball.Bootstrap
                 Now(),
                 stage,
                 choiceId,
-                enrollment));
+                enrollment);
+            var injected = ConsumeInjectedFailure(snapshot);
+            if (injected != null) return injected;
+            var result = _onboarding.ConfirmTryoutStage(command);
             if (!IsApplied(result.Status) || result.Snapshot == null)
             {
                 return CareerUiUseCaseResult.Failure(
@@ -267,13 +284,16 @@ namespace Volleyball.Bootstrap
                     existing.Slots[2]
                 },
                 true);
-            var result = _week.ConfirmWeekPlan(new ConfirmWeekPlanCommand(
+            var command = new ConfirmWeekPlanCommand(
                 snapshot.Identity.ProfileId,
                 snapshot.Identity.SaveId,
                 snapshot.Identity.VersionToken,
                 new OperationId(NewGuid()),
                 Now(),
-                candidate));
+                candidate);
+            var injected = ConsumeInjectedFailure(snapshot);
+            if (injected != null) return injected;
+            var result = _week.ConfirmWeekPlan(command);
             return WeekResult(result, "week_plan_saved");
         }
 
@@ -292,7 +312,7 @@ namespace Volleyball.Bootstrap
             }
 
             var action = snapshot.Progression.WeekPlan.Slots[slotNumber - 1];
-            var result = _week.ExecuteWeekAction(new ExecuteWeekActionCommand(
+            var command = new ExecuteWeekActionCommand(
                 snapshot.Identity.ProfileId,
                 snapshot.Identity.SaveId,
                 snapshot.Identity.VersionToken,
@@ -303,7 +323,10 @@ namespace Volleyball.Bootstrap
                 action.SlotActionId,
                 action.OccurrenceId,
                 action.ContentId,
-                slotNumber == 1 ? new OccurrenceId(NewGuid()) : (OccurrenceId?)null));
+                slotNumber == 1 ? new OccurrenceId(NewGuid()) : (OccurrenceId?)null);
+            var injected = ConsumeInjectedFailure(snapshot);
+            if (injected != null) return injected;
+            var result = _week.ExecuteWeekAction(command);
             return WeekResult(result, "week_action_saved");
         }
 
@@ -317,7 +340,7 @@ namespace Volleyball.Bootstrap
                 return CareerUiUseCaseResult.Failure("missing_event");
             }
 
-            var result = _week.ResolveEventChoice(new ResolveEventChoiceCommand(
+            var command = new ResolveEventChoiceCommand(
                 snapshot.Identity.ProfileId,
                 snapshot.Identity.SaveId,
                 snapshot.Identity.VersionToken,
@@ -328,7 +351,10 @@ namespace Volleyball.Bootstrap
                 pendingEvent.SourceActionOccurrenceId,
                 pendingEvent.EventId,
                 pendingEvent.OccurrenceId,
-                optionId));
+                optionId);
+            var injected = ConsumeInjectedFailure(snapshot);
+            if (injected != null) return injected;
+            var result = _week.ResolveEventChoice(command);
             return WeekResult(result, "event_saved");
         }
 
@@ -396,6 +422,9 @@ namespace Volleyball.Bootstrap
                     return CareerUiUseCaseResult.Failure("match_not_ready");
                 }
 
+                cancellationToken.ThrowIfCancellationRequested();
+                var injected = ConsumeInjectedFailure(snapshot);
+                if (injected != null) return injected;
                 execution = await _pending.CreateAndExecuteAsync(
                     new CreatePendingMatchCommand(
                         snapshot.Identity.ProfileId,
@@ -412,6 +441,9 @@ namespace Volleyball.Bootstrap
             }
             else
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                var injected = ConsumeInjectedFailure(snapshot);
+                if (injected != null) return injected;
                 execution = await _pending.RetryExecutionAsync(
                     new RetryPendingMatchExecutionCommand(
                         snapshot.Identity.ProfileId,
@@ -477,6 +509,31 @@ namespace Volleyball.Bootstrap
                 : CareerUiUseCaseResult.Failure(LocalCode(result), result.Snapshot);
         }
 
+        public CareerUiUseCaseResult ExportDiagnostics(
+            CareerSaveSnapshot snapshot,
+            CareerUiRoute route,
+            string feedbackCode)
+        {
+            var result = _diagnostics.Export(
+                snapshot,
+                route.ToString(),
+                feedbackCode,
+                Now(),
+                NewGuid(),
+                Application.unityVersion,
+                Application.version,
+                Application.platform.ToString());
+            return result.Succeeded
+                ? CareerUiUseCaseResult.ForCommand("diagnostics_exported")
+                : CareerUiUseCaseResult.Failure("diagnostics_export_failed");
+        }
+
+        public CareerUiUseCaseResult ArmNextWriteFailure()
+        {
+            Interlocked.Exchange(ref _failNextWrite, 1);
+            return CareerUiUseCaseResult.ForCommand("next_write_failure_armed");
+        }
+
         private CareerWeekActionContentDefinition Action(string contentId)
         {
             try
@@ -487,6 +544,15 @@ namespace Volleyball.Bootstrap
             {
                 return null;
             }
+        }
+
+        private CareerUiUseCaseResult ConsumeInjectedFailure(CareerSaveSnapshot snapshot)
+        {
+            return Interlocked.Exchange(ref _failNextWrite, 0) == 1
+                ? CareerUiUseCaseResult.Failure(
+                    "simulated_persistence_failure",
+                    snapshot)
+                : null;
         }
 
         private static CareerUiPreMatchPlayer[] PreviewPlayers(

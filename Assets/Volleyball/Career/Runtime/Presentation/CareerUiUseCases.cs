@@ -135,6 +135,9 @@ namespace Volleyball.Career.Presentation
             string code,
             CareerSaveSnapshot snapshot = null) =>
             new CareerUiUseCaseResult(false, code, null, null, snapshot, null);
+
+        public static CareerUiUseCaseResult ForCommand(string code) =>
+            new CareerUiUseCaseResult(true, code, null, null, null, null);
     }
 
     public interface ICareerUiUseCases
@@ -168,5 +171,10 @@ namespace Volleyball.Career.Presentation
             CareerMatchPriority priority,
             CancellationToken cancellationToken);
         CareerUiUseCaseResult SaveNow(CareerSaveSnapshot snapshot);
+        CareerUiUseCaseResult ExportDiagnostics(
+            CareerSaveSnapshot snapshot,
+            CareerUiRoute route,
+            string feedbackCode);
+        CareerUiUseCaseResult ArmNextWriteFailure();
     }
 }

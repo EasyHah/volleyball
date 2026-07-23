@@ -416,6 +416,92 @@ namespace Volleyball.Career.Presentation
             return result.Succeeded;
         }
 
+        public bool ReloadCurrentCareer()
+        {
+            if (Snapshot == null || IsBusy)
+            {
+                return false;
+            }
+
+            CareerUiUseCaseResult result;
+            try
+            {
+                result = _useCases.LoadCareer(
+                    Snapshot.Identity.ProfileId,
+                    Snapshot.Identity.SaveId);
+            }
+            catch (Exception exception)
+            {
+                result = CareerUiUseCaseResult.Failure(
+                    "reload_exception_" + exception.GetType().Name);
+            }
+
+            if (!ApplyAuthority(result))
+            {
+                Notify();
+                return false;
+            }
+
+            SettlementReceipt = LastReceipt(Snapshot);
+            PreMatchPreview = null;
+            ShowsInitialResult = false;
+            Route = AuthorityRoute(Snapshot);
+            if (Route == CareerUiRoute.PreMatch)
+            {
+                LoadPreMatchPreview();
+            }
+
+            FeedbackCode = "reloaded_authority";
+            Notify();
+            return true;
+        }
+
+        public bool ExportDiagnostics()
+        {
+            if (IsBusy)
+            {
+                return false;
+            }
+
+            CareerUiUseCaseResult result;
+            try
+            {
+                result = _useCases.ExportDiagnostics(Snapshot, Route, FeedbackCode);
+            }
+            catch (Exception exception)
+            {
+                result = CareerUiUseCaseResult.Failure(
+                    "diagnostics_export_exception_" + exception.GetType().Name);
+            }
+
+            FeedbackCode = result?.Code ?? "diagnostics_export_failed";
+            Notify();
+            return result != null && result.Succeeded;
+        }
+
+        public bool ArmNextWriteFailure()
+        {
+            if (IsBusy)
+            {
+                return false;
+            }
+
+            CareerUiUseCaseResult result;
+            try
+            {
+                result = _useCases.ArmNextWriteFailure();
+            }
+            catch (Exception exception)
+            {
+                result = CareerUiUseCaseResult.Failure(
+                    "arm_failure_exception_" + exception.GetType().Name);
+            }
+
+            FeedbackCode = result?.Code ?? "arm_failure_failed";
+            Notify();
+            return result != null && result.Succeeded;
+        }
+
         public bool Back()
         {
             if (IsBusy)

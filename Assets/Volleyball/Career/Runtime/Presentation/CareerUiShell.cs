@@ -768,22 +768,36 @@ namespace Volleyball.Career.Presentation
             diagnostics.Add(new Label(
                 CareerTextTable.Get("diagnostics.feedback") + ": " +
                 _controller.FeedbackCode));
-            if (_controller.Profile != null)
-            {
-                diagnostics.Add(new Label(
-                    CareerTextTable.Get("diagnostics.profile_id") + ": " +
-                    _controller.Profile.ProfileId));
-            }
-
+            diagnostics.Add(new Label(
+                CareerTextTable.Get("diagnostics.profile_state") + ": " +
+                CareerTextTable.Get(_controller.Profile == null
+                    ? "diagnostics.not_selected"
+                    : "diagnostics.selected")));
+            diagnostics.Add(new Label(
+                CareerTextTable.Get("diagnostics.save_state") + ": " +
+                CareerTextTable.Get(_controller.Snapshot == null
+                    ? "diagnostics.not_selected"
+                    : "diagnostics.selected")));
             if (_controller.Snapshot != null)
             {
-                diagnostics.Add(new Label(
-                    CareerTextTable.Get("diagnostics.save_id") + ": " +
-                    _controller.Snapshot.Identity.SaveId));
                 diagnostics.Add(new Label(
                     CareerTextTable.Get("diagnostics.revision") + ": " +
                     _controller.Snapshot.Identity.Revision));
             }
+
+            if (_controller.Snapshot != null)
+            {
+                diagnostics.Add(ActionButton(
+                    CareerTextTable.Get("action.reload"),
+                    () => _controller.ReloadCurrentCareer()));
+            }
+
+            diagnostics.Add(ActionButton(
+                CareerTextTable.Get("action.simulate_failure"),
+                () => _controller.ArmNextWriteFailure()));
+            diagnostics.Add(ActionButton(
+                CareerTextTable.Get("action.export_diagnostics"),
+                () => _controller.ExportDiagnostics()));
 
             _routeContent.Add(diagnostics);
         }

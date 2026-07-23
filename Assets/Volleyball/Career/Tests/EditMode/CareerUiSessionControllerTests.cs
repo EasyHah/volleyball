@@ -280,6 +280,15 @@ namespace Volleyball.Career.EditModeTests
                 return SaveResult ??
                        CareerUiUseCaseResult.ForCareer(snapshot, "up_to_date");
             }
+
+            public CareerUiUseCaseResult ExportDiagnostics(
+                CareerSaveSnapshot snapshot,
+                CareerUiRoute route,
+                string feedbackCode) =>
+                CareerUiUseCaseResult.ForCommand("diagnostics_exported");
+
+            public CareerUiUseCaseResult ArmNextWriteFailure() =>
+                CareerUiUseCaseResult.ForCommand("next_write_failure_armed");
         }
     }
 }

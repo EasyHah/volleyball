@@ -57,7 +57,8 @@ namespace Volleyball.Bootstrap
                         careerRepository,
                         executor,
                         new CareerMatchSettlementRulesV1Calculator()),
-                    new CareerRecentSessionStore(Application.persistentDataPath));
+                    new CareerRecentSessionStore(Application.persistentDataPath),
+                    new CareerDiagnosticExporter(Application.persistentDataPath));
 
                 Controller = new CareerUiSessionController(adapter);
                 var document = GetComponent<UIDocument>();
