@@ -437,7 +437,7 @@ git commit -m "feat: select sets and attacks from block geometry"
 - Modify: `docs/rules.md`
 - Create: `docs/changes/2026-07-22-002-geometric-attack-block-counterplay.md`
 
-- [ ] **Step 1: Write failing block-unit tests**
+- [x] **Step 1: Write failing block-unit tests**
 
 Create `BlockUnitPlannerTests.cs` with three pure cases:
 
@@ -465,39 +465,39 @@ public void Select_ExcludesBackRowPlayersWhenFormalSixVsSixIsRequested()
 }
 ```
 
-- [ ] **Step 2: Run the block-unit fixture and confirm RED**
+- [x] **Step 2: Run the block-unit fixture and confirm RED**
 
 Run the Unity EditMode command with test filter `Volleyball.EditModeTests.BlockUnitPlannerTests`.
 
 Expected: compilation failure because block-unit types do not exist.
 
-- [ ] **Step 3: Implement the pure unit selector**
+- [x] **Step 3: Implement the pure unit selector**
 
 Create `BlockUnitPlanner.cs` with a `BlockCandidateSnapshot` (`PlayerId`, position, movement speed, jump, `IsFrontRow`) and `BlockUnitPlan`. Filter candidates by team, front-row requirement, and `distance <= movementSpeed * availableSeconds`. Sort reachable candidates by distance minus jump bonus, then player identity. Choose the primary closest candidate; select at most one candidate on each side of its X lane, requiring an X separation of at least `0.35f`. Return one to three entries in stable order.
 
-- [ ] **Step 4: Run the block-unit fixture and confirm GREEN**
+- [x] **Step 4: Run the block-unit fixture and confirm GREEN**
 
 Run the Task 5 focused command again.
 
 Expected: PASS.
 
-- [ ] **Step 5: Write a failing post-block state test**
+- [x] **Step 5: Write a failing post-block state test**
 
 Add a PlayMode test that creates a real accepted block whose outbound velocity points into the opponent court, then observes before ground contact that the director has no receive `ContactWindow` and that no emergency receiver is enabled. Continue until ground contact and assert the blocking team receives the point through the existing rally result.
 
-- [ ] **Step 6: Run the focused PlayMode test and confirm RED**
+- [x] **Step 6: Run the focused PlayMode test and confirm RED**
 
 Run the Unity PlayMode command with the new test filter.
 
 Expected: FAIL because `HandleAcceptedBlock` immediately calls `BeginPossession`.
 
-- [ ] **Step 7: Schedule all selected blockers and defer possession transition**
+- [x] **Step 7: Schedule all selected blockers and defer possession transition**
 
 Replace the single `_scheduledBlocker` field with `HashSet<PlayerId> _scheduledBlockers`. `PreparePhysicalBlock` selects a `BlockUnitPlan` and schedules each player with its own contact group. `SchedulePhysicalBlock` retargets each selected blocker and opens one `RallyContactWindow` whose eligible actors are all selected blockers.
 
 In `HandleAcceptedBlock`, disable all scheduled block windows and clear scheduling state, but remove the direct `BeginPossession(reboundTeam, ReceiveLeadTime())` call. Retain the block as `LastPhysicalTouch`. In `HandleNetPlaneCrossing`, when the final touch is Block and the crossing is legal, start `BeginPossession(receivingTeam, ReceiveLeadTime())`; ground and antenna paths already resolve through `MatchRallyReferee`. Ensure the existing pending-crossing timeout path never opens a possession merely because a block window expired.
 
-- [ ] **Step 8: Add and run 3v3/6v6 integration assertions**
+- [x] **Step 8: Add and run 3v3/6v6 integration assertions**
 
 Extend 3v3 PlayMode coverage to observe at least one scheduled two-or-more-player block unit in a fixed-seed match. Extend 6v6 coverage to assert every scheduled blocker is front row and that a fixed-seed match records at least one two-player unit. Preserve the existing assertion that a single physical collision produces only one block contact/effect.
 
@@ -517,7 +517,7 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: both fixtures PASS; no duplicate block events and no back-row blocker in 6v6.
 
-- [ ] **Step 9: Remove resolved deviations, document evidence, and commit**
+- [x] **Step 9: Remove resolved deviations, document evidence, and commit**
 
 Remove the R-REF-004 and R-OFF-002/R-OFF-004 resolved rows from `docs/rules.md`. Write the change record with the exact Unity test counts, fixed-seed scene result, attack route counts, multi-block unit counts, and any remaining calibration risk.
 
@@ -532,7 +532,7 @@ git commit -m "feat: add geometric multi-block counterplay"
 - Modify: `docs/changes/2026-07-22-002-geometric-attack-block-counterplay.md`
 - Modify: `docs/rules.md`
 
-- [ ] **Step 1: Run complete EditMode regression**
+- [x] **Step 1: Run complete EditMode regression**
 
 ```bash
 UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
@@ -554,11 +554,11 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Expected: all PlayMode tests PASS, including 100-sample 3v3/6v6 calibration and 20-set symmetry.
 
-- [ ] **Step 3: Inspect results and document actual evidence**
+- [x] **Step 3: Inspect results and document actual evidence**
 
 Read the XML result files and logs. Record only observed values in the change record: passed/failed totals, fixed-seed scores, physical block count, multi-block-unit count, selected route counts, attackable-set rate, A-grade no-contact error rate, and symmetry wins. Do not copy historical test counts.
 
-- [ ] **Step 4: Run repository hygiene checks**
+- [x] **Step 4: Run repository hygiene checks**
 
 ```bash
 git diff --check
@@ -573,6 +573,17 @@ Expected: no whitespace error; only the intended change record/rules edits remai
 git add docs/rules.md docs/changes/2026-07-22-002-geometric-attack-block-counterplay.md
 git commit -m "docs: verify geometric attack block counterplay"
 ```
+
+**Checkpoint 2026-07-23:** Task 5 is complete in commit `603b471`.
+Task 6 EditMode passed 335/335 and the full PlayMode suite passed 17/18.
+The remaining failure is
+`PhysicsContactTrainingPlayModeTests.TrainingScene_CompletesReceiveSetAndAttackWithPhysicalContacts`:
+the attack ball center is at local Z `-0.044m` versus the historical `> 0.25m`
+assertion. Advancing the spike pose far enough to satisfy that assertion reduced
+the outgoing Z-direction ratio from the required `> 0.9` to about `0.652`, so the
+experimental pose changes were reverted. Resolve the coupling between visible
+arm extension and the physical contact normal before completing Task 6 Steps 2
+and 5.
 
 ## Plan Self-Review
 
