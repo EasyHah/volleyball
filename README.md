@@ -27,11 +27,12 @@ Open this repository in Unity Hub with Unity `6000.3.20f1`. Unity will create
 local `Library/` files; they are intentionally ignored.
 
 The committed manifest and lock file are authoritative. They currently contain
-the Unity 6.3 built-in physics/UI modules, Test Framework and the Newtonsoft
-package used by the Editor-side MenShen benchmark. The MenShen assembly and
-credentials stay Editor-only, although the package's global `Newtonsoft.Json.dll`
-currently remains in Player builds. URP, Input System and NavMesh remain separate
-reviewed changes and must not be added as part of feature work.
+the Unity 6.3 built-in physics/UI modules, Test Framework, the official Input
+System used by Career menus, and the Newtonsoft package used by the Editor-side
+MenShen benchmark. The MenShen assembly and credentials stay Editor-only, although
+the package's global `Newtonsoft.Json.dll` currently remains in Player builds.
+URP and NavMesh remain separate reviewed changes and must not be added as part of
+unrelated feature work.
 
 ## Repository layout
 
@@ -70,9 +71,11 @@ hand-edit copied payloads.
 
 ## Verification
 
-Run EditMode tests before every pull request. The Windows 6.3 project settings and
-package lock baseline have been generated, but the Unity CI workflow remains
-disabled until a matching runner and activation are configured and a dedicated
-entry point enforces Windows x64 IL2CPP Development plus `BuildReport` validation.
-Enable the same EditMode tests there, and validate every playable candidate
-manually on a physical Windows x64 PC.
+Run EditMode tests before every pull request. The dedicated
+`Volleyball.Bootstrap.Editor.CareerWindowsDevelopmentBuild.Build` entry point now
+builds only the Career vertical-slice scene as Windows x64 IL2CPP with Development
+and AllowDebugging, checks `BuildReport`, and publishes a local manifest under
+ignored `Builds/Windows/`. The Unity CI workflow remains disabled until a matching
+runner and activation are configured. Enable the same EditMode and Career PlayMode
+tests there, and still validate every playable candidate manually with keyboard and
+an XInput controller on a physical Windows x64 PC.

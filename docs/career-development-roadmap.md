@@ -392,6 +392,9 @@ FakeMatch 固定 6v6 单局事实、结果哈希校验、回执查询和从比�
 
 - 建议分支：`feature/career-recovery-build`
 - 负责人：当前里程碑负责人
+- 实施状态：自动化恢复、脱敏诊断、Career PlayMode、Windows x64 IL2CPP 构建、鼠标功能闭环及
+  退出重开恢复已通过；自动化键盘注入未进入 Unity Player 事件链，实体键盘与 XInput 验收尚未执行，
+  因此阶段 9 仍为进行中。
 
 进入条件：七类 UI 已能在 Editor 中完成闭环，所有前置变更记录均已完成。
 
