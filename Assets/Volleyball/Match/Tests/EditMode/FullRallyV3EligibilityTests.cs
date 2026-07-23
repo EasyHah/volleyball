@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
 
@@ -142,6 +143,118 @@ namespace Volleyball.EditModeTests
         public void OnCourtEligibilitySnapshot_HasNoParameterlessConstructor()
         {
             Assert.That(typeof(OnCourtEligibilitySnapshot).GetConstructor(Type.EmptyTypes), Is.Null);
+        }
+
+        [Test]
+        public void CanAttempt_BackRowTakeoffBehindAttackLineIsLegalForHomeAndAway()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+
+            var home = AttackEligibilityRulesV3.CanAttempt(
+                snapshot.For(HomeRotationOrder[0]),
+                new SimVector3(0f, 0f, -3.01f),
+                new SimVector3(0f, 2.44f, -1f),
+                3f,
+                2.43f);
+            var away = AttackEligibilityRulesV3.CanAttempt(
+                snapshot.For(AwayRotationOrder[0]),
+                new SimVector3(0f, 0f, 3.01f),
+                new SimVector3(0f, 2.44f, 1f),
+                3f,
+                2.43f);
+
+            Assert.That(home.IsEligible, Is.True);
+            Assert.That(away.IsEligible, Is.True);
+        }
+
+        [Test]
+        public void CanAttempt_BackRowAboveNetAttackFromFrontZoneIsIllegalForHomeAndAway()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+
+            var home = AttackEligibilityRulesV3.CanAttempt(
+                snapshot.For(HomeRotationOrder[0]),
+                new SimVector3(0f, 0f, -2.99f),
+                new SimVector3(0f, 2.44f, -1f),
+                3f,
+                2.43f);
+            var away = AttackEligibilityRulesV3.CanAttempt(
+                snapshot.For(AwayRotationOrder[0]),
+                new SimVector3(0f, 0f, 2.99f),
+                new SimVector3(0f, 2.44f, 1f),
+                3f,
+                2.43f);
+
+            Assert.That(home.IsEligible, Is.False);
+            Assert.That(away.IsEligible, Is.False);
+        }
+
+        [Test]
+        public void CanAttempt_FrontZoneContactAtOrBelowNetIsLegal()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+
+            var decision = AttackEligibilityRulesV3.CanAttempt(
+                snapshot.For(HomeRotationOrder[0]),
+                new SimVector3(0f, 0f, -2f),
+                new SimVector3(0f, 2.43f, -1f),
+                3f,
+                2.43f);
+
+            Assert.That(decision.IsEligible, Is.True);
+        }
+
+        [Test]
+        public void CanAttempt_TreatsTheAttackLineAsFrontZone()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+
+            var decision = AttackEligibilityRulesV3.CanAttempt(
+                snapshot.For(HomeRotationOrder[0]),
+                new SimVector3(0f, 0f, -3f),
+                new SimVector3(0f, 2.44f, -1f),
+                3f,
+                2.43f);
+
+            Assert.That(decision.IsEligible, Is.False);
+        }
+
+        [Test]
+        public void CanAttempt_RejectsMissingPlayerAndInvalidGeometry()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var player = snapshot.For(HomeRotationOrder[0]);
+
+            Assert.Throws<ArgumentNullException>(() => AttackEligibilityRulesV3.CanAttempt(
+                null, SimVector3.Zero, SimVector3.Zero, 3f, 2.43f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AttackEligibilityRulesV3.CanAttempt(
+                player, new SimVector3(float.NaN, 0f, 0f), SimVector3.Zero, 3f, 2.43f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AttackEligibilityRulesV3.CanAttempt(
+                player, SimVector3.Zero, SimVector3.Zero, 0f, 2.43f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => AttackEligibilityRulesV3.CanAttempt(
+                player, SimVector3.Zero, SimVector3.Zero, 3f, float.PositiveInfinity));
+        }
+
+        [Test]
+        public void CanAttempt_AllLiberosAreIneligibleToBlock()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+
+            var home = BlockEligibilityRulesV3.CanAttempt(snapshot.For(HomeLiberoId));
+            var away = BlockEligibilityRulesV3.CanAttempt(snapshot.For(AwayRotationOrder[2]));
+
+            Assert.That(home.IsEligible, Is.False);
+            Assert.That(away.IsEligible, Is.False);
+        }
+
+        [Test]
+        public void CanAttempt_FrontRowNonLiberoIsEligibleToBlock()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+
+            var decision = BlockEligibilityRulesV3.CanAttempt(snapshot.For(HomeRotationOrder[1]));
+
+            Assert.That(decision.IsEligible, Is.True);
         }
 
         private static readonly PlayerId HomeLiberoId = new PlayerId("home-libero");
