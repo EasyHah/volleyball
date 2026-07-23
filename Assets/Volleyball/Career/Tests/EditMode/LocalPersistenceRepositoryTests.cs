@@ -302,6 +302,187 @@ namespace Volleyball.Career.EditModeTests
                 Is.EqualTo(!authorityIsBackup));
         }
 
+        [TestCase("3", false)]
+        [TestCase("3", true)]
+        [TestCase("2147483648", false)]
+        [TestCase("2147483648", true)]
+        public void CareerRepository_LoadPreservesStandardFutureJsonAuthority(
+            string schemaVersion,
+            bool authorityIsBackup)
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var unsupportedBytes = FutureUnsupportedCareerBytes(schemaVersion);
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            var mainPath = _paths.CareerPath(profileId, saveId);
+            var backupPath = _paths.CareerBackupPath(profileId, saveId);
+            var authorityPath = authorityIsBackup ? backupPath : mainPath;
+            _system.CreateFileDurably(authorityPath, unsupportedBytes);
+
+            var loaded = repository.Load(profileId, saveId);
+
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(authorityPath), Is.EqualTo(unsupportedBytes));
+            Assert.That(_system.FileExists(mainPath), Is.EqualTo(!authorityIsBackup));
+            Assert.That(_system.FileExists(backupPath), Is.EqualTo(authorityIsBackup));
+            Assert.That(
+                Directory.Exists(_paths.CareerQuarantineDirectory(profileId)),
+                Is.False);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CareerRepository_CommitFallbackPreservesUnsupportedBackupWhenMainIsUnreadable(
+            bool corruptMain)
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var initial = CareerPersistenceTestData.CreatedSnapshot(
+                profileId,
+                saveId,
+                new LineageId(Guid.NewGuid()));
+            var mainPath = _paths.CareerPath(profileId, saveId);
+            var backupPath = _paths.CareerBackupPath(profileId, saveId);
+            var corruptBytes = new byte[] { 0xff, 0x00, 0x7b, 0x01 };
+            var unsupportedBackupBytes = FutureUnsupportedCareerBytes("3");
+            var operationId = new OperationId(Guid.NewGuid());
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            if (corruptMain)
+            {
+                _system.CreateFileDurably(mainPath, corruptBytes);
+            }
+
+            _system.CreateFileDurably(backupPath, unsupportedBackupBytes);
+
+            var result = repository.Commit(
+                profileId,
+                saveId,
+                initial.Identity.VersionToken,
+                CareerPersistenceTestData.AfterFirstTryoutStage(initial),
+                operationId);
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(unsupportedBackupBytes));
+            Assert.That(_system.FileExists(mainPath), Is.EqualTo(corruptMain));
+            if (corruptMain)
+            {
+                Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(corruptBytes));
+            }
+
+            Assert.That(
+                _system.FileExists(_paths.CareerTemporaryPath(profileId, saveId, operationId)),
+                Is.False);
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerReplaceBackupPath(profileId, saveId, operationId)),
+                Is.False);
+            Assert.That(
+                Directory.Exists(_paths.CareerQuarantineDirectory(profileId)),
+                Is.False);
+        }
+
+        [Test]
+        public void CareerRepository_RecoveryPreservesAndRejectsAnUnsupportedBackup()
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var initial = CareerPersistenceTestData.CreatedSnapshot(
+                profileId,
+                saveId,
+                new LineageId(Guid.NewGuid()));
+            var mainPath = _paths.CareerPath(profileId, saveId);
+            var backupPath = _paths.CareerBackupPath(profileId, saveId);
+            var corruptBytes = new byte[] { 0xff, 0x00, 0x7b, 0x01 };
+            var unsupportedBackupBytes = FutureUnsupportedCareerBytes("2147483648");
+            var operationId = new OperationId(Guid.NewGuid());
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            _system.CreateFileDurably(mainPath, corruptBytes);
+            _system.CreateFileDurably(backupPath, unsupportedBackupBytes);
+
+            var result = repository.RecoverFromBackup(
+                profileId,
+                saveId,
+                initial.Identity.VersionToken,
+                RawHash(corruptBytes),
+                operationId,
+                initial.Identity.UpdatedAtUtcMs + 1,
+                new LineageId(Guid.NewGuid()));
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(corruptBytes));
+            Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(unsupportedBackupBytes));
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerRecoveryTemporaryPath(profileId, saveId, operationId)),
+                Is.False);
+            Assert.That(
+                _system.FileExists(
+                    _paths.CareerRecoveryIntentPath(profileId, saveId, operationId)),
+                Is.False);
+            Assert.That(
+                Directory.Exists(_paths.CareerQuarantineDirectory(profileId)),
+                Is.False);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CareerRepository_InterruptedUpdatePreservesUnsupportedFixedBackup(
+            bool futureSchema)
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(Guid.NewGuid());
+            var saveId = new SaveId(Guid.NewGuid());
+            var lineageId = new LineageId(Guid.NewGuid());
+            var operationBackup = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.PlanningSnapshot(
+                    profileId,
+                    saveId,
+                    lineageId,
+                    4,
+                    "Interrupted Previous",
+                    10));
+            var main = CareerSaveJsonCodec.Seal(
+                CareerPersistenceTestData.NextPlanningSnapshot(operationBackup));
+            var operationId = new OperationId(Guid.NewGuid());
+            var mainPath = _paths.CareerPath(profileId, saveId);
+            var fixedBackupPath = _paths.CareerBackupPath(profileId, saveId);
+            var operationBackupPath = _paths.CareerReplaceBackupPath(
+                profileId,
+                saveId,
+                operationId);
+            var convergencePath = _paths.CareerBackupConvergencePath(
+                profileId,
+                saveId,
+                operationId);
+            var mainBytes = CareerSaveJsonCodec.Serialize(main);
+            var operationBackupBytes = CareerSaveJsonCodec.Serialize(operationBackup);
+            var unsupportedFixedBackupBytes = futureSchema
+                ? FutureUnsupportedCareerBytes("3")
+                : CareerSaveJsonCodecTests.UnsupportedV1GoldenBytes();
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            _system.CreateFileDurably(mainPath, mainBytes);
+            _system.CreateFileDurably(fixedBackupPath, unsupportedFixedBackupBytes);
+            _system.CreateFileDurably(operationBackupPath, operationBackupBytes);
+
+            var result = repository.Load(profileId, saveId);
+
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
+            Assert.That(
+                _system.ReadAllBytes(fixedBackupPath),
+                Is.EqualTo(unsupportedFixedBackupBytes));
+            Assert.That(
+                _system.ReadAllBytes(operationBackupPath),
+                Is.EqualTo(operationBackupBytes));
+            Assert.That(_system.FileExists(convergencePath), Is.False);
+            Assert.That(
+                Directory.Exists(_paths.CareerQuarantineDirectory(profileId)),
+                Is.False);
+        }
+
         [Test]
         public void CareerRepository_CommitPreservesAndRejectsANewerValidFixedBackup()
         {
@@ -2107,6 +2288,15 @@ namespace Volleyball.Career.EditModeTests
 
                 return new Sha256Digest(new string(characters));
             }
+        }
+
+        private static byte[] FutureUnsupportedCareerBytes(string schemaVersion)
+        {
+            return System.Text.Encoding.UTF8.GetBytes(
+                " {\n\t\"futureBody\" : {\"ratio\":1.25e+3," +
+                "\"items\":[true,false,null]},\r\n" +
+                " \"versions\" : { \"futureAxis\" : 99," +
+                " \"schemaVersion\" : " + schemaVersion + " } } ");
         }
 
         private enum FaultMode

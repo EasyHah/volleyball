@@ -244,7 +244,7 @@ namespace Volleyball.Career.Persistence
             if (stageDocuments.Length != 3)
             {
                 throw new ArgumentException(
-                    "Schema V1 onboarding requires exactly three ordered stages.",
+                    "Schema V2 onboarding requires exactly three ordered stages.",
                     "onboarding.stages");
             }
 
@@ -513,7 +513,7 @@ namespace Volleyball.Career.Persistence
             if (optionDocuments.Length != 2)
             {
                 throw new ArgumentException(
-                    "A schema V1 pending event requires exactly two ordered options.",
+                    "A schema V2 pending event requires exactly two ordered options.",
                     "progression.pendingEvent.options");
             }
 

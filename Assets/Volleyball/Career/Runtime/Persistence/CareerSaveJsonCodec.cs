@@ -1373,7 +1373,7 @@ namespace Volleyball.Career.Persistence
                 throw new FormatException(path + " must be a JSON object.");
             }
 
-            value.ObjectValue.RequireExactly(path, propertyNames);
+            value.ObjectValue.RequireExactlyForSchema(path, "Schema V2", propertyNames);
             return value.ObjectValue;
         }
 
@@ -2299,10 +2299,18 @@ namespace Volleyball.Career.Persistence
 
         public void RequireExactly(string path, params string[] propertyNames)
         {
+            RequireExactlyForSchema(path, "Schema V1", propertyNames);
+        }
+
+        public void RequireExactlyForSchema(
+            string path,
+            string schemaName,
+            params string[] propertyNames)
+        {
             if (_properties.Count != propertyNames.Length)
             {
                 throw new FormatException(
-                    path + " contains a missing or unknown Schema V1 property.");
+                    path + " contains a missing or unknown " + schemaName + " property.");
             }
 
             for (var index = 0; index < propertyNames.Length; index++)
@@ -2310,7 +2318,7 @@ namespace Volleyball.Career.Persistence
                 if (!_byName.ContainsKey(propertyNames[index]))
                 {
                     throw new FormatException(
-                        path + " is missing required Schema V1 property '" +
+                        path + " is missing required " + schemaName + " property '" +
                         propertyNames[index] + "'.");
                 }
             }

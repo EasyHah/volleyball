@@ -494,12 +494,18 @@ namespace Volleyball.Career.Persistence
                     operationBackup);
                 if (!backupHealthy)
                 {
-                    backupHealthy = TryConvergeBackup(
+                    var convergence = TryConvergeBackup(
                         profileId,
                         saveId,
                         expectedVersionToken,
                         operationId,
                         operationBackup);
+                    if (convergence == BackupConvergenceResult.Unsupported)
+                    {
+                        return Result(PersistenceResultKind.UnsupportedVersion);
+                    }
+
+                    backupHealthy = convergence == BackupConvergenceResult.Succeeded;
                 }
 
                 return Result(
@@ -553,7 +559,7 @@ namespace Volleyball.Career.Persistence
             return fixedBackup.HasToken(expectedVersionToken);
         }
 
-        private bool TryConvergeBackup(
+        private BackupConvergenceResult TryConvergeBackup(
             ProfileId profileId,
             SaveId saveId,
             CareerVersionToken expectedVersionToken,
@@ -562,7 +568,7 @@ namespace Volleyball.Career.Persistence
         {
             if (!operationBackup.HasToken(expectedVersionToken))
             {
-                return false;
+                return BackupConvergenceResult.Failed;
             }
 
             var operationBackupPath = _paths.CareerReplaceBackupPath(
@@ -570,6 +576,15 @@ namespace Volleyball.Career.Persistence
                 saveId,
                 operationId);
             var fixedBackupPath = _paths.CareerBackupPath(profileId, saveId);
+            var fixedBackupBeforeWrite = ReadCandidate(
+                fixedBackupPath,
+                profileId,
+                saveId);
+            if (fixedBackupBeforeWrite.Kind == CandidateKind.Unsupported)
+            {
+                return BackupConvergenceResult.Unsupported;
+            }
+
             try
             {
                 if (!_fileSystem.FileExists(fixedBackupPath))
@@ -586,7 +601,7 @@ namespace Volleyball.Career.Persistence
                         operationId);
                     if (_fileSystem.FileExists(convergenceBackupPath))
                     {
-                        return false;
+                        return BackupConvergenceResult.Failed;
                     }
 
                     try
@@ -618,12 +633,12 @@ namespace Volleyball.Career.Persistence
             var fixedBackup = ReadCandidate(fixedBackupPath, profileId, saveId);
             if (!fixedBackup.HasToken(expectedVersionToken))
             {
-                return false;
+                return BackupConvergenceResult.Failed;
             }
 
             TryDelete(operationBackupPath);
             TryDelete(_paths.CareerBackupConvergencePath(profileId, saveId, operationId));
-            return true;
+            return BackupConvergenceResult.Succeeded;
         }
 
         private CareerPersistenceResult RestoreExpectedMainAfterPartialReplace(
@@ -886,14 +901,19 @@ namespace Volleyball.Career.Persistence
                 main.Snapshot.Identity.LineageId.Equals(backup.Snapshot.Identity.LineageId) &&
                 main.Snapshot.Identity.Revision == backup.Snapshot.Identity.Revision + 1)
             {
-                var healthy = TryConvergeBackup(
+                var convergence = TryConvergeBackup(
                     profileId,
                     saveId,
                     backup.Snapshot.Identity.VersionToken,
                     operationId,
                     backup);
+                if (convergence == BackupConvergenceResult.Unsupported)
+                {
+                    return Result(PersistenceResultKind.UnsupportedVersion);
+                }
+
                 return Result(
-                    healthy
+                    convergence == BackupConvergenceResult.Succeeded
                         ? PersistenceResultKind.Loaded
                         : PersistenceResultKind.BackupDegraded,
                     main.Snapshot);
@@ -921,6 +941,11 @@ namespace Volleyball.Career.Persistence
                 _paths.CareerBackupPath(profileId, saveId),
                 profileId,
                 saveId);
+            if (backup.Kind == CandidateKind.Unsupported)
+            {
+                return Result(PersistenceResultKind.UnsupportedVersion);
+            }
+
             if (backup.Kind == CandidateKind.Valid)
             {
                 return Result(
@@ -949,6 +974,11 @@ namespace Volleyball.Career.Persistence
 
             var backupPath = _paths.CareerBackupPath(profileId, saveId);
             var backup = ReadCandidate(backupPath, profileId, saveId);
+            if (backup.Kind == CandidateKind.Unsupported)
+            {
+                return Result(PersistenceResultKind.UnsupportedVersion);
+            }
+
             if (!backup.HasToken(confirmedBackupVersionToken))
             {
                 return Result(PersistenceResultKind.VersionConflict);
@@ -1571,6 +1601,13 @@ namespace Volleyball.Career.Persistence
             CareerVersionToken? recoverableBackup = null)
         {
             return new CareerPersistenceResult(kind, snapshot, recoverableBackup);
+        }
+
+        private enum BackupConvergenceResult
+        {
+            Failed,
+            Succeeded,
+            Unsupported
         }
 
         private enum CandidateKind

@@ -558,6 +558,66 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void Deserialize_ReportsSchemaV2WhenTheRootPropertySetIsIncomplete()
+        {
+            var exception = Assert.Throws<FormatException>(() =>
+                CareerSaveJsonCodec.Deserialize(Encoding.UTF8.GetBytes(
+                    "{\"versions\":{\"schemaVersion\":2,\"contentVersion\":1," +
+                    "\"rulesetVersion\":1,\"contractVersion\":2," +
+                    "\"careerRandomAlgorithmVersion\":1}}")));
+
+            Assert.That(exception.Message, Does.Contain("Schema V2"));
+            Assert.That(exception.Message, Does.Not.Contain("Schema V1"));
+        }
+
+        [Test]
+        public void Deserialize_ReportsSchemaV2WhenARequiredRootPropertyIsRenamed()
+        {
+            var json = Encoding.UTF8.GetString(Convert.FromBase64String(V2GoldenBase64))
+                .Replace("\"careerName\":", "\"futureCareerName\":");
+
+            var exception = Assert.Throws<FormatException>(() =>
+                CareerSaveJsonCodec.Deserialize(Encoding.UTF8.GetBytes(json)));
+
+            Assert.That(exception.Message, Does.Contain("Schema V2"));
+            Assert.That(exception.Message, Does.Not.Contain("Schema V1"));
+        }
+
+        [Test]
+        public void SnapshotMapper_ReportsSchemaV2WhenOnboardingStageCountIsInvalid()
+        {
+            var document = CareerSaveSnapshotMapper.ToDocument(CreateGoldenCandidate());
+            document.onboarding.stages = new[]
+            {
+                document.onboarding.stages[0],
+                document.onboarding.stages[1]
+            };
+
+            var exception = Assert.Throws<ArgumentException>(() =>
+                CareerSaveSnapshotMapper.ToDomain(document));
+
+            Assert.That(exception.Message, Does.Contain("Schema V2"));
+            Assert.That(exception.Message, Does.Not.Contain("Schema V1"));
+        }
+
+        [Test]
+        public void SnapshotMapper_ReportsSchemaV2WhenPendingEventOptionCountIsInvalid()
+        {
+            var document = CareerSaveSnapshotMapper.ToDocument(
+                CreateFullCandidate(false));
+            document.progression.pendingEvent.options = new[]
+            {
+                document.progression.pendingEvent.options[0]
+            };
+
+            var exception = Assert.Throws<ArgumentException>(() =>
+                CareerSaveSnapshotMapper.ToDomain(document));
+
+            Assert.That(exception.Message, Does.Contain("schema V2"));
+            Assert.That(exception.Message, Does.Not.Contain("schema V1"));
+        }
+
+        [Test]
         public void AwaitingLifecycleGolden_LocksCanonicalBytesBase64AndHash()
         {
             var sealedSnapshot = CareerSaveJsonCodec.Seal(

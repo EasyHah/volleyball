@@ -37,6 +37,85 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(result.ObservedSchemaVersion, Is.EqualTo(observedSchema));
         }
 
+        [TestCase(
+            " {\n\t\"futureBody\" : {\"ratio\":1.25e+3,\"items\":[true,false,null]}," +
+            "\r\n \"versions\" : { \"futureAxis\" : 99, \"schemaVersion\" : 3 } } ",
+            3L)]
+        [TestCase(
+            "{\"versions\":{\"schemaVersion\":2147483648}," +
+            "\"futureBody\":{\"ratio\":0.5,\"scale\":2E-4}}",
+            2147483648L)]
+        public void Classify_AcceptsCompleteStandardJsonForFutureSchemaEnvelopes(
+            string json,
+            long observedSchema)
+        {
+            var result = CareerSaveVersionClassifier.Classify(Utf8(json));
+
+            Assert.That(result.Kind, Is.EqualTo(CareerSaveVersionClassification.Unsupported));
+            Assert.That(result.ObservedSchemaVersion, Is.EqualTo(observedSchema));
+        }
+
+        [Test]
+        public void Classify_TreatsPositiveSchemaBeyondInt64AsUnsupportedWithoutObservation()
+        {
+            var result = CareerSaveVersionClassifier.Classify(Utf8(
+                "{\"versions\":{\"schemaVersion\":9223372036854775808}," +
+                "\"futureBody\":1.5}"));
+
+            Assert.That(result.Kind, Is.EqualTo(CareerSaveVersionClassification.Unsupported));
+            Assert.That(result.ObservedSchemaVersion, Is.Null);
+        }
+
+        [TestCase("{\"versions\":{\"schemaVersion\":3},\"futureBody\":1.}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3},\"futureBody\":\"\\ud800\"}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3},\"futureBody\":\"\\udc00\"}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3}}{}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3,\"schemaVersion\":4}}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3},\"versions\":{\"schemaVersion\":4}}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3,\"\\u0073chemaVersion\":4}}")]
+        [TestCase("{\"versions\":{\"schemaVersion\":3},\"\\u0076ersions\":{\"schemaVersion\":4}}")]
+        public void Classify_StillValidatesTheEntireFutureJsonEnvelope(string json)
+        {
+            var result = CareerSaveVersionClassifier.Classify(Utf8(json));
+
+            Assert.That(result.Kind, Is.EqualTo(CareerSaveVersionClassification.Malformed));
+        }
+
+        [Test]
+        public void Classify_StillRequiresCanonicalJsonForTheCurrentSchema()
+        {
+            var result = CareerSaveVersionClassifier.Classify(Utf8(
+                " {\"versions\":{\"schemaVersion\":2,\"contentVersion\":1," +
+                "\"rulesetVersion\":1,\"contractVersion\":2," +
+                "\"careerRandomAlgorithmVersion\":1},\"futureBody\":1.5}"));
+
+            Assert.That(result.Kind, Is.EqualTo(CareerSaveVersionClassification.Malformed));
+        }
+
+        [Test]
+        public void Classify_RejectsInvalidUtf8InAFutureJsonEnvelope()
+        {
+            var result = CareerSaveVersionClassifier.Classify(
+                new byte[] { 0x7b, 0x22, 0xc3, 0x28, 0x22, 0x7d });
+
+            Assert.That(result.Kind, Is.EqualTo(CareerSaveVersionClassification.Malformed));
+        }
+
+        [Test]
+        public void Classify_RejectsAUtf8BomBeforeAFutureJsonEnvelope()
+        {
+            var json = Utf8("{\"versions\":{\"schemaVersion\":3}}");
+            var withBom = new byte[json.Length + 3];
+            withBom[0] = 0xef;
+            withBom[1] = 0xbb;
+            withBom[2] = 0xbf;
+            Buffer.BlockCopy(json, 0, withBom, 3, json.Length);
+
+            var result = CareerSaveVersionClassifier.Classify(withBom);
+
+            Assert.That(result.Kind, Is.EqualTo(CareerSaveVersionClassification.Malformed));
+        }
+
         [TestCase("not-json")]
         [TestCase("[]")]
         [TestCase("{}")]
