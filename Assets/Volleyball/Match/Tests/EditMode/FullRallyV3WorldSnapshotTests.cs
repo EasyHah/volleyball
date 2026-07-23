@@ -29,7 +29,7 @@ namespace Volleyball.EditModeTests
         public void RallyWorldSnapshot_RejectsSeventhPlayerOnOneSide()
         {
             var players = CreateTwelvePlayers();
-            players.Add(CreatePlayer("home-7", TeamSide.Home));
+            players[11] = CreatePlayer("home-7", TeamSide.Home);
 
             Assert.Throws<ArgumentException>(() => CreateSnapshot(players));
         }
