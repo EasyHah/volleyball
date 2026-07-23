@@ -27,6 +27,9 @@ namespace Volleyball.Career.EditModeTests
             "6c1734e9-23b5-4a60-b393-1bd5bedc03ba",
             "5271325d-7709-4df1-a280-698668174a51",
             "28672dd7-a7f1-480d-b425-952c6aedc9dc",
+            "0de4e435-c595-40aa-babe-c676d9533ef7",
+            "2aded20c-82be-4d9f-9096-51028703e43d",
+            "ce617216-4e27-4f5b-b4c5-26d44740c46c",
             "f97eaa29-ab4e-45e6-bcbc-65cdd68482d4",
             "d2979326-f3d6-4a5a-95b8-c95ebafd533f",
             "9707decb-a747-4de1-900b-bd9c34637c27",
@@ -52,7 +55,10 @@ namespace Volleyball.Career.EditModeTests
             "1a04cc30-e14c-448c-bb91-61d24839f9dc",
             "5ac6e52c-337b-4973-bc32-6ea2c39e27f6",
             "0fd32bec-68fd-42cf-aedf-d98e25127c04",
-            "954635fb-7ff6-4ccd-b520-d607110ca30e"
+            "954635fb-7ff6-4ccd-b520-d607110ca30e",
+            "8b87f0e1-c510-42ef-ad0b-12aca7ab53ed",
+            "6152f4f7-9df5-4831-99d7-36d1be219b28",
+            "0debf6f6-02dd-4d06-b05d-41a715c5556f"
         };
 
         private readonly List<InputDevice> _addedDevices = new List<InputDevice>();
@@ -116,11 +122,15 @@ namespace Volleyball.Career.EditModeTests
             AssertAction(map, "Back", InputActionType.Button, "Button");
             AssertAction(map, "PageLeft", InputActionType.Button, "Button");
             AssertAction(map, "PageRight", InputActionType.Button, "Button");
+            AssertAction(map, "Point", InputActionType.PassThrough, "Vector2");
+            AssertAction(map, "Click", InputActionType.PassThrough, "Button");
+            AssertAction(map, "ScrollWheel", InputActionType.PassThrough, "Vector2");
             Assert.That(
                 map.actions.Select(action => action.name),
                 Is.EqualTo(new[]
                 {
-                    "Navigate", "Submit", "Cancel", "Back", "PageLeft", "PageRight"
+                    "Navigate", "Submit", "Cancel", "Back", "PageLeft", "PageRight",
+                    "Point", "Click", "ScrollWheel"
                 }));
             var actualIds = new[] { map.id }
                 .Concat(map.actions.Select(action => action.id))
@@ -178,6 +188,9 @@ namespace Volleyball.Career.EditModeTests
             AssertBindings(map, "PageRight", "KeyboardMouse",
                 "<Keyboard>/pageDown", "<Keyboard>/e");
             AssertBindings(map, "PageRight", "Gamepad", "<Gamepad>/rightShoulder");
+            AssertBindings(map, "Point", "KeyboardMouse", "<Mouse>/position");
+            AssertBindings(map, "Click", "KeyboardMouse", "<Mouse>/leftButton");
+            AssertBindings(map, "ScrollWheel", "KeyboardMouse", "<Mouse>/scroll");
         }
 
         [Test]

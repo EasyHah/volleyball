@@ -3,8 +3,13 @@
   "rootNamespace": "Volleyball.Bootstrap",
   "references": [
     "Volleyball.Shared",
+    "Volleyball.Shared.MatchV2",
     "Volleyball.Match.Presentation",
+    "Volleyball.Career.Domain",
     "Volleyball.Career.Application",
-    "Volleyball.Career.Presentation"
+    "Volleyball.Career.Persistence",
+    "Volleyball.Career.MatchIntegration",
+    "Volleyball.Career.Presentation",
+    "Unity.InputSystem"
   ]
 }
