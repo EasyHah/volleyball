@@ -283,6 +283,71 @@ namespace Volleyball.Career.EditModeTests
                 Is.EqualTo(6));
         }
 
+        [TestCase("dynamic.home.opposite")]
+        [TestCase("dynamic.away.libero")]
+        public void FirstMatchFactory_RebindsNpcIdWhenProtagonistUsesFixtureNamespace(
+            string protagonistId)
+        {
+            var snapshot = CareerSaveV2LifecycleTestData.MatchReadySnapshot();
+            var request = new CareerFirstMatchLaunchRequest(
+                CareerMatchTestData.Versions(),
+                CareerMatchTestData.SessionId,
+                CareerMatchTestData.MatchSeed,
+                snapshot.TeamId.Value,
+                new PlayerId(protagonistId),
+                snapshot.Player.JerseyNumber,
+                snapshot.Fatigue.Value,
+                snapshot.Player.Attributes,
+                CareerMatchPriority.AttackFirst);
+            var factory = new CareerFirstMatchLaunchFactoryV1();
+
+            var first = factory.Create(request);
+            var second = factory.Create(request);
+            var firstIds = first.Teams.SelectMany(team => team.Players)
+                .Select(player => player.PlayerId.Value)
+                .ToArray();
+
+            Assert.That(firstIds.Distinct(StringComparer.Ordinal).Count(), Is.EqualTo(12));
+            Assert.That(firstIds.Count(id => string.Equals(
+                id,
+                protagonistId,
+                StringComparison.Ordinal)), Is.EqualTo(1));
+            Assert.That(
+                second.Teams.SelectMany(team => team.Players)
+                    .Select(player => player.PlayerId.Value),
+                Is.EqualTo(firstIds));
+        }
+
+        [Test]
+        public async Task ConcreteFirstMatchPipeline_ExecutesCommittedFixtureContext()
+        {
+            var snapshot = CareerSaveV2LifecycleTestData.MatchReadySnapshot();
+            var calls = new List<string>();
+            var repository = new MemoryRepository(snapshot, calls);
+            var executor = new CareerMatchExecutorV2(
+                new FixtureMatchRunnerV2(
+                    new VersionedMatchFixtureRepository(
+                        CareerSaveV2LifecycleTestData.ContextBytes(),
+                        CareerSaveV2LifecycleTestData.ResultBytes())));
+            var service = new CareerPendingMatchService(
+                repository,
+                new SpyRandom(calls, CareerMatchTestData.MatchSeed),
+                new CareerFirstMatchLaunchFactoryV1(),
+                executor);
+
+            var result = await service.CreateAndExecuteAsync(
+                Command(snapshot),
+                CancellationToken.None);
+
+            Assert.That(result.Status, Is.EqualTo(CareerPendingMatchFlowStatus.AwaitingSettlement));
+            Assert.That(result.CreationDisposition,
+                Is.EqualTo(CareerPendingCreationDisposition.Created));
+            Assert.That(result.Snapshot.PendingMatch.CanonicalContextUtf8,
+                Is.EqualTo(result.CanonicalContextUtf8));
+            Assert.That(result.CanonicalResultUtf8, Is.Not.Null.And.Not.Empty);
+            Assert.That(result.ResultDigest, Is.Not.Null);
+        }
+
         private static CreatePendingMatchCommand Command(CareerSaveSnapshot snapshot)
         {
             var plan = snapshot.Progression.WeekPlan;

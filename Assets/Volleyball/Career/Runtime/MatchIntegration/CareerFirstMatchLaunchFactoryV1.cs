@@ -21,13 +21,14 @@ namespace Volleyball.Career.MatchIntegration
             }
 
             var npcJerseys = HomeNpcJerseys(request.ProtagonistJerseyNumber);
+            var npcIds = NpcPlayerIds(request.ProtagonistPlayerId);
             var home = new CareerMatchTeamLaunch(
                 request.HomeTeamId,
                 CareerMatchTeamSide.Home,
                 new[]
                 {
                     Player(
-                        "dynamic.home.opposite",
+                        npcIds[0],
                         npcJerseys[0],
                         CareerMatchPlayerPosition.Opposite,
                         1,
@@ -41,28 +42,28 @@ namespace Volleyball.Career.MatchIntegration
                         request.ProtagonistFatigue,
                         request.ProtagonistAttributes),
                     Player(
-                        "dynamic.home.middle",
+                        npcIds[1],
                         npcJerseys[1],
                         CareerMatchPlayerPosition.MiddleBlocker,
                         3,
                         20,
                         6300),
                     Player(
-                        "dynamic.home.setter",
+                        npcIds[2],
                         npcJerseys[2],
                         CareerMatchPlayerPosition.Setter,
                         4,
                         50,
                         6400),
                     Player(
-                        "dynamic.home.outside.b",
+                        npcIds[3],
                         npcJerseys[3],
                         CareerMatchPlayerPosition.OutsideHitter,
                         5,
                         75,
                         6500),
                     Player(
-                        "dynamic.home.libero",
+                        npcIds[4],
                         npcJerseys[4],
                         CareerMatchPlayerPosition.Libero,
                         6,
@@ -74,12 +75,12 @@ namespace Volleyball.Career.MatchIntegration
                 CareerMatchTeamSide.Away,
                 new[]
                 {
-                    Player("dynamic.away.opposite", 1, CareerMatchPlayerPosition.Opposite, 1, 10, 6100),
-                    Player("dynamic.away.outside.a", 2, CareerMatchPlayerPosition.OutsideHitter, 2, 11, 6200),
-                    Player("dynamic.away.middle", 3, CareerMatchPlayerPosition.MiddleBlocker, 3, 20, 6300),
-                    Player("dynamic.away.setter", 4, CareerMatchPlayerPosition.Setter, 4, 50, 6400),
-                    Player("dynamic.away.outside.b", 5, CareerMatchPlayerPosition.OutsideHitter, 5, 75, 6500),
-                    Player("dynamic.away.libero", 6, CareerMatchPlayerPosition.Libero, 6, 100, 6600)
+                    Player(npcIds[5], 1, CareerMatchPlayerPosition.Opposite, 1, 10, 6100),
+                    Player(npcIds[6], 2, CareerMatchPlayerPosition.OutsideHitter, 2, 11, 6200),
+                    Player(npcIds[7], 3, CareerMatchPlayerPosition.MiddleBlocker, 3, 20, 6300),
+                    Player(npcIds[8], 4, CareerMatchPlayerPosition.Setter, 4, 50, 6400),
+                    Player(npcIds[9], 5, CareerMatchPlayerPosition.OutsideHitter, 5, 75, 6500),
+                    Player(npcIds[10], 6, CareerMatchPlayerPosition.Libero, 6, 100, 6600)
                 });
 
             return new CareerMatchLaunch(
@@ -95,6 +96,44 @@ namespace Volleyball.Career.MatchIntegration
                 new CareerMatchFormat("indoor_6v6", 6, 1, 25, 2),
                 MapPriority(request.PreMatchPriority),
                 new[] { home, away });
+        }
+
+        private static string[] NpcPlayerIds(PlayerId protagonistPlayerId)
+        {
+            var canonicalIds = new[]
+            {
+                "dynamic.home.opposite",
+                "dynamic.home.middle",
+                "dynamic.home.setter",
+                "dynamic.home.outside.b",
+                "dynamic.home.libero",
+                "dynamic.away.opposite",
+                "dynamic.away.outside.a",
+                "dynamic.away.middle",
+                "dynamic.away.setter",
+                "dynamic.away.outside.b",
+                "dynamic.away.libero"
+            };
+            var assigned = new HashSet<string>(StringComparer.Ordinal)
+            {
+                protagonistPlayerId.Value
+            };
+            var result = new string[canonicalIds.Length];
+            for (var index = 0; index < canonicalIds.Length; index++)
+            {
+                var canonicalId = canonicalIds[index];
+                var candidate = canonicalId;
+                var suffix = 1;
+                while (!assigned.Add(candidate))
+                {
+                    candidate = canonicalId + ".npc" + suffix;
+                    suffix++;
+                }
+
+                result[index] = candidate;
+            }
+
+            return result;
         }
 
         private static int[] HomeNpcJerseys(int protagonistJersey)
