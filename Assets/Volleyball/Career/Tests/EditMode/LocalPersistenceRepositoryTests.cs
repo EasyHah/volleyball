@@ -258,7 +258,7 @@ namespace Volleyball.Career.EditModeTests
             var mainBytes = _system.ReadAllBytes(mainPath);
             var unsupportedBackupBytes = System.Text.Encoding.UTF8.GetBytes(
                 System.Text.Encoding.UTF8.GetString(mainBytes)
-                    .Replace("\"schemaVersion\":1", "\"schemaVersion\":2"));
+                    .Replace("\"schemaVersion\":2", "\"schemaVersion\":3"));
             _system.CreateFileDurably(backupPath, unsupportedBackupBytes);
 
             var result = repository.Commit(
@@ -271,6 +271,35 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
             Assert.That(_system.ReadAllBytes(mainPath), Is.EqualTo(mainBytes));
             Assert.That(_system.ReadAllBytes(backupPath), Is.EqualTo(unsupportedBackupBytes));
+        }
+
+        [TestCase(1, false)]
+        [TestCase(1, true)]
+        [TestCase(3, false)]
+        [TestCase(3, true)]
+        public void CareerRepository_LoadPreservesAndRejectsUnsupportedAuthority(
+            int schemaVersion,
+            bool authorityIsBackup)
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var profileId = new ProfileId(new Guid("00000000-0000-0000-0000-000000000001"));
+            var saveId = new SaveId(new Guid("00000000-0000-0000-0000-000000000002"));
+            var unsupportedBytes = schemaVersion == 1
+                ? CareerSaveJsonCodecTests.UnsupportedV1GoldenBytes()
+                : CareerSaveJsonCodecTests.UnsupportedSchema3GoldenBytes();
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            var authorityPath = authorityIsBackup
+                ? _paths.CareerBackupPath(profileId, saveId)
+                : _paths.CareerPath(profileId, saveId);
+            _system.CreateFileDurably(authorityPath, unsupportedBytes);
+
+            var loaded = repository.Load(profileId, saveId);
+
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(authorityPath), Is.EqualTo(unsupportedBytes));
+            Assert.That(
+                _system.FileExists(_paths.CareerPath(profileId, saveId)),
+                Is.EqualTo(!authorityIsBackup));
         }
 
         [Test]
@@ -875,7 +904,7 @@ namespace Volleyball.Career.EditModeTests
             var mainPath = _paths.CareerPath(initial.Identity.ProfileId, initial.Identity.SaveId);
             var unsupportedBytes = System.Text.Encoding.UTF8.GetBytes(
                 System.Text.Encoding.UTF8.GetString(_system.ReadAllBytes(mainPath))
-                    .Replace("\"schemaVersion\":1", "\"schemaVersion\":2"));
+                    .Replace("\"schemaVersion\":2", "\"schemaVersion\":3"));
             _system.OverwriteFileDurably(mainPath, unsupportedBytes);
 
             var recovered = repository.RecoverFromBackup(
@@ -940,6 +969,89 @@ namespace Volleyball.Career.EditModeTests
                 _system.EnumerateFiles(
                     _paths.CareerQuarantineDirectory(initial.Identity.ProfileId)),
                 Has.Some.Matches<string>(path => path.Contains(".corrupt.")));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void CareerRepository_RealLifecycleBackupRecoveryPreservesEvidenceAndRebindsLineage(
+            bool settled)
+        {
+            var repository = new LocalCareerSaveRepository(_paths, _system);
+            var source = settled
+                ? CareerSaveV2LifecycleTestData.SettledSnapshot()
+                : CareerSaveV2LifecycleTestData.AwaitingMatchSnapshot();
+            var backup = CareerSaveJsonCodec.Seal(source);
+            Directory.CreateDirectory(_paths.CareersDirectory(backup.Identity.ProfileId));
+            _system.CreateFileDurably(
+                _paths.CareerBackupPath(
+                    backup.Identity.ProfileId,
+                    backup.Identity.SaveId),
+                CareerSaveJsonCodec.Serialize(backup));
+            var corruptBytes = new byte[] { 0xff, 0x00, 0x7b, 0x01 };
+            _system.CreateFileDurably(
+                _paths.CareerPath(backup.Identity.ProfileId, backup.Identity.SaveId),
+                corruptBytes);
+
+            var offered = repository.Load(
+                backup.Identity.ProfileId,
+                backup.Identity.SaveId);
+            var newLineage = new LineageId(Guid.NewGuid());
+            var result = repository.RecoverFromBackup(
+                backup.Identity.ProfileId,
+                backup.Identity.SaveId,
+                backup.Identity.VersionToken,
+                RawHash(corruptBytes),
+                new OperationId(Guid.NewGuid()),
+                backup.Identity.UpdatedAtUtcMs + 1,
+                newLineage);
+
+            Assert.That(offered.Kind, Is.EqualTo(PersistenceResultKind.RecoveryAvailable));
+            Assert.That(result.Kind, Is.EqualTo(PersistenceResultKind.Loaded));
+            Assert.That(result.Snapshot.Identity.LineageId, Is.EqualTo(newLineage));
+            Assert.That(
+                result.Snapshot.Identity.RestoredFromVersionToken,
+                Is.EqualTo(backup.Identity.VersionToken));
+            Assert.That(
+                result.Snapshot.OperationReceipts,
+                Has.All.Matches<OperationReceipt>(receipt =>
+                    receipt.AppliedLineageId.Equals(newLineage)));
+            if (!settled)
+            {
+                Assert.That(result.Snapshot.PendingMatch, Is.Not.Null);
+                Assert.That(
+                    result.Snapshot.PendingMatch.SessionId,
+                    Is.EqualTo(backup.PendingMatch.SessionId));
+                Assert.That(
+                    result.Snapshot.PendingMatch.ContextDigest,
+                    Is.EqualTo(backup.PendingMatch.ContextDigest));
+                Assert.That(
+                    result.Snapshot.PendingMatch.CanonicalContextUtf8,
+                    Is.EqualTo(backup.PendingMatch.CanonicalContextUtf8));
+                Assert.That(
+                    result.Snapshot.PendingMatch.CreatedLineageId,
+                    Is.EqualTo(newLineage));
+            }
+            else
+            {
+                Assert.That(result.Snapshot.PendingMatch, Is.Null);
+                Assert.That(result.Snapshot.MatchHistory, Has.Count.EqualTo(1));
+                Assert.That(result.Snapshot.SettlementReceipts, Has.Count.EqualTo(1));
+                Assert.That(
+                    result.Snapshot.MatchHistory[0].CanonicalContextUtf8,
+                    Is.EqualTo(backup.MatchHistory[0].CanonicalContextUtf8));
+                Assert.That(
+                    result.Snapshot.MatchHistory[0].CanonicalResultUtf8,
+                    Is.EqualTo(backup.MatchHistory[0].CanonicalResultUtf8));
+                Assert.That(
+                    result.Snapshot.MatchHistory[0].SettlementSummary,
+                    Is.EqualTo(backup.MatchHistory[0].SettlementSummary));
+                Assert.That(
+                    result.Snapshot.MatchHistory[0].AppliedLineageId,
+                    Is.EqualTo(newLineage));
+                Assert.That(
+                    result.Snapshot.SettlementReceipts[0].AppliedLineageId,
+                    Is.EqualTo(newLineage));
+            }
         }
 
         [Test]
@@ -1796,7 +1908,7 @@ namespace Volleyball.Career.EditModeTests
             var careerPath = _paths.CareerPath(profileId, career.Identity.SaveId);
             var unsupportedBytes = System.Text.Encoding.UTF8.GetBytes(
                 System.Text.Encoding.UTF8.GetString(_system.ReadAllBytes(careerPath))
-                    .Replace("\"schemaVersion\":1", "\"schemaVersion\":2"));
+                    .Replace("\"schemaVersion\":2", "\"schemaVersion\":3"));
             _system.OverwriteFileDurably(careerPath, unsupportedBytes);
 
             var rebuilt = profileRepository.RebuildCareerIndex(
@@ -1810,7 +1922,32 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void CareerRepository_LoadPreservesAndRejectsAnUnknownCareerVersionAxis()
+        public void ProfileIndex_RebuildPreservesCareerAndProfileBytesForUnsupportedV1Authority()
+        {
+            var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
+            var profileId = new ProfileId(new Guid("00000000-0000-0000-0000-000000000001"));
+            var saveId = new SaveId(new Guid("00000000-0000-0000-0000-000000000002"));
+            profileRepository.Create(
+                CareerPersistenceTestData.Profile(profileId),
+                new OperationId(Guid.NewGuid()));
+            var profilePath = _paths.ProfilePath(profileId);
+            var profileBytes = _system.ReadAllBytes(profilePath);
+            var unsupportedBytes = CareerSaveJsonCodecTests.UnsupportedV1GoldenBytes();
+            Directory.CreateDirectory(_paths.CareersDirectory(profileId));
+            var careerPath = _paths.CareerPath(profileId, saveId);
+            _system.CreateFileDurably(careerPath, unsupportedBytes);
+
+            var rebuilt = profileRepository.RebuildCareerIndex(
+                profileId,
+                new OperationId(Guid.NewGuid()));
+
+            Assert.That(rebuilt.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(_system.ReadAllBytes(careerPath), Is.EqualTo(unsupportedBytes));
+            Assert.That(_system.ReadAllBytes(profilePath), Is.EqualTo(profileBytes));
+        }
+
+        [Test]
+        public void CareerRepository_LoadQuarantinesUnknownCareerVersionAxisWithoutChangingBytes()
         {
             var repository = new LocalCareerSaveRepository(_paths, _system);
             var career = CreateCareer(repository);
@@ -1828,12 +1965,16 @@ namespace Volleyball.Career.EditModeTests
                 career.Identity.ProfileId,
                 career.Identity.SaveId);
 
-            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
-            Assert.That(_system.ReadAllBytes(careerPath), Is.EqualTo(unsupportedBytes));
+            Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.Corrupt));
+            Assert.That(_system.FileExists(careerPath), Is.False);
+            var quarantined = new List<string>(_system.EnumerateFiles(
+                _paths.CareerQuarantineDirectory(career.Identity.ProfileId)));
+            Assert.That(quarantined, Has.Count.EqualTo(1));
+            Assert.That(_system.ReadAllBytes(quarantined[0]), Is.EqualTo(unsupportedBytes));
         }
 
         [Test]
-        public void ProfileIndex_RebuildPreservesAndRejectsAnUnknownCareerVersionAxis()
+        public void ProfileIndex_RebuildMarksAnUnknownCareerVersionAxisCorrupt()
         {
             var profileRepository = new LocalPlayerProfileRepository(_paths, _system);
             var careerRepository = new LocalCareerSaveRepository(_paths, _system);
@@ -1859,9 +2000,12 @@ namespace Volleyball.Career.EditModeTests
                 new OperationId(Guid.NewGuid()));
 
             Assert.That(indexed.Kind, Is.EqualTo(PersistenceResultKind.Committed));
-            Assert.That(rebuilt.Kind, Is.EqualTo(PersistenceResultKind.UnsupportedVersion));
+            Assert.That(rebuilt.Kind, Is.EqualTo(PersistenceResultKind.Committed));
+            Assert.That(
+                rebuilt.Profile.CareerEntries[0].Loadability,
+                Is.EqualTo(CareerLoadability.Corrupt));
             Assert.That(_system.ReadAllBytes(careerPath), Is.EqualTo(unsupportedBytes));
-            Assert.That(_system.ReadAllBytes(_paths.ProfilePath(profileId)), Is.EqualTo(profileBytes));
+            Assert.That(_system.ReadAllBytes(_paths.ProfilePath(profileId)), Is.Not.EqualTo(profileBytes));
         }
 
         [Test]

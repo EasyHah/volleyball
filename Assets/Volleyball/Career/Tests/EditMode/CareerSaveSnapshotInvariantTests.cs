@@ -9,21 +9,24 @@ namespace Volleyball.Career.EditModeTests
     public sealed class CareerSaveSnapshotInvariantTests
     {
         [Test]
-        public void CurrentVersions_ContainOnlyFourPositiveCareerAxes()
+        public void CurrentVersions_ContainFivePositiveCareerAxesInCanonicalOrder()
         {
             var versions = CareerSaveVersions.Current;
 
-            Assert.That(versions.SchemaVersion, Is.EqualTo(1));
+            Assert.That(versions.SchemaVersion, Is.EqualTo(2));
             Assert.That(versions.ContentVersion, Is.EqualTo(1));
             Assert.That(versions.RulesetVersion, Is.EqualTo(1));
+            Assert.That(versions.ContractVersion, Is.EqualTo(2));
             Assert.That(versions.CareerRandomAlgorithmVersion, Is.EqualTo(1));
-            Assert.That(typeof(CareerSaveVersions).GetProperty("ContractVersion"), Is.Null);
             Assert.That(typeof(CareerSaveVersions).GetProperty("MatchSimulationVersion"), Is.Null);
             Assert.That(
-                () => new CareerSaveVersions(0, 1, 1, 1),
+                () => new CareerSaveVersions(0, 1, 1, 2, 1),
                 Throws.TypeOf<ArgumentOutOfRangeException>());
             Assert.That(
-                () => new CareerSaveVersions(1, 1, 1, 0),
+                () => new CareerSaveVersions(2, 1, 1, 0, 1),
+                Throws.TypeOf<ArgumentOutOfRangeException>());
+            Assert.That(
+                () => new CareerSaveVersions(2, 1, 1, 2, 0),
                 Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 

@@ -806,57 +806,9 @@ namespace Volleyball.Career.Persistence
                 return false;
             }
 
-            try
-            {
-                var root = StrictJsonReader.Parse(_fileSystem.ReadAllBytes(path));
-                if (root.Kind != StrictJsonKind.Object)
-                {
-                    return false;
-                }
-
-                var versionsValue = root.ObjectValue.Get("versions");
-                if (versionsValue.Kind != StrictJsonKind.Object)
-                {
-                    return false;
-                }
-
-                var versions = versionsValue.ObjectValue;
-                if (versions.ContainsUnknownProperty(
-                        "schemaVersion",
-                        "contentVersion",
-                        "rulesetVersion",
-                        "careerRandomAlgorithmVersion"))
-                {
-                    return true;
-                }
-
-                return VersionInteger(versions.Get("schemaVersion")) !=
-                       CareerSaveVersions.Current.SchemaVersion ||
-                       VersionInteger(versions.Get("contentVersion")) !=
-                       CareerSaveVersions.Current.ContentVersion ||
-                       VersionInteger(versions.Get("rulesetVersion")) !=
-                       CareerSaveVersions.Current.RulesetVersion ||
-                       VersionInteger(versions.Get("careerRandomAlgorithmVersion")) !=
-                       CareerSaveVersions.Current.CareerRandomAlgorithmVersion;
-            }
-            catch (FormatException)
-            {
-                return false;
-            }
-            catch (KeyNotFoundException)
-            {
-                return false;
-            }
-        }
-
-        private static long VersionInteger(StrictJsonValue value)
-        {
-            if (value.Kind != StrictJsonKind.Integer)
-            {
-                throw new FormatException("A version field must be an integer.");
-            }
-
-            return value.IntegerValue;
+            return CareerSaveVersionClassifier.Classify(
+                       _fileSystem.ReadAllBytes(path)).Kind ==
+                   CareerSaveVersionClassification.Unsupported;
         }
 
         private CareerSaveSnapshot ReadCareer(string path, ProfileId profileId, SaveId saveId)

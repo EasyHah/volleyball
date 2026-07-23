@@ -38,7 +38,8 @@ namespace Volleyball.Career.EditModeTests
                 "\"kind\":\"specialized_training\",\"contentId\":\"week_action.specialized.spike\"",
                 text);
             StringAssert.Contains(
-                "\"pendingEvent\":null},\"trainingEmphases\":[],\"player\":",
+                "\"pendingEvent\":null,\"matchSessionId\":null}," +
+                "\"trainingEmphases\":[],\"pendingMatch\":null,\"player\":",
                 text);
         }
 

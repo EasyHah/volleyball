@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using Volleyball.Career.Domain;
 using Volleyball.Career.Persistence;
@@ -9,6 +11,87 @@ namespace Volleyball.Career.EditModeTests
 {
     public sealed class CareerSaveSnapshotMappingTests
     {
+        [Test]
+        public void SchemaV2Document_UsesTheBoundCanonicalRootAndVersionFieldOrder()
+        {
+            Assert.That(
+                typeof(CareerSaveSnapshotMapper).GetMethod("ToDocument")?.ReturnType,
+                Is.EqualTo(typeof(CareerSaveDocumentV2)));
+            Assert.That(
+                typeof(CareerSaveDocumentV2)
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public)
+                    .Select(field => field.Name),
+                Is.EqualTo(new[]
+                {
+                    "versions", "identity", "integrity", "careerSeed", "careerName",
+                    "playerDraft", "onboarding", "progression", "trainingEmphases",
+                    "pendingMatch", "player", "teamId", "potentialGrade", "fatigue",
+                    "mindset", "coachTrust", "matchHistory", "operationReceipts",
+                    "settlementReceipts"
+                }));
+            Assert.That(
+                typeof(CareerSaveVersionsDocumentV2)
+                    .GetFields(BindingFlags.Instance | BindingFlags.Public)
+                    .Select(field => field.Name),
+                Is.EqualTo(new[]
+                {
+                    "schemaVersion", "contentVersion", "rulesetVersion",
+                    "contractVersion", "careerRandomAlgorithmVersion"
+                }));
+        }
+
+        [Test]
+        public void RoundTrip_PreservesAwaitingMatchCanonicalBytesAndCreationReceiptShape()
+        {
+            var source = CareerSaveV2LifecycleTestData.AwaitingMatchSnapshot();
+
+            var document = CareerSaveSnapshotMapper.ToDocument(source);
+            var restored = CareerSaveSnapshotMapper.ToDomain(document);
+
+            Assert.That(document.progression.matchSessionId,
+                Is.EqualTo(source.PendingMatch.SessionId.ToString("D")));
+            Assert.That(document.pendingMatch.sessionId,
+                Is.EqualTo(source.PendingMatch.SessionId.ToString("D")));
+            Assert.That(
+                Convert.FromBase64String(document.pendingMatch.canonicalContextUtf8Base64),
+                Is.EqualTo(source.PendingMatch.CanonicalContextUtf8));
+            Assert.That(restored.Progression.Kind, Is.EqualTo(CareerProgressionKind.AwaitingMatch));
+            Assert.That(restored.Progression.MatchSessionId, Is.EqualTo(source.PendingMatch.SessionId));
+            Assert.That(restored.PendingMatch.CanonicalContextUtf8,
+                Is.EqualTo(source.PendingMatch.CanonicalContextUtf8));
+            Assert.That(restored.PendingMatch.OrderedPlayerIds,
+                Is.EqualTo(source.PendingMatch.OrderedPlayerIds));
+            var creation = restored.OperationReceipts.Single(
+                item => item.OperationKind == OperationKind.CreatePendingMatch);
+            Assert.That(creation.Target.MatchSessionId, Is.EqualTo(source.PendingMatch.SessionId));
+            Assert.That(creation.Target.ContextDigest, Is.EqualTo(source.PendingMatch.ContextDigest));
+            Assert.That(creation.OutcomeSummary.MatchSessionId,
+                Is.EqualTo(source.PendingMatch.SessionId));
+        }
+
+        [Test]
+        public void RoundTrip_PreservesSettledHistorySummaryReceiptAndEmptyWeekTwo()
+        {
+            var source = CareerSaveV2LifecycleTestData.SettledSnapshot();
+
+            var document = CareerSaveSnapshotMapper.ToDocument(source);
+            var restored = CareerSaveSnapshotMapper.ToDomain(document);
+
+            Assert.That(document.pendingMatch, Is.Null);
+            Assert.That(document.matchHistory, Has.Length.EqualTo(1));
+            Assert.That(document.settlementReceipts, Has.Length.EqualTo(1));
+            Assert.That(restored.Progression.Kind, Is.EqualTo(CareerProgressionKind.Planning));
+            Assert.That(restored.Progression.WeekPlan.Slots, Is.All.Null);
+            Assert.That(restored.MatchHistory[0].CanonicalContextUtf8,
+                Is.EqualTo(source.MatchHistory[0].CanonicalContextUtf8));
+            Assert.That(restored.MatchHistory[0].CanonicalResultUtf8,
+                Is.EqualTo(source.MatchHistory[0].CanonicalResultUtf8));
+            Assert.That(restored.MatchHistory[0].SettlementSummary,
+                Is.EqualTo(source.MatchHistory[0].SettlementSummary));
+            Assert.That(restored.SettlementReceipts[0].SettlementSummary,
+                Is.EqualTo(source.SettlementReceipts[0].SettlementSummary));
+        }
+
         [TestCase(CareerProgressionKind.CareerCreated)]
         [TestCase(CareerProgressionKind.Tryout)]
         [TestCase(CareerProgressionKind.Planning)]
@@ -268,7 +351,7 @@ namespace Volleyball.Career.EditModeTests
         [Test]
         public void ToDomain_RejectsMissingOrUnsupportedVersions()
         {
-            var documents = new CareerSaveDocumentV1[5];
+            var documents = new CareerSaveDocumentV2[6];
             for (var index = 0; index < documents.Length; index++)
             {
                 documents[index] = CareerSaveSnapshotMapper.ToDocument(
@@ -276,10 +359,11 @@ namespace Volleyball.Career.EditModeTests
             }
 
             documents[0].versions = null;
-            documents[1].versions.schemaVersion = 2;
+            documents[1].versions.schemaVersion = 3;
             documents[2].versions.contentVersion = 2;
             documents[3].versions.rulesetVersion = 2;
-            documents[4].versions.careerRandomAlgorithmVersion = 2;
+            documents[4].versions.contractVersion = 3;
+            documents[5].versions.careerRandomAlgorithmVersion = 2;
 
             for (var index = 0; index < documents.Length; index++)
             {
@@ -333,7 +417,7 @@ namespace Volleyball.Career.EditModeTests
             var outputWithoutChoice = Document(CareerProgressionKind.Tryout);
             outputWithoutChoice.onboarding.stages[1].resolvedOutputs = new[]
             {
-                new TryoutResolvedOutputDocumentV1
+                new TryoutResolvedOutputDocumentV2
                 {
                     outputId = "unexpected",
                     perturbation = 1
@@ -384,7 +468,7 @@ namespace Volleyball.Career.EditModeTests
         public void ToDomain_RejectsReceiptTargetAndRecoveryContradictions()
         {
             var missingCreate = Document(CareerProgressionKind.Planned);
-            var reduced = new OperationReceiptDocumentV1[missingCreate.operationReceipts.Length - 1];
+            var reduced = new OperationReceiptDocumentV2[missingCreate.operationReceipts.Length - 1];
             Array.Copy(missingCreate.operationReceipts, 1, reduced, 0, reduced.Length);
             missingCreate.operationReceipts = reduced;
 
@@ -397,7 +481,7 @@ namespace Volleyball.Career.EditModeTests
 
             var brokenFrontier = Document(CareerProgressionKind.Planned);
             var eventIndex = FindReceiptIndex(brokenFrontier, OperationKind.ResolveEventChoice);
-            var withoutEvent = new OperationReceiptDocumentV1[
+            var withoutEvent = new OperationReceiptDocumentV2[
                 brokenFrontier.operationReceipts.Length - 1];
             var destination = 0;
             for (var index = 0; index < brokenFrontier.operationReceipts.Length; index++)
@@ -438,7 +522,7 @@ namespace Volleyball.Career.EditModeTests
             FindReceiptDocument(createWithOutputs, OperationKind.CreateCareer)
                 .outcomeSummary.tryoutResolvedOutputs = new[]
                 {
-                    new TryoutResolvedOutputDocumentV1
+                    new TryoutResolvedOutputDocumentV2
                     {
                         outputId = "unexpected",
                         perturbation = 1
@@ -447,12 +531,12 @@ namespace Volleyball.Career.EditModeTests
 
             var tryoutWithoutOutputs = Document(CareerProgressionKind.Planned);
             FindReceiptDocument(tryoutWithoutOutputs, OperationKind.ConfirmTryoutStage)
-                .outcomeSummary.tryoutResolvedOutputs = Array.Empty<TryoutResolvedOutputDocumentV1>();
+                .outcomeSummary.tryoutResolvedOutputs = Array.Empty<TryoutResolvedOutputDocumentV2>();
 
             var planWithDelta = Document(CareerProgressionKind.Planned);
             FindReceiptDocument(planWithDelta, OperationKind.ConfirmWeekPlan)
                 .outcomeSummary.growthExperienceDelta =
-                new CareerAttributeGrowthDeltaDocumentV1();
+                new CareerAttributeGrowthDeltaDocumentV2();
 
             var slotMissingStatus = Document(CareerProgressionKind.Planned);
             FindReceiptDocument(slotMissingStatus, OperationKind.ExecuteWeekAction)
@@ -462,7 +546,7 @@ namespace Volleyball.Career.EditModeTests
             FindReceiptDocument(eventWithOutputs, OperationKind.ResolveEventChoice)
                 .outcomeSummary.tryoutResolvedOutputs = new[]
                 {
-                    new TryoutResolvedOutputDocumentV1
+                    new TryoutResolvedOutputDocumentV2
                     {
                         outputId = "unexpected",
                         perturbation = 1
@@ -547,12 +631,12 @@ namespace Volleyball.Career.EditModeTests
             AssertRejected(plannedWithoutPlayer);
         }
 
-        private static CareerSaveDocumentV1 Document(CareerProgressionKind kind)
+        private static CareerSaveDocumentV2 Document(CareerProgressionKind kind)
         {
             return CareerSaveSnapshotMapper.ToDocument(CreateSnapshot(kind));
         }
 
-        private static void AssertRejected(CareerSaveDocumentV1 document)
+        private static void AssertRejected(CareerSaveDocumentV2 document)
         {
             Assert.That(
                 () => CareerSaveSnapshotMapper.ToDomain(document),
@@ -1018,15 +1102,15 @@ namespace Volleyball.Career.EditModeTests
             throw new AssertionException("Receipt not found: " + kind);
         }
 
-        private static OperationReceiptDocumentV1 FindReceiptDocument(
-            CareerSaveDocumentV1 document,
+        private static OperationReceiptDocumentV2 FindReceiptDocument(
+            CareerSaveDocumentV2 document,
             OperationKind kind)
         {
             return document.operationReceipts[FindReceiptIndex(document, kind)];
         }
 
         private static int FindReceiptIndex(
-            CareerSaveDocumentV1 document,
+            CareerSaveDocumentV2 document,
             OperationKind kind,
             int startIndex = 0)
         {

@@ -36,7 +36,7 @@ namespace Volleyball.Career.Application
             try
             {
                 ValidateCreate(command);
-                fingerprint = CareerOperationFingerprintV1.Hash(command);
+                fingerprint = CareerOperationFingerprintV2.Hash(command);
             }
             catch (ArgumentException)
             {
@@ -125,7 +125,7 @@ namespace Volleyball.Career.Application
             try
             {
                 ValidateConfirmCommand(command);
-                fingerprint = CareerOperationFingerprintV1.Hash(
+                fingerprint = CareerOperationFingerprintV2.Hash(
                     command,
                     snapshot.Onboarding.Stages[command.StageNumber - 1].OccurrenceId);
             }
@@ -668,6 +668,7 @@ namespace Volleyball.Career.Application
             if (versions.SchemaVersion != CareerSaveVersions.CurrentSchemaVersion ||
                 versions.ContentVersion != CareerSaveVersions.CurrentContentVersion ||
                 versions.RulesetVersion != CareerSaveVersions.CurrentRulesetVersion ||
+                versions.ContractVersion != CareerSaveVersions.CurrentContractVersion ||
                 versions.CareerRandomAlgorithmVersion !=
                 CareerSaveVersions.CurrentCareerRandomAlgorithmVersion)
             {

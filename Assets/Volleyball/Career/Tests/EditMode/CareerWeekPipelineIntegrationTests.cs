@@ -304,20 +304,20 @@ namespace Volleyball.Career.EditModeTests
 
             var expectedFingerprints = new[]
             {
-                CareerOperationFingerprintV1.Hash(onboarding.Create),
-                CareerOperationFingerprintV1.Hash(
+                CareerOperationFingerprintV2.Hash(onboarding.Create),
+                CareerOperationFingerprintV2.Hash(
                     onboarding.First,
                     onboarding.Create.TryoutOccurrenceIds[0]),
-                CareerOperationFingerprintV1.Hash(
+                CareerOperationFingerprintV2.Hash(
                     onboarding.Second,
                     onboarding.Create.TryoutOccurrenceIds[1]),
-                CareerOperationFingerprintV1.Hash(
+                CareerOperationFingerprintV2.Hash(
                     onboarding.Third,
                     onboarding.Create.TryoutOccurrenceIds[2]),
-                CareerOperationFingerprintV1.Hash(confirm),
-                CareerOperationFingerprintV1.Hash(slot1),
-                CareerOperationFingerprintV1.Hash(resolve),
-                CareerOperationFingerprintV1.Hash(slot2)
+                CareerOperationFingerprintV2.Hash(confirm),
+                CareerOperationFingerprintV2.Hash(slot1),
+                CareerOperationFingerprintV2.Hash(resolve),
+                CareerOperationFingerprintV2.Hash(slot2)
             };
             Assert.That(
                 final.OperationReceipts.Select(receipt => receipt.InputFingerprint),

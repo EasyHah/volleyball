@@ -21,7 +21,7 @@ namespace Volleyball.Career.EditModeTests
             "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
         [Test]
-        public void FingerprintV1_HasLockedCanonicalCreateAndConfirmBytesAndHashes()
+        public void FingerprintV2_HasLockedCanonicalCreateAndConfirmBytesAndHashes()
         {
             var create = CreateCommand();
             var confirm = ConfirmCommand(
@@ -31,22 +31,22 @@ namespace Volleyball.Career.EditModeTests
                 "tryout.attack.choice.power",
                 NewOperation(21));
             const string createJson =
-                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"create_career\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"lineageId\":\"33333333-3333-3333-3333-333333333333\",\"playerId\":\"player.one\",\"careerName\":\"First Career\",\"playerName\":\"Player One\",\"jerseyNumber\":7,\"tryoutOccurrenceIds\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\",\"00000000-0000-0000-0000-000000000003\"],\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+                "{\"fingerprintSchemaVersion\":2,\"operationKind\":\"create_career\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"lineageId\":\"33333333-3333-3333-3333-333333333333\",\"playerId\":\"player.one\",\"careerName\":\"First Career\",\"playerName\":\"Player One\",\"jerseyNumber\":7,\"tryoutOccurrenceIds\":[\"00000000-0000-0000-0000-000000000001\",\"00000000-0000-0000-0000-000000000002\",\"00000000-0000-0000-0000-000000000003\"],\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}";
             const string confirmJson =
-                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"confirm_tryout_stage\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":1,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"stageNumber\":1,\"choiceId\":\"tryout.attack.choice.power\",\"tryoutOccurrenceId\":\"00000000-0000-0000-0000-000000000001\",\"weekPlanId\":null,\"matchSlotActionId\":null,\"matchOccurrenceId\":null,\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+                "{\"fingerprintSchemaVersion\":2,\"operationKind\":\"confirm_tryout_stage\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":1,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"stageNumber\":1,\"choiceId\":\"tryout.attack.choice.power\",\"tryoutOccurrenceId\":\"00000000-0000-0000-0000-000000000001\",\"weekPlanId\":null,\"matchSlotActionId\":null,\"matchOccurrenceId\":null,\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}";
 
             Assert.That(
-                Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(create)),
+                Encoding.UTF8.GetString(CareerOperationFingerprintV2.Encode(create)),
                 Is.EqualTo(createJson));
             Assert.That(
-                CareerOperationFingerprintV1.Hash(create).Value,
-                Is.EqualTo("85e1107c2f4cd368e83923a762162399f08a46aa5984120d60b7bf2f46f39db2"));
+                CareerOperationFingerprintV2.Hash(create).Value,
+                Is.EqualTo("7ad915cb0d726bd16827487df99ee3bd3e9f386e8fd8d145def04610433986bd"));
             Assert.That(
-                Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(confirm, Occurrence(1))),
+                Encoding.UTF8.GetString(CareerOperationFingerprintV2.Encode(confirm, Occurrence(1))),
                 Is.EqualTo(confirmJson));
             Assert.That(
-                CareerOperationFingerprintV1.Hash(confirm, Occurrence(1)).Value,
-                Is.EqualTo("5ad04826d3ff53b40e44cc7bba28c2c2c49a6a67b5bc8442deb798fb56efbff9"));
+                CareerOperationFingerprintV2.Hash(confirm, Occurrence(1)).Value,
+                Is.EqualTo("b6cb0ea4a55c44e16e504e9363af4a5704c38f494426dbc5ed1fbd1dc092c116"));
         }
 
         [Test]
@@ -554,7 +554,7 @@ namespace Volleyball.Career.EditModeTests
                 var loaded = repository.Load(create.ProfileId, create.SaveId);
 
                 Assert.That(loaded.Kind, Is.EqualTo(PersistenceResultKind.Loaded));
-                Assert.That(loaded.Snapshot.Versions.SchemaVersion, Is.EqualTo(1));
+                Assert.That(loaded.Snapshot.Versions.SchemaVersion, Is.EqualTo(2));
                 Assert.That(loaded.Snapshot.Identity.VersionToken,
                     Is.EqualTo(snapshot.Identity.VersionToken));
                 Assert.That(loaded.Snapshot.OperationReceipts, Has.Count.EqualTo(4));

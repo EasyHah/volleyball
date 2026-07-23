@@ -7,7 +7,7 @@ using Volleyball.Career.Domain;
 
 namespace Volleyball.Career.Persistence
 {
-    public static class CareerSaveJsonCodec
+    public static partial class CareerSaveJsonCodec
     {
         public static CareerSaveSnapshot Seal(CareerSaveSnapshot candidate)
         {
@@ -60,6 +60,18 @@ namespace Volleyball.Career.Persistence
                 throw new ArgumentNullException(nameof(utf8Json));
             }
 
+            var classification = CareerSaveVersionClassifier.Classify(utf8Json);
+            if (classification.Kind == CareerSaveVersionClassification.Unsupported)
+            {
+                throw new CareerSaveVersionNotSupportedException(
+                    classification.ObservedSchemaVersion);
+            }
+
+            if (classification.Kind == CareerSaveVersionClassification.Malformed)
+            {
+                throw new FormatException("The Career save version envelope is malformed.");
+            }
+
             var root = StrictJsonReader.Parse(utf8Json);
             var document = ReadDocument(root);
 
@@ -71,7 +83,7 @@ namespace Volleyball.Career.Persistence
             catch (ArgumentException exception)
             {
                 throw new FormatException(
-                    "The Career save violates Schema V1 domain invariants.",
+                    "The Career save violates Schema V2 domain invariants.",
                     exception);
             }
 
@@ -88,13 +100,13 @@ namespace Volleyball.Career.Persistence
             if (!BytesEqual(canonicalBytes, utf8Json))
             {
                 throw new FormatException(
-                    "The Career save is valid JSON but is not the canonical Schema V1 byte sequence.");
+                    "The Career save is valid JSON but is not the canonical Schema V2 byte sequence.");
             }
 
             return snapshot;
         }
 
-        private static string ComputeDocumentHash(CareerSaveDocumentV1 document)
+        private static string ComputeDocumentHash(CareerSaveDocumentV2 document)
         {
             var canonicalBytes = WriteDocument(document, false);
             using (var sha256 = SHA256.Create())
@@ -104,7 +116,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static byte[] WriteDocument(
-            CareerSaveDocumentV1 document,
+            CareerSaveDocumentV2 document,
             bool includeSnapshotHash)
         {
             if (document == null)
@@ -132,6 +144,8 @@ namespace Volleyball.Career.Persistence
             WriteProgression(writer, document.progression);
             writer.WritePropertyName("trainingEmphases");
             WriteTrainingEmphases(writer, document.trainingEmphases);
+            writer.WritePropertyName("pendingMatch");
+            WritePendingMatch(writer, document.pendingMatch);
             writer.WritePropertyName("player");
             WritePlayer(writer, document.player);
             writer.WritePropertyName("teamId");
@@ -144,15 +158,19 @@ namespace Volleyball.Career.Persistence
             writer.WriteNullableInt32(document.mindset);
             writer.WritePropertyName("coachTrust");
             writer.WriteNullableInt32(document.coachTrust);
+            writer.WritePropertyName("matchHistory");
+            WriteMatchHistory(writer, document.matchHistory);
             writer.WritePropertyName("operationReceipts");
             WriteOperationReceipts(writer, document.operationReceipts);
+            writer.WritePropertyName("settlementReceipts");
+            WriteSettlementReceipts(writer, document.settlementReceipts);
             writer.WriteEndObject();
             return writer.ToUtf8Bytes();
         }
 
         private static void WriteVersions(
             CanonicalJsonWriter writer,
-            CareerSaveVersionsDocumentV1 document)
+            CareerSaveVersionsDocumentV2 document)
         {
             RequireWriteValue(document, "versions");
             writer.WriteStartObject();
@@ -162,6 +180,8 @@ namespace Volleyball.Career.Persistence
             writer.WriteInt64(document.contentVersion);
             writer.WritePropertyName("rulesetVersion");
             writer.WriteInt64(document.rulesetVersion);
+            writer.WritePropertyName("contractVersion");
+            writer.WriteInt64(document.contractVersion);
             writer.WritePropertyName("careerRandomAlgorithmVersion");
             writer.WriteInt64(document.careerRandomAlgorithmVersion);
             writer.WriteEndObject();
@@ -169,7 +189,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteIdentity(
             CanonicalJsonWriter writer,
-            CareerSaveIdentityDocumentV1 document)
+            CareerSaveIdentityDocumentV2 document)
         {
             RequireWriteValue(document, "identity");
             writer.WriteStartObject();
@@ -192,7 +212,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteVersionToken(
             CanonicalJsonWriter writer,
-            CareerVersionTokenDocumentV1 document)
+            CareerVersionTokenDocumentV2 document)
         {
             if (document == null)
             {
@@ -212,7 +232,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteIntegrity(
             CanonicalJsonWriter writer,
-            CareerSaveIntegrityDocumentV1 document,
+            CareerSaveIntegrityDocumentV2 document,
             bool includeSnapshotHash)
         {
             RequireWriteValue(document, "integrity");
@@ -228,7 +248,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WritePlayerDraft(
             CanonicalJsonWriter writer,
-            CareerPlayerDraftDocumentV1 document)
+            CareerPlayerDraftDocumentV2 document)
         {
             RequireWriteValue(document, "playerDraft");
             writer.WriteStartObject();
@@ -243,7 +263,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteOnboarding(
             CanonicalJsonWriter writer,
-            TryoutOnboardingDocumentV1 document)
+            TryoutOnboardingDocumentV2 document)
         {
             RequireWriteValue(document, "onboarding");
             writer.WriteStartObject();
@@ -265,7 +285,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteTryoutStage(
             CanonicalJsonWriter writer,
-            TryoutStageDocumentV1 document)
+            TryoutStageDocumentV2 document)
         {
             RequireWriteValue(document, "onboarding.stages[]");
             writer.WriteStartObject();
@@ -284,7 +304,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteResolvedOutputs(
             CanonicalJsonWriter writer,
-            TryoutResolvedOutputDocumentV1[] documents)
+            TryoutResolvedOutputDocumentV2[] documents)
         {
             RequireWriteValue(documents, "tryoutResolvedOutputs");
             writer.WriteStartArray();
@@ -305,7 +325,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteProgression(
             CanonicalJsonWriter writer,
-            CareerProgressionDocumentV1 document)
+            CareerProgressionDocumentV2 document)
         {
             RequireWriteValue(document, "progression");
             writer.WriteStartObject();
@@ -321,12 +341,14 @@ namespace Volleyball.Career.Persistence
             writer.WriteInt64(document.nextSlotNumber);
             writer.WritePropertyName("pendingEvent");
             WritePendingEvent(writer, document.pendingEvent);
+            writer.WritePropertyName("matchSessionId");
+            writer.WriteNullableString(document.matchSessionId);
             writer.WriteEndObject();
         }
 
         private static void WriteWeekPlan(
             CanonicalJsonWriter writer,
-            CareerWeekPlanDocumentV1 document)
+            CareerWeekPlanDocumentV2 document)
         {
             if (document == null)
             {
@@ -357,7 +379,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteWeekAction(
             CanonicalJsonWriter writer,
-            CareerWeekActionDocumentV1 document)
+            CareerWeekActionDocumentV2 document)
         {
             if (document == null)
             {
@@ -379,7 +401,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteTrainingEmphases(
             CanonicalJsonWriter writer,
-            TrainingEmphasisContributionDocumentV1[] documents)
+            TrainingEmphasisContributionDocumentV2[] documents)
         {
             RequireWriteValue(documents, "trainingEmphases");
             writer.WriteStartArray();
@@ -402,7 +424,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WritePendingEvent(
             CanonicalJsonWriter writer,
-            PendingCareerEventDocumentV1 document)
+            PendingCareerEventDocumentV2 document)
         {
             if (document == null)
             {
@@ -439,7 +461,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteEventOption(
             CanonicalJsonWriter writer,
-            CareerEventOptionEffectDocumentV1 document)
+            CareerEventOptionEffectDocumentV2 document)
         {
             RequireWriteValue(document, "progression.pendingEvent.options[]");
             writer.WriteStartObject();
@@ -458,7 +480,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteGrowthDelta(
             CanonicalJsonWriter writer,
-            CareerAttributeGrowthDeltaDocumentV1 document)
+            CareerAttributeGrowthDeltaDocumentV2 document)
         {
             if (document == null)
             {
@@ -488,7 +510,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WritePlayer(
             CanonicalJsonWriter writer,
-            CareerPlayerDocumentV1 document)
+            CareerPlayerDocumentV2 document)
         {
             if (document == null)
             {
@@ -510,7 +532,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteAttributes(
             CanonicalJsonWriter writer,
-            CareerPlayerAttributesDocumentV1 document)
+            CareerPlayerAttributesDocumentV2 document)
         {
             RequireWriteValue(document, "player.attributes");
             writer.WriteStartObject();
@@ -535,7 +557,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteAttributeProgress(
             CanonicalJsonWriter writer,
-            CareerAttributeProgressDocumentV1 document)
+            CareerAttributeProgressDocumentV2 document)
         {
             RequireWriteValue(document, "player.attributes[]");
             writer.WriteStartObject();
@@ -548,7 +570,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteOperationReceipts(
             CanonicalJsonWriter writer,
-            OperationReceiptDocumentV1[] documents)
+            OperationReceiptDocumentV2[] documents)
         {
             RequireWriteValue(documents, "operationReceipts");
             writer.WriteStartArray();
@@ -583,7 +605,7 @@ namespace Volleyball.Career.Persistence
 
         private static void WriteReceiptTarget(
             CanonicalJsonWriter writer,
-            OperationReceiptTargetDocumentV1 document)
+            OperationReceiptTargetDocumentV2 document)
         {
             RequireWriteValue(document, "operationReceipts[].target");
             writer.WriteStartObject();
@@ -603,12 +625,18 @@ namespace Volleyball.Career.Persistence
             writer.WriteNullableString(document.eventOccurrenceId);
             writer.WritePropertyName("optionId");
             writer.WriteNullableString(document.optionId);
+            writer.WritePropertyName("matchSessionId");
+            writer.WriteNullableString(document.matchSessionId);
+            writer.WritePropertyName("scheduleItemId");
+            writer.WriteNullableString(document.scheduleItemId);
+            writer.WritePropertyName("contextHash");
+            writer.WriteNullableString(document.contextHash);
             writer.WriteEndObject();
         }
 
         private static void WriteOutcomeSummary(
             CanonicalJsonWriter writer,
-            OperationOutcomeSummaryDocumentV1 document)
+            OperationOutcomeSummaryDocumentV2 document)
         {
             RequireWriteValue(document, "operationReceipts[].outcomeSummary");
             writer.WriteStartObject();
@@ -622,10 +650,14 @@ namespace Volleyball.Career.Persistence
             writer.WriteNullableInt32(document.mindsetDelta);
             writer.WritePropertyName("coachTrustDelta");
             writer.WriteNullableInt32(document.coachTrustDelta);
+            writer.WritePropertyName("matchSessionId");
+            writer.WriteNullableString(document.matchSessionId);
+            writer.WritePropertyName("contextHash");
+            writer.WriteNullableString(document.contextHash);
             writer.WriteEndObject();
         }
 
-        private static CareerSaveDocumentV1 ReadDocument(StrictJsonValue root)
+        private static CareerSaveDocumentV2 ReadDocument(StrictJsonValue root)
         {
             var document = ExactObject(
                 root,
@@ -639,15 +671,18 @@ namespace Volleyball.Career.Persistence
                 "onboarding",
                 "progression",
                 "trainingEmphases",
+                "pendingMatch",
                 "player",
                 "teamId",
                 "potentialGrade",
                 "fatigue",
                 "mindset",
                 "coachTrust",
-                "operationReceipts");
+                "matchHistory",
+                "operationReceipts",
+                "settlementReceipts");
 
-            return new CareerSaveDocumentV1
+            return new CareerSaveDocumentV2
             {
                 versions = ReadVersions(document.Get("versions"), "$.versions"),
                 identity = ReadIdentity(document.Get("identity"), "$.identity"),
@@ -660,6 +695,7 @@ namespace Volleyball.Career.Persistence
                 trainingEmphases = ReadTrainingEmphases(
                     document.Get("trainingEmphases"),
                     "$.trainingEmphases"),
+                pendingMatch = ReadPendingMatch(document.Get("pendingMatch"), "$.pendingMatch"),
                 player = ReadPlayer(document.Get("player"), "$.player"),
                 teamId = NullableString(document.Get("teamId"), "$.teamId"),
                 potentialGrade = NullableString(
@@ -668,13 +704,19 @@ namespace Volleyball.Career.Persistence
                 fatigue = NullableInt32(document.Get("fatigue"), "$.fatigue"),
                 mindset = NullableInt32(document.Get("mindset"), "$.mindset"),
                 coachTrust = NullableInt32(document.Get("coachTrust"), "$.coachTrust"),
+                matchHistory = ReadMatchHistory(
+                    document.Get("matchHistory"),
+                    "$.matchHistory"),
                 operationReceipts = ReadOperationReceipts(
                     document.Get("operationReceipts"),
-                    "$.operationReceipts")
+                    "$.operationReceipts"),
+                settlementReceipts = ReadSettlementReceipts(
+                    document.Get("settlementReceipts"),
+                    "$.settlementReceipts")
             };
         }
 
-        private static CareerSaveVersionsDocumentV1 ReadVersions(
+        private static CareerSaveVersionsDocumentV2 ReadVersions(
             StrictJsonValue value,
             string path)
         {
@@ -684,19 +726,21 @@ namespace Volleyball.Career.Persistence
                 "schemaVersion",
                 "contentVersion",
                 "rulesetVersion",
+                "contractVersion",
                 "careerRandomAlgorithmVersion");
-            return new CareerSaveVersionsDocumentV1
+            return new CareerSaveVersionsDocumentV2
             {
                 schemaVersion = Int32(document.Get("schemaVersion"), path + ".schemaVersion"),
                 contentVersion = Int32(document.Get("contentVersion"), path + ".contentVersion"),
                 rulesetVersion = Int32(document.Get("rulesetVersion"), path + ".rulesetVersion"),
+                contractVersion = Int32(document.Get("contractVersion"), path + ".contractVersion"),
                 careerRandomAlgorithmVersion = Int32(
                     document.Get("careerRandomAlgorithmVersion"),
                     path + ".careerRandomAlgorithmVersion")
             };
         }
 
-        private static CareerSaveIdentityDocumentV1 ReadIdentity(
+        private static CareerSaveIdentityDocumentV2 ReadIdentity(
             StrictJsonValue value,
             string path)
         {
@@ -710,7 +754,7 @@ namespace Volleyball.Career.Persistence
                 "restoredFromVersionToken",
                 "createdAtUtcMs",
                 "updatedAtUtcMs");
-            return new CareerSaveIdentityDocumentV1
+            return new CareerSaveIdentityDocumentV2
             {
                 profileId = RequiredString(document.Get("profileId"), path + ".profileId"),
                 saveId = RequiredString(document.Get("saveId"), path + ".saveId"),
@@ -728,7 +772,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerVersionTokenDocumentV1 ReadVersionToken(
+        private static CareerVersionTokenDocumentV2 ReadVersionToken(
             StrictJsonValue value,
             string path)
         {
@@ -743,7 +787,7 @@ namespace Volleyball.Career.Persistence
                 "lineageId",
                 "revision",
                 "snapshotHash");
-            return new CareerVersionTokenDocumentV1
+            return new CareerVersionTokenDocumentV2
             {
                 lineageId = RequiredString(document.Get("lineageId"), path + ".lineageId"),
                 revision = Int64(document.Get("revision"), path + ".revision"),
@@ -753,12 +797,12 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerSaveIntegrityDocumentV1 ReadIntegrity(
+        private static CareerSaveIntegrityDocumentV2 ReadIntegrity(
             StrictJsonValue value,
             string path)
         {
             var document = ExactObject(value, path, "snapshotHash");
-            return new CareerSaveIntegrityDocumentV1
+            return new CareerSaveIntegrityDocumentV2
             {
                 snapshotHash = RequiredString(
                     document.Get("snapshotHash"),
@@ -766,12 +810,12 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerPlayerDraftDocumentV1 ReadPlayerDraft(
+        private static CareerPlayerDraftDocumentV2 ReadPlayerDraft(
             StrictJsonValue value,
             string path)
         {
             var document = ExactObject(value, path, "playerId", "displayName", "jerseyNumber");
-            return new CareerPlayerDraftDocumentV1
+            return new CareerPlayerDraftDocumentV2
             {
                 playerId = RequiredString(document.Get("playerId"), path + ".playerId"),
                 displayName = RequiredString(document.Get("displayName"), path + ".displayName"),
@@ -779,7 +823,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static TryoutOnboardingDocumentV1 ReadOnboarding(
+        private static TryoutOnboardingDocumentV2 ReadOnboarding(
             StrictJsonValue value,
             string path)
         {
@@ -790,7 +834,7 @@ namespace Volleyball.Career.Persistence
                 "nextStageNumber",
                 "isFormallyEnrolled");
             var stageValues = RequiredArray(document.Get("stages"), path + ".stages");
-            var stages = new TryoutStageDocumentV1[stageValues.Count];
+            var stages = new TryoutStageDocumentV2[stageValues.Count];
             for (var index = 0; index < stages.Length; index++)
             {
                 stages[index] = ReadTryoutStage(
@@ -798,7 +842,7 @@ namespace Volleyball.Career.Persistence
                     path + ".stages[" + index + "]");
             }
 
-            return new TryoutOnboardingDocumentV1
+            return new TryoutOnboardingDocumentV2
             {
                 stages = stages,
                 nextStageNumber = Int32(
@@ -810,7 +854,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static TryoutStageDocumentV1 ReadTryoutStage(
+        private static TryoutStageDocumentV2 ReadTryoutStage(
             StrictJsonValue value,
             string path)
         {
@@ -822,7 +866,7 @@ namespace Volleyball.Career.Persistence
                 "randomVersion",
                 "choiceId",
                 "resolvedOutputs");
-            return new TryoutStageDocumentV1
+            return new TryoutStageDocumentV2
             {
                 stageNumber = Int32(document.Get("stageNumber"), path + ".stageNumber"),
                 occurrenceId = RequiredString(
@@ -838,17 +882,17 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static TryoutResolvedOutputDocumentV1[] ReadResolvedOutputs(
+        private static TryoutResolvedOutputDocumentV2[] ReadResolvedOutputs(
             StrictJsonValue value,
             string path)
         {
             var values = RequiredArray(value, path);
-            var results = new TryoutResolvedOutputDocumentV1[values.Count];
+            var results = new TryoutResolvedOutputDocumentV2[values.Count];
             for (var index = 0; index < results.Length; index++)
             {
                 var itemPath = path + "[" + index + "]";
                 var document = ExactObject(values[index], itemPath, "outputId", "perturbation");
-                results[index] = new TryoutResolvedOutputDocumentV1
+                results[index] = new TryoutResolvedOutputDocumentV2
                 {
                     outputId = RequiredString(document.Get("outputId"), itemPath + ".outputId"),
                     perturbation = Int32(
@@ -860,7 +904,7 @@ namespace Volleyball.Career.Persistence
             return results;
         }
 
-        private static CareerProgressionDocumentV1 ReadProgression(
+        private static CareerProgressionDocumentV2 ReadProgression(
             StrictJsonValue value,
             string path)
         {
@@ -872,8 +916,9 @@ namespace Volleyball.Career.Persistence
                 "tryoutStage",
                 "weekPlan",
                 "nextSlotNumber",
-                "pendingEvent");
-            return new CareerProgressionDocumentV1
+                "pendingEvent",
+                "matchSessionId");
+            return new CareerProgressionDocumentV2
             {
                 kind = RequiredString(document.Get("kind"), path + ".kind"),
                 phase = RequiredString(document.Get("phase"), path + ".phase"),
@@ -884,11 +929,14 @@ namespace Volleyball.Career.Persistence
                     path + ".nextSlotNumber"),
                 pendingEvent = ReadPendingEvent(
                     document.Get("pendingEvent"),
-                    path + ".pendingEvent")
+                    path + ".pendingEvent"),
+                matchSessionId = NullableString(
+                    document.Get("matchSessionId"),
+                    path + ".matchSessionId")
             };
         }
 
-        private static CareerWeekPlanDocumentV1 ReadWeekPlan(
+        private static CareerWeekPlanDocumentV2 ReadWeekPlan(
             StrictJsonValue value,
             string path)
         {
@@ -906,7 +954,7 @@ namespace Volleyball.Career.Persistence
                 "slots",
                 "isConfirmed");
             var slotValues = RequiredArray(document.Get("slots"), path + ".slots");
-            var slots = new CareerWeekActionDocumentV1[slotValues.Count];
+            var slots = new CareerWeekActionDocumentV2[slotValues.Count];
             for (var index = 0; index < slots.Length; index++)
             {
                 slots[index] = ReadWeekAction(
@@ -914,7 +962,7 @@ namespace Volleyball.Career.Persistence
                     path + ".slots[" + index + "]");
             }
 
-            return new CareerWeekPlanDocumentV1
+            return new CareerWeekPlanDocumentV2
             {
                 planId = RequiredString(document.Get("planId"), path + ".planId"),
                 season = Int32(document.Get("season"), path + ".season"),
@@ -924,7 +972,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerWeekActionDocumentV1 ReadWeekAction(
+        private static CareerWeekActionDocumentV2 ReadWeekAction(
             StrictJsonValue value,
             string path)
         {
@@ -940,7 +988,7 @@ namespace Volleyball.Career.Persistence
                 "occurrenceId",
                 "kind",
                 "contentId");
-            return new CareerWeekActionDocumentV1
+            return new CareerWeekActionDocumentV2
             {
                 slotActionId = RequiredString(
                     document.Get("slotActionId"),
@@ -953,12 +1001,12 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static TrainingEmphasisContributionDocumentV1[] ReadTrainingEmphases(
+        private static TrainingEmphasisContributionDocumentV2[] ReadTrainingEmphases(
             StrictJsonValue value,
             string path)
         {
             var values = RequiredArray(value, path);
-            var result = new TrainingEmphasisContributionDocumentV1[values.Count];
+            var result = new TrainingEmphasisContributionDocumentV2[values.Count];
             for (var index = 0; index < result.Length; index++)
             {
                 var itemPath = path + "[" + index + "]";
@@ -968,7 +1016,7 @@ namespace Volleyball.Career.Persistence
                     "sourceSlotActionId",
                     "direction",
                     "bonusBasisPoints");
-                result[index] = new TrainingEmphasisContributionDocumentV1
+                result[index] = new TrainingEmphasisContributionDocumentV2
                 {
                     sourceSlotActionId = RequiredString(
                         document.Get("sourceSlotActionId"),
@@ -985,7 +1033,7 @@ namespace Volleyball.Career.Persistence
             return result;
         }
 
-        private static PendingCareerEventDocumentV1 ReadPendingEvent(
+        private static PendingCareerEventDocumentV2 ReadPendingEvent(
             StrictJsonValue value,
             string path)
         {
@@ -1006,7 +1054,7 @@ namespace Volleyball.Career.Persistence
                 "resumeAtSlotNumber",
                 "options");
             var optionValues = RequiredArray(document.Get("options"), path + ".options");
-            var options = new CareerEventOptionEffectDocumentV1[optionValues.Count];
+            var options = new CareerEventOptionEffectDocumentV2[optionValues.Count];
             for (var index = 0; index < options.Length; index++)
             {
                 options[index] = ReadEventOption(
@@ -1014,7 +1062,7 @@ namespace Volleyball.Career.Persistence
                     path + ".options[" + index + "]");
             }
 
-            return new PendingCareerEventDocumentV1
+            return new PendingCareerEventDocumentV2
             {
                 sourceWeekPlanId = RequiredString(
                     document.Get("sourceWeekPlanId"),
@@ -1039,7 +1087,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerEventOptionEffectDocumentV1 ReadEventOption(
+        private static CareerEventOptionEffectDocumentV2 ReadEventOption(
             StrictJsonValue value,
             string path)
         {
@@ -1051,7 +1099,7 @@ namespace Volleyball.Career.Persistence
                 "fatigueDelta",
                 "mindsetDelta",
                 "coachTrustDelta");
-            return new CareerEventOptionEffectDocumentV1
+            return new CareerEventOptionEffectDocumentV2
             {
                 optionId = RequiredString(document.Get("optionId"), path + ".optionId"),
                 growthExperienceDelta = ReadGrowthDelta(
@@ -1065,7 +1113,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerAttributeGrowthDeltaDocumentV1 ReadGrowthDelta(
+        private static CareerAttributeGrowthDeltaDocumentV2 ReadGrowthDelta(
             StrictJsonValue value,
             string path)
         {
@@ -1085,7 +1133,7 @@ namespace Volleyball.Career.Persistence
                 "movement",
                 "jump",
                 "stamina");
-            return new CareerAttributeGrowthDeltaDocumentV1
+            return new CareerAttributeGrowthDeltaDocumentV2
             {
                 spike = Int64(document.Get("spike"), path + ".spike"),
                 serve = Int64(document.Get("serve"), path + ".serve"),
@@ -1098,7 +1146,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerPlayerDocumentV1 ReadPlayer(StrictJsonValue value, string path)
+        private static CareerPlayerDocumentV2 ReadPlayer(StrictJsonValue value, string path)
         {
             if (value.Kind == StrictJsonKind.Null)
             {
@@ -1112,7 +1160,7 @@ namespace Volleyball.Career.Persistence
                 "displayName",
                 "jerseyNumber",
                 "attributes");
-            return new CareerPlayerDocumentV1
+            return new CareerPlayerDocumentV2
             {
                 playerId = RequiredString(document.Get("playerId"), path + ".playerId"),
                 displayName = RequiredString(document.Get("displayName"), path + ".displayName"),
@@ -1121,7 +1169,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerPlayerAttributesDocumentV1 ReadAttributes(
+        private static CareerPlayerAttributesDocumentV2 ReadAttributes(
             StrictJsonValue value,
             string path)
         {
@@ -1136,7 +1184,7 @@ namespace Volleyball.Career.Persistence
                 "movement",
                 "jump",
                 "stamina");
-            return new CareerPlayerAttributesDocumentV1
+            return new CareerPlayerAttributesDocumentV2
             {
                 spike = ReadAttributeProgress(document.Get("spike"), path + ".spike"),
                 serve = ReadAttributeProgress(document.Get("serve"), path + ".serve"),
@@ -1151,7 +1199,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerAttributeProgressDocumentV1 ReadAttributeProgress(
+        private static CareerAttributeProgressDocumentV2 ReadAttributeProgress(
             StrictJsonValue value,
             string path)
         {
@@ -1160,7 +1208,7 @@ namespace Volleyball.Career.Persistence
                 path,
                 "abilityBasisPoints",
                 "growthExperience");
-            return new CareerAttributeProgressDocumentV1
+            return new CareerAttributeProgressDocumentV2
             {
                 abilityBasisPoints = Int32(
                     document.Get("abilityBasisPoints"),
@@ -1171,12 +1219,12 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static OperationReceiptDocumentV1[] ReadOperationReceipts(
+        private static OperationReceiptDocumentV2[] ReadOperationReceipts(
             StrictJsonValue value,
             string path)
         {
             var values = RequiredArray(value, path);
-            var receipts = new OperationReceiptDocumentV1[values.Count];
+            var receipts = new OperationReceiptDocumentV2[values.Count];
             for (var index = 0; index < receipts.Length; index++)
             {
                 var itemPath = path + "[" + index + "]";
@@ -1192,7 +1240,7 @@ namespace Volleyball.Career.Persistence
                     "completedAtUtcMs",
                     "outcomeKind",
                     "outcomeSummary");
-                receipts[index] = new OperationReceiptDocumentV1
+                receipts[index] = new OperationReceiptDocumentV2
                 {
                     operationId = RequiredString(
                         document.Get("operationId"),
@@ -1227,7 +1275,7 @@ namespace Volleyball.Career.Persistence
             return receipts;
         }
 
-        private static OperationReceiptTargetDocumentV1 ReadReceiptTarget(
+        private static OperationReceiptTargetDocumentV2 ReadReceiptTarget(
             StrictJsonValue value,
             string path)
         {
@@ -1241,8 +1289,11 @@ namespace Volleyball.Career.Persistence
                 "slotActionId",
                 "actionOccurrenceId",
                 "eventOccurrenceId",
-                "optionId");
-            return new OperationReceiptTargetDocumentV1
+                "optionId",
+                "matchSessionId",
+                "scheduleItemId",
+                "contextHash");
+            return new OperationReceiptTargetDocumentV2
             {
                 tryoutStage = Int32(document.Get("tryoutStage"), path + ".tryoutStage"),
                 tryoutOccurrenceId = NullableString(
@@ -1259,11 +1310,20 @@ namespace Volleyball.Career.Persistence
                 eventOccurrenceId = NullableString(
                     document.Get("eventOccurrenceId"),
                     path + ".eventOccurrenceId"),
-                optionId = NullableString(document.Get("optionId"), path + ".optionId")
+                optionId = NullableString(document.Get("optionId"), path + ".optionId"),
+                matchSessionId = NullableString(
+                    document.Get("matchSessionId"),
+                    path + ".matchSessionId"),
+                scheduleItemId = NullableString(
+                    document.Get("scheduleItemId"),
+                    path + ".scheduleItemId"),
+                contextHash = NullableString(
+                    document.Get("contextHash"),
+                    path + ".contextHash")
             };
         }
 
-        private static OperationOutcomeSummaryDocumentV1 ReadOutcomeSummary(
+        private static OperationOutcomeSummaryDocumentV2 ReadOutcomeSummary(
             StrictJsonValue value,
             string path)
         {
@@ -1274,8 +1334,10 @@ namespace Volleyball.Career.Persistence
                 "growthExperienceDelta",
                 "fatigueDelta",
                 "mindsetDelta",
-                "coachTrustDelta");
-            return new OperationOutcomeSummaryDocumentV1
+                "coachTrustDelta",
+                "matchSessionId",
+                "contextHash");
+            return new OperationOutcomeSummaryDocumentV2
             {
                 tryoutResolvedOutputs = ReadResolvedOutputs(
                     document.Get("tryoutResolvedOutputs"),
@@ -1291,7 +1353,13 @@ namespace Volleyball.Career.Persistence
                     path + ".mindsetDelta"),
                 coachTrustDelta = NullableInt32(
                     document.Get("coachTrustDelta"),
-                    path + ".coachTrustDelta")
+                    path + ".coachTrustDelta"),
+                matchSessionId = NullableString(
+                    document.Get("matchSessionId"),
+                    path + ".matchSessionId"),
+                contextHash = NullableString(
+                    document.Get("contextHash"),
+                    path + ".contextHash")
             };
         }
 
@@ -1376,7 +1444,7 @@ namespace Volleyball.Career.Persistence
         {
             if (value == null)
             {
-                throw new InvalidOperationException(path + " is required by Career Schema V1.");
+                throw new InvalidOperationException(path + " is required by Career Schema V2.");
             }
         }
 

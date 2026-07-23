@@ -8,7 +8,7 @@ using Volleyball.Career.Domain;
 
 namespace Volleyball.Career.EditModeTests
 {
-    public sealed class CareerWeekOperationFingerprintV1Tests
+    public sealed class CareerWeekOperationFingerprintV2Tests
     {
         private const string ZeroHash =
             "0000000000000000000000000000000000000000000000000000000000000000";
@@ -44,21 +44,21 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void ConfirmWeekPlanFingerprintV1_HasLockedCanonicalBytesAndHash()
+        public void ConfirmWeekPlanFingerprintV2_HasLockedCanonicalBytesAndHash()
         {
             const string expectedJson =
-                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"confirm_week_plan\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":4,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"planId\":\"44444444-4444-4444-4444-444444444444\",\"season\":1,\"week\":1,\"slots\":[{\"slotActionId\":\"55555555-5555-5555-5555-555555555555\",\"occurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"kind\":\"specialized_training\",\"contentId\":\"week_action.specialized.spike\"},{\"slotActionId\":\"77777777-7777-7777-7777-777777777777\",\"occurrenceId\":\"88888888-8888-8888-8888-888888888888\",\"kind\":\"rest\",\"contentId\":\"week_action.rest.standard\"},{\"slotActionId\":\"99999999-9999-9999-9999-999999999999\",\"occurrenceId\":\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\",\"kind\":\"match\",\"contentId\":\"schedule.u1w1.match.01\"}],\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+                "{\"fingerprintSchemaVersion\":2,\"operationKind\":\"confirm_week_plan\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":4,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"planId\":\"44444444-4444-4444-4444-444444444444\",\"season\":1,\"week\":1,\"slots\":[{\"slotActionId\":\"55555555-5555-5555-5555-555555555555\",\"occurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"kind\":\"specialized_training\",\"contentId\":\"week_action.specialized.spike\"},{\"slotActionId\":\"77777777-7777-7777-7777-777777777777\",\"occurrenceId\":\"88888888-8888-8888-8888-888888888888\",\"kind\":\"rest\",\"contentId\":\"week_action.rest.standard\"},{\"slotActionId\":\"99999999-9999-9999-9999-999999999999\",\"occurrenceId\":\"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa\",\"kind\":\"match\",\"contentId\":\"schedule.u1w1.match.01\"}],\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}";
 
-            var bytes = CareerOperationFingerprintV1.Encode(Command());
+            var bytes = CareerOperationFingerprintV2.Encode(Command());
 
             CollectionAssert.AreEqual(Encoding.UTF8.GetBytes(expectedJson), bytes);
             Assert.That(
-                CareerOperationFingerprintV1.Hash(Command()).Value,
-                Is.EqualTo("08596f8a683fea343de747058bd8d8cdbfd3d8ec34308212a70f2aaf590516fe"));
+                CareerOperationFingerprintV2.Hash(Command()).Value,
+                Is.EqualTo("b4e0e4c76aca292ee20936f863fdfa2ae0e4f1c51b78361a6ff21608110ea518"));
         }
 
         [Test]
-        public void ConfirmWeekPlanFingerprintV1_UsesAllFiveFixedActionKindIds()
+        public void ConfirmWeekPlanFingerprintV2_UsesAllFiveFixedActionKindIds()
         {
             var specializedAndRest = Fingerprint(CandidatePlan());
             var strengthAndTeam = Fingerprint(CandidatePlan(
@@ -75,7 +75,7 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void ConfirmWeekPlanFingerprintV1_ExcludesOperationIdAndCompletedAtUtcMs()
+        public void ConfirmWeekPlanFingerprintV2_ExcludesOperationIdAndCompletedAtUtcMs()
         {
             var baseline = Command();
             var changedOperation = Command(
@@ -83,17 +83,17 @@ namespace Volleyball.Career.EditModeTests
             var changedCompletionTime = Command(completedAtUtcMs: 9007199254740991L);
 
             Assert.That(
-                CareerOperationFingerprintV1.Hash(changedOperation),
-                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
+                CareerOperationFingerprintV2.Hash(changedOperation),
+                Is.EqualTo(CareerOperationFingerprintV2.Hash(baseline)));
             Assert.That(
-                CareerOperationFingerprintV1.Hash(changedCompletionTime),
-                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
+                CareerOperationFingerprintV2.Hash(changedCompletionTime),
+                Is.EqualTo(CareerOperationFingerprintV2.Hash(baseline)));
         }
 
         [Test]
-        public void ConfirmWeekPlanFingerprintV1_IsSensitiveToEveryBusinessIdentityAndOrder()
+        public void ConfirmWeekPlanFingerprintV2_IsSensitiveToEveryBusinessIdentityAndOrder()
         {
-            var baseline = CareerOperationFingerprintV1.Hash(Command());
+            var baseline = CareerOperationFingerprintV2.Hash(Command());
             var changedToken = Token(
                 new LineageId(Guid.Parse("dddddddd-dddd-dddd-dddd-dddddddddddd")),
                 5,
@@ -118,24 +118,24 @@ namespace Volleyball.Career.EditModeTests
                 secondKind: CareerWeekActionKind.SpecializedTraining,
                 secondContentId: "week_action.specialized.spike");
 
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(expectedToken: changedToken)), Is.Not.EqualTo(baseline));
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(candidate: changedPlan)), Is.Not.EqualTo(baseline));
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(candidate: changedSlotAction)), Is.Not.EqualTo(baseline));
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(candidate: changedOccurrence)), Is.Not.EqualTo(baseline));
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(candidate: changedContent)), Is.Not.EqualTo(baseline));
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(candidate: changedKind)), Is.Not.EqualTo(baseline));
-            Assert.That(CareerOperationFingerprintV1.Hash(Command(candidate: changedOrder)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(expectedToken: changedToken)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(candidate: changedPlan)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(candidate: changedSlotAction)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(candidate: changedOccurrence)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(candidate: changedContent)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(candidate: changedKind)), Is.Not.EqualTo(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(Command(candidate: changedOrder)), Is.Not.EqualTo(baseline));
         }
 
         [Test]
-        public void ConfirmWeekPlanFingerprintV1_IncludesCurrentFourVersionAxes()
+        public void ConfirmWeekPlanFingerprintV2_IncludesCurrentFiveVersionAxes()
         {
             var encoded = Fingerprint(CandidatePlan());
 
             Assert.That(
                 encoded,
                 Does.EndWith(
-                    "\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}"));
+                    "\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}"));
         }
 
         [Test]
@@ -157,25 +157,25 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void ExecuteWeekActionFingerprintV1_SlotOneHasLockedCanonicalBytesAndHash()
+        public void ExecuteWeekActionFingerprintV2_SlotOneHasLockedCanonicalBytesAndHash()
         {
             const string expectedJson =
-                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"execute_week_action\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":5,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"slotNumber\":1,\"slotActionId\":\"55555555-5555-5555-5555-555555555555\",\"actionOccurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"contentId\":\"week_action.specialized.spike\",\"triggeredEventOccurrenceId\":\"00000000-0000-0000-0000-000000000003\",\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+                "{\"fingerprintSchemaVersion\":2,\"operationKind\":\"execute_week_action\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":5,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"slotNumber\":1,\"slotActionId\":\"55555555-5555-5555-5555-555555555555\",\"actionOccurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"contentId\":\"week_action.specialized.spike\",\"triggeredEventOccurrenceId\":\"00000000-0000-0000-0000-000000000003\",\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}";
             var command = ExecuteCommand();
 
             CollectionAssert.AreEqual(
                 Encoding.UTF8.GetBytes(expectedJson),
-                CareerOperationFingerprintV1.Encode(command));
+                CareerOperationFingerprintV2.Encode(command));
             Assert.That(
-                CareerOperationFingerprintV1.Hash(command).Value,
-                Is.EqualTo("ad62ae072ff9cbefecb9934d18a4456fa99c4e9467a228bbdae3891e3cb1cd88"));
+                CareerOperationFingerprintV2.Hash(command).Value,
+                Is.EqualTo("1f153947c45cc9ad7ed3f505ee1136c5e74d11d782b4d35eef7c2894ad6a5685"));
         }
 
         [Test]
-        public void ExecuteWeekActionFingerprintV1_SlotTwoHasLockedCanonicalNullBytesAndHash()
+        public void ExecuteWeekActionFingerprintV2_SlotTwoHasLockedCanonicalNullBytesAndHash()
         {
             var expectedJson =
-                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"execute_week_action\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":7,\"expectedSnapshotHash\":\"" + new string('f', 64) + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"slotNumber\":2,\"slotActionId\":\"77777777-7777-7777-7777-777777777777\",\"actionOccurrenceId\":\"88888888-8888-8888-8888-888888888888\",\"contentId\":\"week_action.rest.standard\",\"triggeredEventOccurrenceId\":null,\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+                "{\"fingerprintSchemaVersion\":2,\"operationKind\":\"execute_week_action\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":7,\"expectedSnapshotHash\":\"" + new string('f', 64) + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"slotNumber\":2,\"slotActionId\":\"77777777-7777-7777-7777-777777777777\",\"actionOccurrenceId\":\"88888888-8888-8888-8888-888888888888\",\"contentId\":\"week_action.rest.standard\",\"triggeredEventOccurrenceId\":null,\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}";
             var command = ExecuteCommand(
                 expectedToken: Token(
                     new LineageId(Guid.Parse("33333333-3333-3333-3333-333333333333")),
@@ -190,33 +190,33 @@ namespace Volleyball.Career.EditModeTests
 
             CollectionAssert.AreEqual(
                 Encoding.UTF8.GetBytes(expectedJson),
-                CareerOperationFingerprintV1.Encode(command));
+                CareerOperationFingerprintV2.Encode(command));
             Assert.That(
-                CareerOperationFingerprintV1.Hash(command).Value,
-                Is.EqualTo("ce66e7b0fe43edf4c833e99a050e0d765cd12c8fdba5237a4d4b981999162852"));
+                CareerOperationFingerprintV2.Hash(command).Value,
+                Is.EqualTo("b8cbf0a77325e50c87e904f5819bc6a49d55623755c035b5df9fe6e0a0f6bd2f"));
         }
 
         [Test]
-        public void ExecuteWeekActionFingerprintV1_ExcludesReceiptLookupAndCompletionMetadata()
+        public void ExecuteWeekActionFingerprintV2_ExcludesReceiptLookupAndCompletionMetadata()
         {
             var baseline = ExecuteCommand();
             var changedOperation = ExecuteCommand(
                 operationId: new OperationId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")));
             var changedTime = ExecuteCommand(completedAtUtcMs: 9007199254740991L);
 
-            Assert.That(CareerOperationFingerprintV1.Hash(changedOperation),
-                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
-            Assert.That(CareerOperationFingerprintV1.Hash(changedTime),
-                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
-            var json = Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(changedOperation),
+                Is.EqualTo(CareerOperationFingerprintV2.Hash(baseline)));
+            Assert.That(CareerOperationFingerprintV2.Hash(changedTime),
+                Is.EqualTo(CareerOperationFingerprintV2.Hash(baseline)));
+            var json = Encoding.UTF8.GetString(CareerOperationFingerprintV2.Encode(baseline));
             Assert.That(json, Does.Not.Contain("operationId"));
             Assert.That(json, Does.Not.Contain("completedAtUtcMs"));
         }
 
         [Test]
-        public void ExecuteWeekActionFingerprintV1_IsSensitiveToEveryBusinessInput()
+        public void ExecuteWeekActionFingerprintV2_IsSensitiveToEveryBusinessInput()
         {
-            var baseline = CareerOperationFingerprintV1.Hash(ExecuteCommand());
+            var baseline = CareerOperationFingerprintV2.Hash(ExecuteCommand());
             var mutations = new[]
             {
                 ExecuteCommand(profileId: new ProfileId(Guid.Parse("12121212-1212-1212-1212-121212121212"))),
@@ -244,7 +244,7 @@ namespace Volleyball.Career.EditModeTests
 
             foreach (var mutation in mutations)
             {
-                Assert.That(CareerOperationFingerprintV1.Hash(mutation), Is.Not.EqualTo(baseline));
+                Assert.That(CareerOperationFingerprintV2.Hash(mutation), Is.Not.EqualTo(baseline));
             }
         }
 
@@ -267,41 +267,41 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void ResolveEventChoiceFingerprintV1_HasLockedCanonicalBytesAndHash()
+        public void ResolveEventChoiceFingerprintV2_HasLockedCanonicalBytesAndHash()
         {
             const string expectedJson =
-                "{\"fingerprintSchemaVersion\":1,\"operationKind\":\"resolve_event_choice\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":6,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"sourceSlotActionId\":\"55555555-5555-5555-5555-555555555555\",\"sourceActionOccurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"eventId\":\"event.team_meal\",\"eventOccurrenceId\":\"00000000-0000-0000-0000-000000000003\",\"optionId\":\"event.team_meal.option.extra_practice\",\"schemaVersion\":1,\"contentVersion\":1,\"rulesetVersion\":1,\"careerRandomAlgorithmVersion\":1}";
+                "{\"fingerprintSchemaVersion\":2,\"operationKind\":\"resolve_event_choice\",\"profileId\":\"11111111-1111-1111-1111-111111111111\",\"saveId\":\"22222222-2222-2222-2222-222222222222\",\"expectedLineageId\":\"33333333-3333-3333-3333-333333333333\",\"expectedRevision\":6,\"expectedSnapshotHash\":\"" + ZeroHash + "\",\"weekPlanId\":\"44444444-4444-4444-4444-444444444444\",\"sourceSlotActionId\":\"55555555-5555-5555-5555-555555555555\",\"sourceActionOccurrenceId\":\"66666666-6666-6666-6666-666666666666\",\"eventId\":\"event.team_meal\",\"eventOccurrenceId\":\"00000000-0000-0000-0000-000000000003\",\"optionId\":\"event.team_meal.option.extra_practice\",\"schemaVersion\":2,\"contentVersion\":1,\"rulesetVersion\":1,\"contractVersion\":2,\"careerRandomAlgorithmVersion\":1}";
             var command = ResolveCommand();
 
             CollectionAssert.AreEqual(
                 Encoding.UTF8.GetBytes(expectedJson),
-                CareerOperationFingerprintV1.Encode(command));
+                CareerOperationFingerprintV2.Encode(command));
             Assert.That(
-                CareerOperationFingerprintV1.Hash(command).Value,
-                Is.EqualTo("0b268051bdeb3dd7a9b0999c801240a8bf6d2b31ea69147f521a655fdc820f81"));
+                CareerOperationFingerprintV2.Hash(command).Value,
+                Is.EqualTo("586f9041eb8baf6e8c86e78e1e8cab16547e83b96765008aed659c43463b4fda"));
         }
 
         [Test]
-        public void ResolveEventChoiceFingerprintV1_ExcludesReceiptLookupAndCompletionMetadata()
+        public void ResolveEventChoiceFingerprintV2_ExcludesReceiptLookupAndCompletionMetadata()
         {
             var baseline = ResolveCommand();
             var changedOperation = ResolveCommand(
                 operationId: new OperationId(Guid.Parse("cccccccc-cccc-cccc-cccc-cccccccccccc")));
             var changedTime = ResolveCommand(completedAtUtcMs: 9007199254740991L);
 
-            Assert.That(CareerOperationFingerprintV1.Hash(changedOperation),
-                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
-            Assert.That(CareerOperationFingerprintV1.Hash(changedTime),
-                Is.EqualTo(CareerOperationFingerprintV1.Hash(baseline)));
-            var json = Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(baseline));
+            Assert.That(CareerOperationFingerprintV2.Hash(changedOperation),
+                Is.EqualTo(CareerOperationFingerprintV2.Hash(baseline)));
+            Assert.That(CareerOperationFingerprintV2.Hash(changedTime),
+                Is.EqualTo(CareerOperationFingerprintV2.Hash(baseline)));
+            var json = Encoding.UTF8.GetString(CareerOperationFingerprintV2.Encode(baseline));
             Assert.That(json, Does.Not.Contain("operationId"));
             Assert.That(json, Does.Not.Contain("completedAtUtcMs"));
         }
 
         [Test]
-        public void ResolveEventChoiceFingerprintV1_IsSensitiveToEveryBusinessInput()
+        public void ResolveEventChoiceFingerprintV2_IsSensitiveToEveryBusinessInput()
         {
-            var baseline = CareerOperationFingerprintV1.Hash(ResolveCommand());
+            var baseline = CareerOperationFingerprintV2.Hash(ResolveCommand());
             var mutations = new[]
             {
                 ResolveCommand(profileId: new ProfileId(Guid.Parse("12121212-1212-1212-1212-121212121212"))),
@@ -328,17 +328,17 @@ namespace Volleyball.Career.EditModeTests
 
             foreach (var mutation in mutations)
             {
-                Assert.That(CareerOperationFingerprintV1.Hash(mutation), Is.Not.EqualTo(baseline));
+                Assert.That(CareerOperationFingerprintV2.Hash(mutation), Is.Not.EqualTo(baseline));
             }
         }
 
         [Test]
-        public void ResolveEventChoiceFingerprintV1_UsesStrictCanonicalStringEscapingAndRejectsLoneSurrogate()
+        public void ResolveEventChoiceFingerprintV2_UsesStrictCanonicalStringEscapingAndRejectsLoneSurrogate()
         {
             var escaped = ResolveCommand(
                 eventId: "event.\"\\/\b\t\n\f\r\u0001雪😀",
                 optionId: "option.strict");
-            var encoded = Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(escaped));
+            var encoded = Encoding.UTF8.GetString(CareerOperationFingerprintV2.Encode(escaped));
 
             Assert.That(
                 encoded,
@@ -346,12 +346,12 @@ namespace Volleyball.Career.EditModeTests
 
             var loneSurrogate = new string(new[] { '\ud800' });
             Assert.Throws<ArgumentException>(() =>
-                CareerOperationFingerprintV1.Encode(ResolveCommand(eventId: loneSurrogate)));
+                CareerOperationFingerprintV2.Encode(ResolveCommand(eventId: loneSurrogate)));
         }
 
         private static string Fingerprint(CareerWeekPlanState candidate)
         {
-            return Encoding.UTF8.GetString(CareerOperationFingerprintV1.Encode(Command(candidate: candidate)));
+            return Encoding.UTF8.GetString(CareerOperationFingerprintV2.Encode(Command(candidate: candidate)));
         }
 
         private static ExecuteWeekActionCommand ExecuteCommand(

@@ -5,9 +5,9 @@ using Volleyball.Career.Domain;
 
 namespace Volleyball.Career.Application
 {
-    public static class CareerOperationFingerprintV1
+    public static class CareerOperationFingerprintV2
     {
-        public const int SchemaVersion = 1;
+        public const int SchemaVersion = 2;
 
         public static byte[] Encode(CreateCareerCommand command)
         {
@@ -17,7 +17,7 @@ namespace Volleyball.Career.Application
             }
 
             var builder = new StringBuilder(600);
-            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"create_career\"");
+            builder.Append("{\"fingerprintSchemaVersion\":2,\"operationKind\":\"create_career\"");
             AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
             AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
             AppendString(builder, "lineageId", command.LineageId.Value.ToString("D").ToLowerInvariant());
@@ -61,7 +61,7 @@ namespace Volleyball.Career.Application
             }
 
             var builder = new StringBuilder(650);
-            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"confirm_tryout_stage\"");
+            builder.Append("{\"fingerprintSchemaVersion\":2,\"operationKind\":\"confirm_tryout_stage\"");
             AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
             AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
             AppendString(
@@ -110,7 +110,7 @@ namespace Volleyball.Career.Application
             }
 
             var builder = new StringBuilder(1000);
-            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"confirm_week_plan\"");
+            builder.Append("{\"fingerprintSchemaVersion\":2,\"operationKind\":\"confirm_week_plan\"");
             AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
             AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
             AppendString(
@@ -164,7 +164,7 @@ namespace Volleyball.Career.Application
             }
 
             var builder = new StringBuilder(800);
-            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"execute_week_action\"");
+            builder.Append("{\"fingerprintSchemaVersion\":2,\"operationKind\":\"execute_week_action\"");
             AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
             AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
             AppendString(
@@ -203,7 +203,7 @@ namespace Volleyball.Career.Application
             }
 
             var builder = new StringBuilder(850);
-            builder.Append("{\"fingerprintSchemaVersion\":1,\"operationKind\":\"resolve_event_choice\"");
+            builder.Append("{\"fingerprintSchemaVersion\":2,\"operationKind\":\"resolve_event_choice\"");
             AppendString(builder, "profileId", command.ProfileId.Value.ToString("D").ToLowerInvariant());
             AppendString(builder, "saveId", command.SaveId.Value.ToString("D").ToLowerInvariant());
             AppendString(
@@ -281,6 +281,7 @@ namespace Volleyball.Career.Application
             AppendInteger(builder, "schemaVersion", CareerSaveVersions.CurrentSchemaVersion);
             AppendInteger(builder, "contentVersion", CareerSaveVersions.CurrentContentVersion);
             AppendInteger(builder, "rulesetVersion", CareerSaveVersions.CurrentRulesetVersion);
+            AppendInteger(builder, "contractVersion", CareerSaveVersions.CurrentContractVersion);
             AppendInteger(
                 builder,
                 "careerRandomAlgorithmVersion",

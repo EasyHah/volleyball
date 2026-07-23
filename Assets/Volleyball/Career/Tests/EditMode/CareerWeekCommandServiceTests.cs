@@ -59,7 +59,7 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(receipt.OperationId, Is.EqualTo(command.OperationId));
             Assert.That(receipt.OperationKind, Is.EqualTo(OperationKind.ConfirmWeekPlan));
             Assert.That(receipt.Target.WeekPlanId, Is.EqualTo(command.CandidatePlan.PlanId));
-            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV1.Hash(command)));
+            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV2.Hash(command)));
             Assert.That(receipt.AppliedLineageId, Is.EqualTo(Lineage));
             Assert.That(receipt.AppliedRevision, Is.EqualTo(5));
             Assert.That(receipt.CompletedAtUtcMs, Is.EqualTo(command.CompletedAtUtcMs));
@@ -157,7 +157,7 @@ namespace Volleyball.Career.EditModeTests
             var applied = AppliedSnapshot(prior, Command(prior));
             var unsupported = CopySnapshot(
                 prior,
-                versions: new CareerSaveVersions(2, 1, 1, 1));
+                versions: new CareerSaveVersions(3, 1, 1, 2, 1));
             var cases = new[]
             {
                 new InvalidCase(prior, Command(prior, profileId: new ProfileId(Guid.Parse("abababab-abab-abab-abab-abababababab")))),
@@ -512,7 +512,7 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(receipt.Target.WeekPlanId, Is.EqualTo(command.WeekPlanId));
             Assert.That(receipt.Target.SlotActionId, Is.EqualTo(command.SlotActionId));
             Assert.That(receipt.Target.ActionOccurrenceId, Is.EqualTo(command.ActionOccurrenceId));
-            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV1.Hash(command)));
+            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV2.Hash(command)));
             Assert.That(receipt.AppliedRevision, Is.EqualTo(6));
             Assert.That(receipt.OutcomeKind, Is.EqualTo(OperationOutcomeKind.SlotCompleted));
             Assert.That(receipt.OutcomeSummary.GrowthExperienceDelta.Spike, Is.EqualTo(132));
@@ -838,7 +838,7 @@ namespace Volleyball.Career.EditModeTests
             var prior = ConfirmedSnapshot();
             var unsupported = CopySnapshot(
                 prior,
-                versions: new CareerSaveVersions(1, 2, 1, 1));
+                versions: new CareerSaveVersions(2, 2, 1, 2, 1));
             var wrongCalendar = WithPlanCalendar(prior, 2, 1);
             var cases = new[]
             {
@@ -1228,7 +1228,7 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(receipt.Target.ActionOccurrenceId, Is.EqualTo(command.SourceActionOccurrenceId));
             Assert.That(receipt.Target.EventOccurrenceId, Is.EqualTo(command.EventOccurrenceId));
             Assert.That(receipt.Target.OptionId, Is.EqualTo(optionId));
-            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV1.Hash(command)));
+            Assert.That(receipt.InputFingerprint, Is.EqualTo(CareerOperationFingerprintV2.Hash(command)));
             Assert.That(receipt.AppliedLineageId, Is.EqualTo(prior.Identity.LineageId));
             Assert.That(receipt.AppliedRevision, Is.EqualTo(prior.Identity.Revision + 1));
             Assert.That(receipt.CompletedAtUtcMs, Is.EqualTo(command.CompletedAtUtcMs));
@@ -1493,7 +1493,7 @@ namespace Volleyball.Career.EditModeTests
                 Slot(90));
             var unsupported = CopySnapshot(
                 prior,
-                versions: new CareerSaveVersions(1, 1, 2, 1));
+                versions: new CareerSaveVersions(2, 1, 2, 2, 1));
             var appliedRepository = new MemoryRepository(prior);
             var originalCommand = ResolveCommand(prior);
             var applied = Service(appliedRepository).ResolveEventChoice(originalCommand).Snapshot;
@@ -2849,7 +2849,7 @@ namespace Volleyball.Career.EditModeTests
                     command.OperationId,
                     OperationKind.ConfirmWeekPlan,
                     OperationReceiptTarget.ForWeekPlanConfirmation(command.CandidatePlan.PlanId),
-                    CareerOperationFingerprintV1.Hash(command),
+                    CareerOperationFingerprintV2.Hash(command),
                     prior.Identity.LineageId,
                     prior.Identity.Revision + 1,
                     command.CompletedAtUtcMs,

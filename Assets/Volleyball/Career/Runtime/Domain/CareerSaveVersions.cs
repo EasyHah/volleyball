@@ -4,15 +4,17 @@ namespace Volleyball.Career.Domain
 {
     public sealed class CareerSaveVersions : IEquatable<CareerSaveVersions>
     {
-        public const int CurrentSchemaVersion = 1;
+        public const int CurrentSchemaVersion = 2;
         public const int CurrentContentVersion = 1;
         public const int CurrentRulesetVersion = 1;
+        public const int CurrentContractVersion = 2;
         public const int CurrentCareerRandomAlgorithmVersion = 1;
 
         public CareerSaveVersions(
             int schemaVersion,
             int contentVersion,
             int rulesetVersion,
+            int contractVersion,
             int careerRandomAlgorithmVersion)
         {
             SchemaVersion = CareerSaveModelGuard.PositiveVersion(
@@ -24,6 +26,9 @@ namespace Volleyball.Career.Domain
             RulesetVersion = CareerSaveModelGuard.PositiveVersion(
                 rulesetVersion,
                 nameof(rulesetVersion));
+            ContractVersion = CareerSaveModelGuard.PositiveVersion(
+                contractVersion,
+                nameof(contractVersion));
             CareerRandomAlgorithmVersion = CareerSaveModelGuard.PositiveVersion(
                 careerRandomAlgorithmVersion,
                 nameof(careerRandomAlgorithmVersion));
@@ -33,6 +38,7 @@ namespace Volleyball.Career.Domain
             CurrentSchemaVersion,
             CurrentContentVersion,
             CurrentRulesetVersion,
+            CurrentContractVersion,
             CurrentCareerRandomAlgorithmVersion);
 
         public int SchemaVersion { get; }
@@ -40,6 +46,8 @@ namespace Volleyball.Career.Domain
         public int ContentVersion { get; }
 
         public int RulesetVersion { get; }
+
+        public int ContractVersion { get; }
 
         public int CareerRandomAlgorithmVersion { get; }
 
@@ -49,6 +57,7 @@ namespace Volleyball.Career.Domain
                    SchemaVersion == other.SchemaVersion &&
                    ContentVersion == other.ContentVersion &&
                    RulesetVersion == other.RulesetVersion &&
+                   ContractVersion == other.ContractVersion &&
                    CareerRandomAlgorithmVersion == other.CareerRandomAlgorithmVersion;
         }
 
@@ -64,6 +73,7 @@ namespace Volleyball.Career.Domain
                 var hashCode = SchemaVersion;
                 hashCode = (hashCode * 397) ^ ContentVersion;
                 hashCode = (hashCode * 397) ^ RulesetVersion;
+                hashCode = (hashCode * 397) ^ ContractVersion;
                 hashCode = (hashCode * 397) ^ CareerRandomAlgorithmVersion;
                 return hashCode;
             }

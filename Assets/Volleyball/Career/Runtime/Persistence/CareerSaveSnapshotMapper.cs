@@ -4,21 +4,24 @@ using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.Persistence
 {
-    public static class CareerSaveSnapshotMapper
+    public static partial class CareerSaveSnapshotMapper
     {
         private const long IJsonSafeIntegerMaximum = 9007199254740991L;
 
-        public static CareerSaveDocumentV1 ToDocument(CareerSaveSnapshot snapshot)
+        public static CareerSaveDocumentV2 ToDocument(CareerSaveSnapshot snapshot)
         {
             if (snapshot == null)
             {
                 throw new ArgumentNullException(nameof(snapshot));
             }
 
+            CareerMatchPayloadValidator.Validate(snapshot);
+
             ValidateCurrentVersions(
                 snapshot.Versions.SchemaVersion,
                 snapshot.Versions.ContentVersion,
                 snapshot.Versions.RulesetVersion,
+                snapshot.Versions.ContractVersion,
                 snapshot.Versions.CareerRandomAlgorithmVersion,
                 nameof(snapshot));
 
@@ -26,22 +29,19 @@ namespace Volleyball.Career.Persistence
             EnsureIJsonSafe(snapshot.Identity.CreatedAtUtcMs, "identity.createdAtUtcMs");
             EnsureIJsonSafe(snapshot.Identity.UpdatedAtUtcMs, "identity.updatedAtUtcMs");
 
-            var receipts = new OperationReceiptDocumentV1[snapshot.OperationReceipts.Count];
-            for (var index = 0; index < receipts.Length; index++)
-            {
-                receipts[index] = ToDocument(snapshot.OperationReceipts[index]);
-            }
+            var receipts = ToOperationReceiptDocuments(snapshot.OperationReceipts);
 
-            return new CareerSaveDocumentV1
+            return new CareerSaveDocumentV2
             {
-                versions = new CareerSaveVersionsDocumentV1
+                versions = new CareerSaveVersionsDocumentV2
                 {
                     schemaVersion = snapshot.Versions.SchemaVersion,
                     contentVersion = snapshot.Versions.ContentVersion,
                     rulesetVersion = snapshot.Versions.RulesetVersion,
+                    contractVersion = snapshot.Versions.ContractVersion,
                     careerRandomAlgorithmVersion = snapshot.Versions.CareerRandomAlgorithmVersion
                 },
-                identity = new CareerSaveIdentityDocumentV1
+                identity = new CareerSaveIdentityDocumentV2
                 {
                     profileId = CanonicalGuid(snapshot.Identity.ProfileId.Value),
                     saveId = CanonicalGuid(snapshot.Identity.SaveId.Value),
@@ -52,7 +52,7 @@ namespace Volleyball.Career.Persistence
                     createdAtUtcMs = snapshot.Identity.CreatedAtUtcMs,
                     updatedAtUtcMs = snapshot.Identity.UpdatedAtUtcMs
                 },
-                integrity = new CareerSaveIntegrityDocumentV1
+                integrity = new CareerSaveIntegrityDocumentV2
                 {
                     snapshotHash = snapshot.Identity.SnapshotHash.Value
                 },
@@ -62,6 +62,7 @@ namespace Volleyball.Career.Persistence
                 onboarding = ToDocument(snapshot.Onboarding),
                 progression = ToDocument(snapshot.Progression),
                 trainingEmphases = ToDocument(snapshot.TrainingEmphases),
+                pendingMatch = ToDocument(snapshot.PendingMatch),
                 player = ToDocument(snapshot.Player),
                 teamId = snapshot.TeamId.HasValue ? snapshot.TeamId.Value.Value : null,
                 potentialGrade = snapshot.PotentialGrade.HasValue
@@ -70,11 +71,13 @@ namespace Volleyball.Career.Persistence
                 fatigue = snapshot.Fatigue,
                 mindset = snapshot.Mindset,
                 coachTrust = snapshot.CoachTrust,
-                operationReceipts = receipts
+                matchHistory = ToDocument(snapshot.MatchHistory),
+                operationReceipts = receipts,
+                settlementReceipts = ToDocument(snapshot.SettlementReceipts)
             };
         }
 
-        public static CareerSaveSnapshot ToDomain(CareerSaveDocumentV1 document)
+        public static CareerSaveSnapshot ToDomain(CareerSaveDocumentV2 document)
         {
             if (document == null)
             {
@@ -86,6 +89,7 @@ namespace Volleyball.Career.Persistence
                 versionsDocument.schemaVersion,
                 versionsDocument.contentVersion,
                 versionsDocument.rulesetVersion,
+                versionsDocument.contractVersion,
                 versionsDocument.careerRandomAlgorithmVersion,
                 "versions");
 
@@ -93,6 +97,7 @@ namespace Volleyball.Career.Persistence
                 versionsDocument.schemaVersion,
                 versionsDocument.contentVersion,
                 versionsDocument.rulesetVersion,
+                versionsDocument.contractVersion,
                 versionsDocument.careerRandomAlgorithmVersion);
 
             var identityDocument = Required(document.identity, "identity");
@@ -114,6 +119,7 @@ namespace Volleyball.Career.Persistence
                 restoredFromVersionToken);
 
             var receiptDocuments = Required(document.operationReceipts, "operationReceipts");
+            RequireAppliedRevisionOrder(receiptDocuments, "operationReceipts");
             var receipts = new OperationReceipt[receiptDocuments.Length];
             for (var index = 0; index < receipts.Length; index++)
             {
@@ -130,25 +136,41 @@ namespace Volleyball.Career.Persistence
                 ? (PotentialGrade?)null
                 : ParsePotentialGrade(document.potentialGrade);
 
-            return new CareerSaveSnapshot(
+            var progression = ToDomain(Required(document.progression, "progression"));
+            var trainingEmphases = ToDomain(
+                Required(document.trainingEmphases, "trainingEmphases"));
+            var pendingMatch = ToDomain(document.pendingMatch, "pendingMatch");
+            var history = ToDomain(
+                Required(document.matchHistory, "matchHistory"),
+                "matchHistory");
+            var settlementReceipts = ToDomain(
+                Required(document.settlementReceipts, "settlementReceipts"),
+                "settlementReceipts");
+
+            var snapshot = new CareerSaveSnapshot(
                 versions,
                 identity,
                 CareerSeed.Parse(document.careerSeed),
                 document.careerName,
                 ToDomain(Required(document.playerDraft, "playerDraft")),
                 ToDomain(Required(document.onboarding, "onboarding")),
-                ToDomain(Required(document.progression, "progression")),
-                ToDomain(Required(document.trainingEmphases, "trainingEmphases")),
+                progression,
+                trainingEmphases,
                 player,
                 teamId,
                 potentialGrade,
                 document.fatigue,
                 document.mindset,
                 document.coachTrust,
-                receipts);
+                receipts,
+                pendingMatch,
+                history,
+                settlementReceipts);
+            CareerMatchPayloadValidator.Validate(snapshot);
+            return snapshot;
         }
 
-        private static CareerVersionTokenDocumentV1 ToDocument(
+        private static CareerVersionTokenDocumentV2 ToDocument(
             CareerVersionToken? versionToken)
         {
             if (!versionToken.HasValue)
@@ -156,7 +178,7 @@ namespace Volleyball.Career.Persistence
                 return null;
             }
 
-            return new CareerVersionTokenDocumentV1
+            return new CareerVersionTokenDocumentV2
             {
                 lineageId = CanonicalGuid(versionToken.Value.LineageId.Value),
                 revision = versionToken.Value.Revision,
@@ -165,7 +187,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static CareerVersionToken? ToDomain(
-            CareerVersionTokenDocumentV1 document,
+            CareerVersionTokenDocumentV2 document,
             string path)
         {
             if (document == null)
@@ -180,9 +202,9 @@ namespace Volleyball.Career.Persistence
                 Sha256Digest.Parse(document.snapshotHash));
         }
 
-        private static CareerPlayerDraftDocumentV1 ToDocument(CareerPlayerDraft draft)
+        private static CareerPlayerDraftDocumentV2 ToDocument(CareerPlayerDraft draft)
         {
-            return new CareerPlayerDraftDocumentV1
+            return new CareerPlayerDraftDocumentV2
             {
                 playerId = draft.PlayerId.Value,
                 displayName = draft.DisplayName,
@@ -190,7 +212,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerPlayerDraft ToDomain(CareerPlayerDraftDocumentV1 document)
+        private static CareerPlayerDraft ToDomain(CareerPlayerDraftDocumentV2 document)
         {
             return new CareerPlayerDraft(
                 new PlayerId(document.playerId),
@@ -198,16 +220,16 @@ namespace Volleyball.Career.Persistence
                 document.jerseyNumber);
         }
 
-        private static TryoutOnboardingDocumentV1 ToDocument(
+        private static TryoutOnboardingDocumentV2 ToDocument(
             TryoutOnboardingState onboarding)
         {
-            var stages = new TryoutStageDocumentV1[onboarding.Stages.Count];
+            var stages = new TryoutStageDocumentV2[onboarding.Stages.Count];
             for (var index = 0; index < stages.Length; index++)
             {
                 stages[index] = ToDocument(onboarding.Stages[index]);
             }
 
-            return new TryoutOnboardingDocumentV1
+            return new TryoutOnboardingDocumentV2
             {
                 stages = stages,
                 nextStageNumber = onboarding.NextStageNumber,
@@ -216,7 +238,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static TryoutOnboardingState ToDomain(
-            TryoutOnboardingDocumentV1 document)
+            TryoutOnboardingDocumentV2 document)
         {
             var stageDocuments = Required(document.stages, "onboarding.stages");
             if (stageDocuments.Length != 3)
@@ -240,15 +262,15 @@ namespace Volleyball.Career.Persistence
                 document.isFormallyEnrolled);
         }
 
-        private static TryoutStageDocumentV1 ToDocument(TryoutStageState stage)
+        private static TryoutStageDocumentV2 ToDocument(TryoutStageState stage)
         {
-            var outputs = new TryoutResolvedOutputDocumentV1[stage.ResolvedOutputs.Count];
+            var outputs = new TryoutResolvedOutputDocumentV2[stage.ResolvedOutputs.Count];
             for (var index = 0; index < outputs.Length; index++)
             {
                 outputs[index] = ToDocument(stage.ResolvedOutputs[index]);
             }
 
-            return new TryoutStageDocumentV1
+            return new TryoutStageDocumentV2
             {
                 stageNumber = stage.StageNumber,
                 occurrenceId = CanonicalGuid(stage.OccurrenceId.Value),
@@ -259,7 +281,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static TryoutStageState ToDomain(
-            TryoutStageDocumentV1 document,
+            TryoutStageDocumentV2 document,
             int index)
         {
             var prefix = "onboarding.stages[" + index + "]";
@@ -287,37 +309,40 @@ namespace Volleyball.Career.Persistence
                 outputs);
         }
 
-        private static TryoutResolvedOutputDocumentV1 ToDocument(
+        private static TryoutResolvedOutputDocumentV2 ToDocument(
             TryoutResolvedOutput output)
         {
-            return new TryoutResolvedOutputDocumentV1
+            return new TryoutResolvedOutputDocumentV2
             {
                 outputId = output.OutputId,
                 perturbation = output.Perturbation
             };
         }
 
-        private static CareerProgressionDocumentV1 ToDocument(CareerProgressionState progression)
+        private static CareerProgressionDocumentV2 ToDocument(CareerProgressionState progression)
         {
-            return new CareerProgressionDocumentV1
+            return new CareerProgressionDocumentV2
             {
                 kind = FormatProgressionKind(progression.Kind),
                 phase = FormatPhase(progression.Phase),
                 tryoutStage = progression.TryoutStage,
                 weekPlan = ToDocument(progression.WeekPlan),
                 nextSlotNumber = progression.NextSlotNumber,
-                pendingEvent = ToDocument(progression.PendingEvent)
+                pendingEvent = ToDocument(progression.PendingEvent),
+                matchSessionId = progression.MatchSessionId.HasValue
+                    ? CanonicalGuid(progression.MatchSessionId.Value)
+                    : null
             };
         }
 
-        private static TrainingEmphasisContributionDocumentV1[] ToDocument(
+        private static TrainingEmphasisContributionDocumentV2[] ToDocument(
             TrainingEmphasisLedger ledger)
         {
-            var result = new TrainingEmphasisContributionDocumentV1[ledger.Contributions.Count];
+            var result = new TrainingEmphasisContributionDocumentV2[ledger.Contributions.Count];
             for (var index = 0; index < result.Length; index++)
             {
                 var contribution = ledger.Contributions[index];
-                result[index] = new TrainingEmphasisContributionDocumentV1
+                result[index] = new TrainingEmphasisContributionDocumentV2
                 {
                     sourceSlotActionId = CanonicalGuid(contribution.SourceSlotActionId.Value),
                     direction = CareerTrainingDirectionIds.Format(contribution.Direction),
@@ -329,7 +354,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static TrainingEmphasisLedger ToDomain(
-            TrainingEmphasisContributionDocumentV1[] documents)
+            TrainingEmphasisContributionDocumentV2[] documents)
         {
             var result = new TrainingEmphasisContribution[documents.Length];
             for (var index = 0; index < result.Length; index++)
@@ -346,7 +371,7 @@ namespace Volleyball.Career.Persistence
             return new TrainingEmphasisLedger(result);
         }
 
-        private static CareerProgressionState ToDomain(CareerProgressionDocumentV1 document)
+        private static CareerProgressionState ToDomain(CareerProgressionDocumentV2 document)
         {
             return new CareerProgressionState(
                 ParseProgressionKind(document.kind),
@@ -354,23 +379,28 @@ namespace Volleyball.Career.Persistence
                 document.tryoutStage,
                 ToDomain(document.weekPlan),
                 document.nextSlotNumber,
-                ToDomain(document.pendingEvent));
+                ToDomain(document.pendingEvent),
+                document.matchSessionId == null
+                    ? (Guid?)null
+                    : ParseCanonicalGuid(
+                        document.matchSessionId,
+                        "progression.matchSessionId"));
         }
 
-        private static CareerWeekPlanDocumentV1 ToDocument(CareerWeekPlanState weekPlan)
+        private static CareerWeekPlanDocumentV2 ToDocument(CareerWeekPlanState weekPlan)
         {
             if (weekPlan == null)
             {
                 return null;
             }
 
-            var slots = new CareerWeekActionDocumentV1[weekPlan.Slots.Count];
+            var slots = new CareerWeekActionDocumentV2[weekPlan.Slots.Count];
             for (var index = 0; index < slots.Length; index++)
             {
                 slots[index] = ToDocument(weekPlan.Slots[index]);
             }
 
-            return new CareerWeekPlanDocumentV1
+            return new CareerWeekPlanDocumentV2
             {
                 planId = CanonicalGuid(weekPlan.PlanId.Value),
                 season = weekPlan.Season,
@@ -380,7 +410,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerWeekPlanState ToDomain(CareerWeekPlanDocumentV1 document)
+        private static CareerWeekPlanState ToDomain(CareerWeekPlanDocumentV2 document)
         {
             if (document == null)
             {
@@ -409,14 +439,14 @@ namespace Volleyball.Career.Persistence
                 document.isConfirmed);
         }
 
-        private static CareerWeekActionDocumentV1 ToDocument(CareerWeekActionState action)
+        private static CareerWeekActionDocumentV2 ToDocument(CareerWeekActionState action)
         {
             if (action == null)
             {
                 return null;
             }
 
-            return new CareerWeekActionDocumentV1
+            return new CareerWeekActionDocumentV2
             {
                 slotActionId = CanonicalGuid(action.SlotActionId.Value),
                 occurrenceId = CanonicalGuid(action.OccurrenceId.Value),
@@ -425,7 +455,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerWeekActionState ToDomain(CareerWeekActionDocumentV1 document)
+        private static CareerWeekActionState ToDomain(CareerWeekActionDocumentV2 document)
         {
             if (document == null)
             {
@@ -443,20 +473,20 @@ namespace Volleyball.Career.Persistence
                 document.contentId);
         }
 
-        private static PendingCareerEventDocumentV1 ToDocument(PendingCareerEvent pendingEvent)
+        private static PendingCareerEventDocumentV2 ToDocument(PendingCareerEvent pendingEvent)
         {
             if (pendingEvent == null)
             {
                 return null;
             }
 
-            var options = new CareerEventOptionEffectDocumentV1[pendingEvent.Options.Count];
+            var options = new CareerEventOptionEffectDocumentV2[pendingEvent.Options.Count];
             for (var index = 0; index < options.Length; index++)
             {
                 options[index] = ToDocument(pendingEvent.Options[index]);
             }
 
-            return new PendingCareerEventDocumentV1
+            return new PendingCareerEventDocumentV2
             {
                 sourceWeekPlanId = CanonicalGuid(pendingEvent.SourceWeekPlanId.Value),
                 sourceSlotActionId = CanonicalGuid(pendingEvent.SourceSlotActionId.Value),
@@ -470,7 +500,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static PendingCareerEvent ToDomain(PendingCareerEventDocumentV1 document)
+        private static PendingCareerEvent ToDomain(PendingCareerEventDocumentV2 document)
         {
             if (document == null)
             {
@@ -513,10 +543,10 @@ namespace Volleyball.Career.Persistence
                 document.resumeAtSlotNumber);
         }
 
-        private static CareerEventOptionEffectDocumentV1 ToDocument(
+        private static CareerEventOptionEffectDocumentV2 ToDocument(
             CareerEventOptionEffect effect)
         {
-            return new CareerEventOptionEffectDocumentV1
+            return new CareerEventOptionEffectDocumentV2
             {
                 optionId = effect.OptionId,
                 growthExperienceDelta = ToDocument(effect.GrowthExperienceDelta),
@@ -527,7 +557,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static CareerEventOptionEffect ToDomain(
-            CareerEventOptionEffectDocumentV1 document,
+            CareerEventOptionEffectDocumentV2 document,
             int index)
         {
             return new CareerEventOptionEffect(
@@ -540,7 +570,7 @@ namespace Volleyball.Career.Persistence
                 document.coachTrustDelta);
         }
 
-        private static CareerAttributeGrowthDeltaDocumentV1 ToDocument(
+        private static CareerAttributeGrowthDeltaDocumentV2 ToDocument(
             CareerAttributeGrowthDelta delta)
         {
             EnsureIJsonSafe(delta.Spike, "progression.pendingEvent.options[].growthExperienceDelta.spike");
@@ -551,7 +581,7 @@ namespace Volleyball.Career.Persistence
             EnsureIJsonSafe(delta.Movement, "progression.pendingEvent.options[].growthExperienceDelta.movement");
             EnsureIJsonSafe(delta.Jump, "progression.pendingEvent.options[].growthExperienceDelta.jump");
             EnsureIJsonSafe(delta.Stamina, "progression.pendingEvent.options[].growthExperienceDelta.stamina");
-            return new CareerAttributeGrowthDeltaDocumentV1
+            return new CareerAttributeGrowthDeltaDocumentV2
             {
                 spike = delta.Spike,
                 serve = delta.Serve,
@@ -565,7 +595,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static CareerAttributeGrowthDelta ToDomain(
-            CareerAttributeGrowthDeltaDocumentV1 document)
+            CareerAttributeGrowthDeltaDocumentV2 document)
         {
             EnsureIJsonSafe(document.spike, "progression.pendingEvent.options[].growthExperienceDelta.spike");
             EnsureIJsonSafe(document.serve, "progression.pendingEvent.options[].growthExperienceDelta.serve");
@@ -586,14 +616,14 @@ namespace Volleyball.Career.Persistence
                 document.stamina);
         }
 
-        private static CareerPlayerDocumentV1 ToDocument(CareerPlayerRecord player)
+        private static CareerPlayerDocumentV2 ToDocument(CareerPlayerRecord player)
         {
             if (player == null)
             {
                 return null;
             }
 
-            return new CareerPlayerDocumentV1
+            return new CareerPlayerDocumentV2
             {
                 playerId = player.PlayerId.Value,
                 displayName = player.DisplayName,
@@ -602,7 +632,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerPlayerRecord ToDomain(CareerPlayerDocumentV1 document)
+        private static CareerPlayerRecord ToDomain(CareerPlayerDocumentV2 document)
         {
             if (document == null)
             {
@@ -616,10 +646,10 @@ namespace Volleyball.Career.Persistence
                 ToDomain(Required(document.attributes, "player.attributes")));
         }
 
-        private static CareerPlayerAttributesDocumentV1 ToDocument(
+        private static CareerPlayerAttributesDocumentV2 ToDocument(
             CareerPlayerAttributes attributes)
         {
-            return new CareerPlayerAttributesDocumentV1
+            return new CareerPlayerAttributesDocumentV2
             {
                 spike = ToDocument(attributes.Spike),
                 serve = ToDocument(attributes.Serve),
@@ -632,7 +662,7 @@ namespace Volleyball.Career.Persistence
             };
         }
 
-        private static CareerPlayerAttributes ToDomain(CareerPlayerAttributesDocumentV1 document)
+        private static CareerPlayerAttributes ToDomain(CareerPlayerAttributesDocumentV2 document)
         {
             return new CareerPlayerAttributes(
                 ToDomain(Required(document.spike, "player.attributes.spike")),
@@ -645,11 +675,11 @@ namespace Volleyball.Career.Persistence
                 ToDomain(Required(document.stamina, "player.attributes.stamina")));
         }
 
-        private static CareerAttributeProgressDocumentV1 ToDocument(
+        private static CareerAttributeProgressDocumentV2 ToDocument(
             CareerAttributeProgress progress)
         {
             EnsureIJsonSafe(progress.GrowthExperience, "player.attributes[].growthExperience");
-            return new CareerAttributeProgressDocumentV1
+            return new CareerAttributeProgressDocumentV2
             {
                 abilityBasisPoints = progress.AbilityBasisPoints,
                 growthExperience = progress.GrowthExperience
@@ -657,7 +687,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static CareerAttributeProgress ToDomain(
-            CareerAttributeProgressDocumentV1 document)
+            CareerAttributeProgressDocumentV2 document)
         {
             EnsureIJsonSafe(document.growthExperience, "player.attributes[].growthExperience");
             return new CareerAttributeProgress(
@@ -665,11 +695,11 @@ namespace Volleyball.Career.Persistence
                 document.growthExperience);
         }
 
-        private static OperationReceiptDocumentV1 ToDocument(OperationReceipt receipt)
+        private static OperationReceiptDocumentV2 ToDocument(OperationReceipt receipt)
         {
             EnsureIJsonSafe(receipt.AppliedRevision, "operationReceipts[].appliedRevision");
             EnsureIJsonSafe(receipt.CompletedAtUtcMs, "operationReceipts[].completedAtUtcMs");
-            return new OperationReceiptDocumentV1
+            return new OperationReceiptDocumentV2
             {
                 operationId = CanonicalGuid(receipt.OperationId.Value),
                 operationKind = FormatOperationKind(receipt.OperationKind),
@@ -684,7 +714,7 @@ namespace Volleyball.Career.Persistence
         }
 
         private static OperationReceipt ToDomain(
-            OperationReceiptDocumentV1 document,
+            OperationReceiptDocumentV2 document,
             int index)
         {
             var prefix = "operationReceipts[" + index + "]";
@@ -712,10 +742,10 @@ namespace Volleyball.Career.Persistence
                     prefix + ".outcomeSummary"));
         }
 
-        private static OperationReceiptTargetDocumentV1 ToDocument(
+        private static OperationReceiptTargetDocumentV2 ToDocument(
             OperationReceiptTarget target)
         {
-            return new OperationReceiptTargetDocumentV1
+            return new OperationReceiptTargetDocumentV2
             {
                 tryoutStage = target.TryoutStage,
                 tryoutOccurrenceId = target.TryoutOccurrenceId.HasValue
@@ -734,12 +764,19 @@ namespace Volleyball.Career.Persistence
                 eventOccurrenceId = target.EventOccurrenceId.HasValue
                     ? CanonicalGuid(target.EventOccurrenceId.Value.Value)
                     : null,
-                optionId = target.OptionId
+                optionId = target.OptionId,
+                matchSessionId = target.MatchSessionId.HasValue
+                    ? CanonicalGuid(target.MatchSessionId.Value)
+                    : null,
+                scheduleItemId = target.ScheduleItemId,
+                contextHash = target.ContextDigest.HasValue
+                    ? target.ContextDigest.Value.Value
+                    : null
             };
         }
 
         private static OperationReceiptTarget ToDomain(
-            OperationReceiptTargetDocumentV1 document,
+            OperationReceiptTargetDocumentV2 document,
             OperationKind operationKind,
             string prefix)
         {
@@ -825,6 +862,31 @@ namespace Volleyball.Career.Persistence
                             prefix + ".eventOccurrenceId")),
                         document.optionId);
 
+                case OperationKind.CreatePendingMatch:
+                    RequireTargetShape(
+                        document,
+                        prefix,
+                        allowTryout: false,
+                        allowWeekPlan: true,
+                        allowAction: true,
+                        allowEvent: false,
+                        allowMatch: true);
+                    return OperationReceiptTarget.ForPendingMatch(
+                        new WeekPlanId(ParseCanonicalGuid(
+                            document.weekPlanId,
+                            prefix + ".weekPlanId")),
+                        new SlotActionId(ParseCanonicalGuid(
+                            document.slotActionId,
+                            prefix + ".slotActionId")),
+                        new OccurrenceId(ParseCanonicalGuid(
+                            document.actionOccurrenceId,
+                            prefix + ".actionOccurrenceId")),
+                        ParseCanonicalGuid(
+                            document.matchSessionId,
+                            prefix + ".matchSessionId"),
+                        document.scheduleItemId,
+                        Sha256Digest.Parse(document.contextHash));
+
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(operationKind),
@@ -833,17 +895,17 @@ namespace Volleyball.Career.Persistence
             }
         }
 
-        private static OperationOutcomeSummaryDocumentV1 ToDocument(
+        private static OperationOutcomeSummaryDocumentV2 ToDocument(
             OperationOutcomeSummary summary)
         {
-            var outputs = new TryoutResolvedOutputDocumentV1[
+            var outputs = new TryoutResolvedOutputDocumentV2[
                 summary.TryoutResolvedOutputs.Count];
             for (var index = 0; index < outputs.Length; index++)
             {
                 outputs[index] = ToDocument(summary.TryoutResolvedOutputs[index]);
             }
 
-            return new OperationOutcomeSummaryDocumentV1
+            return new OperationOutcomeSummaryDocumentV2
             {
                 tryoutResolvedOutputs = outputs,
                 growthExperienceDelta = summary.GrowthExperienceDelta == null
@@ -851,12 +913,18 @@ namespace Volleyball.Career.Persistence
                     : ToDocument(summary.GrowthExperienceDelta),
                 fatigueDelta = summary.FatigueDelta,
                 mindsetDelta = summary.MindsetDelta,
-                coachTrustDelta = summary.CoachTrustDelta
+                coachTrustDelta = summary.CoachTrustDelta,
+                matchSessionId = summary.MatchSessionId.HasValue
+                    ? CanonicalGuid(summary.MatchSessionId.Value)
+                    : null,
+                contextHash = summary.ContextDigest.HasValue
+                    ? summary.ContextDigest.Value.Value
+                    : null
             };
         }
 
         private static OperationOutcomeSummary ToDomain(
-            OperationOutcomeSummaryDocumentV1 document,
+            OperationOutcomeSummaryDocumentV2 document,
             OperationOutcomeKind outcomeKind,
             string prefix)
         {
@@ -875,7 +943,9 @@ namespace Volleyball.Career.Persistence
                         document.growthExperienceDelta != null ||
                         document.fatigueDelta.HasValue ||
                         document.mindsetDelta.HasValue ||
-                        document.coachTrustDelta.HasValue)
+                        document.coachTrustDelta.HasValue ||
+                        document.matchSessionId != null ||
+                        document.contextHash != null)
                     {
                         throw new ArgumentException(
                             "A tryout summary requires only a non-empty ordered output array.",
@@ -915,6 +985,14 @@ namespace Volleyball.Career.Persistence
                         document.mindsetDelta.Value,
                         document.coachTrustDelta.Value);
 
+                case OperationOutcomeKind.PendingMatchCreated:
+                    RequirePendingMatchOutcomeSummary(document, outputDocuments, prefix);
+                    return OperationOutcomeSummary.ForPendingMatchCreated(
+                        ParseCanonicalGuid(
+                            document.matchSessionId,
+                            prefix + ".matchSessionId"),
+                        Sha256Digest.Parse(document.contextHash));
+
                 default:
                     throw new ArgumentOutOfRangeException(
                         nameof(outcomeKind),
@@ -924,13 +1002,14 @@ namespace Volleyball.Career.Persistence
         }
 
         private static void RequireEmptyOutcomeSummary(
-            OperationOutcomeSummaryDocumentV1 document,
-            TryoutResolvedOutputDocumentV1[] outputDocuments,
+            OperationOutcomeSummaryDocumentV2 document,
+            TryoutResolvedOutputDocumentV2[] outputDocuments,
             string prefix)
         {
             if (outputDocuments.Length != 0 || document.growthExperienceDelta != null ||
                 document.fatigueDelta.HasValue || document.mindsetDelta.HasValue ||
-                document.coachTrustDelta.HasValue)
+                document.coachTrustDelta.HasValue || document.matchSessionId != null ||
+                document.contextHash != null)
             {
                 throw new ArgumentException(
                     "This outcome kind requires an explicitly empty summary.",
@@ -939,13 +1018,14 @@ namespace Volleyball.Career.Persistence
         }
 
         private static void RequireAppliedDeltaSummary(
-            OperationOutcomeSummaryDocumentV1 document,
-            TryoutResolvedOutputDocumentV1[] outputDocuments,
+            OperationOutcomeSummaryDocumentV2 document,
+            TryoutResolvedOutputDocumentV2[] outputDocuments,
             string prefix)
         {
             if (outputDocuments.Length != 0 || document.growthExperienceDelta == null ||
                 !document.fatigueDelta.HasValue || !document.mindsetDelta.HasValue ||
-                !document.coachTrustDelta.HasValue)
+                !document.coachTrustDelta.HasValue || document.matchSessionId != null ||
+                document.contextHash != null)
             {
                 throw new ArgumentException(
                     "An applied action or event outcome requires all delta fields and no tryout outputs.",
@@ -953,13 +1033,30 @@ namespace Volleyball.Career.Persistence
             }
         }
 
+        private static void RequirePendingMatchOutcomeSummary(
+            OperationOutcomeSummaryDocumentV2 document,
+            TryoutResolvedOutputDocumentV2[] outputDocuments,
+            string prefix)
+        {
+            if (outputDocuments.Length != 0 || document.growthExperienceDelta != null ||
+                document.fatigueDelta.HasValue || document.mindsetDelta.HasValue ||
+                document.coachTrustDelta.HasValue || document.matchSessionId == null ||
+                document.contextHash == null)
+            {
+                throw new ArgumentException(
+                    "A pending-match summary requires only its session and context hash.",
+                    prefix);
+            }
+        }
+
         private static void RequireTargetShape(
-            OperationReceiptTargetDocumentV1 document,
+            OperationReceiptTargetDocumentV2 document,
             string prefix,
             bool allowTryout,
             bool allowWeekPlan,
             bool allowAction,
-            bool allowEvent)
+            bool allowEvent,
+            bool allowMatch = false)
         {
             if (!allowTryout &&
                 (document.tryoutStage != 0 || document.tryoutOccurrenceId != null ||
@@ -993,6 +1090,15 @@ namespace Volleyball.Career.Persistence
                     prefix);
             }
 
+            if (!allowMatch &&
+                (document.matchSessionId != null || document.scheduleItemId != null ||
+                 document.contextHash != null))
+            {
+                throw new ArgumentException(
+                    "The receipt target contains unexpected match fields.",
+                    prefix);
+            }
+
             if (allowTryout &&
                 (document.tryoutStage == 0 || document.tryoutOccurrenceId == null ||
                  document.choiceId == null))
@@ -1022,6 +1128,15 @@ namespace Volleyball.Career.Persistence
             {
                 throw new ArgumentException(
                     "An event receipt target is incomplete.",
+                    prefix);
+            }
+
+            if (allowMatch &&
+                (document.matchSessionId == null || document.scheduleItemId == null ||
+                 document.contextHash == null))
+            {
+                throw new ArgumentException(
+                    "A pending-match receipt target is incomplete.",
                     prefix);
             }
         }
@@ -1060,7 +1175,7 @@ namespace Volleyball.Career.Persistence
         {
             if (value == null)
             {
-                throw new ArgumentNullException(fieldName, fieldName + " is required by schema V1.");
+                throw new ArgumentNullException(fieldName, fieldName + " is required by schema V2.");
             }
 
             return value;
@@ -1081,18 +1196,20 @@ namespace Volleyball.Career.Persistence
             int schemaVersion,
             int contentVersion,
             int rulesetVersion,
+            int contractVersion,
             int careerRandomAlgorithmVersion,
             string parameterName)
         {
             if (schemaVersion != CareerSaveVersions.CurrentSchemaVersion ||
                 contentVersion != CareerSaveVersions.CurrentContentVersion ||
                 rulesetVersion != CareerSaveVersions.CurrentRulesetVersion ||
+                contractVersion != CareerSaveVersions.CurrentContractVersion ||
                 careerRandomAlgorithmVersion !=
                 CareerSaveVersions.CurrentCareerRandomAlgorithmVersion)
             {
                 throw new ArgumentOutOfRangeException(
                     parameterName,
-                    "The schema V1 mapper only accepts the current value for all four version axes.");
+                    "The schema V2 mapper only accepts the current value for all five version axes.");
             }
         }
 
@@ -1110,6 +1227,8 @@ namespace Volleyball.Career.Persistence
                     return "planned";
                 case CareerProgressionKind.AwaitingEventChoice:
                     return "awaiting_event_choice";
+                case CareerProgressionKind.AwaitingMatch:
+                    return "awaiting_match";
                 default:
                     throw UnknownEnum(nameof(value), value);
             }
@@ -1129,6 +1248,8 @@ namespace Volleyball.Career.Persistence
                     return CareerProgressionKind.Planned;
                 case "awaiting_event_choice":
                     return CareerProgressionKind.AwaitingEventChoice;
+                case "awaiting_match":
+                    return CareerProgressionKind.AwaitingMatch;
                 default:
                     throw UnknownTextEnum("progression.kind", value);
             }
@@ -1245,6 +1366,8 @@ namespace Volleyball.Career.Persistence
                     return "execute_week_action";
                 case OperationKind.ResolveEventChoice:
                     return "resolve_event_choice";
+                case OperationKind.CreatePendingMatch:
+                    return "create_pending_match";
                 default:
                     throw UnknownEnum(nameof(value), value);
             }
@@ -1264,6 +1387,8 @@ namespace Volleyball.Career.Persistence
                     return OperationKind.ExecuteWeekAction;
                 case "resolve_event_choice":
                     return OperationKind.ResolveEventChoice;
+                case "create_pending_match":
+                    return OperationKind.CreatePendingMatch;
                 default:
                     throw UnknownTextEnum("operationReceipts[].operationKind", value);
             }
@@ -1283,6 +1408,8 @@ namespace Volleyball.Career.Persistence
                     return "slot_completed";
                 case OperationOutcomeKind.EventChoiceApplied:
                     return "event_choice_applied";
+                case OperationOutcomeKind.PendingMatchCreated:
+                    return "pending_match_created";
                 default:
                     throw UnknownEnum(nameof(value), value);
             }
@@ -1302,6 +1429,8 @@ namespace Volleyball.Career.Persistence
                     return OperationOutcomeKind.SlotCompleted;
                 case "event_choice_applied":
                     return OperationOutcomeKind.EventChoiceApplied;
+                case "pending_match_created":
+                    return OperationOutcomeKind.PendingMatchCreated;
                 default:
                     throw UnknownTextEnum("operationReceipts[].outcomeKind", value);
             }
@@ -1316,7 +1445,7 @@ namespace Volleyball.Career.Persistence
         private static ArgumentException UnknownTextEnum(string fieldName, string value)
         {
             return new ArgumentException(
-                fieldName + " contains an unknown schema V1 enum value: " +
+                fieldName + " contains an unknown schema V2 enum value: " +
                 (value ?? "<null>"),
                 fieldName);
         }

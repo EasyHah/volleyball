@@ -454,6 +454,7 @@ namespace Volleyball.Career.Domain
                 versions.SchemaVersion,
                 versions.ContentVersion,
                 versions.RulesetVersion,
+                versions.ContractVersion,
                 versions.CareerRandomAlgorithmVersion);
             Identity = new CareerSaveIdentity(
                 identity.ProfileId,
@@ -734,6 +735,7 @@ namespace Volleyball.Career.Domain
             ValidatePendingCareerIdentity(player, teamId, pendingMatch);
 
             if (pendingMatch.Versions.ContractVersion != CareerMatchLifecycleVersions.ContractV2 ||
+                pendingMatch.Versions.ContractVersion != versions.ContractVersion ||
                 pendingMatch.Versions.ContentVersion != versions.ContentVersion ||
                 pendingMatch.Versions.RulesetVersion != versions.RulesetVersion ||
                 pendingMatch.Versions.CareerRandomAlgorithmVersion !=

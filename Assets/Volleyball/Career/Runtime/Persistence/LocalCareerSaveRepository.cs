@@ -1125,15 +1125,6 @@ namespace Volleyball.Career.Persistence
                 backupVersionToken,
                 newLineageId,
                 recoveredAtUtcMs);
-            if (candidate.Versions.SchemaVersion == 1 &&
-                (candidate.PendingMatch != null ||
-                 candidate.MatchHistory.Count != 0 ||
-                 candidate.SettlementReceipts.Count != 0))
-            {
-                throw new InvalidOperationException(
-                    "Schema V1 cannot seal match lifecycle evidence; recovery requires the Schema V2 codec.");
-            }
-
             return CareerSaveJsonCodec.Seal(candidate);
         }
 
@@ -1278,7 +1269,8 @@ namespace Volleyball.Career.Persistence
             }
 
             var bytes = _fileSystem.ReadAllBytes(path);
-            if (HasUnsupportedCareerVersions(bytes))
+            var classification = CareerSaveVersionClassifier.Classify(bytes);
+            if (classification.Kind == CareerSaveVersionClassification.Unsupported)
             {
                 return Candidate.Unsupported();
             }
@@ -1301,51 +1293,6 @@ namespace Volleyball.Career.Persistence
             catch (ArgumentException)
             {
                 return Candidate.Invalid();
-            }
-        }
-
-        private bool HasUnsupportedCareerVersions(byte[] bytes)
-        {
-            try
-            {
-                var root = StrictJsonReader.Parse(bytes);
-                if (root.Kind != StrictJsonKind.Object)
-                {
-                    return false;
-                }
-
-                var versionsValue = root.ObjectValue.Get("versions");
-                if (versionsValue.Kind != StrictJsonKind.Object)
-                {
-                    return false;
-                }
-
-                var versions = versionsValue.ObjectValue;
-                if (versions.ContainsUnknownProperty(
-                        "schemaVersion",
-                        "contentVersion",
-                        "rulesetVersion",
-                        "careerRandomAlgorithmVersion"))
-                {
-                    return true;
-                }
-
-                return Integer(versions.Get("schemaVersion")) !=
-                       CareerSaveVersions.Current.SchemaVersion ||
-                       Integer(versions.Get("contentVersion")) !=
-                       CareerSaveVersions.Current.ContentVersion ||
-                       Integer(versions.Get("rulesetVersion")) !=
-                       CareerSaveVersions.Current.RulesetVersion ||
-                       Integer(versions.Get("careerRandomAlgorithmVersion")) !=
-                       CareerSaveVersions.Current.CareerRandomAlgorithmVersion;
-            }
-            catch (FormatException)
-            {
-                return false;
-            }
-            catch (KeyNotFoundException)
-            {
-                return false;
             }
         }
 
