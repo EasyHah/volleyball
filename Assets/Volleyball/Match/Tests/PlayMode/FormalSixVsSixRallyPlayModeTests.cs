@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -8,8 +9,11 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Volleyball.AI;
+using Volleyball.Domain;
 using Volleyball.Domain.Prototype;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
+using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 
 namespace Volleyball.PlayModeTests
 {
@@ -53,6 +57,8 @@ namespace Volleyball.PlayModeTests
             var timeout = Time.realtimeSinceStartup + 300f;
             var sawOutsideOwnCourt = false;
             var minimumSameTeamSeparation = float.PositiveInfinity;
+            var awaitingFirstPostRotationRally = false;
+            var verifiedPostRotationV3Eligibility = false;
             while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
             {
                 foreach (var player in players)
@@ -63,6 +69,18 @@ namespace Volleyball.PlayModeTests
                 minimumSameTeamSeparation = Mathf.Min(
                     minimumSameTeamSeparation,
                     MinimumSameTeamSeparation(players));
+                if (!verifiedPostRotationV3Eligibility &&
+                    director.HomeRotationOffset + director.AwayRotationOffset > 0 &&
+                    !director.IsLoopRunning)
+                {
+                    awaitingFirstPostRotationRally = true;
+                }
+                if (awaitingFirstPostRotationRally && director.IsLoopRunning)
+                {
+                    AssertV3EligibilityMatchesLiveRotation(director, players);
+                    verifiedPostRotationV3Eligibility = true;
+                    awaitingFirstPostRotationRally = false;
+                }
                 yield return null;
             }
 
@@ -93,6 +111,10 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.OrangeAttackContacts, Is.GreaterThan(0));
             Assert.That(director.HomeRotationOffset + director.AwayRotationOffset,
                 Is.GreaterThan(0));
+            Assert.That(
+                verifiedPostRotationV3Eligibility,
+                Is.True,
+                "No post-side-out rally exposed refreshed V3 eligibility.");
             Assert.That(director.CurrentServer, Is.Not.EqualTo(initialServer));
             Assert.That(aiSource.RequestCount, Is.EqualTo(director.AiDecisionRequests));
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.001f));
@@ -164,6 +186,59 @@ namespace Volleyball.PlayModeTests
             }
 
             return minimum;
+        }
+
+        private static void AssertV3EligibilityMatchesLiveRotation(
+            FormalSixVsSixRallyDirector director,
+            PrototypePlayerAgent[] players)
+        {
+            var adapter = GetPrivateField<FullRallyV3RulesRuntimeAdapter>(
+                director,
+                "_v3RulesAdapter");
+            var eligibility = GetPrivateField<OnCourtEligibilitySnapshot>(
+                adapter,
+                "_eligibility");
+            var set = GetPrivateField<MatchSet>(director, "_set");
+
+            Assert.That(adapter, Is.Not.Null);
+            Assert.That(eligibility.Players, Has.Count.EqualTo(12));
+            foreach (var player in players)
+            {
+                Assert.That(
+                    eligibility.For(player.StableId).RotationPosition,
+                    Is.EqualTo(director.RotationPositionFor(player.Id)),
+                    player.StableId.Value);
+            }
+
+            foreach (var side in new[] { TeamSide.Home, TeamSide.Away })
+            {
+                var currentServers = eligibility.Players
+                    .Where(player => player.Side == side && player.IsCurrentServer)
+                    .ToArray();
+                Assert.That(currentServers, Has.Length.EqualTo(1), side.ToString());
+                Assert.That(currentServers[0].PlayerId, Is.EqualTo(set.ServerFor(side)));
+            }
+
+            Assert.That(
+                director.CurrentServer,
+                Is.EqualTo(set.ServerFor(set.ServingSide)));
+        }
+
+        private static T GetPrivateField<T>(object target, string fieldName)
+        {
+            for (var type = target.GetType(); type != null; type = type.BaseType)
+            {
+                var field = type.GetField(
+                    fieldName,
+                    BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                if (field != null)
+                {
+                    return (T)field.GetValue(target);
+                }
+            }
+
+            Assert.Fail($"Missing private field {fieldName}.");
+            return default;
         }
 
         private sealed class ImmediateWeightSource : IRallyTacticalWeightSource

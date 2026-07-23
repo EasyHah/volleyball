@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -39,6 +40,17 @@ namespace Volleyball.PlayModeTests
             Assert.That(players, Has.Length.EqualTo(6));
             Assert.That(director.MatchContextV2, Is.Not.Null);
             Assert.That(director.MatchContext, Is.Null);
+            Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
+            Assert.That(director.V3RuleTransitions, Is.Zero);
+            Assert.That(director.V3RuleParityMatches, Is.Zero);
+            Assert.That(director.V3RuleIntentionalCorrections, Is.Zero);
+            Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero);
+            Assert.That(director.LastV3RuleDiagnostic, Is.Empty);
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector)
+                    .GetField("_v3RulesAdapter", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(director),
+                Is.Null);
             Assert.That(players, Has.Some.Matches<PrototypePlayerAgent>(
                 player => player.Id.Role == PlayerRole.Attacker && player.Ability.MaxAttackReach == 3.42f));
             Assert.That(
