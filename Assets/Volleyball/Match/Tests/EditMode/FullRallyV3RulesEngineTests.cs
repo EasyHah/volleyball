@@ -90,7 +90,9 @@ namespace Volleyball.EditModeTests
             var block = engine.Apply(Contact(AwayBlocker, TeamSide.Away, RallyContactClassificationV3.BlockContact, 10));
             var first = engine.Apply(Contact(AwayBlocker, TeamSide.Away, RallyContactClassificationV3.TeamContact, 11));
 
-            Assert.That(block.After.CountedHits, Is.Zero);
+            AssertState(block.After, TeamSide.Away, null, 0, null,
+                RallyContactClassificationV3.BlockContact, 10, false);
+            Assert.That(block.After.RemainingHits, Is.EqualTo(3));
             Assert.That(first.Accepted, Is.True);
             Assert.That(first.After.CurrentCountedSequenceTeam, Is.EqualTo(TeamSide.Away));
             Assert.That(first.After.CountedHits, Is.EqualTo(1));
@@ -129,26 +131,52 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void DuplicateContactGroup_AcrossClassifications_IsRejectedWithoutStateMutation()
+        {
+            var engine = RallyRulesEngineV3.Open(TeamSide.Home);
+            engine.Apply(Contact(AwayBlocker, TeamSide.Away, RallyContactClassificationV3.BlockContact, 1));
+            var before = engine.State;
+
+            var transition = engine.Apply(Contact(HomeSetter, TeamSide.Home, RallyContactClassificationV3.TeamContact, 1));
+
+            Assert.That(transition.Accepted, Is.False);
+            Assert.That(transition.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.DuplicateContactGroup));
+            Assert.That(transition.Before, Is.SameAs(before));
+            Assert.That(transition.After, Is.SameAs(before));
+            Assert.That(engine.State, Is.SameAs(before));
+        }
+
+        [Test]
         public void SimultaneousSameTeamContact_CountsOnce()
         {
             var engine = RallyRulesEngineV3.Open(TeamSide.Home);
 
             var transition = engine.Apply(Contact(HomeServer, TeamSide.Home, RallyContactClassificationV3.SimultaneousTeamContact, 1));
+            var beforeDuplicate = engine.State;
+            var duplicate = engine.Apply(Contact(HomeSetter, TeamSide.Home, RallyContactClassificationV3.SimultaneousTeamContact, 1));
 
             Assert.That(transition.Accepted, Is.True);
             Assert.That(transition.After.CountedHits, Is.EqualTo(1));
             Assert.That(transition.After.LastContactGroup, Is.EqualTo((long?)1));
+            Assert.That(duplicate.Accepted, Is.False);
+            Assert.That(duplicate.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.DuplicateContactGroup));
+            Assert.That(duplicate.After, Is.SameAs(beforeDuplicate));
+            Assert.That(engine.State, Is.SameAs(beforeDuplicate));
+            Assert.That(engine.State.CountedHits, Is.EqualTo(1));
         }
 
         [Test]
         public void EnvironmentContact_ClosesTheRallyAndLaterContactIsRejected()
         {
             var engine = RallyRulesEngineV3.Open(TeamSide.Home);
-            var terminal = engine.Apply(ActualContactEventV3.Environment(1));
+            var environment = ActualContactEventV3.Environment(1);
+            var terminal = engine.Apply(environment);
             var before = engine.State;
 
             var later = engine.Apply(Contact(HomeServer, TeamSide.Home, RallyContactClassificationV3.ServeContact, 2));
 
+            Assert.That(environment.Actor.HasValue, Is.False);
+            Assert.That(environment.Team.HasValue, Is.False);
             Assert.That(terminal.Accepted, Is.True);
             Assert.That(terminal.After.IsTerminal, Is.True);
             Assert.That(later.Accepted, Is.False);
