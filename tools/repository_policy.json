@@ -97,13 +97,23 @@
     },
     "Volleyball.Career.EditModeTests": {
       "path": "Assets/Volleyball/Career/Tests/EditMode/Volleyball.Career.EditModeTests.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap", "Unity.InputSystem"],
+      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap", "Volleyball.Bootstrap.Editor", "Unity.InputSystem"],
       "includePlatforms": ["Editor"],
       "optionalUnityReferences": ["TestAssemblies"]
     },
     "Volleyball.Bootstrap": {
       "path": "Assets/Volleyball/Bootstrap/Runtime/Volleyball.Bootstrap.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Match.Presentation", "Volleyball.Career.Application", "Volleyball.Career.Presentation"]
+      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Match.Presentation", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Presentation", "Unity.InputSystem"]
+    },
+    "Volleyball.Bootstrap.Editor": {
+      "path": "Assets/Volleyball/Bootstrap/Editor/Volleyball.Bootstrap.Editor.asmdef",
+      "references": ["Volleyball.Bootstrap", "Volleyball.Career.Presentation", "Unity.InputSystem"],
+      "includePlatforms": ["Editor"]
+    },
+    "Volleyball.Career.PlayModeTests": {
+      "path": "Assets/Volleyball/Career/Tests/PlayMode/Volleyball.Career.PlayModeTests.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Presentation", "Volleyball.Bootstrap", "Unity.InputSystem"],
+      "optionalUnityReferences": ["TestAssemblies"]
     },
     "Volleyball.Shared.EditModeTests": {
       "path": "Assets/Volleyball/Shared/Tests/EditMode/Volleyball.Shared.EditModeTests.asmdef",

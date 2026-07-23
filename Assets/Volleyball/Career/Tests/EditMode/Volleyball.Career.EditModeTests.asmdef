@@ -10,6 +10,7 @@
     "Volleyball.Career.Presentation",
     "Volleyball.Match.Presentation",
     "Volleyball.Bootstrap",
+    "Volleyball.Bootstrap.Editor",
     "Unity.InputSystem"
   ],
   "includePlatforms": ["Editor"],
