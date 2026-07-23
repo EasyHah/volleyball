@@ -1,0 +1,29 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="CareerShell.uss" />
+    <ui:VisualElement name="career-shell" class="career-shell">
+        <ui:VisualElement class="top-bar">
+            <ui:VisualElement class="title-block">
+                <ui:Label name="app-title" class="app-title" />
+                <ui:Label name="route-title" class="route-title" />
+            </ui:VisualElement>
+            <ui:Label name="prototype-label" class="prototype-label" />
+        </ui:VisualElement>
+        <ui:VisualElement class="save-band">
+            <ui:Label name="save-state-label" class="save-state" />
+            <ui:Label name="feedback-label" class="feedback" />
+        </ui:VisualElement>
+        <ui:ScrollView name="route-scroll" class="route-scroll">
+            <ui:VisualElement name="route-content" class="route-content" />
+        </ui:ScrollView>
+        <ui:VisualElement class="bottom-bar">
+            <ui:Button name="back-button" class="secondary-button" />
+            <ui:VisualElement class="bottom-spacer" />
+            <ui:Button name="save-button" class="secondary-button" />
+        </ui:VisualElement>
+        <ui:VisualElement name="modal-layer" class="modal-layer hidden">
+            <ui:VisualElement class="modal-card">
+                <ui:VisualElement name="modal-content" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
