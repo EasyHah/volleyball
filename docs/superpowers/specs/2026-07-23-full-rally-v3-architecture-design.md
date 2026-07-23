@@ -17,12 +17,12 @@ This design creates four connected problems:
 3. Planning evaluates ideal trajectories while execution may apply a different error model afterward.
 4. Block contacts and unplanned physical contacts do not naturally create a new coordinated rally state.
 
-The immediate symptom was repeated attacks into the net. The cause was not blocker selection: route selection and attack execution used mismatched assumptions. The desired solution has since expanded into a full V3 rally architecture in which both teams re-evaluate responsibilities after every actual contact.
+The immediate symptom was repeated attacks into the net. The cause was not blocker selection: route selection and attack execution used mismatched assumptions. The desired solution has since expanded into a full V3 rally architecture in which every accepted contact advances rules and deterministically decides whether the current plan can activate a covered branch, needs a scoped revision, or must run a new global plan.
 
 ## 2. Design Principles
 
 1. **Facts, plans, execution, and rules are separate.**
-2. **Every actual player contact triggers a whole-court replan for both teams.**
+2. **Every accepted contact triggers a rules transition and a deterministic coverage/revision decision.**
 3. **A team decision is a compatible six-player responsibility plan, not a single actor selection.**
 4. **Only currently legal on-court players may receive responsibilities.**
 5. **Planning and execution share the same ability-driven execution distribution.**
@@ -34,7 +34,7 @@ The immediate symptom was repeated attacks into the net. The cause was not block
 
 ## 3. Goals
 
-- Replan responsibilities for all twelve on-court players after every actual contact.
+- Re-evaluate the current responsibility plan after every accepted contact, activating covered conditional branches when possible and replanning only when the current plan no longer covers the actual outcome.
 - Support standard receive-set-attack chains and non-standard recovery chains through the same architecture.
 - Coordinate blocking and backcourt defense as a joint coverage plan.
 - Compare safe attacks and deliberate block-tool recovery by expected rally value.
@@ -48,7 +48,7 @@ The immediate symptom was repeated attacks into the net. The cause was not block
 
 - Tactical substitutions selected by the rally planner. V3 consumes the current legal lineup; match-level substitution strategy remains outside the first implementation.
 - A large named-trait or perk system. V3 initially differentiates players through ability values.
-- Per-frame global replanning. Contacts always trigger replanning; flight deviations use bounded thresholds.
+- Per-frame global replanning. Contacts always trigger rules and coverage evaluation; flight deviations use bounded thresholds.
 - Unlimited offense-defense iteration or game-theoretic equilibrium solving.
 - Full verbal communication simulation in the first version.
 - Scripted or teleported block-tool rebounds. All rebounds remain physical.
@@ -144,6 +144,38 @@ PerceivedValue<T>
 
 All perception uncertainty is deterministic from match seed, plan revision, observer, subject, observation kind, and event sequence.
 
+### 6.5 V3 shared contract family
+
+Phase 0 must name and reserve the shared contract family before interface implementation starts:
+
+```text
+MatchContextV3
+MatchResultV3
+PlayerAbilitySnapshotV3
+MatchReplayV2
+```
+
+V3 extends the V1/V2 rule that versions are explicit. No reader, writer, adapter, or serializer may silently treat V1, V2, and V3 data as interchangeable. `ContractJson` must add version-explicit APIs for V3 rather than changing existing V1/V2 method semantics. The exact method names should follow the existing code style, but the API surface must distinguish context, result, and replay targets, for example:
+
+```text
+ToCanonicalJson(MatchContextV3)
+ToCanonicalJson(MatchResultV3)
+ToCanonicalReplayJson(MatchReplayV2)
+ParseMatchContextV3(...)
+ParseMatchResultV3(...)
+ParseMatchReplayV2(...)
+```
+
+Default migration proceeds V1 -> V2 -> V3. A direct V1 -> V3 migration is allowed only if it is explicitly named, implemented, and tested; it must not be an implicit shortcut inside a generic parser.
+
+Canonical hashes are a named family, not one broad contract hash:
+
+- `CanonicalMatchContextHashV3` hashes only the `MatchContextV3` input contract, including V3 ability fields, lineup and rotation configuration, deterministic seeds, rules, and simulation knobs that affect decisions.
+- `CanonicalMatchResultHashV3` hashes only the `MatchResultV3` output contract, including final score, winner, result status, and result-level statistics chosen for golden tests.
+- `CanonicalMatchReplayHashV2` hashes persisted `MatchReplayV2` replay-critical payload. `CanonicalReplayFrameHashV2` may be added for frame or event fixtures.
+
+All canonical JSON hashes use the same algorithm: sorted object keys, semantic array order preserved, explicit numeric normalization, canonical enum and string representation, UTF-8 encoding, no locale dependence, and a per-hash inclusion/exclusion table. Context hashes exclude runtime contacts, selected plans, perceived values, replay frames, diagnostics, planner wall-clock timing, allocations, and result data. Result hashes exclude transient planner timing and allocations unless those fields are explicitly promoted into the result contract. Replay hashes exclude visualization-local state, profiler scratch fields, cache hit timing, and other non-persisted debug data.
+
 ## 7. On-Court Eligibility
 
 `OnCourtEligibilitySnapshot` is created before candidate generation. It contains exactly six players per team and records:
@@ -195,16 +227,36 @@ Abilities do not directly add arbitrary bonuses to a route's total score.
 
 ### 8.1 V2 compatibility
 
-Legacy V2 data maps initially as:
+Legacy V2 data is converted by an explicit migrator:
 
 ```text
-AttackControl = AttackTechnique
-SoftTouch = AttackTechnique
-BlockTechnique = average(Jump, ReceiveTechnique)
-CourtAwareness = Reaction
+LegacyV2ToPlayerAbilitySnapshotV3
 ```
 
-Other fields map directly. These defaults preserve old saves and are not the final roster-balance values. Newly-authored rosters provide explicit V3 values.
+The migrated `PlayerAbilitySnapshotV3`, or adjacent save and diagnostic metadata when the format supports it, records:
+
+```text
+sourceVersion = V2
+migrationVersion
+isCompatibilityEstimate = true
+compatibilityCollapsedAxes
+```
+
+`compatibilityCollapsedAxes` is populated when the V2 source does not contain enough canonical proxy data to distinguish V3 axes that are intentionally separate, such as `AttackControl` and `SoftTouch`.
+
+The migration is a compatibility estimate, not roster balance truth. Newly-authored rosters provide explicit V3 values. Exact coefficients and role-prior formulas are balancing work, but Phase 0 migration design must satisfy these invariants:
+
+- deterministic for identical V2 input and `migrationVersion`;
+- monotonic with relevant V2 source abilities;
+- bounded to valid V3 ability ranges;
+- no random offsets;
+- no dependency on wall-clock time, unstable enumeration order, or non-canonical roster order;
+- no global collapse of separated V3 axes when deterministic source proxies can distinguish them;
+- documented deterministic role or position priors when priors are used.
+
+Fixture tests must include at least one pair of V2 players with equal `AttackTechnique` and different canonical proxy fields or roles. When proxies exist, migrated V3 values must distinguish the relevant separated axes. If no proxies exist, collapse is allowed only when `compatibilityCollapsedAxes` records the limitation.
+
+The named `V3_MIGRATION_COMPATIBILITY_WINDOW` ends only after the save-upgrade tool and loader tests pass at the Phase 5 default-enable gate. After that gate, loading V2 must either auto-upgrade and write V3 on the next save, or fail with an actionable migration path. It must never load V2 as native V3 without an explicit migration step.
 
 ### 8.2 Effort
 
@@ -341,9 +393,10 @@ PlayerActionCandidate
 - Effort
 - Preconditions
 - RuleEligibility
-- ExecutionEnvelope
+- ExecutionEnvelopeV3
 - PredictedOutcomes
 - FollowUpRequirements
+- TrajectoryArtifactRef
 ```
 
 Responsibility describes why a player acts; technique describes how.
@@ -356,7 +409,7 @@ Each candidate is evaluated through six ordered gates:
 2. **Arrival feasibility** — reaction, movement, path conflict, recovery, and available time produce an arrival margin.
 3. **Contact geometry** — reach, jump, facing, approach, body-relative contact, and posture produce readiness and controllability.
 4. **Execution distribution** — ability, difficulty, posture, pressure, and effort produce position, direction, speed, spin, and timing error.
-5. **Physical samples** — a small deterministic set of center, lateral, vertical, and speed samples runs through the official trajectory and collision predictors.
+5. **Physical samples** — a small deterministic set of center, lateral, vertical, and speed samples reads shared trajectory artifacts from `BallTrajectoryPredictionProviderV3` and runs through the official collision predictors.
 6. **Next-state value** — samples are evaluated for score, legal continuation, organization quality, opponent counterattack, or immediate loss.
 
 The error scale follows:
@@ -372,9 +425,36 @@ base technique difficulty
 
 ### 12.1 Prediction-execution contract
 
-The selected candidate carries its `ExecutionEnvelope`. Planning evaluates representative samples from that envelope; actual execution samples a concrete result from the same envelope using a deterministic seed.
+The selected candidate carries its `ExecutionEnvelopeV3` or codebase-equivalent `PlanningExecutionEnvelopeV3`. Planning evaluates representative samples from that envelope; actual execution samples a concrete result from the same envelope using a deterministic seed.
 
 No director or execution component may replace the baseline target, velocity, or error model after selection.
+
+Phase 0 reserves the envelope identity and data path. Detailed sampling counts, expansion thresholds, and candidate-class policies are decided before the Phase 2 implementation. The envelope identity includes enough data to detect planner/executor mismatch:
+
+- envelope version;
+- producing ability snapshot and provenance;
+- candidate and action kind;
+- baseline target and velocity representation;
+- bounded error distribution metadata;
+- deterministic sample key or seed-derivation inputs.
+
+The executor consumes the referenced envelope; it may not recompute an unrelated baseline target, velocity, or error model. Coverage, replay, and diagnostics must be able to report `EnvelopeExceeded`, `EnvelopeExpanded`, and `UnexpectedExecutionSample` when actual execution leaves the planned bounds.
+
+### 12.2 Shared trajectory prediction
+
+`BallTrajectoryPredictionProviderV3` or codebase-equivalent `BallTrajectoryCacheV3` is a Phase 0 interface prerequisite. For the same ball state, physics configuration, sample key, and deterministic context, both teams' gate-5 evaluation reads the same authoritative trajectory prediction artifact.
+
+Team perception may wrap that artifact with deterministic uncertainty, delay, and confidence. It must not rerun a separate physical prediction that changes authoritative crossing, collision, landing, or reachability facts for the same sample key.
+
+Each trajectory artifact records deterministic provenance:
+
+- ball state version;
+- physics configuration or hash;
+- sample key;
+- predictor version;
+- deterministic work-budget or degradation mode that affected the samples.
+
+Physics and predictor configuration that affects deterministic behavior belongs in `CanonicalMatchContextHashV3`. Selected persisted trajectory artifact evidence belongs in `MatchReplayV2` diagnostics. Wall-clock cache hit, miss, and profiler timings are excluded from deterministic hashes.
 
 ## 13. Team Responsibility Composition
 
@@ -585,15 +665,51 @@ Each player assignment includes:
 
 Tasks carry movement, action, spatial claim, timing, activation, cancellation, exclusivity, priority, and execution profile.
 
+### 16.1 Replay contract direction
+
+Phase 0 must choose the replay contract direction before `ContractJson`, canonical hashes, and replay diagnostics are finalized:
+
+1. create `MatchReplayV2` with `formatVersion = 2` as the persisted replay family and reserve explicit V3 sections for replay-critical plan and diagnostic data; or
+2. declare V3 plan, perception, and diagnostic structures in-memory only, and explicitly weaken the success criteria for deterministic fixed-seed replay and explaining both teams' choices.
+
+The recommended decision is `MatchReplayV2`, because V3 success criteria require deterministic replay and diagnostics that explain both teams' perceived choices and the actual outcome. Phase 0 only needs names, version discriminator, serializer ownership, hash boundaries, and reserved sections. Full payload schema is a P1 gate before diagnostics and calibration implementation.
+
+Reserved replay sections include plan revisions, `TeamRallyPlan`, `PlayerResponsibilityAssignment`, `PlanCoverageDecision`, `ExecutionEnvelopeV3` identity and bounds, shared trajectory artifact references, perceived values, threat distributions, block and floor coverage, safe attack and block-tool values, deterministic degradation mode, and accepted rule/physical events.
+
 ## 17. Replanning
 
-### 17.1 Mandatory whole-court replans
+### 17.1 Contact coverage decision
 
-- serve contact;
-- any actual legal or accidental player contact;
-- block contact;
-- lineup or rotation change;
-- rally-ending ground, boundary, or fault event.
+Every accepted contact produces a rule transition. After the rule transition, the planner/executor boundary produces a deterministic `PlanCoverageDecision`:
+
+```text
+CoveredActivateBranch
+LocalRevision
+ScopedReplan
+GlobalReplan
+TerminalNoPlan
+```
+
+Inputs include the current `RallyPlan` and `TeamRallyPlan`, active/planned/committed/recovery responsibilities, the actual contact event, post-contact ball state or outcome envelope, the rules transition result, deterministic work-budget config, and current invalidation/dependency state.
+
+Required reason codes include:
+
+- `WithinConditionalEnvelope`;
+- `ResponsibleActorChanged`;
+- `BallEnvelopeExceeded`;
+- `EnvelopeExceeded`;
+- `EnvelopeExpanded`;
+- `UnexpectedExecutionSample`;
+- `RulesStateChanged`;
+- `CommittedResponsibilityInvalidated`;
+- `DependencyCascadeExceeded`;
+- `BudgetDegradationRequired`;
+- `RallyOpen`;
+- `RallyEnd`.
+
+`CoveredActivateBranch` activates planner-approved conditional responsibilities without a global search. `ScopedReplan` names the invalidated responsibilities or players, dependency expansion depth, and scope cap used. `GlobalReplan` is reserved for explicit opening events, plan absence or invalidity, lineup/rotation changes, dependency cascades that exceed deterministic caps, or other configured global triggers. `TerminalNoPlan` is used for rally-ending ground, boundary, or fault events.
+
+For identical input and deterministic config, the same `PlanCoverageDecision` must be produced. `Committed` responsibilities cannot be rewritten except through explicit invalidation reason.
 
 ### 17.2 Flight-time replans
 
@@ -623,6 +739,28 @@ Every command carries a plan revision. Stale callbacks cannot reactivate an old 
 ### 17.4 Conditional safety
 
 Executors may activate only planner-approved conditional tasks. Uncovered situations request a replan rather than allowing local tactical AI. Existing active motion may continue while a new plan is computed.
+
+### 17.5 Deterministic work budget and performance targets
+
+V3 behavior is governed by deterministic work-unit budgets, not measured wall-clock runtime. These caps are part of the input/config contract or deterministic planner configuration and are included in `CanonicalMatchContextHashV3` when they affect simulation decisions.
+
+Phase 0 names these caps:
+
+- maximum global replans per rally class or trigger class;
+- maximum revision scope and invalidation expansion depth;
+- beam width `B`;
+- candidates per responsibility `K`;
+- physical sample count by candidate class;
+- gate-5 eligibility or confidence-threshold mode;
+- maximum candidate evaluations;
+- ordered degradation ladder;
+- degradation reason and selected degradation mode.
+
+The initial wall-clock targets are `<= 2 ms` per global replan, `<= 20 ms` total planning per rally, and `<= 0.5 ms` per flight-time check frame. These are profiler and acceptance targets only. They may fail performance tests or produce warnings, but they must not by themselves change simulated decisions in deterministic replay or golden-test modes.
+
+Overflow follows a deterministic degradation ladder, for example reducing sample count, reducing `B`/`K`, using cached coarse outcome distributions, and finally selecting a deterministic safe fallback. If an interactive mode requires a hard real-time escape hatch, it is explicitly mode-gated. Any gameplay-affecting escape decision must be recorded in replay/result diagnostics or excluded from deterministic golden replay.
+
+The V3 planner is CPU-authoritative for Phase 0/P1. GPU acceleration is out of scope for the first interface and implementation pass. Future optional GPU backends may accelerate batch visualization, heat maps, or offline calibration, but cannot become the authority for deterministic match decisions unless they preserve the same canonical artifacts and replay behavior.
 
 ## 18. Execution Architecture
 
@@ -672,7 +810,7 @@ It cannot select routes, actors, blockers, setters, or error parameters.
 
 #### `PlayerTechniqueExecutor`
 
-- selected `ExecutionEnvelope`;
+- selected `ExecutionEnvelopeV3`;
 - fixed-seed actual sample;
 - final correction from actual arrival and readiness;
 - outgoing contact response.
@@ -691,7 +829,7 @@ actual pose exposes physical surfaces
 → technique response is resolved
 → rules engine adjudicates
 → ActualContactEvent is emitted
-→ whole-court replan occurs
+→ PlanCoverageDecision selects branch activation, local revision, scoped replan, global replan, or terminal no-plan
 ```
 
 ## 19. Director End State
@@ -717,7 +855,10 @@ Diagnostics record:
 
 - plan and snapshot revisions;
 - trigger event and invalidation reason;
+- `PlanCoverageDecision`, reason code, invalidation set, and revision scope;
 - selected responsibilities for all twelve players;
+- selected `ExecutionEnvelopeV3` identity, bounds, and execution-sample provenance;
+- shared trajectory artifact identities used for physical samples;
 - attack threat probabilities;
 - block and floor-defense coverage;
 - legal-crossing and net-clearance probabilities;
@@ -742,7 +883,9 @@ This supports screenshots that explain why each side made its decision rather th
 ### Phase 0: baseline and interfaces
 
 - freeze fixed-seed rally, contact, route, replay, and failure baselines;
-- introduce V3 interfaces backed by legacy adapters;
+- introduce V3 interfaces backed by legacy adapters: `MatchContextV3`, `MatchResultV3`, `PlayerAbilitySnapshotV3`, `MatchReplayV2`, V3 `ContractJson` APIs, canonical hash family, `ExecutionEnvelopeV3`, `PlanCoverageDecision`, and shared trajectory provider/cache contracts;
+- define deterministic work-budget config and separate wall-clock performance targets;
+- define `LegacyV2ToPlayerAbilitySnapshotV3` migration provenance, invariants, fixtures, and `V3_MIGRATION_COMPATIBILITY_WINDOW`;
 - preserve one authoritative writer per subsystem.
 
 ### Phase 1: facts, eligibility, and rules
@@ -754,13 +897,15 @@ This supports screenshots that explain why each side made its decision rather th
 
 ### Phase 2: abilities and shared execution distribution
 
-- add snapshot/profile V3 and V2 migration;
+- add snapshot/profile V3 and V2 migration formulas;
 - add execution envelopes and outcome prediction;
-- make current planning and execution share the envelope.
+- make current planning and execution share the envelope;
+- define planning/execution sample counts, candidate-class policies, and out-of-envelope handling.
 
 ### Phase 3: shadow full-team planning
 
 - generate candidates and compose six-player plans for both teams;
+- use shared trajectory prediction artifacts for both teams' physical samples;
 - record but do not execute;
 - compare responsibility coverage and legality with legacy outcomes.
 
@@ -803,12 +948,18 @@ This supports screenshots that explain why each side made its decision rather th
 
 ### 22.1 Pure EditMode
 
+- V3 contract readers and writers reject silent V1/V2/V3 substitution;
+- canonical context, result, and replay hashes use the correct inclusion/exclusion tables;
+- V2-to-V3 ability migration is deterministic, bounded, monotonic, and records collapsed axes when source data cannot distinguish them;
 - exact six-player assignments from current lineup;
 - libero replacement and action restrictions;
 - back-row attack and block restrictions;
 - block contact starts correct new hit sequence;
 - blocker may make the first counted contact;
 - deterministic perception and execution distributions;
+- planner and executor use the same `ExecutionEnvelopeV3` identity;
+- `PlanCoverageDecision` returns deterministic reason codes and scope;
+- both teams reference the same shared trajectory artifact for the same sample key;
 - illegal candidates cannot be rescued by score bonuses;
 - constrained composition rejects spatial conflicts;
 - safe attack and block-tool recovery compete directly;
@@ -821,8 +972,10 @@ This supports screenshots that explain why each side made its decision rather th
 - fixed poor-contact attack does not repeatedly select a net-fault route;
 - block centers on the easiest qualified attack lane;
 - backcourt covers residual threat rather than duplicating block coverage;
-- unplanned contacts advance rules and trigger replan;
-- all twelve players receive refreshed responsibilities after each contact.
+- unplanned contacts advance rules and produce a covered-branch, local-revision, scoped-replan, global-replan, or terminal decision;
+- covered receive-set-attack branches activate without global replan;
+- shanked passes outside the planned envelope trigger scoped/global replan with reason and invalidation set;
+- all twelve players retain compatible responsibilities after contact coverage evaluation.
 
 ### 22.3 PlayMode
 
@@ -842,7 +995,8 @@ This supports screenshots that explain why each side made its decision rather th
 - no illegal fourth hit or consecutive contact;
 - no hidden opponent final-route access;
 - bounded plan churn under small flight deviations;
-- recorded planner runtime and allocation budgets.
+- deterministic work counters and degradation mode are stable for fixed seeds;
+- wall-clock planner runtime and allocation budgets are recorded but do not change deterministic decisions.
 
 ## 23. Rollout and Failure Containment
 
@@ -856,7 +1010,7 @@ This supports screenshots that explain why each side made its decision rather th
 
 V3 is complete when:
 
-1. every actual contact produces a rule transition; every non-rally-ending accepted player contact produces a whole-court plan revision;
+1. every accepted contact produces a rule transition and a deterministic `PlanCoverageDecision`; covered branches activate without global search, while local, scoped, or global replans occur only for explicit invalidation reasons;
 2. both teams' current six players always have compatible responsibilities;
 3. attack, block, floor defense, cover, and reorganization share one outcome model;
 4. route prediction and physical execution share one execution envelope;
