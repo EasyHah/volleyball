@@ -86,7 +86,7 @@ namespace Volleyball.Bootstrap
         private void ConfigureInput(UIDocument document)
         {
             // Unity 6 UI Toolkit supplies its runtime pointer/navigation event provider.
-            // The Career router owns only the explicit Back/Cancel/Page actions so the
+            // The Career router owns only the explicit Submit/Back/Cancel/Page actions so the
             // project does not need to add the legacy UGUI/EventSystem package.
             var router = GetComponent<CareerMenuInputRouter>();
             if (router == null)

@@ -52,8 +52,67 @@ namespace Volleyball.Career.PlayModeTests
 
                 Assert.That(map.FindAction("Back", true).enabled, Is.True);
                 Assert.That(map.FindAction("Cancel", true).enabled, Is.True);
+                Assert.That(map.FindAction("Submit", true).enabled, Is.True);
                 Assert.That(map.FindAction("PageLeft", true).enabled, Is.True);
                 Assert.That(map.FindAction("PageRight", true).enabled, Is.True);
+
+                var submitCount = 0;
+                var submitTarget = new Button(() => submitCount++)
+                {
+                    name = "router-submit-test",
+                    text = "Submit test"
+                };
+                document.rootVisualElement.Add(submitTarget);
+                try
+                {
+                    submitTarget.Focus();
+                    yield return null;
+                    using (var enter = KeyDownEvent.GetPooled(
+                               '\n',
+                               KeyCode.Return,
+                               EventModifiers.None))
+                    {
+                        enter.target = submitTarget;
+                        submitTarget.SendEvent(enter);
+                    }
+
+                    using (var repeat = KeyDownEvent.GetPooled(
+                               '\n',
+                               KeyCode.Return,
+                               EventModifiers.None))
+                    {
+                        repeat.target = submitTarget;
+                        submitTarget.SendEvent(repeat);
+                    }
+
+                    yield return null;
+                    Assert.That(submitCount, Is.EqualTo(1));
+
+                    using (var release = KeyUpEvent.GetPooled(
+                               '\n',
+                               KeyCode.Return,
+                               EventModifiers.None))
+                    {
+                        release.target = submitTarget;
+                        submitTarget.SendEvent(release);
+                    }
+
+                    using (var secondPress = KeyDownEvent.GetPooled(
+                               '\n',
+                               KeyCode.Return,
+                               EventModifiers.None))
+                    {
+                        secondPress.target = submitTarget;
+                        submitTarget.SendEvent(secondPress);
+                    }
+
+                    yield return null;
+                    Assert.That(submitCount, Is.EqualTo(2));
+                }
+                finally
+                {
+                    submitTarget.RemoveFromHierarchy();
+                }
 
                 AssertShell(document, "职业生涯");
                 Screen.SetResolution(1280, 720, false);
