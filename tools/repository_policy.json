@@ -97,7 +97,7 @@
     },
     "Volleyball.Career.EditModeTests": {
       "path": "Assets/Volleyball/Career/Tests/EditMode/Volleyball.Career.EditModeTests.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap"],
+      "references": ["Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap", "Unity.InputSystem"],
       "includePlatforms": ["Editor"],
       "optionalUnityReferences": ["TestAssemblies"]
     },

@@ -208,7 +208,7 @@ namespace Volleyball.Career.EditModeTests
                 "Volleyball.Shared", "Volleyball.Shared.MatchV2", "Volleyball.Career.Domain",
                 "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration",
                 "Volleyball.Career.Persistence", "Volleyball.Career.Presentation",
-                "Volleyball.Match.Presentation", "Volleyball.Bootstrap"
+                "Volleyball.Match.Presentation", "Volleyball.Bootstrap", "Unity.InputSystem"
             };
 
             Assert.That(applicationDefinition.References, Is.EqualTo(expectedApplication));

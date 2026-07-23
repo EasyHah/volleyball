@@ -9,7 +9,8 @@
     "Volleyball.Career.Persistence",
     "Volleyball.Career.Presentation",
     "Volleyball.Match.Presentation",
-    "Volleyball.Bootstrap"
+    "Volleyball.Bootstrap",
+    "Unity.InputSystem"
   ],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"]
