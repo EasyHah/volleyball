@@ -128,15 +128,21 @@ namespace Volleyball.Presentation
             TeamId team,
             StablePlayerId? playerId,
             TechniqueAction action,
-            ReplaySetChainEvent setChain = null)
+            ReplaySetChainEvent setChain = null,
+            AttackGeometryFactV3 observedAttackGeometry = null,
+            RuleTransitionV3 ruleTransition = null)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
             Action = action;
             SetChain = setChain;
+            ObservedAttackGeometry = observedAttackGeometry;
+            RuleTransition = ruleTransition;
         }
 
         public TechniqueAction Action { get; }
         public ReplaySetChainEvent SetChain { get; }
+        public AttackGeometryFactV3 ObservedAttackGeometry { get; }
+        public RuleTransitionV3 RuleTransition { get; }
     }
 
     public sealed class ReplaySetChainEvent
@@ -1685,16 +1691,19 @@ namespace Volleyball.Presentation
             var stableActor = StableId(actor);
             var classification = ToV3Classification(candidate.Action);
             var side = ToSide(actor.Team);
-            var transition = candidate.Action == TechniqueAction.Attack
+            var observedAttackGeometry = candidate.Action == TechniqueAction.Attack
+                ? CreateObservedAttackGeometry(
+                    candidate,
+                    hit,
+                    contactSimulationTime)
+                : null;
+            var transition = observedAttackGeometry != null
                 ? _v3RulesAdapter.CommitContact(
                     stableActor,
                     side,
                     classification,
                     hit.ContactGroupId,
-                    CreateObservedAttackGeometry(
-                        candidate,
-                        hit,
-                        contactSimulationTime))
+                    observedAttackGeometry)
                 : _v3RulesAdapter.CommitContact(
                     stableActor,
                     side,
@@ -1734,6 +1743,7 @@ namespace Volleyball.Presentation
                 hit.ContactGroupId,
                 contactSimulationTime,
                 transition,
+                observedAttackGeometry,
                 legacyEvaluation,
                 legacyOutcome,
                 scenario,
@@ -1986,7 +1996,9 @@ namespace Volleyball.Presentation
                     actorId.Team,
                     StableId(actorId),
                     contact.Candidate.Action,
-                    _pendingReplaySetChain));
+                    _pendingReplaySetChain,
+                    authorityContact?.ObservedAttackGeometry,
+                    authorityContact?.Transition));
         }
 
         private void ObserveAcceptedContactV3(
@@ -2146,6 +2158,7 @@ namespace Volleyball.Presentation
                 int contactGroup,
                 float contactSimulationTime,
                 RuleTransitionV3 transition,
+                AttackGeometryFactV3 observedAttackGeometry,
                 RallyContactEvaluation? legacyEvaluation,
                 LegacyRuleOutcomeV3 legacyOutcome,
                 ShadowScenarioV3 scenario,
@@ -2156,6 +2169,7 @@ namespace Volleyball.Presentation
                 ContactGroup = contactGroup;
                 ContactSimulationTime = contactSimulationTime;
                 Transition = transition;
+                ObservedAttackGeometry = observedAttackGeometry;
                 LegacyEvaluation = legacyEvaluation;
                 LegacyOutcome = legacyOutcome;
                 Scenario = scenario;
@@ -2171,6 +2185,8 @@ namespace Volleyball.Presentation
             public float ContactSimulationTime { get; }
 
             public RuleTransitionV3 Transition { get; }
+
+            public AttackGeometryFactV3 ObservedAttackGeometry { get; }
 
             public RallyContactEvaluation? LegacyEvaluation { get; }
 

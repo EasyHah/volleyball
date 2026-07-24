@@ -331,6 +331,39 @@ namespace Volleyball.Shared.Contracts
             }
         }
 
+        public static string SerializeV4(MatchReplayV4 value)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+
+            value.Validate();
+            return CanonicalMatchReplayJsonV4.Serialize(value);
+        }
+
+        public static MatchReplayV4 DeserializeMatchReplayV4(string json)
+        {
+            try
+            {
+                return CanonicalMatchReplayJsonV4.Deserialize(
+                    StrictJsonV4.ParseObject(json));
+            }
+            catch (ContractValidationException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (
+                exception is FormatException ||
+                exception is OverflowException ||
+                exception is ArgumentException)
+            {
+                throw new ContractValidationException(
+                    "Native V4 replay JSON is malformed.",
+                    exception);
+            }
+        }
+
         public static string SerializeReplayV2(MatchReplayV2 replay)
         {
             if (replay == null)
@@ -617,6 +650,19 @@ namespace Volleyball.Shared.Contracts
             return (List<StrictJsonValueV4>)result.Value;
         }
 
+        public static StrictJsonObjectV4 RequiredNullableObject(
+            StrictJsonObjectV4 value,
+            string name)
+        {
+            var result = Required(value, name);
+            if (result.Kind == StrictJsonKindV4.Null)
+            {
+                return null;
+            }
+
+            return AsObject(result, name);
+        }
+
         public static string RequiredString(
             StrictJsonObjectV4 value,
             string name)
@@ -657,6 +703,57 @@ namespace Volleyball.Shared.Contracts
             }
 
             return parsed;
+        }
+
+        public static long RequiredLong(
+            StrictJsonObjectV4 value,
+            string name)
+        {
+            var result = Required(value, name);
+            if (result.Kind != StrictJsonKindV4.Number)
+            {
+                throw new ContractValidationException(
+                    name + " must be a JSON integer.");
+            }
+
+            var text = (string)result.Value;
+            if (text.IndexOf('.') >= 0 ||
+                text.IndexOf('e') >= 0 ||
+                text.IndexOf('E') >= 0 ||
+                !long.TryParse(
+                    text,
+                    NumberStyles.AllowLeadingSign,
+                    CultureInfo.InvariantCulture,
+                    out var parsed))
+            {
+                throw new ContractValidationException(
+                    name + " must be a 64-bit JSON integer.");
+            }
+
+            return parsed;
+        }
+
+        public static bool RequiredBoolean(
+            StrictJsonObjectV4 value,
+            string name)
+        {
+            var result = Required(value, name);
+            if (result.Kind != StrictJsonKindV4.Boolean)
+            {
+                throw new ContractValidationException(
+                    name + " must be a JSON boolean.");
+            }
+
+            return (bool)result.Value;
+        }
+
+        public static string ToJson(StrictJsonObjectV4 value)
+        {
+            var output = new StringBuilder();
+            AppendJson(
+                output,
+                new StrictJsonValueV4(StrictJsonKindV4.Object, value));
+            return output.ToString();
         }
 
         public static float RequiredFloat(
@@ -720,6 +817,97 @@ namespace Volleyball.Shared.Contracts
             }
 
             return result;
+        }
+
+        private static void AppendJson(
+            StringBuilder output,
+            StrictJsonValueV4 value)
+        {
+            switch (value.Kind)
+            {
+                case StrictJsonKindV4.Object:
+                {
+                    output.Append('{');
+                    var first = true;
+                    foreach (var pair in
+                             ((StrictJsonObjectV4)value.Value).Properties)
+                    {
+                        if (!first) output.Append(',');
+                        first = false;
+                        AppendJsonString(output, pair.Key);
+                        output.Append(':');
+                        AppendJson(output, pair.Value);
+                    }
+
+                    output.Append('}');
+                    break;
+                }
+                case StrictJsonKindV4.Array:
+                {
+                    output.Append('[');
+                    var values = (List<StrictJsonValueV4>)value.Value;
+                    for (var index = 0; index < values.Count; index++)
+                    {
+                        if (index > 0) output.Append(',');
+                        AppendJson(output, values[index]);
+                    }
+
+                    output.Append(']');
+                    break;
+                }
+                case StrictJsonKindV4.String:
+                    AppendJsonString(output, (string)value.Value);
+                    break;
+                case StrictJsonKindV4.Number:
+                    output.Append((string)value.Value);
+                    break;
+                case StrictJsonKindV4.Boolean:
+                    output.Append((bool)value.Value ? "true" : "false");
+                    break;
+                case StrictJsonKindV4.Null:
+                    output.Append("null");
+                    break;
+                default:
+                    throw new ContractValidationException(
+                        "Native V4 JSON contains an unsupported value.");
+            }
+        }
+
+        private static void AppendJsonString(
+            StringBuilder output,
+            string value)
+        {
+            output.Append('"');
+            for (var index = 0; index < value.Length; index++)
+            {
+                var character = value[index];
+                switch (character)
+                {
+                    case '"': output.Append("\\\""); break;
+                    case '\\': output.Append("\\\\"); break;
+                    case '\b': output.Append("\\b"); break;
+                    case '\f': output.Append("\\f"); break;
+                    case '\n': output.Append("\\n"); break;
+                    case '\r': output.Append("\\r"); break;
+                    case '\t': output.Append("\\t"); break;
+                    default:
+                        if (character < 32)
+                        {
+                            output.Append("\\u")
+                                .Append(((int)character).ToString(
+                                    "x4",
+                                    CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            output.Append(character);
+                        }
+
+                        break;
+                }
+            }
+
+            output.Append('"');
         }
 
         private sealed class Parser
