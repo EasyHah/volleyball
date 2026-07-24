@@ -33,18 +33,40 @@ namespace Volleyball.Career.EditModeTests
         [Test]
         public void CareerPlayerBoundary_ExposesOnlyNativeV4Attributes()
         {
+            var playerType = typeof(CareerPlayerRecord);
+            var properties = playerType.GetProperties(
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             Assert.That(
-                typeof(CareerPlayerRecord).GetProperty("PlayerId")?.PropertyType,
+                properties.Select(property => property.Name),
+                Is.EquivalentTo(new[]
+                {
+                    "PlayerId", "Physical", "Technical", "DominantHand"
+                }));
+            Assert.That(
+                playerType.GetProperty("PlayerId")?.PropertyType,
                 Is.EqualTo(typeof(string)));
             Assert.That(
-                typeof(CareerPlayerRecord).GetProperty("Physical")?.PropertyType,
+                playerType.GetProperty("Physical")?.PropertyType,
                 Is.EqualTo(typeof(PhysicalBaseAttributesV4)));
             Assert.That(
-                typeof(CareerPlayerRecord).GetProperty("Technical")?.PropertyType,
+                playerType.GetProperty("Technical")?.PropertyType,
                 Is.EqualTo(typeof(TechnicalBaseAttributesV4)));
             Assert.That(
-                typeof(CareerPlayerRecord).GetProperty("DominantHand")?.PropertyType,
+                playerType.GetProperty("DominantHand")?.PropertyType,
                 Is.EqualTo(typeof(DominantHandV4)));
+
+            var constructors = playerType.GetConstructors(
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            Assert.That(constructors, Has.Length.EqualTo(1));
+            Assert.That(
+                constructors[0].GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[]
+                {
+                    typeof(string),
+                    typeof(PhysicalBaseAttributesV4),
+                    typeof(TechnicalBaseAttributesV4),
+                    typeof(DominantHandV4)
+                }));
         }
 
         [Test]
@@ -59,7 +81,7 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void ProductionCareerAndMatchEntrypoints_RejectLegacyAbilityAndContextContracts()
+        public void ProductionCareerEntrypoints_RejectLegacyAbilityAndContextContracts()
         {
             var prohibited = new[]
             {
@@ -68,7 +90,9 @@ namespace Volleyball.Career.EditModeTests
                 typeof(IMatchContext), typeof(IMatchResult)
             };
 
+            AssertNoPublicEntryPointAccepts(typeof(CareerPlayerRecord).Assembly, prohibited);
             AssertNoPublicEntryPointAccepts(typeof(CareerMatchRequest).Assembly, prohibited);
+            AssertNoPublicEntryPointAccepts(typeof(CareerPresentationModule).Assembly, prohibited);
         }
 
         private static void AssertNoPublicEntryPointAccepts(Assembly assembly, System.Type[] prohibited)
