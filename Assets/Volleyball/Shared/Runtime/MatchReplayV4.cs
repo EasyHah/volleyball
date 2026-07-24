@@ -160,7 +160,7 @@ namespace Volleyball.Shared.Contracts
             bool accepted,
             string reasonCode)
         {
-            if (rulesVersion != ContractVersions.MatchV3)
+            if (rulesVersion != RulesVersions.FullRallyV3)
             {
                 throw new ContractValidationException(
                     "Replay rule decisions must identify V3 rules.");
@@ -416,7 +416,7 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException("context is required.");
             Context.Validate();
             if (Context.ContractVersion != ContractVersions.MatchV4 ||
-                Context.RulesVersion != ContractVersions.MatchV3)
+                Context.RulesVersion != RulesVersions.FullRallyV3)
             {
                 throw new ContractValidationException(
                     "Replay V4 requires native MatchContextV4 and V3 rules.");

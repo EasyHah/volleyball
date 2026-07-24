@@ -308,7 +308,7 @@ namespace Volleyball.Shared.Contracts
                 throw new ArgumentNullException(nameof(result));
             }
 
-            return CanonicalJsonHashV3.Sha256(
+            return CanonicalJsonHashV4.Sha256(
                 HashFamily + CanonicalMatchResultJsonV4.ResultPayload(result));
         }
     }

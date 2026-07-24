@@ -61,7 +61,7 @@ namespace Volleyball.EditModeTests
 
             Assert.That(restored.FormatVersion, Is.EqualTo(ContractVersions.ReplayV4));
             Assert.That(restored.Context.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
-            Assert.That(restored.Context.RulesVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(restored.Context.RulesVersion, Is.EqualTo(RulesVersions.FullRallyV3));
             Assert.That(restored.Context.FormulaVersion, Is.EqualTo(1));
             Assert.That(restored.Context.CoefficientVersion, Is.EqualTo(1));
             Assert.That(restored.Context.Home.RotationOrder[0].DominantHand, Is.EqualTo(DominantHandV4.Right));

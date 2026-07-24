@@ -153,28 +153,16 @@ namespace Volleyball.EditModeTests
                 new PlayerId("away-1"), new PlayerId("away-2"), new PlayerId("away-3"),
                 new PlayerId("away-4"), new PlayerId("away-5"), new PlayerId("away-6")
             };
-            var context = MatchContextV3.Create(
+            var positions = Enumerable.Repeat(PlayerPosition.Setter, 6).ToArray();
+            var context = MatchV4TestFixture.CreateContextForRotations(
                 Guid.Parse("5e19eac4-5d3d-4d52-9c8f-f4dd7680c7bd"),
                 31,
-                CreateEligibilityTeam("home", TeamSide.Home, homeIds),
-                CreateEligibilityTeam("away", TeamSide.Away, awayIds));
+                homeIds,
+                positions,
+                awayIds,
+                positions);
             return OnCourtLineupRulesV3.Create(
                 context, homeIds, awayIds, homeIds[0], awayIds[0], Array.Empty<LiberoReplacementV3>());
-        }
-
-        private static TeamSnapshotV3 CreateEligibilityTeam(string teamId, TeamSide side, IReadOnlyList<PlayerId> playerIds)
-        {
-            var players = new PlayerSnapshotV3[playerIds.Count];
-            for (var index = 0; index < players.Length; index++)
-            {
-                players[index] = new PlayerSnapshotV3(
-                    playerIds[index], playerIds[index].Value, index + 1, PlayerPosition.Setter,
-                    new PlayerAbilitySnapshotV3(
-                        0.5f, 0.5f, 0.5f, 3.3f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
-                        ContractVersions.MatchV3, 0, false, Array.Empty<string>()));
-            }
-
-            return new TeamSnapshotV3(new TeamId(teamId), teamId, side, players);
         }
     }
 }

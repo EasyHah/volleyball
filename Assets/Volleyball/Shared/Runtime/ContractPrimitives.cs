@@ -2,37 +2,15 @@ using System;
 
 namespace Volleyball.Shared.Contracts
 {
-    public interface IMatchContext
-    {
-        int ContractVersion { get; }
-        Guid SessionId { get; }
-        int Seed { get; }
-        string ContextHash { get; }
-    }
-
-    public interface IMatchResult
-    {
-        int ContractVersion { get; }
-        Guid SessionId { get; }
-        string ContextHash { get; }
-        TeamId WinnerTeamId { get; }
-        int HomeScore { get; }
-        int AwayScore { get; }
-    }
-
     public static class ContractVersions
     {
-        public const int MatchV1 = 1;
-        public const int MatchV2 = 2;
-        public const int MatchV3 = 3;
         public const int MatchV4 = 4;
-        public const int ReplayV2 = 2;
         public const int ReplayV4 = 4;
+    }
 
-        public static bool SupportsMatch(int version)
-        {
-            return version == MatchV1;
-        }
+    public static class RulesVersions
+    {
+        public const int FullRallyV3 = 3;
     }
 
     public readonly struct PlayerId : IEquatable<PlayerId>

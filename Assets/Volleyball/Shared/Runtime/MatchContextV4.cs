@@ -56,7 +56,7 @@ namespace Volleyball.Shared.Contracts
             string physicsConfigurationHash,
             TrajectoryPredictionProviderConfigurationV4
                 trajectoryPredictionProviderConfiguration,
-            int rulesVersion = ContractVersions.MatchV3)
+            int rulesVersion = RulesVersions.FullRallyV3)
         {
             if (sessionId == Guid.Empty)
             {
@@ -95,7 +95,7 @@ namespace Volleyball.Shared.Contracts
                     "Unsupported match contract version: " + ContractVersion + ".");
             }
 
-            if (RulesVersion != ContractVersions.MatchV3)
+            if (RulesVersion != RulesVersions.FullRallyV3)
             {
                 throw new ContractValidationException(
                     "rulesVersion must identify the independently versioned V3 rules.");
@@ -186,7 +186,7 @@ namespace Volleyball.Shared.Contracts
                 throw new ArgumentNullException(nameof(context));
             }
 
-            return CanonicalJsonHashV3.Sha256(
+            return CanonicalJsonHashV4.Sha256(
                 HashFamily + CanonicalMatchJsonV4.ContextPayload(context));
         }
     }
@@ -321,7 +321,7 @@ namespace Volleyball.Shared.Contracts
         internal static string Quote(string value)
         {
             var output = new StringBuilder(value == null ? 4 : value.Length + 2);
-            CanonicalJsonHashV3.AppendString(output, value ?? string.Empty);
+            CanonicalJsonHashV4.AppendString(output, value ?? string.Empty);
             return output.ToString();
         }
     }

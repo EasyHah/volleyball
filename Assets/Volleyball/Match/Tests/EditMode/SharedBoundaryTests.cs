@@ -17,7 +17,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void SharedAssembly_DoesNotReferenceMatchAssemblies()
         {
-            var references = typeof(MatchContextV1).Assembly
+            var references = typeof(MatchContextV4).Assembly
                 .GetReferencedAssemblies()
                 .Select(reference => reference.Name)
                 .ToArray();
@@ -158,17 +158,17 @@ namespace Volleyball.EditModeTests
         [Test]
         public void FormalMatchBoundary_HasNoLegacyContextResultOrInitializationTypes()
         {
-            var legacyTypes = new[]
+            var legacyTypeNames = new[]
             {
-                typeof(MatchContextV1),
-                typeof(MatchContextV2),
-                typeof(MatchContextV3),
-                typeof(MatchResultV1),
-                typeof(MatchResultV2),
-                typeof(MatchResultV3),
-                typeof(PlayerAbilitySnapshotV1),
-                typeof(PlayerAbilitySnapshotV2),
-                typeof(PlayerAbilitySnapshotV3)
+                "MatchContextV1",
+                "MatchContextV2",
+                "MatchContextV3",
+                "MatchResultV1",
+                "MatchResultV2",
+                "MatchResultV3",
+                "PlayerAbilitySnapshotV1",
+                "PlayerAbilitySnapshotV2",
+                "PlayerAbilitySnapshotV3"
             };
             var formalTypes = new[]
             {
@@ -200,7 +200,7 @@ namespace Volleyball.EditModeTests
                         _ => Array.Empty<Type>()
                     };
                     Assert.That(
-                        exposedTypes.Any(candidate => legacyTypes.Contains(candidate)),
+                        exposedTypes.Any(candidate => legacyTypeNames.Contains(candidate.Name)),
                         Is.False,
                         type.Name + "." + member.Name);
                 }
@@ -227,7 +227,7 @@ namespace Volleyball.EditModeTests
                 typeof(FullRallyV3RulesRuntimeAdapter)
                     .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
                     .Select(field => field.FieldType),
-                Has.None.EqualTo(typeof(MatchContextV3)));
+                Has.None.Matches<Type>(type => type.Name == "MatchContextV3"));
         }
     }
 }

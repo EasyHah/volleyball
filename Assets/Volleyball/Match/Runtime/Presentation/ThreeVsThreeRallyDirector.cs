@@ -1,30 +1,31 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Volleyball.AI;
 using Volleyball.Domain;
 using Volleyball.Domain.Prototype;
-using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
-using MatchResultV2 = Volleyball.Shared.Contracts.MatchResultV2;
+using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 
 namespace Volleyball.Presentation
 {
-    // Explicitly isolated compatibility entry point for the prototype-only 3v3 scene.
+    // Explicitly isolated V4 entry point for the prototype-only 3v3 scene.
     public sealed class ThreeVsThreeRallyDirector : PhysicalMatchRallyDirector
     {
-        private PrototypeLegacyMatchSetAdapter _prototypeSet;
+        private MatchSet _prototypeSet;
 
-        public MatchContextV2 PrototypeLegacyContext { get; private set; }
+        public MatchContextV4 PrototypeContext { get; private set; }
 
-        public MatchResultV2 PrototypeLegacyResult { get; private set; }
+        public MatchResultV4 PrototypeResult { get; private set; }
 
         protected override bool HasPrototypeResult =>
-            PrototypeLegacyResult != null;
+            PrototypeResult != null;
 
-        public void InitializePrototypeLegacyV2(
+        public void InitializePrototypeV4(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
-            MatchContextV2 context,
+            MatchContextV4 context,
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
             PhysicalMatchConfiguration configuration = null,
@@ -34,19 +35,31 @@ namespace Volleyball.Presentation
                 context ?? throw new ArgumentNullException(nameof(context));
             var prototypeConfiguration =
                 configuration ?? PhysicalMatchConfiguration.ThreeVsThree;
-            PrototypeLegacyContext = prototypeContext;
+            var courtAgents =
+                (agents ?? throw new ArgumentNullException(nameof(agents))).ToArray();
+            var activeHomePlayers = courtAgents
+                .Where(agent => agent != null && agent.Id.Team == TeamId.Blue)
+                .Select(agent => agent.StableId)
+                .ToArray();
+            var activeAwayPlayers = courtAgents
+                .Where(agent => agent != null && agent.Id.Team == TeamId.Orange)
+                .Select(agent => agent.StableId)
+                .ToArray();
+            PrototypeContext = prototypeContext;
             InitializeCore(
                 ball,
-                agents,
+                courtAgents,
                 scoreDisplay,
                 tacticalWeightSource,
                 prototypeConfiguration,
-                prototypeContext.Home.Players.Count,
-                prototypeContext.Away.Players.Count,
+                activeHomePlayers.Length,
+                activeAwayPlayers.Length,
                 () =>
                 {
-                    _prototypeSet = new PrototypeLegacyMatchSetAdapter(
+                    _prototypeSet = new MatchSet(
                         prototypeContext,
+                        activeHomePlayers,
+                        activeAwayPlayers,
                         firstServingSide,
                         prototypeConfiguration.SetRules);
                     return _prototypeSet;
@@ -58,10 +71,12 @@ namespace Volleyball.Presentation
             if (_prototypeSet == null)
             {
                 throw new InvalidOperationException(
-                    "The prototype legacy set has not been initialized.");
+                    "The prototype V4 set has not been initialized.");
             }
 
-            PrototypeLegacyResult = _prototypeSet.CreatePrototypeResult();
+            PrototypeResult = _prototypeSet.CreateResult(
+                SuccessfulContacts,
+                V3RuleTransitions);
         }
     }
 }

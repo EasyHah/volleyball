@@ -87,6 +87,25 @@ namespace Volleyball.Domain
             Context = context;
         }
 
+        public MatchSet(
+            MatchContextV4 context,
+            IEnumerable<StablePlayerId> activeHomePlayers,
+            IEnumerable<StablePlayerId> activeAwayPlayers,
+            TeamSide firstServer,
+            MatchSetRules rules = null)
+            : this(activeHomePlayers, activeAwayPlayers, firstServer, rules)
+        {
+            Context = context ?? throw new ArgumentNullException(nameof(context));
+            ValidateActivePlayersBelongTo(
+                Context.Home,
+                activeHomePlayers,
+                nameof(activeHomePlayers));
+            ValidateActivePlayersBelongTo(
+                Context.Away,
+                activeAwayPlayers,
+                nameof(activeAwayPlayers));
+        }
+
         internal MatchSet(
             IEnumerable<StablePlayerId> homePlayers,
             IEnumerable<StablePlayerId> awayPlayers,
@@ -290,6 +309,24 @@ namespace Volleyball.Domain
             {
                 _statsByPlayer.Add(playerId, new MutablePlayerStats());
                 _sideByPlayer.Add(playerId, side);
+            }
+        }
+
+        private static void ValidateActivePlayersBelongTo(
+            TeamSnapshotV4 team,
+            IEnumerable<StablePlayerId> activePlayers,
+            string parameterName)
+        {
+            var rosterIds = new HashSet<StablePlayerId>(
+                team.Players.Select(player => player.PlayerId));
+            foreach (var playerId in activePlayers)
+            {
+                if (!rosterIds.Contains(playerId))
+                {
+                    throw new ArgumentException(
+                        "Every active player must belong to the matching V4 team.",
+                        parameterName);
+                }
             }
         }
 

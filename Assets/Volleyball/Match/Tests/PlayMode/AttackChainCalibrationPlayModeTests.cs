@@ -219,7 +219,7 @@ namespace Volleyball.PlayModeTests
                 AssertFormalV4InitializationAndBindings(formalContext, players);
             }
             var prototypeContext =
-                (previous as ThreeVsThreeRallyDirector)?.PrototypeLegacyContext;
+                (previous as ThreeVsThreeRallyDirector)?.PrototypeContext;
             var rosterSize = previous.RosterSize;
             var host = previous.gameObject;
             UnityEngine.Object.Destroy(previous);
@@ -253,7 +253,7 @@ namespace Volleyball.PlayModeTests
             else
             {
                 var prototype = host.AddComponent<ThreeVsThreeRallyDirector>();
-                prototype.InitializePrototypeLegacyV2(
+                prototype.InitializePrototypeV4(
                     ball,
                     players,
                     prototypeContext,
@@ -268,13 +268,13 @@ namespace Volleyball.PlayModeTests
         private static bool HasCompletedResult(PhysicalMatchRallyDirector director)
         {
             return director.Result != null ||
-                   (director as ThreeVsThreeRallyDirector)?.PrototypeLegacyResult != null;
+                   (director as ThreeVsThreeRallyDirector)?.PrototypeResult != null;
         }
 
         private static int SeedFor(PhysicalMatchRallyDirector director)
         {
             return director.MatchContext?.Seed ??
-                   ((ThreeVsThreeRallyDirector)director).PrototypeLegacyContext.Seed;
+                   ((ThreeVsThreeRallyDirector)director).PrototypeContext.Seed;
         }
 
         private static void AssertFormalV4InitializationAndBindings(
@@ -282,7 +282,7 @@ namespace Volleyball.PlayModeTests
             PrototypePlayerAgent[] players)
         {
             Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
-            Assert.That(context.RulesVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(context.RulesVersion, Is.EqualTo(RulesVersions.FullRallyV3));
             Assert.That(context.ContextHash, Is.Not.Null.And.Length.EqualTo(64));
             Assert.That(players, Has.Length.EqualTo(12));
 

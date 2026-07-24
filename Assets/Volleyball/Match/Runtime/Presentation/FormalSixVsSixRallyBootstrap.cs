@@ -11,6 +11,7 @@ using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
 using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
 using PlayerSnapshotV4 = Volleyball.Shared.Contracts.PlayerSnapshotV4;
+using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
@@ -144,7 +145,7 @@ namespace Volleyball.Presentation
                     TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
                     BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
                     BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
-                rulesVersion: 3);
+                rulesVersion: RulesVersions.FullRallyV3);
         }
 
         private static TeamSnapshotV4 CreateTeam(

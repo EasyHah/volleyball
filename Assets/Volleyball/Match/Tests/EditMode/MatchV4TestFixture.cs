@@ -28,7 +28,38 @@ namespace Volleyball.EditModeTests
                     TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
                     BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
                     BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
-                rulesVersion: ContractVersions.MatchV3);
+                rulesVersion: RulesVersions.FullRallyV3);
+        }
+
+        public static MatchContextV4 CreateContextForRotations(
+            Guid sessionId,
+            int seed,
+            IReadOnlyList<PlayerId> homeIds,
+            IReadOnlyList<PlayerPosition> homePositions,
+            IReadOnlyList<PlayerId> awayIds,
+            IReadOnlyList<PlayerPosition> awayPositions)
+        {
+            return MatchContextV4.Create(
+                sessionId,
+                seed,
+                CreateRotationTeam(
+                    "rotation-home",
+                    TeamSide.Home,
+                    homeIds,
+                    homePositions),
+                CreateRotationTeam(
+                    "rotation-away",
+                    TeamSide.Away,
+                    awayIds,
+                    awayPositions),
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                    new BallSimulationParameters(-9.8f, 0.9995f)),
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
+                RulesVersions.FullRallyV3);
         }
 
         public static TeamSnapshotV4 CreateTeam(
@@ -71,6 +102,35 @@ namespace Volleyball.EditModeTests
                 CreatePhysical(),
                 CreateTechnical(attackTechnique, attackPower),
                 MatchAttributeDerivationConfigV4.Version1);
+        }
+
+        private static TeamSnapshotV4 CreateRotationTeam(
+            string id,
+            TeamSide side,
+            IReadOnlyList<PlayerId> playerIds,
+            IReadOnlyList<PlayerPosition> positions)
+        {
+            if (playerIds == null || positions == null || playerIds.Count != positions.Count)
+            {
+                throw new ArgumentException(
+                    "Rotation IDs and positions must be present and aligned.");
+            }
+
+            var players = new PlayerSnapshotV4[playerIds.Count];
+            for (var index = 0; index < players.Length; index++)
+            {
+                players[index] = CreatePlayer(
+                    playerIds[index].Value,
+                    playerIds[index].Value,
+                    index + 1,
+                    positions[index]);
+            }
+
+            return new TeamSnapshotV4(
+                new TeamId(id),
+                id,
+                side,
+                players);
         }
 
         public static DerivedMatchAttributesV4 CreateDerived(

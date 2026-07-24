@@ -176,7 +176,7 @@ namespace Volleyball.Presentation
                 ToReplayClassification(classification),
                 ToReplayGeometry(replayEvent.ObservedAttackGeometry),
                 new ReplayRuleDecisionRecordV4(
-                    ContractVersions.MatchV3,
+                    RulesVersions.FullRallyV3,
                     ruleTransition.Accepted,
                     ruleTransition.RejectionReason.ToString()));
         }

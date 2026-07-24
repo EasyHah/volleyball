@@ -10,6 +10,7 @@ using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
 using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
+using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
@@ -453,7 +454,7 @@ namespace Volleyball.Presentation
         protected virtual void CompletePrototypeMatch()
         {
             throw new InvalidOperationException(
-                "Only an explicitly isolated prototype director may complete a legacy match.");
+                "Only an explicitly isolated prototype director may complete a prototype match.");
         }
 
         public int PlayerCount => _players.Count;
@@ -605,7 +606,7 @@ namespace Volleyball.Presentation
             TeamSide firstServingSide = TeamSide.Home)
         {
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
-            if (matchContext.RulesVersion != 3)
+            if (matchContext.RulesVersion != RulesVersions.FullRallyV3)
             {
                 throw new ArgumentException(
                     "Formal match runtime requires the independently versioned V3 rules.",
@@ -759,7 +760,7 @@ namespace Volleyball.Presentation
                     "V3 rules can only be configured for a V4 formal six-player match.");
             }
 
-            if (_matchContext.RulesVersion != 3)
+            if (_matchContext.RulesVersion != RulesVersions.FullRallyV3)
             {
                 throw new InvalidOperationException(
                     "The formal V4 context must select V3 rules.");

@@ -101,7 +101,7 @@ namespace Volleyball.PlayModeTests
                 Is.EqualTo(ContractVersions.MatchV4));
             Assert.That(
                 restored.Context.RulesVersion,
-                Is.EqualTo(ContractVersions.MatchV3));
+                Is.EqualTo(RulesVersions.FullRallyV3));
             AssertV4Identity(restored.Context.ContextHash, "formal context");
             AssertV4Identity(restored.ReplayHash, "formal replay");
             Assert.That(restored.Events, Is.Not.Empty);

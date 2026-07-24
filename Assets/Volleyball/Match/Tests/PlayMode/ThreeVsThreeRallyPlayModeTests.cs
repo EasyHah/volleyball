@@ -36,7 +36,7 @@ namespace Volleyball.PlayModeTests
             Assert.That(cameras, Is.Not.Null);
             Assert.That(blockFeedback, Is.Not.Null);
             Assert.That(players, Has.Length.EqualTo(6));
-            Assert.That(director.PrototypeLegacyContext, Is.Not.Null);
+            Assert.That(director.PrototypeContext, Is.Not.Null);
             Assert.That(director.MatchContext, Is.Null);
             Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
             Assert.That(director.V3RuleTransitions, Is.Zero);
@@ -66,7 +66,7 @@ namespace Volleyball.PlayModeTests
             var timeout = Time.realtimeSinceStartup + 120f;
             var sawActiveBlockFeedback = false;
             var sawPlayerOutsideOwnCourt = false;
-            while (director.PrototypeLegacyResult == null && Time.realtimeSinceStartup < timeout)
+            while (director.PrototypeResult == null && Time.realtimeSinceStartup < timeout)
             {
                 sawActiveBlockFeedback |= blockFeedback.IsPlaying;
                 foreach (var player in players)
@@ -76,18 +76,18 @@ namespace Volleyball.PlayModeTests
                 yield return null;
             }
 
-            Assert.That(director.PrototypeLegacyResult, Is.Not.Null);
+            Assert.That(director.PrototypeResult, Is.Not.Null);
             Assert.That(
-                Mathf.Max(director.PrototypeLegacyResult.HomeScore, director.PrototypeLegacyResult.AwayScore),
+                Mathf.Max(director.PrototypeResult.HomeScore, director.PrototypeResult.AwayScore),
                 Is.GreaterThanOrEqualTo(15));
             Assert.That(
-                Mathf.Abs(director.PrototypeLegacyResult.HomeScore - director.PrototypeLegacyResult.AwayScore),
+                Mathf.Abs(director.PrototypeResult.HomeScore - director.PrototypeResult.AwayScore),
                 Is.GreaterThanOrEqualTo(2));
             Assert.That(
-                Mathf.Min(director.PrototypeLegacyResult.HomeScore, director.PrototypeLegacyResult.AwayScore),
+                Mathf.Min(director.PrototypeResult.HomeScore, director.PrototypeResult.AwayScore),
                 Is.GreaterThanOrEqualTo(5));
-            Assert.That(director.PrototypeLegacyResult.PlayerStats, Has.Count.EqualTo(6));
-            Assert.DoesNotThrow(() => director.PrototypeLegacyResult.ValidateAgainst(director.PrototypeLegacyContext));
+            Assert.That(director.PrototypeResult.PlayerStats, Has.Count.EqualTo(6));
+            Assert.DoesNotThrow(() => director.PrototypeResult.ValidateAgainst(director.PrototypeContext));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.PhysicalBlockContacts, Is.GreaterThan(0));
@@ -138,7 +138,7 @@ namespace Volleyball.PlayModeTests
             {
                 var timeout = Time.realtimeSinceStartup + 120f;
                 while (director.PostBlockGroundPoints == 0 &&
-                       director.PrototypeLegacyResult == null &&
+                       director.PrototypeResult == null &&
                        Time.realtimeSinceStartup < timeout)
                 {
                     Time.timeScale = 8f;
@@ -192,7 +192,7 @@ namespace Volleyball.PlayModeTests
             {
                 var timeout = Time.realtimeSinceStartup + 120f;
                 while (director.NonSetterSetContacts == 0 &&
-                       director.PrototypeLegacyResult == null &&
+                       director.PrototypeResult == null &&
                        Time.realtimeSinceStartup < timeout)
                 {
                     yield return null;

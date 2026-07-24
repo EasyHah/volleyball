@@ -64,7 +64,7 @@ namespace Volleyball.EditModeTests
             var initialHome = RotationFor(set, TeamSide.Home);
             var initialAway = RotationFor(set, TeamSide.Away);
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                ContractVersions.MatchV3,
+                RulesVersions.FullRallyV3,
                 OnCourtLineupRulesV3.Create(
                     context,
                     initialHome,
@@ -125,7 +125,7 @@ namespace Volleyball.EditModeTests
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
 
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                ContractVersions.MatchV3,
+                RulesVersions.FullRallyV3,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -374,7 +374,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                ContractVersions.MatchV3,
+                RulesVersions.FullRallyV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -418,7 +418,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                ContractVersions.MatchV3,
+                RulesVersions.FullRallyV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -445,7 +445,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                ContractVersions.MatchV3,
+                RulesVersions.FullRallyV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -542,23 +542,34 @@ namespace Volleyball.EditModeTests
             var context = CreateContext();
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
             return new FullRallyV3RulesRuntimeAdapter(
-                ContractVersions.MatchV3,
+                RulesVersions.FullRallyV3,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Shadow);
         }
 
-        private static MatchContextV3 CreateContext()
+        private static MatchContextV4 CreateContext()
         {
-            return MatchContextV3.Create(
+            var positions = new[]
+            {
+                PlayerPosition.Setter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter
+            };
+            return MatchV4TestFixture.CreateContextForRotations(
                 Guid.Parse("463f889f-8043-46d0-af82-b9331f316eae"),
                 7351,
-                CreateTeam("home", TeamSide.Home, HomeRotation),
-                CreateTeam("away", TeamSide.Away, AwayRotation));
+                HomeRotation,
+                positions,
+                AwayRotation,
+                positions);
         }
 
         private static OnCourtEligibilitySnapshot CreateEligibility(
-            MatchContextV3 context,
+            MatchContextV4 context,
             PlayerId[] homeRotation,
             PlayerId[] awayRotation)
         {
@@ -625,42 +636,5 @@ namespace Volleyball.EditModeTests
                        BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
-        private static TeamSnapshotV3 CreateTeam(
-            string teamId,
-            TeamSide side,
-            PlayerId[] rotation)
-        {
-            var players = new PlayerSnapshotV3[rotation.Length];
-            for (var index = 0; index < players.Length; index++)
-            {
-                players[index] = new PlayerSnapshotV3(
-                    rotation[index],
-                    rotation[index].Value,
-                    index + 1,
-                    index == 0 ? PlayerPosition.Setter : PlayerPosition.OutsideHitter,
-                    new PlayerAbilitySnapshotV3(
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        3.3f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        ContractVersions.MatchV3,
-                        0,
-                        false,
-                        Array.Empty<string>()));
-            }
-
-            return new TeamSnapshotV3(
-                new TeamId(teamId),
-                teamId,
-                side,
-                players);
-        }
     }
 }
