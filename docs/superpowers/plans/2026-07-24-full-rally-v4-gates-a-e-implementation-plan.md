@@ -206,6 +206,7 @@ Tests must prove:
 
 - identical base input and config produce byte-identical canonical result and fingerprints;
 - each base attribute changes at least one documented derived output;
+- `HeightMeters` is the sole structural exception: it constrains valid player input and participates in the canonical input fingerprint, while `StandingReachMeters` carries the direct reach contribution to numeric match attributes so height is not double-counted;
 - `AttackPower` changes attack speed/power capacity but not attack direction error;
 - `AttackTechnique` changes attack direction/speed error but not power capacity;
 - `SoftTouch`, `BlockTechnique`, and `CourtAwareness` are present in V4 and affect their declared V4 groups;
@@ -285,6 +286,8 @@ Serve.Consistency     = .60 ServeTechnique + .25 Coordination + .15 Reaction
 ```
 
 `MatchAttributeDerivationConfigV4` exposes `FormulaVersion = 1`, `CoefficientVersion = 1`, and the immutable coefficient set. A config with missing/duplicate coefficients, non-finite values, or non-unit formula weights fails construction.
+
+`HeightMeters` is intentionally absent from the frozen numeric formulas. It is a structural characteristic that validates and informs base data, especially `StandingReachMeters`; direct reach outputs use `StandingReachMeters` once. `HeightMeters` remains in the canonical input fingerprint and must change it. Adding a direct numeric contribution later requires a new formula version, not a silent coefficient change.
 
 - [ ] **Step 4: Produce explanations and fingerprints**
 
