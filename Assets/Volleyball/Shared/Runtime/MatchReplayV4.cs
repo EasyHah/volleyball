@@ -201,7 +201,8 @@ namespace Volleyball.Shared.Contracts
             float simulationTimeSeconds,
             int homeScore,
             int awayScore,
-            ReplayExecutionEnvelopeRecordV4 envelope,
+            ReplayExecutionEnvelopeRecordV4 testedEnvelope,
+            ReplayExecutionEnvelopeRecordV4 executableEnvelope,
             ReplayTrajectoryArtifactRecordV4 trajectory,
             IReadOnlyList<ReplayAbilityConsumptionRecordV4> abilityConsumptions,
             ReplaySampleClassificationRecordV4 classification,
@@ -232,32 +233,77 @@ namespace Volleyball.Shared.Contracts
             AwayScore = ReplayContractGuardV4.NonNegative(
                 awayScore,
                 nameof(awayScore));
-            Envelope = envelope ??
-                throw new ContractValidationException("envelope is required.");
+            TestedEnvelope = testedEnvelope ??
+                throw new ContractValidationException(
+                    "testedEnvelope is required.");
+            ExecutableEnvelope = executableEnvelope ??
+                throw new ContractValidationException(
+                    "executableEnvelope is required.");
             Trajectory = trajectory ??
                 throw new ContractValidationException("trajectory is required.");
             Classification = classification ??
                 throw new ContractValidationException("classification is required.");
             RuleDecision = ruleDecision ??
                 throw new ContractValidationException("ruleDecision is required.");
-            if (Envelope.CandidateCategory != EventKind ||
+            if (TestedEnvelope.CandidateCategory != EventKind ||
+                ExecutableEnvelope.CandidateCategory != EventKind ||
                 Classification.ActualSample.CandidateCategory != EventKind)
             {
                 throw new ContractValidationException(
-                    "Event kind must match envelope and actual-sample categories.");
+                    "Event kind must match both envelopes and the actual-sample category.");
             }
 
-            if (Envelope.Identity != Classification.TestedEnvelopeIdentity)
+            if (TestedEnvelope.Identity !=
+                    Classification.TestedEnvelopeIdentity)
             {
                 throw new ContractValidationException(
-                    "Envelope and classification must identify the same execution envelope.");
+                    "Tested envelope and classification must identify the same execution envelope.");
             }
 
-            if (Envelope.SamplingKey !=
+            if (Classification.Kind == "EnvelopeExpanded")
+            {
+                if (ExecutableEnvelope.Identity !=
+                        Classification.ExpandedEnvelopeIdentity ||
+                    ExecutableEnvelope.Identity == TestedEnvelope.Identity ||
+                    ExecutableEnvelope.CurrentExpansionCount !=
+                        TestedEnvelope.CurrentExpansionCount + 1)
+                {
+                    throw new ContractValidationException(
+                        "Expanded classification must identify its next distinct executable envelope.");
+                }
+            }
+            else if (ExecutableEnvelope.Identity != TestedEnvelope.Identity ||
+                     ExecutableEnvelope.CurrentExpansionCount !=
+                        TestedEnvelope.CurrentExpansionCount)
+            {
+                throw new ContractValidationException(
+                    "Non-expanded classification must execute the tested envelope.");
+            }
+
+            if (TestedEnvelope.SamplingKey !=
+                    Classification.ActualSample.SamplingKey ||
+                ExecutableEnvelope.SamplingKey !=
                     Classification.ActualSample.SamplingKey)
             {
                 throw new ContractValidationException(
-                    "Envelope and classification must identify the same sampling contract.");
+                    "Both envelopes and classification must identify the same sampling contract.");
+            }
+
+            if (TestedEnvelope.DerivedAttributesFingerprint !=
+                    ExecutableEnvelope.DerivedAttributesFingerprint ||
+                TestedEnvelope.PolicyIdentity !=
+                    ExecutableEnvelope.PolicyIdentity ||
+                TestedEnvelope.SourceIntentIdentity !=
+                    ExecutableEnvelope.SourceIntentIdentity ||
+                TestedEnvelope.MaximumExpansionCount !=
+                    ExecutableEnvelope.MaximumExpansionCount ||
+                TestedEnvelope.AllowedExpansionCount !=
+                    ExecutableEnvelope.AllowedExpansionCount ||
+                TestedEnvelope.PerStepExpansionFactor !=
+                    ExecutableEnvelope.PerStepExpansionFactor)
+            {
+                throw new ContractValidationException(
+                    "Tested and executable envelopes must share one derivation, intent, and expansion policy.");
             }
 
             _abilityConsumptions = CopyAndSortConsumptions(abilityConsumptions);
@@ -268,7 +314,7 @@ namespace Volleyball.Shared.Contracts
                 if (_abilityConsumptions[index].PlayerId != ActorPlayerId ||
                     _abilityConsumptions[index]
                         .DerivedAttributesFingerprint !=
-                    Envelope.DerivedAttributesFingerprint)
+                    TestedEnvelope.DerivedAttributesFingerprint)
                 {
                     throw new ContractValidationException(
                         "Runtime-consumption evidence must identify the event actor and envelope derivation.");
@@ -303,7 +349,8 @@ namespace Volleyball.Shared.Contracts
         public float SimulationTimeSeconds { get; }
         public int HomeScore { get; }
         public int AwayScore { get; }
-        public ReplayExecutionEnvelopeRecordV4 Envelope { get; }
+        public ReplayExecutionEnvelopeRecordV4 TestedEnvelope { get; }
+        public ReplayExecutionEnvelopeRecordV4 ExecutableEnvelope { get; }
         public ReplayTrajectoryArtifactRecordV4 Trajectory { get; }
         public IReadOnlyList<ReplayAbilityConsumptionRecordV4> AbilityConsumptions =>
             new ReadOnlyCollection<ReplayAbilityConsumptionRecordV4>(
@@ -486,7 +533,10 @@ namespace Volleyball.Shared.Contracts
                         "Replay event actor is absent from the V4 context.");
                 }
 
-                if (replayEvent.Envelope
+                if (replayEvent.TestedEnvelope
+                        .DerivedAttributesFingerprint !=
+                    player.Derived.ResultFingerprint ||
+                    replayEvent.ExecutableEnvelope
                         .DerivedAttributesFingerprint !=
                     player.Derived.ResultFingerprint)
                 {
@@ -741,7 +791,8 @@ namespace Volleyball.Shared.Contracts
                 "simulationTimeSeconds",
                 "homeScore",
                 "awayScore",
-                "envelope",
+                "testedEnvelope",
+                "executableEnvelope",
                 "trajectory",
                 "abilityConsumptions",
                 "classification",
@@ -797,7 +848,13 @@ namespace Volleyball.Shared.Contracts
                 StrictJsonV4.RequiredInt(value, "homeScore"),
                 StrictJsonV4.RequiredInt(value, "awayScore"),
                 ParseEnvelope(
-                    StrictJsonV4.RequiredObject(value, "envelope")),
+                    StrictJsonV4.RequiredObject(
+                        value,
+                        "testedEnvelope")),
+                ParseEnvelope(
+                    StrictJsonV4.RequiredObject(
+                        value,
+                        "executableEnvelope")),
                 ParseTrajectory(
                     StrictJsonV4.RequiredObject(value, "trajectory")),
                 consumptions,
@@ -1122,8 +1179,10 @@ namespace Volleyball.Shared.Contracts
             Float(output, replayEvent.SimulationTimeSeconds);
             output.Append(",\"homeScore\":").Append(replayEvent.HomeScore);
             output.Append(",\"awayScore\":").Append(replayEvent.AwayScore);
-            output.Append(",\"envelope\":");
-            AppendEnvelope(output, replayEvent.Envelope);
+            output.Append(",\"testedEnvelope\":");
+            AppendEnvelope(output, replayEvent.TestedEnvelope);
+            output.Append(",\"executableEnvelope\":");
+            AppendEnvelope(output, replayEvent.ExecutableEnvelope);
             output.Append(",\"trajectory\":");
             AppendTrajectory(output, replayEvent.Trajectory);
             output.Append(",\"abilityConsumptions\":[");

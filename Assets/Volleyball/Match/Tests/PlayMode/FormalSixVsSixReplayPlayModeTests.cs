@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -104,7 +105,10 @@ namespace Volleyball.PlayModeTests
             Assert.That(restored.Events, Is.Not.Empty);
             foreach (var replayEvent in restored.Events)
             {
-                Assert.That(replayEvent.Envelope, Is.Not.Null);
+                Assert.That(replayEvent.TestedEnvelope, Is.Not.Null);
+                Assert.That(
+                    replayEvent.ExecutableEnvelope,
+                    Is.Not.Null);
                 Assert.That(replayEvent.Trajectory, Is.Not.Null);
                 Assert.That(replayEvent.AbilityConsumptions, Is.Not.Empty);
                 Assert.That(replayEvent.Classification, Is.Not.Null);
@@ -113,6 +117,107 @@ namespace Volleyball.PlayModeTests
                 Assert.That(
                     replayEvent.EventKind == "Attack",
                     Is.EqualTo(replayEvent.ObservedP6Geometry != null));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_TwoIndependentFixedSeedFormalRunsAreByteStable()
+        {
+            var payloads = new byte[2][];
+            MatchReplayV4 first = null;
+            MatchReplayV4 second = null;
+            for (var run = 0; run < 2; run++)
+            {
+                yield return SceneManager.LoadSceneAsync(
+                    "FormalIndoor6v6",
+                    LoadSceneMode.Single);
+                var director =
+                    UnityEngine.Object.FindFirstObjectByType<
+                        FormalSixVsSixRallyDirector>();
+                var ball =
+                    UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+                var players =
+                    UnityEngine.Object.FindObjectsByType<
+                        PrototypePlayerAgent>(
+                        FindObjectsSortMode.None);
+                var recorder = MatchReplayRecorder.Attach(
+                    director,
+                    ball,
+                    players);
+                recorder.StartCapture();
+
+                var timeout = Time.realtimeSinceStartup + 90f;
+                while (!recorder.IsComplete &&
+                       Time.realtimeSinceStartup < timeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(
+                    recorder.IsComplete,
+                    Is.True,
+                    "Independent formal run " + run +
+                    " did not complete its first rally.");
+                var replay = recorder.Complete();
+                payloads[run] = Encoding.UTF8.GetBytes(
+                    ContractJson.SerializeV4(replay));
+                if (run == 0)
+                {
+                    first = replay;
+                }
+                else
+                {
+                    second = replay;
+                }
+            }
+
+            CollectionAssert.AreEqual(payloads[0], payloads[1]);
+            Assert.That(second.Events.Count, Is.EqualTo(first.Events.Count));
+            for (var eventIndex = 0;
+                 eventIndex < first.Events.Count;
+                 eventIndex++)
+            {
+                var left = first.Events[eventIndex];
+                var right = second.Events[eventIndex];
+                Assert.That(left.SequenceNumber, Is.EqualTo(eventIndex));
+                Assert.That(right.SequenceNumber, Is.EqualTo(eventIndex));
+                Assert.That(
+                    right.TestedEnvelope.Identity,
+                    Is.EqualTo(left.TestedEnvelope.Identity));
+                Assert.That(
+                    right.ExecutableEnvelope.Identity,
+                    Is.EqualTo(left.ExecutableEnvelope.Identity));
+                Assert.That(
+                    right.Trajectory.ArtifactIdentity,
+                    Is.EqualTo(left.Trajectory.ArtifactIdentity));
+                Assert.That(
+                    right.Trajectory.CacheKey.Identity,
+                    Is.EqualTo(left.Trajectory.CacheKey.Identity));
+                Assert.That(
+                    right.Classification.Kind,
+                    Is.EqualTo(left.Classification.Kind));
+                Assert.That(
+                    right.AbilityConsumptions.Count,
+                    Is.EqualTo(left.AbilityConsumptions.Count));
+                for (var consumptionIndex = 0;
+                     consumptionIndex <
+                     left.AbilityConsumptions.Count;
+                     consumptionIndex++)
+                {
+                    var leftConsumption =
+                        left.AbilityConsumptions[consumptionIndex];
+                    var rightConsumption =
+                        right.AbilityConsumptions[consumptionIndex];
+                    Assert.That(
+                        rightConsumption.AttributeName,
+                        Is.EqualTo(leftConsumption.AttributeName));
+                    Assert.That(
+                        rightConsumption.Value,
+                        Is.EqualTo(leftConsumption.Value));
+                    Assert.That(
+                        rightConsumption.EvidenceKind,
+                        Is.EqualTo("ExecutionEnvelopeFactoryRead"));
+                }
             }
         }
     }

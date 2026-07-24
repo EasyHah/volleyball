@@ -122,41 +122,63 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            _events.Add(
+                CreateContactRecordV4(
+                    _events.Count,
+                    replayEvent,
+                    _director.HomeScore,
+                    _director.AwayScore));
+        }
+
+        public static MatchReplayEventV4 CreateContactRecordV4(
+            int sequenceNumber,
+            ReplayContactEvent replayEvent,
+            int homeScore,
+            int awayScore)
+        {
+            if (replayEvent == null)
+            {
+                throw new ArgumentNullException(nameof(replayEvent));
+            }
+
             var actorId = replayEvent.PlayerId ??
                 throw new InvalidOperationException(
                     "Formal V4 contact replay requires an actor.");
-            var actor = PlayerFor(actorId.Value);
-            var envelope = actor.ScheduledExecutionEnvelopeV4 ??
-                throw new InvalidOperationException(
-                    "Formal V4 contact replay requires the actor's consumed execution envelope.");
             var classification =
-                actor.ScheduledExecutionClassificationV4 ??
+                replayEvent.ExecutionClassification ??
                 throw new InvalidOperationException(
                     "Formal V4 contact replay requires the actor's actual sample classification.");
-            var trajectory = _director.LastTrajectoryPredictionArtifactV4 ??
+            var testedEnvelope = classification.TestedEnvelope;
+            var executableEnvelope = classification.ExecutableEnvelope ??
                 throw new InvalidOperationException(
-                    "Formal V4 contact replay requires its trajectory artifact.");
+                    "Formal V4 contact replay requires the actor's executable envelope.");
+            var trajectory = replayEvent.TrajectoryArtifact ??
+                throw new InvalidOperationException(
+                    "Formal V4 contact replay requires its event-owned trajectory artifact.");
             var ruleTransition = replayEvent.RuleTransition ??
                 throw new InvalidOperationException(
                     "Formal V4 contact replay requires its V3 rule decision.");
 
-            _events.Add(
-                new MatchReplayEventV4(
-                    _events.Count,
-                    replayEvent.Action.ToString(),
+            return new MatchReplayEventV4(
+                sequenceNumber,
+                replayEvent.Action.ToString(),
+                actorId.Value,
+                replayEvent.SimulationTimeSeconds,
+                homeScore,
+                awayScore,
+                ToReplayEnvelope(testedEnvelope),
+                ToReplayEnvelope(executableEnvelope),
+                ToReplayTrajectory(trajectory),
+                ToReplayConsumptions(
                     actorId.Value,
-                    replayEvent.SimulationTimeSeconds,
-                    _director.HomeScore,
-                    _director.AwayScore,
-                    ToReplayEnvelope(envelope),
-                    ToReplayTrajectory(trajectory),
-                    ToReplayConsumptions(actor, envelope.CandidateCategory),
-                    ToReplayClassification(classification),
-                    ToReplayGeometry(replayEvent.ObservedAttackGeometry),
-                    new ReplayRuleDecisionRecordV4(
-                        ContractVersions.MatchV3,
-                        ruleTransition.Accepted,
-                        ruleTransition.RejectionReason.ToString())));
+                    testedEnvelope.DerivedAttributesFingerprint,
+                    testedEnvelope.AbilityConsumptions),
+                ToReplayClassification(classification),
+                ToReplayGeometry(replayEvent.ObservedAttackGeometry),
+                new ReplayRuleDecisionRecordV4(
+                    ContractVersions.MatchV3,
+                    ruleTransition.Accepted,
+                    ruleTransition.RejectionReason.ToString()));
         }
 
         private void RecordResolution(ReplayRallyResolvedEvent replayEvent)
@@ -300,92 +322,30 @@ namespace Volleyball.Presentation
 
         private static IReadOnlyList<ReplayAbilityConsumptionRecordV4>
             ToReplayConsumptions(
-                PrototypePlayerAgent player,
-                ExecutionCandidateCategoryV4 category)
+                string playerId,
+                string derivedAttributesFingerprint,
+                IReadOnlyList<ExecutionAbilityConsumptionV4> consumptions)
         {
-            var attributes = player.Ability.Attributes;
-            var fingerprint = player.Ability.Derived.ResultFingerprint;
-            var records = new List<ReplayAbilityConsumptionRecordV4>(3);
-            void Add(string name, float value)
+            if (consumptions == null || consumptions.Count == 0)
             {
-                records.Add(
-                    new ReplayAbilityConsumptionRecordV4(
-                        player.StableId.Value,
-                        fingerprint,
-                        name,
-                        value,
-                        "RuntimeRead"));
+                throw new InvalidOperationException(
+                    "Formal V4 replay requires runtime consumption evidence.");
             }
 
-            switch (category)
+            var records =
+                new ReplayAbilityConsumptionRecordV4[consumptions.Count];
+            for (var index = 0; index < records.Length; index++)
             {
-                case ExecutionCandidateCategoryV4.Receive:
-                    Add(
-                        "Receive.FirstTouchControl",
-                        attributes.Receive.FirstTouchControl);
-                    Add("Receive.Movement", attributes.Receive.Movement);
-                    break;
-                case ExecutionCandidateCategoryV4.Set:
-                    Add(
-                        "Set.PlacementControl",
-                        attributes.Set.PlacementControl);
-                    Add("Set.TempoControl", attributes.Set.TempoControl);
-                    Add("Set.Movement", attributes.Set.Movement);
-                    break;
-                case ExecutionCandidateCategoryV4.Attack:
-                    Add(
-                        "Attack.DirectionControl",
-                        attributes.Attack.DirectionControl);
-                    Add(
-                        "Attack.SpeedControl",
-                        attributes.Attack.SpeedControl);
-                    Add(
-                        "Attack.PowerCapacity",
-                        attributes.Attack.PowerCapacity);
-                    break;
-                case ExecutionCandidateCategoryV4.Block:
-                    Add("Block.Timing", attributes.Block.Timing);
-                    Add("Block.HandControl", attributes.Block.HandControl);
-                    Add(
-                        "Block.LateralMobility",
-                        attributes.Block.LateralMobility);
-                    break;
-                case ExecutionCandidateCategoryV4.Serve:
-                    Add(
-                        "Serve.DirectionControl",
-                        attributes.Serve.DirectionControl);
-                    Add(
-                        "Serve.SpeedControl",
-                        attributes.Serve.SpeedControl);
-                    Add(
-                        "Serve.PowerCapacity",
-                        attributes.Serve.PowerCapacity);
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException(
-                        nameof(category),
-                        category,
-                        null);
+                var consumption = consumptions[index];
+                records[index] = new ReplayAbilityConsumptionRecordV4(
+                    playerId,
+                    derivedAttributesFingerprint,
+                    consumption.AttributeName,
+                    consumption.Value,
+                    consumption.EvidenceKind);
             }
 
             return records;
-        }
-
-        private PrototypePlayerAgent PlayerFor(string stablePlayerId)
-        {
-            for (var index = 0; index < _players.Count; index++)
-            {
-                if (string.Equals(
-                        _players[index].StableId.Value,
-                        stablePlayerId,
-                        StringComparison.Ordinal))
-                {
-                    return _players[index];
-                }
-            }
-
-            throw new InvalidOperationException(
-                "Replay event references an unknown V4 player.");
         }
 
         private static string ReplayId(MatchContextV4 context)

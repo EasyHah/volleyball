@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -221,6 +222,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
         private readonly byte[] _canonicalBytes;
         private readonly byte[] _derivedAttributesCanonicalBytes;
         private readonly ExecutionEnvelopePolicyV4 _policy;
+        private readonly IReadOnlyList<ExecutionAbilityConsumptionV4>
+            _abilityConsumptions;
 
         internal ExecutionEnvelopeV4(
             int version,
@@ -237,7 +240,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             float maximumEffort,
             SamplingContractV4 sampling,
             EnvelopeExpansionPolicyV4 expansion,
-            ExecutionEnvelopePolicyV4 policy)
+            ExecutionEnvelopePolicyV4 policy,
+            IReadOnlyList<ExecutionAbilityConsumptionV4> abilityConsumptions)
         {
             if (version <= 0)
             {
@@ -306,6 +310,26 @@ namespace Volleyball.Match.Domain.FullRallyV3
             Sampling = sampling ?? throw new ArgumentNullException(nameof(sampling));
             Expansion = expansion ?? throw new ArgumentNullException(nameof(expansion));
             _policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            if (abilityConsumptions == null || abilityConsumptions.Count == 0)
+            {
+                throw new ArgumentException(
+                    "Execution ability consumptions are required.",
+                    nameof(abilityConsumptions));
+            }
+
+            var consumptionCopy =
+                new ExecutionAbilityConsumptionV4[abilityConsumptions.Count];
+            for (var index = 0; index < consumptionCopy.Length; index++)
+            {
+                consumptionCopy[index] = abilityConsumptions[index] ??
+                    throw new ArgumentException(
+                        "Execution ability consumptions cannot contain null.",
+                        nameof(abilityConsumptions));
+            }
+
+            _abilityConsumptions =
+                new ReadOnlyCollection<ExecutionAbilityConsumptionV4>(
+                    consumptionCopy);
 
             var canonical = new StringBuilder(2048);
             ExecutionEnvelopeCanonicalV4.AppendString(
@@ -386,6 +410,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public SamplingContractV4 Sampling { get; }
 
         public EnvelopeExpansionPolicyV4 Expansion { get; }
+
+        public IReadOnlyList<ExecutionAbilityConsumptionV4>
+            AbilityConsumptions => _abilityConsumptions;
 
         public byte[] ToCanonicalBytes()
         {

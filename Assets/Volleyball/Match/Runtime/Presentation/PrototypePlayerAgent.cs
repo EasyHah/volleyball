@@ -97,6 +97,9 @@ namespace Volleyball.Presentation
             private set;
         }
 
+        public BallTrajectoryPredictionArtifactV4
+            ScheduledTrajectoryPredictionArtifactV4 { get; private set; }
+
         internal float MinimumActiveSurfacePlanError { get; private set; }
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
@@ -211,7 +214,8 @@ namespace Volleyball.Presentation
             float movementStartSimulationTime = 0f,
             AttackApproachPlan? attackApproach = null,
             AttackContactPlan? attackContactPlan = null,
-            SetRoute? normalSetRoute = null)
+            SetRoute? normalSetRoute = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
             if (plannedEnvelope == null)
             {
@@ -235,7 +239,8 @@ namespace Volleyball.Presentation
                 movementStartSimulationTime,
                 attackApproach,
                 attackContactPlan,
-                normalSetRoute);
+                normalSetRoute,
+                trajectoryArtifact);
         }
 
         public void ScheduleContact(
@@ -250,7 +255,8 @@ namespace Volleyball.Presentation
             float movementStartSimulationTime = 0f,
             AttackApproachPlan? attackApproach = null,
             AttackContactPlan? attackContactPlan = null,
-            SetRoute? normalSetRoute = null)
+            SetRoute? normalSetRoute = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
             if (executionClassification == null)
             {
@@ -308,6 +314,7 @@ namespace Volleyball.Presentation
             ScheduledExecutionEnvelopeV4 = executableEnvelope;
             ScheduledExecutionSampleV4 = executableSample;
             ScheduledExecutionClassificationV4 = executionClassification;
+            ScheduledTrajectoryPredictionArtifactV4 = trajectoryArtifact;
         }
 
         public void ScheduleContact(
@@ -327,6 +334,7 @@ namespace Volleyball.Presentation
             ScheduledExecutionEnvelopeV4 = null;
             ScheduledExecutionSampleV4 = null;
             ScheduledExecutionClassificationV4 = null;
+            ScheduledTrajectoryPredictionArtifactV4 = null;
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
                 throw new ArgumentException("Only attack contacts may include an approach plan.", nameof(attackApproach));

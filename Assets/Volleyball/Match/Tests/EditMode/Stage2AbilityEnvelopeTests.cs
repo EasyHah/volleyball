@@ -141,6 +141,44 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Create_EmitsExactFactoryReadEvidenceAndExpansionPreservesIt()
+        {
+            var envelope = CreateEnvelope(
+                policy: CreatePolicy(allowedExpansionCount: 1));
+            var classification = envelope.Classify(
+                SampleWithTargetErrorScale(envelope, 1.2f));
+
+            Assert.That(
+                envelope.AbilityConsumptions,
+                Has.Count.EqualTo(3));
+            Assert.That(
+                envelope.AbilityConsumptions[0].AttributeName,
+                Is.EqualTo("Attack.DirectionControl"));
+            Assert.That(
+                envelope.AbilityConsumptions[0].Value,
+                Is.EqualTo(
+                    MatchV4TestFixture.CreateDerived()
+                        .Attributes.Attack.DirectionControl));
+            Assert.That(
+                envelope.AbilityConsumptions[1].AttributeName,
+                Is.EqualTo("Attack.SpeedControl"));
+            Assert.That(
+                envelope.AbilityConsumptions[2].AttributeName,
+                Is.EqualTo("Attack.PowerCapacity"));
+            Assert.That(
+                envelope.AbilityConsumptions[0].EvidenceKind,
+                Is.EqualTo("ExecutionEnvelopeFactoryRead"));
+            Assert.That(
+                classification.Kind,
+                Is.EqualTo(
+                    ExecutionSampleClassificationKindV4.EnvelopeExpanded));
+            Assert.That(
+                classification.ExecutableEnvelope
+                    .AbilityConsumptions[0],
+                Is.SameAs(envelope.AbilityConsumptions[0]));
+        }
+
+        [Test]
         public void PhysicalExecutor_UsesExactEnvelopeSampleAndVelocity()
         {
             var derived = MatchV4TestFixture.CreateDerived();

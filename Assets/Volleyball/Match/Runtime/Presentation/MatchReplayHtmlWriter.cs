@@ -83,13 +83,15 @@ document.querySelector('#events').innerHTML=replay.events.map(event=>`
 <article class='event'>
   <h2>#${event.sequenceNumber} ${event.eventKind} · ${event.actorPlayerId}</h2>
   <div class='grid'>
-    <section class='panel'><h3>Execution envelope</h3><dl>
-      <dt>Identity</dt><dd>${event.envelope.identity}</dd>
-      <dt>Policy</dt><dd>${event.envelope.policyIdentity}</dd>
-      <dt>Source intent</dt><dd>${event.envelope.sourceIntentIdentity}</dd>
-      <dt>Target bounds</dt><dd>${vector(event.envelope.targetError.minimum)} → ${vector(event.envelope.targetError.maximum)}</dd>
-      <dt>Velocity bounds</dt><dd>${vector(event.envelope.velocityError.minimum)} → ${vector(event.envelope.velocityError.maximum)}</dd>
-      <dt>Effort</dt><dd>${event.envelope.requestedEffort} / ${event.envelope.maximumEffort}</dd>
+    <section class='panel'><h3>Execution envelopes</h3><dl>
+      <dt>Tested identity</dt><dd>${event.testedEnvelope.identity}</dd>
+      <dt>Executable identity</dt><dd>${event.executableEnvelope.identity}</dd>
+      <dt>Expansion</dt><dd>${event.testedEnvelope.currentExpansionCount} → ${event.executableEnvelope.currentExpansionCount}</dd>
+      <dt>Policy</dt><dd>${event.testedEnvelope.policyIdentity}</dd>
+      <dt>Source intent</dt><dd>${event.testedEnvelope.sourceIntentIdentity}</dd>
+      <dt>Target bounds</dt><dd>${vector(event.executableEnvelope.targetError.minimum)} → ${vector(event.executableEnvelope.targetError.maximum)}</dd>
+      <dt>Velocity bounds</dt><dd>${vector(event.executableEnvelope.velocityError.minimum)} → ${vector(event.executableEnvelope.velocityError.maximum)}</dd>
+      <dt>Effort</dt><dd>${event.executableEnvelope.requestedEffort} / ${event.executableEnvelope.maximumEffort}</dd>
     </dl></section>
     <section class='panel'><h3>Trajectory artifact</h3><dl>
       <dt>Identity</dt><dd>${event.trajectory.artifactIdentity}</dd>

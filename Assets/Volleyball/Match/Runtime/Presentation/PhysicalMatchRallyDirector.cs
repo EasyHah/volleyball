@@ -130,19 +130,25 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             ReplaySetChainEvent setChain = null,
             AttackGeometryFactV3 observedAttackGeometry = null,
-            RuleTransitionV3 ruleTransition = null)
+            RuleTransitionV3 ruleTransition = null,
+            ExecutionSampleClassificationV4 executionClassification = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
             Action = action;
             SetChain = setChain;
             ObservedAttackGeometry = observedAttackGeometry;
             RuleTransition = ruleTransition;
+            ExecutionClassification = executionClassification;
+            TrajectoryArtifact = trajectoryArtifact;
         }
 
         public TechniqueAction Action { get; }
         public ReplaySetChainEvent SetChain { get; }
         public AttackGeometryFactV3 ObservedAttackGeometry { get; }
         public RuleTransitionV3 RuleTransition { get; }
+        public ExecutionSampleClassificationV4 ExecutionClassification { get; }
+        public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
     }
 
     public sealed class ReplaySetChainEvent
@@ -258,6 +264,8 @@ namespace Volleyball.Presentation
         private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
         private BallTrajectoryPredictionProviderV4 _trajectoryPredictionProviderV4;
         private BallTrajectoryPredictionArtifactV4 _lastTrajectoryPredictionArtifactV4;
+        private BallTrajectoryPredictionArtifactV4
+            _plannedAttackTrajectoryArtifactV4;
         private PendingV3AuthorityContact _pendingV3AuthorityContact;
         private StablePlayerId? _lastAcceptedV3Actor;
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
@@ -925,6 +933,7 @@ namespace Volleyball.Presentation
             }
             _scheduledDecision = null;
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
             _scheduledBlockPrimary = null;
@@ -988,6 +997,7 @@ namespace Volleyball.Presentation
             DisablePhysicalBlockWindows();
             _touchState.BeginPossession(team);
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _controlledHandlingActive = false;
             _activeSetChain = false;
             BeginPossessionDecision(team, availableSeconds);
@@ -1264,8 +1274,12 @@ namespace Volleyball.Presentation
                 : SetterOrganizationZoneGrade.Secondary;
         }
 
-        private void ScheduleDecision(TeamRallyDecision decision, float flightSeconds)
+        private void ScheduleDecision(
+            TeamRallyDecision decision,
+            float flightSeconds,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
+            trajectoryArtifact ??= _lastTrajectoryPredictionArtifactV4;
             _scheduledDecision = decision;
             _scheduledPrimaryActor = null;
             _contactDeadlineActive = false;
@@ -1293,6 +1307,7 @@ namespace Volleyball.Presentation
                     decision.BallTarget,
                     _touchState.CountedTeamTouches + 1,
                     decision.Actor);
+                _plannedAttackTrajectoryArtifactV4 = trajectoryArtifact;
                 if (_plannedAttackDecision.HasDecision)
                 {
                     Debug.Log(
@@ -1489,7 +1504,8 @@ namespace Volleyball.Presentation
                 attackContactPlan: decision.AttackContactPlan,
                 normalSetRoute: decision.Action == TechniqueAction.Set
                     ? TacticFor(decision.Actor.Team).SetRoute
-                    : (SetRoute?)null);
+                    : (SetRoute?)null,
+                trajectoryArtifact: trajectoryArtifact);
             _scheduledPrimaryActor = decision.Actor;
             MovementAssignments++;
             TotalMovementShortfall += actor.MovementShortfall;
@@ -1934,6 +1950,10 @@ namespace Volleyball.Presentation
                 $"touches={_touchState.CountedTeamTouches} quality={contact.Hit.Centeredness:0.00} " +
                 $"speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
             _pendingReplaySetChain = null;
+            var acceptedExecutionClassification =
+                actor.ScheduledExecutionClassificationV4;
+            var acceptedTrajectoryArtifact =
+                actor.ScheduledTrajectoryPredictionArtifactV4;
 
             switch (contact.Candidate.Action)
             {
@@ -1958,15 +1978,24 @@ namespace Volleyball.Presentation
                         ? _scheduledSetFlightSeconds
                         : SetFlightSolver.PreferredFlightSeconds(TacticFor(actorId.Team).SetRhythm);
                     var attackDecision = _plannedAttackDecision;
+                    var attackTrajectoryArtifact =
+                        _plannedAttackTrajectoryArtifactV4;
                     _plannedAttackDecision = null;
+                    _plannedAttackTrajectoryArtifactV4 = null;
                     if (attackDecision == null || !attackDecision.HasDecision)
                     {
                         attackDecision = PlanDecision(
                             actorId.Team,
                             RallyDecisionStage.Attack,
                             setFlight);
+                        attackTrajectoryArtifact =
+                            _lastTrajectoryPredictionArtifactV4;
                     }
-                    ScheduleAttackFromActualSet(attackDecision, setFlight, actorId);
+                    ScheduleAttackFromActualSet(
+                        attackDecision,
+                        setFlight,
+                        actorId,
+                        attackTrajectoryArtifact);
                     RecordSetCalibration(actorId, actor.CurrentSetStyle, contact.Hit.Centeredness);
                     break;
                 case TechniqueAction.Attack:
@@ -1998,7 +2027,9 @@ namespace Volleyball.Presentation
                     contact.Candidate.Action,
                     _pendingReplaySetChain,
                     authorityContact?.ObservedAttackGeometry,
-                    authorityContact?.Transition));
+                    authorityContact?.Transition,
+                    acceptedExecutionClassification,
+                    acceptedTrajectoryArtifact));
         }
 
         private void ObserveAcceptedContactV3(
@@ -2221,13 +2252,17 @@ namespace Volleyball.Presentation
         private void ScheduleAttackFromActualSet(
             TeamRallyDecision provisionalDecision,
             float plannedFlightSeconds,
-            PlayerId setterActor)
+            PlayerId setterActor,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
         {
             if (provisionalDecision == null || !provisionalDecision.HasDecision ||
                 !provisionalDecision.AttackApproach.HasValue ||
                 !provisionalDecision.AttackContactPlan.HasValue)
             {
-                ScheduleDecision(provisionalDecision, plannedFlightSeconds);
+                ScheduleDecision(
+                    provisionalDecision,
+                    plannedFlightSeconds,
+                    trajectoryArtifact);
                 return;
             }
 
@@ -2345,7 +2380,10 @@ namespace Volleyball.Presentation
                     resumedApproach,
                     replan.ContactPlan,
                     _ball.SimulationTime + Mathf.Max(0.1f, actualArrival.TimeSeconds));
-                ScheduleDecision(replacement, Mathf.Max(0.1f, actualArrival.TimeSeconds));
+                ScheduleDecision(
+                    replacement,
+                    Mathf.Max(0.1f, actualArrival.TimeSeconds),
+                    trajectoryArtifact);
                 return;
             }
 
@@ -2722,6 +2760,7 @@ namespace Volleyball.Presentation
             _scheduledPrimaryActor = null;
             _scheduledDecision = null;
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _pendingCrossingTeam = null;
             PhysicalBlockContacts++;
             BlockSupportActivations++;
@@ -2941,6 +2980,7 @@ namespace Volleyball.Presentation
             _pendingCrossingTeam = null;
             _scheduledDecision = null;
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
             _scheduledBlockPrimary = null;

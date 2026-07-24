@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Volleyball.Domain.Simulation;
 using Volleyball.Shared.Contracts;
 
@@ -45,7 +46,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 out var directionControl,
                 out var speedControl,
                 out var powerCapacity,
-                out var baseMaximumSpeed);
+                out var baseMaximumSpeed,
+                out var abilityConsumptions);
 
             // Direction and speed controls own only their respective bounded
             // errors. Power capacity owns only maximum speed and effort.
@@ -107,7 +109,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                     policy.AllowedExpansionCount,
                     currentExpansionCount: 0,
                     policy.PerStepExpansionFactor),
-                policy);
+                policy,
+                abilityConsumptions);
         }
 
         internal static ExecutionEnvelopeV4 ExpandOneStep(ExecutionEnvelopeV4 envelope)
@@ -142,7 +145,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                     envelope.Expansion.AllowedExpansionCount,
                     envelope.Expansion.CurrentExpansionCount + 1,
                     envelope.Expansion.PerStepExpansionFactor),
-                envelope.Policy);
+                envelope.Policy,
+                envelope.AbilityConsumptions);
         }
 
         private static void ResolveAuthority(
@@ -151,43 +155,95 @@ namespace Volleyball.Match.Domain.FullRallyV3
             out float directionControl,
             out float speedControl,
             out float powerCapacity,
-            out float baseMaximumSpeed)
+            out float baseMaximumSpeed,
+            out IReadOnlyList<ExecutionAbilityConsumptionV4>
+                abilityConsumptions)
         {
             switch (category)
             {
                 case ExecutionCandidateCategoryV4.Receive:
-                    directionControl = attributes.Receive.FirstTouchControl;
-                    speedControl = attributes.Receive.FirstTouchControl;
-                    powerCapacity = attributes.Receive.Movement;
+                    var firstTouchControl =
+                        attributes.Receive.FirstTouchControl;
+                    var receiveMovement = attributes.Receive.Movement;
+                    directionControl = firstTouchControl;
+                    speedControl = firstTouchControl;
+                    powerCapacity = receiveMovement;
                     baseMaximumSpeed = 14f;
+                    abilityConsumptions = Consumptions(
+                        ("Receive.FirstTouchControl", firstTouchControl),
+                        ("Receive.Movement", receiveMovement));
                     return;
                 case ExecutionCandidateCategoryV4.Set:
-                    directionControl = attributes.Set.PlacementControl;
-                    speedControl = attributes.Set.TempoControl;
-                    powerCapacity = attributes.Set.Movement;
+                    var placementControl = attributes.Set.PlacementControl;
+                    var tempoControl = attributes.Set.TempoControl;
+                    var setMovement = attributes.Set.Movement;
+                    directionControl = placementControl;
+                    speedControl = tempoControl;
+                    powerCapacity = setMovement;
                     baseMaximumSpeed = 16f;
+                    abilityConsumptions = Consumptions(
+                        ("Set.PlacementControl", placementControl),
+                        ("Set.TempoControl", tempoControl),
+                        ("Set.Movement", setMovement));
                     return;
                 case ExecutionCandidateCategoryV4.Attack:
-                    directionControl = attributes.Attack.DirectionControl;
-                    speedControl = attributes.Attack.SpeedControl;
-                    powerCapacity = attributes.Attack.PowerCapacity;
+                    var attackDirection = attributes.Attack.DirectionControl;
+                    var attackSpeed = attributes.Attack.SpeedControl;
+                    var attackPower = attributes.Attack.PowerCapacity;
+                    directionControl = attackDirection;
+                    speedControl = attackSpeed;
+                    powerCapacity = attackPower;
                     baseMaximumSpeed = 32f;
+                    abilityConsumptions = Consumptions(
+                        ("Attack.DirectionControl", attackDirection),
+                        ("Attack.SpeedControl", attackSpeed),
+                        ("Attack.PowerCapacity", attackPower));
                     return;
                 case ExecutionCandidateCategoryV4.Block:
-                    directionControl = attributes.Block.HandControl;
-                    speedControl = attributes.Block.Timing;
-                    powerCapacity = attributes.Block.LateralMobility;
+                    var handControl = attributes.Block.HandControl;
+                    var blockTiming = attributes.Block.Timing;
+                    var lateralMobility = attributes.Block.LateralMobility;
+                    directionControl = handControl;
+                    speedControl = blockTiming;
+                    powerCapacity = lateralMobility;
                     baseMaximumSpeed = 12f;
+                    abilityConsumptions = Consumptions(
+                        ("Block.HandControl", handControl),
+                        ("Block.Timing", blockTiming),
+                        ("Block.LateralMobility", lateralMobility));
                     return;
                 case ExecutionCandidateCategoryV4.Serve:
-                    directionControl = attributes.Serve.DirectionControl;
-                    speedControl = attributes.Serve.SpeedControl;
-                    powerCapacity = attributes.Serve.PowerCapacity;
+                    var serveDirection = attributes.Serve.DirectionControl;
+                    var serveSpeed = attributes.Serve.SpeedControl;
+                    var servePower = attributes.Serve.PowerCapacity;
+                    directionControl = serveDirection;
+                    speedControl = serveSpeed;
+                    powerCapacity = servePower;
                     baseMaximumSpeed = 30f;
+                    abilityConsumptions = Consumptions(
+                        ("Serve.DirectionControl", serveDirection),
+                        ("Serve.SpeedControl", serveSpeed),
+                        ("Serve.PowerCapacity", servePower));
                     return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(category), category, null);
             }
+        }
+
+        private static IReadOnlyList<ExecutionAbilityConsumptionV4>
+            Consumptions(
+                params (string AttributeName, float Value)[] values)
+        {
+            var records =
+                new ExecutionAbilityConsumptionV4[values.Length];
+            for (var index = 0; index < values.Length; index++)
+            {
+                records[index] = new ExecutionAbilityConsumptionV4(
+                    values[index].AttributeName,
+                    values[index].Value);
+            }
+
+            return records;
         }
     }
 }

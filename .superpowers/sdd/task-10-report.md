@@ -130,3 +130,86 @@ Fresh verification before commit is recorded below.
 The V1-named test source file remains at its historical path for plan and
 Unity asset continuity, but its fixture is now
 `Volleyball.EditModeTests.MatchReplayV4Tests`.
+
+## External-review corrections
+
+The original implementation was subsequently reviewed at the runtime
+authority boundary. Four Important findings were corrected; this section
+supersedes the earlier descriptions of runtime-read evidence, selected
+envelope semantics, trajectory capture, and byte-stability coverage.
+
+### Exact consumption evidence
+
+`MatchReplayRecorder` no longer reads `PrototypePlayerAgent.Ability` and no
+longer creates generic `RuntimeRead` records while serializing.
+
+`ExecutionEnvelopeFactoryV4` now emits immutable
+`ExecutionAbilityConsumptionV4` records at the exact derived-field reads that
+produce the execution envelope. Each record identifies the genuinely consumed
+field, exact value, and `ExecutionEnvelopeFactoryRead` evidence kind. The
+records are owned by the tested envelope, preserved across explicit expansion,
+snapshotted with the accepted classification, and only then mapped into Shared
+replay DTOs.
+
+The category-specific evidence is:
+
+- Receive: `Receive.FirstTouchControl`, `Receive.Movement`
+- Set: `Set.PlacementControl`, `Set.TempoControl`, `Set.Movement`
+- Attack: `Attack.DirectionControl`, `Attack.SpeedControl`,
+  `Attack.PowerCapacity`
+- Block: `Block.HandControl`, `Block.Timing`, `Block.LateralMobility`
+- Serve: `Serve.DirectionControl`, `Serve.SpeedControl`,
+  `Serve.PowerCapacity`
+
+### Event-owned trajectory provenance
+
+The recorder no longer reads
+`PhysicalMatchRallyDirector.LastTrajectoryPredictionArtifactV4`.
+`ScheduleDecision` passes the exact trajectory artifact used by that action
+into `PrototypePlayerAgent`; an accepted contact snapshots it before any
+receive/set/attack follow-up planning occurs. `ReplayContactEvent` carries that
+event-owned artifact to the recorder. Preplanned attacks retain the artifact
+that produced their originating decision instead of consulting mutable global
+state after contact.
+
+### Truthful expansion identity
+
+Every serialized event now contains explicit, complete `testedEnvelope` and
+`executableEnvelope` records. Validation requires:
+
+- classification and actual sample to identify the tested envelope;
+- a non-expanded classification to execute the same identity and expansion
+  count;
+- an expanded classification to identify a distinct executable envelope whose
+  expansion count is exactly the tested count plus one;
+- both records to share the same derivation, source intent, sampling contract,
+  and expansion policy.
+
+The HTML diagnostics render both identities and the tested-to-executable
+expansion transition.
+
+`RecorderMapping_ExpandedContactPersistsTestedAndExecutableEnvelopes` creates a
+real expansion-authorized envelope, classifies an out-of-base/in-expanded-bound
+sample, supplies an actual V4 trajectory artifact and accepted V3 transition,
+and passes the resulting contact through the recorder mapper. It verifies the
+two distinct identities and exact factory-read evidence.
+
+### Independent fixed-seed stability
+
+`Capture_TwoIndependentFixedSeedFormalRunsAreByteStable` loads the formal scene
+twice, independently attaches and starts a recorder for each run, completes the
+first rally in each fresh match, and compares the canonical UTF-8 replay bytes.
+It also explicitly compares ordered event numbers, tested/executable envelope
+identities, trajectory artifact/cache-key provenance, classification kinds,
+and every ordered consumption field/value/evidence record.
+
+### Correction verification
+
+- focused Shared contract + ReplayV4 EditMode: `67/67` passed,
+  `/tmp/task10-review-final-focused.xml`
+- full EditMode: `546/546` passed,
+  `/tmp/task10-review-final2-full-editmode.xml`
+- formal ReplayV4 PlayMode, including two independent fixed-seed scene runs:
+  `4/4` passed, `/tmp/task10-review-final2-replay-playmode.xml`
+- `git diff --check`: clean
+- Shared dependency scan for Match/Domain/Unity references: no matches

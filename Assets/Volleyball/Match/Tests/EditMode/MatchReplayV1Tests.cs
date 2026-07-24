@@ -1,8 +1,13 @@
 using System;
 using System.IO;
 using NUnit.Framework;
+using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
+using PrototypeTeamId = Volleyball.Domain.Prototype.TeamId;
+using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using TechniqueAction = Volleyball.Domain.Players.TechniqueAction;
 
 namespace Volleyball.EditModeTests
 {
@@ -63,17 +68,20 @@ namespace Volleyball.EditModeTests
             Assert.That(restored.Context.Home.RotationOrder[0].Derived.InputFingerprint, Does.Match("^[0-9a-f]{64}$"));
             Assert.That(restored.Context.Home.RotationOrder[0].Derived.ResultFingerprint, Does.Match("^[0-9a-f]{64}$"));
 
-            Assert.That(replayEvent.Envelope.Identity, Is.EqualTo(HashA));
-            Assert.That(replayEvent.Envelope.PolicyIdentity, Is.EqualTo(HashB));
-            Assert.That(replayEvent.Envelope.SourceIntentIdentity, Is.EqualTo("attack-intent-0"));
-            Assert.That(replayEvent.Envelope.TargetError.Minimum.X, Is.EqualTo(-0.1f));
-            Assert.That(replayEvent.Envelope.VelocityError.Maximum.Z, Is.EqualTo(0.3f));
-            Assert.That(replayEvent.Envelope.MaximumEffort, Is.EqualTo(0.95f));
-            Assert.That(replayEvent.Envelope.DegradationLadder, Is.EqualTo(
+            Assert.That(replayEvent.TestedEnvelope.Identity, Is.EqualTo(HashA));
+            Assert.That(replayEvent.ExecutableEnvelope.Identity, Is.EqualTo(HashB));
+            Assert.That(replayEvent.TestedEnvelope.PolicyIdentity, Is.EqualTo(HashB));
+            Assert.That(replayEvent.TestedEnvelope.SourceIntentIdentity, Is.EqualTo("attack-intent-0"));
+            Assert.That(replayEvent.TestedEnvelope.TargetError.Minimum.X, Is.EqualTo(-0.1f));
+            Assert.That(replayEvent.TestedEnvelope.VelocityError.Maximum.Z, Is.EqualTo(0.3f));
+            Assert.That(replayEvent.TestedEnvelope.MaximumEffort, Is.EqualTo(0.95f));
+            Assert.That(replayEvent.TestedEnvelope.DegradationLadder, Is.EqualTo(
                 new[] { "FullSampling", "ReducedSampleCount", "CachedCoarseDistribution", "DeterministicSafeFallback" }));
 
             Assert.That(replayEvent.AbilityConsumptions, Has.Count.EqualTo(2));
-            Assert.That(replayEvent.AbilityConsumptions[0].EvidenceKind, Is.EqualTo("RuntimeRead"));
+            Assert.That(
+                replayEvent.AbilityConsumptions[0].EvidenceKind,
+                Is.EqualTo("ExecutionEnvelopeFactoryRead"));
             Assert.That(replayEvent.Trajectory.ArtifactIdentity, Is.EqualTo(HashC));
             Assert.That(replayEvent.Trajectory.PredictorSource, Is.EqualTo("formal-v4"));
             Assert.That(replayEvent.Trajectory.CacheKey.BallStateVersion, Is.EqualTo(42));
@@ -86,6 +94,121 @@ namespace Volleyball.EditModeTests
             Assert.That(replayEvent.RuleDecision.RulesVersion, Is.EqualTo(3));
             Assert.That(replayEvent.RuleDecision.Accepted, Is.True);
             Assert.That(replayEvent.RuleDecision.ReasonCode, Is.EqualTo("None"));
+        }
+
+        [Test]
+        public void RecorderMapping_ExpandedContactPersistsTestedAndExecutableEnvelopes()
+        {
+            var derived = MatchV4TestFixture.CreateDerived();
+            var policy = new ExecutionEnvelopePolicyV4(
+                ExecutionEnvelopeV4.CurrentVersion,
+                1,
+                new[]
+                {
+                    ExecutionCandidateCategoryV4.Receive,
+                    ExecutionCandidateCategoryV4.Set,
+                    ExecutionCandidateCategoryV4.Attack,
+                    ExecutionCandidateCategoryV4.Block,
+                    ExecutionCandidateCategoryV4.Serve
+                },
+                7,
+                2,
+                1,
+                1.5f,
+                new[]
+                {
+                    ExecutionDegradationStepV4.FullSampling,
+                    ExecutionDegradationStepV4.ReducedSampleCount,
+                    ExecutionDegradationStepV4.CachedCoarseDistribution,
+                    ExecutionDegradationStepV4.DeterministicSafeFallback
+                },
+                BoundedErrorDistributionKindV4.BoundedUniform,
+                BoundedErrorDistributionKindV4.BoundedUniform);
+            var tested = ExecutionEnvelopeFactoryV4.Create(
+                derived,
+                new ExecutionIntentV4(
+                    "expanded-recording-contact",
+                    ExecutionCandidateCategoryV4.Receive,
+                    new SimVector3(1f, 2f, 3f),
+                    new SimVector3(4f, 5f, 6f),
+                    0.5f),
+                "expanded-recording-sample",
+                policy);
+            var sample = new ExecutionSampleV4(
+                tested.Identity,
+                tested.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Receive,
+                new SimVector3(
+                    tested.BaselineTarget.X +
+                    (tested.TargetError.MaximumAbsoluteError.X * 1.2f),
+                    tested.BaselineTarget.Y,
+                    tested.BaselineTarget.Z),
+                tested.BaselineVelocity,
+                tested.RequestedEffort);
+            var classification = tested.Classify(sample);
+            var context = MatchV4TestFixture.CreateContext();
+            var parameters =
+                new BallSimulationParameters(-9.8f, 0.9995f);
+            var trajectory =
+                PhysicalMatchRallyDirector
+                    .CreateTrajectoryPredictionProviderV4(context)
+                    .Predict(
+                        new BallTrajectoryPredictionRequestV4(
+                            TeamSide.Home,
+                            7,
+                            new BallState(
+                                new SimVector3(0f, 3f, -2f),
+                                new SimVector3(1f, 4f, 5f),
+                                0.12f),
+                            parameters,
+                            context.PhysicsConfigurationHash,
+                            "expanded-recording-trajectory",
+                            context
+                                .TrajectoryPredictionProviderConfiguration
+                                .PredictorVersion,
+                            context
+                                .TrajectoryPredictionProviderConfiguration
+                                .PredictorConfigurationHash,
+                            tested.Identity,
+                            ExecutionDegradationStepV4.FullSampling));
+            var actor = new StablePlayerId("home-opposite");
+            var transition = RallyRulesEngineV3.Open(TeamSide.Home).Apply(
+                new ActualContactEventV3(
+                    actor,
+                    TeamSide.Home,
+                    RallyContactClassificationV3.TeamContact,
+                    17));
+            var replayEvent = MatchReplayRecorder.CreateContactRecordV4(
+                0,
+                new ReplayContactEvent(
+                    "Contact",
+                    1.25f,
+                    PrototypeTeamId.Blue,
+                    actor,
+                    TechniqueAction.Receive,
+                    ruleTransition: transition,
+                    executionClassification: classification,
+                    trajectoryArtifact: trajectory),
+                0,
+                0);
+
+            Assert.That(
+                classification.Kind,
+                Is.EqualTo(
+                    ExecutionSampleClassificationKindV4.EnvelopeExpanded));
+            Assert.That(
+                replayEvent.TestedEnvelope.Identity,
+                Is.EqualTo(classification.TestedEnvelopeIdentity));
+            Assert.That(
+                replayEvent.ExecutableEnvelope.Identity,
+                Is.EqualTo(classification.ExpandedEnvelopeIdentity));
+            Assert.That(
+                replayEvent.ExecutableEnvelope.CurrentExpansionCount,
+                Is.EqualTo(1));
+            Assert.That(
+                replayEvent.AbilityConsumptions,
+                Has.All.Property("EvidenceKind")
+                    .EqualTo("ExecutionEnvelopeFactoryRead"));
         }
 
         [Test]
@@ -138,6 +261,7 @@ namespace Volleyball.EditModeTests
                     attack.HomeScore,
                     attack.AwayScore,
                     null,
+                    attack.ExecutableEnvelope,
                     attack.Trajectory,
                     attack.AbilityConsumptions,
                     attack.Classification,
@@ -152,7 +276,8 @@ namespace Volleyball.EditModeTests
                     receive.SimulationTimeSeconds,
                     receive.HomeScore,
                     receive.AwayScore,
-                    receive.Envelope,
+                    receive.TestedEnvelope,
+                    receive.ExecutableEnvelope,
                     receive.Trajectory,
                     receive.AbilityConsumptions,
                     receive.Classification,
@@ -168,7 +293,8 @@ namespace Volleyball.EditModeTests
                     attack.SimulationTimeSeconds,
                     attack.HomeScore,
                     attack.AwayScore,
-                    attack.Envelope,
+                    attack.TestedEnvelope,
+                    attack.ExecutableEnvelope,
                     attack.Trajectory,
                     attack.AbilityConsumptions,
                     attack.Classification,
@@ -216,7 +342,8 @@ namespace Volleyball.EditModeTests
                     0.75f,
                     "Serialized"),
                 Throws.TypeOf<ContractValidationException>()
-                    .With.Message.Contains("RuntimeRead"));
+                    .With.Message.Contains(
+                        "ExecutionEnvelopeFactoryRead"));
             Assert.That(
                 () => new ReplayAbilityConsumptionRecordV4(
                     "home-opposite",
@@ -271,14 +398,14 @@ namespace Volleyball.EditModeTests
                         "home-opposite",
                         DerivedFingerprint,
                         "Attack.PowerCapacity",
-                        0.81f,
-                        "RuntimeRead"),
+                    0.81f,
+                        "ExecutionEnvelopeFactoryRead"),
                     new ReplayAbilityConsumptionRecordV4(
                         "home-opposite",
                         DerivedFingerprint,
                         "Attack.DirectionControl",
                         0.76f,
-                        "RuntimeRead")
+                        "ExecutionEnvelopeFactoryRead")
                 }
                 : new[]
                 {
@@ -287,7 +414,7 @@ namespace Volleyball.EditModeTests
                         DerivedFingerprint,
                         "Receive.FirstTouchControl",
                         0.74f,
-                        "RuntimeRead")
+                        "ExecutionEnvelopeFactoryRead")
                 };
 
             return new MatchReplayEventV4(
@@ -297,7 +424,8 @@ namespace Volleyball.EditModeTests
                 1.25f + sequence,
                 4,
                 3,
-                Envelope(kind),
+                Envelope(kind, HashA, 0),
+                Envelope(kind, HashB, 1),
                 Trajectory(),
                 consumptions,
                 Classification(kind),
@@ -305,11 +433,14 @@ namespace Volleyball.EditModeTests
                 new ReplayRuleDecisionRecordV4(3, true, "None"));
         }
 
-        private static ReplayExecutionEnvelopeRecordV4 Envelope(string kind)
+        private static ReplayExecutionEnvelopeRecordV4 Envelope(
+            string kind,
+            string identity,
+            int currentExpansionCount)
         {
             return new ReplayExecutionEnvelopeRecordV4(
                 4,
-                HashA,
+                identity,
                 DerivedFingerprint,
                 HashB,
                 string.Equals(kind, "Attack", StringComparison.Ordinal)
@@ -336,7 +467,7 @@ namespace Volleyball.EditModeTests
                 new[] { "FullSampling", "ReducedSampleCount", "CachedCoarseDistribution", "DeterministicSafeFallback" },
                 2,
                 1,
-                1,
+                currentExpansionCount,
                 1.5f);
         }
 

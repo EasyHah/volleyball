@@ -6,7 +6,8 @@ namespace Volleyball.Shared.Contracts
 {
     public sealed class ReplayAbilityConsumptionRecordV4
     {
-        private const string RuntimeReadEvidence = "RuntimeRead";
+        private const string FactoryReadEvidence =
+            "ExecutionEnvelopeFactoryRead";
 
         private static readonly string[] FrozenFieldNames =
         {
@@ -67,11 +68,11 @@ namespace Volleyball.Shared.Contracts
                 nameof(evidenceKind));
             if (!string.Equals(
                     EvidenceKind,
-                    RuntimeReadEvidence,
+                    FactoryReadEvidence,
                     StringComparison.Ordinal))
             {
                 throw new ContractValidationException(
-                    "Replay ability consumption requires RuntimeRead evidence; serialization is not consumption.");
+                    "Replay ability consumption requires ExecutionEnvelopeFactoryRead evidence.");
             }
         }
 
