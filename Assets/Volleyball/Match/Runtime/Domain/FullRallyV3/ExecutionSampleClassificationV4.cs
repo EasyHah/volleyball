@@ -34,6 +34,27 @@ namespace Volleyball.Match.Domain.FullRallyV3
             _offendingDimensions = new ReadOnlyCollection<string>(
                 new List<string>(offendingDimensions ?? throw new ArgumentNullException(nameof(offendingDimensions))));
             ExpandedEnvelope = expandedEnvelope;
+            switch (Kind)
+            {
+                case ExecutionSampleClassificationKindV4.Accepted:
+                    ExecutableEnvelope = TestedEnvelope;
+                    ExecutableSample = Sample;
+                    break;
+                case ExecutionSampleClassificationKindV4.EnvelopeExpanded:
+                    ExecutableEnvelope = ExpandedEnvelope ??
+                        throw new ArgumentNullException(nameof(expandedEnvelope));
+                    ExecutableSample = RebindToExpandedEnvelope(
+                        Sample ?? throw new ArgumentNullException(nameof(sample)),
+                        ExecutableEnvelope);
+                    break;
+                case ExecutionSampleClassificationKindV4.UnexpectedExecutionSample:
+                case ExecutionSampleClassificationKindV4.EnvelopeExceeded:
+                    ExecutableEnvelope = null;
+                    ExecutableSample = null;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(kind));
+            }
         }
 
         public ExecutionSampleClassificationKindV4 Kind { get; }
@@ -49,5 +70,22 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public ExecutionEnvelopeV4 ExpandedEnvelope { get; }
 
         public string ExpandedEnvelopeIdentity => ExpandedEnvelope?.Identity;
+
+        public ExecutionEnvelopeV4 ExecutableEnvelope { get; }
+
+        public ExecutionSampleV4 ExecutableSample { get; }
+
+        private static ExecutionSampleV4 RebindToExpandedEnvelope(
+            ExecutionSampleV4 sample,
+            ExecutionEnvelopeV4 expandedEnvelope)
+        {
+            return new ExecutionSampleV4(
+                expandedEnvelope.Identity,
+                sample.SamplingKey,
+                sample.CandidateCategory,
+                sample.Target,
+                sample.Velocity,
+                sample.Effort);
+        }
     }
 }

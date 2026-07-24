@@ -69,6 +69,12 @@ namespace Volleyball.Presentation
 
         public ExecutionSampleV4 ScheduledExecutionSampleV4 { get; private set; }
 
+        public ExecutionSampleClassificationV4 ScheduledExecutionClassificationV4
+        {
+            get;
+            private set;
+        }
+
         internal float MinimumActiveSurfacePlanError { get; private set; }
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
@@ -187,13 +193,60 @@ namespace Volleyball.Presentation
                 throw new ArgumentNullException(nameof(executionSample));
             }
 
-            var classification = plannedEnvelope.Classify(executionSample);
-            if (classification.Kind ==
-                ExecutionSampleClassificationKindV4.UnexpectedExecutionSample)
+            ScheduleContact(
+                action,
+                scheduledSimulationTime,
+                plannedEnvelope.Classify(executionSample),
+                executionError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute);
+        }
+
+        public void ScheduleContact(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            ExecutionSampleClassificationV4 executionClassification,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null)
+        {
+            if (executionClassification == null)
             {
-                throw new ArgumentException(
-                    "Execution sample does not belong to the planned V4 envelope.",
-                    nameof(executionSample));
+                throw new ArgumentNullException(nameof(executionClassification));
+            }
+
+            if (executionClassification.Kind ==
+                    ExecutionSampleClassificationKindV4.UnexpectedExecutionSample ||
+                executionClassification.Kind ==
+                    ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                throw new InvalidOperationException(
+                    "Only accepted or explicitly expanded V4 execution samples may be scheduled.");
+            }
+
+            var executableEnvelope = executionClassification.ExecutableEnvelope ??
+                throw new InvalidOperationException(
+                    "Executable V4 envelope is required.");
+            var executableSample = executionClassification.ExecutableSample ??
+                throw new InvalidOperationException(
+                    "Executable V4 sample is required.");
+            if (executableEnvelope.Classify(executableSample).Kind !=
+                ExecutionSampleClassificationKindV4.Accepted)
+            {
+                throw new InvalidOperationException(
+                    "Expanded V4 execution must be accepted by its new envelope identity.");
             }
 
             var consumedVelocityError = new SkillExecutionError(
@@ -207,7 +260,7 @@ namespace Volleyball.Presentation
             ScheduleContact(
                 action,
                 scheduledSimulationTime,
-                executionSample.Velocity,
+                executableSample.Velocity,
                 consumedVelocityError,
                 contactGroupId,
                 plannedContactCenter,
@@ -221,9 +274,10 @@ namespace Volleyball.Presentation
             // The V4 sample is already the fully resolved command. The legacy
             // overload applies an attack multiplier, so overwrite that
             // compatibility transform instead of mutating the sample.
-            _targetVelocity = executionSample.Velocity;
-            ScheduledExecutionEnvelopeV4 = plannedEnvelope;
-            ScheduledExecutionSampleV4 = executionSample;
+            _targetVelocity = executableSample.Velocity;
+            ScheduledExecutionEnvelopeV4 = executableEnvelope;
+            ScheduledExecutionSampleV4 = executableSample;
+            ScheduledExecutionClassificationV4 = executionClassification;
         }
 
         public void ScheduleContact(
@@ -242,6 +296,7 @@ namespace Volleyball.Presentation
         {
             ScheduledExecutionEnvelopeV4 = null;
             ScheduledExecutionSampleV4 = null;
+            ScheduledExecutionClassificationV4 = null;
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
                 throw new ArgumentException("Only attack contacts may include an approach plan.", nameof(attackApproach));

@@ -150,8 +150,9 @@ namespace Volleyball.EditModeTests
                 envelope.Sampling.SamplingKey,
                 ExecutionCandidateCategoryV4.Attack,
                 envelope.BaselineTarget,
-                new SimVector3(3f, 4f, 5f),
+                envelope.BaselineVelocity,
                 envelope.RequestedEffort);
+            var classification = envelope.Classify(sample);
             var noError = new SkillExecutionError(
                 0f,
                 SimVector3.Zero,
@@ -175,8 +176,7 @@ namespace Volleyball.EditModeTests
                 player.ScheduleContact(
                     TechniqueAction.Attack,
                     2f,
-                    envelope,
-                    sample,
+                    classification,
                     noError,
                     contactGroupId: 171);
                 var contacts = new System.Collections.Generic.List<BallContactCandidate>();
@@ -184,8 +184,131 @@ namespace Volleyball.EditModeTests
 
                 Assert.That(player.ScheduledExecutionEnvelopeV4, Is.SameAs(envelope));
                 Assert.That(player.ScheduledExecutionSampleV4, Is.SameAs(sample));
+                Assert.That(
+                    player.ScheduledExecutionClassificationV4,
+                    Is.SameAs(classification));
                 Assert.That(contacts, Is.Not.Empty);
                 Assert.That(contacts[0].TargetVelocity, Is.EqualTo(sample.Velocity));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void PhysicalExecutor_ExceededSampleIsNotScheduledOrApplied()
+        {
+            var derived = MatchV4TestFixture.CreateDerived();
+            var envelope = CreateEnvelope(derived: derived);
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                envelope.BaselineTarget,
+                new SimVector3(envelope.MaximumVelocity.X + 1f, 0f, 0f),
+                envelope.RequestedEffort);
+            var classification = envelope.Classify(sample);
+            var noError = new SkillExecutionError(
+                0f,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                0f,
+                1f,
+                SimVector3.Zero,
+                1f);
+            var playerObject = new GameObject("V4ExceededExecutor");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PrototypePlayerId(
+                        PrototypeTeamId.Blue,
+                        PrototypePlayerRole.Attacker),
+                    Color.blue,
+                    "2");
+                player.SetAbility(new PlayerAbilityProfile(derived));
+
+                Assert.That(
+                    classification.Kind,
+                    Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExceeded));
+                Assert.Throws<System.InvalidOperationException>(
+                    () => player.ScheduleContact(
+                        TechniqueAction.Attack,
+                        2f,
+                        classification,
+                        noError,
+                        contactGroupId: 172));
+                var contacts = new System.Collections.Generic.List<BallContactCandidate>();
+                player.CollectContacts(2f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(player.ScheduledExecutionEnvelopeV4, Is.Null);
+                Assert.That(player.ScheduledExecutionSampleV4, Is.Null);
+                Assert.That(player.ScheduledExecutionClassificationV4, Is.Null);
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
+        public void PhysicalExecutor_ExpandedSampleUsesNewEnvelopeIdentity()
+        {
+            var derived = MatchV4TestFixture.CreateDerived();
+            var envelope = CreateEnvelope(
+                derived: derived,
+                policy: CreatePolicy(allowedExpansionCount: 1));
+            var sample = SampleWithTargetErrorScale(envelope, 1.2f);
+            var classification = envelope.Classify(sample);
+            var noError = new SkillExecutionError(
+                0f,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                0f,
+                1f,
+                SimVector3.Zero,
+                1f);
+            var playerObject = new GameObject("V4ExpandedExecutor");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PrototypePlayerId(
+                        PrototypeTeamId.Blue,
+                        PrototypePlayerRole.Attacker),
+                    Color.blue,
+                    "2");
+                player.SetAbility(new PlayerAbilityProfile(derived));
+
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2f,
+                    classification,
+                    noError,
+                    contactGroupId: 173);
+                var contacts = new System.Collections.Generic.List<BallContactCandidate>();
+                player.CollectContacts(2f, 1f / 120f, contacts);
+
+                Assert.That(
+                    classification.Kind,
+                    Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExpanded));
+                Assert.That(
+                    player.ScheduledExecutionClassificationV4,
+                    Is.SameAs(classification));
+                Assert.That(
+                    player.ScheduledExecutionEnvelopeV4,
+                    Is.SameAs(classification.ExpandedEnvelope));
+                Assert.That(
+                    player.ScheduledExecutionSampleV4.EnvelopeIdentity,
+                    Is.EqualTo(classification.ExpandedEnvelopeIdentity));
+                Assert.That(player.ScheduledExecutionSampleV4.Target, Is.EqualTo(sample.Target));
+                Assert.That(player.ScheduledExecutionSampleV4.Velocity, Is.EqualTo(sample.Velocity));
+                Assert.That(contacts, Is.Not.Empty);
+                Assert.That(
+                    contacts[0].TargetVelocity,
+                    Is.EqualTo(player.ScheduledExecutionSampleV4.Velocity));
             }
             finally
             {

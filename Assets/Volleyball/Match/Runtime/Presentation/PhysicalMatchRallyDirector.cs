@@ -1352,6 +1352,13 @@ namespace Volleyball.Presentation
             _lastExecutionSampleClassificationV4 = ExecuteExecutionSampleV4(
                 plannedExecutionEnvelope,
                 executionSample);
+            if (_lastExecutionSampleClassificationV4.Kind ==
+                    ExecutionSampleClassificationKindV4.UnexpectedExecutionSample ||
+                _lastExecutionSampleClassificationV4.Kind ==
+                    ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                return;
+            }
 
             _expectedContactTime = _ball.SimulationTime + flightSeconds;
             if (decision.Action == TechniqueAction.Receive)
@@ -1400,8 +1407,7 @@ namespace Volleyball.Presentation
             actor.ScheduleContact(
                 decision.Action,
                 _expectedContactTime,
-                plannedExecutionEnvelope,
-                executionSample,
+                _lastExecutionSampleClassificationV4,
                 execution,
                 NextContactGroup(),
                 authoritativeContactCenter,
