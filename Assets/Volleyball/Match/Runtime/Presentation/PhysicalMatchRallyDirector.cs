@@ -1786,10 +1786,10 @@ namespace Volleyball.Presentation
             {
                 throw new ArgumentOutOfRangeException(nameof(contactSimulationTime));
             }
-            if (takeoff.SimulationTime > contactSimulationTime)
+            if (takeoff.SimulationTime >= contactSimulationTime)
             {
                 throw new InvalidOperationException(
-                    "Observed attack takeoff cannot occur after physical contact.");
+                    "Observed attack takeoff must occur before physical contact.");
             }
 
             // ContactPoint is the actual shared player/ball collision point.

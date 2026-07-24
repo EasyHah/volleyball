@@ -355,10 +355,18 @@ namespace Volleyball.EditModeTests
             Assert.That(fact.TakeoffPoint, Is.EqualTo(takeoff.Point));
             Assert.That(fact.ContactPoint, Is.EqualTo(hit.ContactPoint));
             Assert.That(fact.IsContactAboveNet, Is.False);
-            var exception = Assert.Throws<TargetInvocationException>(() => method.Invoke(
+            var equalTimeException = Assert.Throws<TargetInvocationException>(() => method.Invoke(
+                null,
+                new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 4.62f }));
+            var laterTakeoffException = Assert.Throws<TargetInvocationException>(() => method.Invoke(
                 null,
                 new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 4.61f }));
-            Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
+            Assert.That(
+                equalTimeException.InnerException,
+                Is.TypeOf<InvalidOperationException>());
+            Assert.That(
+                laterTakeoffException.InnerException,
+                Is.TypeOf<InvalidOperationException>());
         }
 
         [Test]

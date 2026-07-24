@@ -131,3 +131,28 @@ The formal 6v6 set test exercised collision-to-observed-geometry authority:
 - `git diff --check` passed.
 - No envelope, trajectory-provider, or replay behavior was added.
 - Commit message: `fix: authorize p6 attacks from observed geometry`.
+
+## External strict-time review correction
+
+External review found that the first temporal guard rejected a takeoff after
+contact but still allowed takeoff and contact at the exact same simulation
+time. The observed boundary now requires:
+
+```text
+takeoff.SimulationTime < contactSimulationTime
+```
+
+The regression covers all three cases explicitly: earlier takeoff succeeds,
+equal-time takeoff rejects, and later takeoff rejects. TDD and final evidence:
+
+- strict-time RED: adapter `17/18`, with only the equal-time assertion failing;
+- strict-time targeted GREEN: `18/18`;
+- required focused GREEN: `123/123`;
+- full EditMode GREEN: `558/558`;
+- formal runtime integration GREEN: `1/1`;
+- results/logs:
+  - `/tmp/task9-strict-time-red.xml` and `.log`;
+  - `/tmp/task9-strict-time-green.xml` and `.log`;
+  - `/tmp/task9-strict-time-focused.xml` and `.log`;
+  - `/tmp/task9-strict-time-full-editmode.xml` and `.log`;
+  - `/tmp/task9-strict-time-formal-playmode.xml` and `.log`.
