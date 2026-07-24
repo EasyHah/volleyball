@@ -774,20 +774,100 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Predict_HomeAndAwayExactKeyShareArtifactIdentityAndCanonicalBytes()
+        public void Predict_HomeAndAwayExactKeyAreOrderIndependentAcrossFreshProviders()
         {
-            var provider = Provider();
             var homeRequest = Request(requestingTeam: TeamSide.Home);
             var awayRequest = Request(requestingTeam: TeamSide.Away);
+            var configuration = new TrajectoryPredictionProviderConfigurationV4(
+                16,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                4,
+                PredictorHashA);
+            var homeFirstProvider = new BallTrajectoryPredictionProviderV4(
+                configuration,
+                new ProvenanceSensitiveTrajectoryPredictorV4());
+            var awayFirstProvider = new BallTrajectoryPredictionProviderV4(
+                configuration,
+                new ProvenanceSensitiveTrajectoryPredictorV4());
 
-            var homeArtifact = provider.Predict(homeRequest);
-            var awayArtifact = provider.Predict(awayRequest);
+            var homeFirst = homeFirstProvider.Predict(homeRequest);
+            var awayAfterHome = homeFirstProvider.Predict(awayRequest);
+            var awayFirst = awayFirstProvider.Predict(awayRequest);
+            var homeAfterAway = awayFirstProvider.Predict(homeRequest);
 
             Assert.That(awayRequest.Key, Is.EqualTo(homeRequest.Key));
-            Assert.That(awayArtifact, Is.SameAs(homeArtifact));
-            Assert.That(awayArtifact.ArtifactIdentity, Is.EqualTo(homeArtifact.ArtifactIdentity));
-            Assert.That(awayArtifact.ToCanonicalBytes(), Is.EqualTo(homeArtifact.ToCanonicalBytes()));
-            Assert.That(provider.CacheCount, Is.EqualTo(1));
+            Assert.That(awayAfterHome, Is.SameAs(homeFirst));
+            Assert.That(homeAfterAway, Is.SameAs(awayFirst));
+            Assert.That(awayFirst.ArtifactIdentity, Is.EqualTo(homeFirst.ArtifactIdentity));
+            Assert.That(awayFirst.ToCanonicalBytes(), Is.EqualTo(homeFirst.ToCanonicalBytes()));
+            Assert.That(homeFirstProvider.CacheCount, Is.EqualTo(1));
+            Assert.That(awayFirstProvider.CacheCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void PredictorContract_DoesNotExposeRequesterProvenance()
+        {
+            var predictMethod =
+                typeof(IBallTrajectoryPredictorV4).GetMethod("Predict");
+            var inputType = predictMethod.GetParameters()[0].ParameterType;
+
+            Assert.That(
+                inputType,
+                Is.Not.EqualTo(typeof(BallTrajectoryPredictionRequestV4)));
+            Assert.That(inputType.GetProperty("RequestingTeam"), Is.Null);
+            Assert.That(
+                System.Array.ConvertAll(
+                    inputType.GetProperties(
+                        System.Reflection.BindingFlags.Instance |
+                        System.Reflection.BindingFlags.Public),
+                    property => property.Name),
+                Is.EquivalentTo(new[]
+                {
+                    "BallPosition",
+                    "BallRadius",
+                    "BallVelocity",
+                    "DegradationStep",
+                    "Key",
+                    "MaximumSamples",
+                    "MaximumTimeSeconds",
+                    "Parameters",
+                    "StepSeconds"
+                }));
+        }
+
+        [Test]
+        public void Artifact_SnapshotsMutablePredictorSamplesBeforeIdentityIsFrozen()
+        {
+            var strategy = new MutableSampleTrajectoryPredictorV4();
+            var provider = new BallTrajectoryPredictionProviderV4(
+                new TrajectoryPredictionProviderConfigurationV4(
+                    16,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    4,
+                    PredictorHashA),
+                strategy);
+            var artifact = provider.Predict(Request());
+            var canonicalBeforeMutation = artifact.ToCanonicalBytes();
+            var identityBeforeMutation = artifact.ArtifactIdentity;
+            var sampleBeforeMutation = artifact.PredictionSnapshot.Samples[0];
+
+            strategy.Samples[0] = new TrajectorySample(
+                99f,
+                new SimVector3(99f, 99f, 99f),
+                new SimVector3(99f, 99f, 99f));
+            strategy.Samples.Add(new TrajectorySample(
+                100f,
+                new SimVector3(100f, 100f, 100f),
+                new SimVector3(100f, 100f, 100f)));
+
+            Assert.That(
+                artifact.PredictionSnapshot.Samples,
+                Has.Count.EqualTo(1));
+            Assert.That(
+                artifact.PredictionSnapshot.Samples[0],
+                Is.EqualTo(sampleBeforeMutation));
+            Assert.That(artifact.ArtifactIdentity, Is.EqualTo(identityBeforeMutation));
+            Assert.That(artifact.ToCanonicalBytes(), Is.EqualTo(canonicalBeforeMutation));
         }
 
         [Test]
@@ -1095,25 +1175,132 @@ namespace Volleyball.EditModeTests
                 ExecutionDegradationStepV4> Attempts => _attempts;
 
             public TrajectoryPrediction Predict(
-                BallTrajectoryPredictionRequestV4 request,
-                float stepSeconds,
-                float maximumTimeSeconds,
-                int maximumSamples)
+                BallTrajectoryPredictorInputV4 input)
             {
-                _attempts.Add(request.DegradationStep);
+                _attempts.Add(input.DegradationStep);
                 if (_failStep.HasValue &&
-                    _failStep.Value == request.DegradationStep)
+                    _failStep.Value == input.DegradationStep)
                 {
                     throw new System.InvalidOperationException(
                         "Injected deterministic predictor failure.");
                 }
 
                 return TrajectoryPredictor.Predict(
-                    request.Source,
-                    request.Parameters,
-                    stepSeconds,
-                    maximumTimeSeconds,
-                    maximumSamples);
+                    new BallState(
+                        input.BallPosition,
+                        input.BallVelocity,
+                        input.BallRadius),
+                    input.Parameters,
+                    input.StepSeconds,
+                    input.MaximumTimeSeconds,
+                    input.MaximumSamples);
+            }
+        }
+
+        private sealed class ProvenanceSensitiveTrajectoryPredictorV4 :
+            IBallTrajectoryPredictorV4
+        {
+            public string PredictorSource =>
+                "Volleyball.EditModeTests.ProvenanceSensitiveTrajectoryPredictorV4";
+
+            public int PredictorVersion => 4;
+
+            public string PredictorConfigurationHash => PredictorHashA;
+
+            public TrajectoryPrediction Predict(
+                BallTrajectoryPredictorInputV4 input)
+            {
+                var exposedRequester = FindRequesterTeam(input, depth: 3);
+                var position = exposedRequester == TeamSide.Away
+                    ? new SimVector3(4f, 5f, 6f)
+                    : new SimVector3(1f, 2f, 3f);
+                return new TrajectoryPrediction(
+                    new System.Collections.Generic.List<TrajectorySample>
+                    {
+                        new TrajectorySample(
+                            0f,
+                            position,
+                            SimVector3.Zero)
+                    },
+                    null);
+            }
+
+            private static TeamSide? FindRequesterTeam(
+                object value,
+                int depth)
+            {
+                if (value is TeamSide side)
+                {
+                    return side;
+                }
+
+                if (value == null || depth <= 0)
+                {
+                    return null;
+                }
+
+                var type = value.GetType();
+                if (type.IsPrimitive ||
+                    type.IsEnum ||
+                    type.IsValueType ||
+                    type == typeof(string))
+                {
+                    return null;
+                }
+
+                foreach (var property in type.GetProperties(
+                             System.Reflection.BindingFlags.Instance |
+                             System.Reflection.BindingFlags.Public))
+                {
+                    if (!property.CanRead ||
+                        property.GetIndexParameters().Length != 0)
+                    {
+                        continue;
+                    }
+
+                    var requester = FindRequesterTeam(
+                        property.GetValue(value, null),
+                        depth - 1);
+                    if (requester.HasValue)
+                    {
+                        return requester;
+                    }
+                }
+
+                return null;
+            }
+        }
+
+        private sealed class MutableSampleTrajectoryPredictorV4 :
+            IBallTrajectoryPredictorV4
+        {
+            public MutableSampleTrajectoryPredictorV4()
+            {
+                Samples = new System.Collections.Generic.List<TrajectorySample>
+                {
+                    new TrajectorySample(
+                        0f,
+                        new SimVector3(1f, 2f, 3f),
+                        new SimVector3(4f, 5f, 6f))
+                };
+            }
+
+            public string PredictorSource =>
+                "Volleyball.EditModeTests.MutableSampleTrajectoryPredictorV4";
+
+            public int PredictorVersion => 4;
+
+            public string PredictorConfigurationHash => PredictorHashA;
+
+            public System.Collections.Generic.List<TrajectorySample> Samples
+            {
+                get;
+            }
+
+            public TrajectoryPrediction Predict(
+                BallTrajectoryPredictorInputV4 input)
+            {
+                return new TrajectoryPrediction(Samples, null);
             }
         }
     }

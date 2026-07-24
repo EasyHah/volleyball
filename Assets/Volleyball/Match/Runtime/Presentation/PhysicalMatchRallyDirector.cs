@@ -3399,7 +3399,7 @@ namespace Volleyball.Presentation
                     request,
                     ExecutionEnvelopePolicyV4.Default);
             return ClosestTrajectoryPosition(
-                _lastTrajectoryPredictionArtifactV4.Prediction,
+                _lastTrajectoryPredictionArtifactV4.PredictionSnapshot,
                 flightSeconds);
         }
 

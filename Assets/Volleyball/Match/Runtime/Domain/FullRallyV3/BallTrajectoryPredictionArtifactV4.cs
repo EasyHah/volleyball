@@ -30,13 +30,24 @@ namespace Volleyball.Match.Domain.FullRallyV3
             PredictorSource = predictorSource;
             PredictorVersion = key.PredictorVersion;
             PredictorConfigurationHash = key.PredictorConfigurationHash;
-            Prediction = prediction ??
+            if (prediction == null)
+            {
                 throw new ArgumentNullException(nameof(prediction));
+            }
 
             var timestamps = new float[prediction.Samples.Count];
             var positions = new SimVector3[prediction.Samples.Count];
+            var samples = new TrajectorySample[prediction.Samples.Count];
+            for (var index = 0; index < prediction.Samples.Count; index++)
+            {
+                samples[index] = prediction.Samples[index];
+            }
+
+            PredictionSnapshot = new TrajectoryPrediction(
+                new ReadOnlyCollection<TrajectorySample>(samples),
+                prediction.GroundLanding);
             var canonical = new StringBuilder(
-                1024 + (prediction.Samples.Count * 160));
+                1024 + (PredictionSnapshot.Samples.Count * 160));
             ExecutionEnvelopeCanonicalV4.AppendString(
                 canonical,
                 "schema",
@@ -64,10 +75,12 @@ namespace Volleyball.Match.Domain.FullRallyV3
             ExecutionEnvelopeCanonicalV4.AppendInt(
                 canonical,
                 "samples.count",
-                prediction.Samples.Count);
-            for (var index = 0; index < prediction.Samples.Count; index++)
+                PredictionSnapshot.Samples.Count);
+            for (var index = 0;
+                 index < PredictionSnapshot.Samples.Count;
+                 index++)
             {
-                var sample = prediction.Samples[index];
+                var sample = PredictionSnapshot.Samples[index];
                 timestamps[index] = sample.TimeSeconds;
                 positions[index] = sample.Position;
                 ExecutionEnvelopeCanonicalV4.AppendFloat(
@@ -87,17 +100,17 @@ namespace Volleyball.Match.Domain.FullRallyV3
             ExecutionEnvelopeCanonicalV4.AppendInt(
                 canonical,
                 "groundLanding.present",
-                prediction.GroundLanding.HasValue ? 1 : 0);
-            if (prediction.GroundLanding.HasValue)
+                PredictionSnapshot.GroundLanding.HasValue ? 1 : 0);
+            if (PredictionSnapshot.GroundLanding.HasValue)
             {
                 ExecutionEnvelopeCanonicalV4.AppendFloat(
                     canonical,
                     "groundLanding.time",
-                    prediction.GroundLanding.Value.TimeSeconds);
+                    PredictionSnapshot.GroundLanding.Value.TimeSeconds);
                 ExecutionEnvelopeCanonicalV4.AppendVector(
                     canonical,
                     "groundLanding.position",
-                    prediction.GroundLanding.Value.Position);
+                    PredictionSnapshot.GroundLanding.Value.Position);
             }
 
             _sampleTimestamps =
@@ -123,7 +136,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
 
         public IReadOnlyList<SimVector3> SamplePositions => _samplePositions;
 
-        public TrajectoryPrediction Prediction { get; }
+        public TrajectoryPrediction PredictionSnapshot { get; }
 
         public string ArtifactIdentity { get; }
 

@@ -45,10 +45,12 @@
 
 Gate A 使用 Unity `6000.0.43f1` 批处理 EditMode 命令记录当前缺口；红线测试在相应 gate 实现前预期失败。
 
-Task 8 专项 Shared/context + trajectory 测试 `69/69` 通过；Task 1 focused 为
-`113/114`，全量 EditMode 为 `543/544`。两者唯一失败均为后续 Task 9 的
+Task 8 专项 Shared/context + trajectory 测试 `71/71` 通过；Task 1 focused 为
+`115/116`，全量 EditMode 为 `545/546`。两者唯一失败均为后续 Task 9 的
 `CommitContact_ObservedGeometryDecidesOtherwiseIdenticalAttackEligibility`；
-Task 8 没有实现 P6 或 Replay V4。
+Task 8 没有实现 P6 或 Replay V4。最终 determinism review 后，V4 predictor
+仅接收不含 requester provenance 的 key-covered input；artifact 在 canonical
+identity 冻结前复制 predictor samples，director 只消费 artifact-owned snapshot。
 
 ## 回滚与风险
 

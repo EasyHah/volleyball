@@ -13,11 +13,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
 
         string PredictorConfigurationHash { get; }
 
-        TrajectoryPrediction Predict(
-            BallTrajectoryPredictionRequestV4 request,
-            float stepSeconds,
-            float maximumTimeSeconds,
-            int maximumSamples);
+        TrajectoryPrediction Predict(BallTrajectoryPredictorInputV4 input);
     }
 
     public sealed class BallTrajectoryPredictionProviderV4
@@ -136,11 +132,14 @@ namespace Volleyball.Match.Domain.FullRallyV3
             }
 
             PredictionWorkV4 work = WorkFor(request.DegradationStep);
-            var prediction = _predictor.Predict(
-                request,
+            var predictorInput = new BallTrajectoryPredictorInputV4(
+                request.Key,
+                request.Source,
+                request.Parameters,
                 work.StepSeconds,
                 work.MaximumTimeSeconds,
                 work.MaximumSamples);
+            var prediction = _predictor.Predict(predictorInput);
             var artifact = new BallTrajectoryPredictionArtifactV4(
                 request.Key,
                 _predictor.PredictorSource,
@@ -325,22 +324,22 @@ namespace Volleyball.Match.Domain.FullRallyV3
                     .DefaultPredictorConfigurationHash;
 
             public TrajectoryPrediction Predict(
-                BallTrajectoryPredictionRequestV4 request,
-                float stepSeconds,
-                float maximumTimeSeconds,
-                int maximumSamples)
+                BallTrajectoryPredictorInputV4 input)
             {
-                if (request == null)
+                if (input == null)
                 {
-                    throw new ArgumentNullException(nameof(request));
+                    throw new ArgumentNullException(nameof(input));
                 }
 
                 return TrajectoryPredictor.Predict(
-                    request.Source,
-                    request.Parameters,
-                    stepSeconds,
-                    maximumTimeSeconds,
-                    maximumSamples);
+                    new BallState(
+                        input.BallPosition,
+                        input.BallVelocity,
+                        input.BallRadius),
+                    input.Parameters,
+                    input.StepSeconds,
+                    input.MaximumTimeSeconds,
+                    input.MaximumSamples);
             }
         }
     }
