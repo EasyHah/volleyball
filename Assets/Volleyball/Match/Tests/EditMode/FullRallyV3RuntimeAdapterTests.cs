@@ -129,6 +129,37 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CommitContact_RequiresObservedAttackGeometryAndRejectsIllegalContact()
+        {
+            var adapter = CreateAdapter();
+            var method = typeof(FullRallyV3RulesRuntimeAdapter).GetMethod(
+                nameof(FullRallyV3RulesRuntimeAdapter.CommitContact),
+                new[]
+                {
+                    typeof(PlayerId), typeof(TeamSide), typeof(RallyContactClassificationV3),
+                    typeof(long), typeof(AttackGeometryFactV3)
+                });
+            var geometry = new AttackGeometryFactV3(
+                HomeRotation[4], TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 1f, -1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.50f, -0.2f),
+                attackLineDistanceFromCenter: 3f,
+                netHeight: 2.43f);
+
+            Assert.That(method, Is.Not.Null, "Attack contacts must carry observed geometry to authority.");
+            var transition = (RuleTransitionV3)method.Invoke(
+                adapter,
+                new object[]
+                {
+                    HomeRotation[4], TeamSide.Home, RallyContactClassificationV3.TeamContact,
+                    901L, geometry
+                });
+
+            Assert.That(transition.Accepted, Is.False);
+            Assert.That(transition.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [Test]
         public void EvaluateContact_IsPureAcrossMultipleCandidatesAndCommitAdvancesOnce()
         {
             var context = CreateContext();

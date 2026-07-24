@@ -144,6 +144,33 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void EnvelopeIdentity_ChangesWhenEffortOrMaximumEffortChanges()
+        {
+            var baseline = CreateEnvelope(effort: 0.5f, maximumEffort: 0.8f);
+            var changedEffort = CreateEnvelope(effort: 0.6f, maximumEffort: 0.8f);
+            var changedMaximum = CreateEnvelope(effort: 0.5f, maximumEffort: 0.9f);
+
+            Assert.That(changedEffort, Is.Not.EqualTo(baseline));
+            Assert.That(changedMaximum, Is.Not.EqualTo(baseline));
+        }
+
+        [Test]
+        public void ClassifySample_DoesNotClampVelocityBackIntoEnvelope()
+        {
+            var envelope = CreateFullEnvelope();
+            var sample = new ExecutionSampleV3(
+                envelope.DeterministicSampleKey,
+                new SimVector3(0.05f, 0f, 0f),
+                velocityScale: envelope.Bounds.MaxVelocityScale + 0.01f,
+                effort: envelope.Effort,
+                sampleClass: "invalid-velocity");
+
+            Assert.That(
+                envelope.ClassifySample(sample),
+                Is.EqualTo(ExecutionSampleClassification.EnvelopeExceeded));
+        }
+
+        [Test]
         public void ClassifySample_UnexpectedExecutionSample_WrongKey()
         {
             var envelope = CreateFullEnvelope();
@@ -176,6 +203,11 @@ namespace Volleyball.EditModeTests
 
         internal static ExecutionEnvelopeV3 CreateFullEnvelope()
         {
+            return CreateEnvelope(effort: 0.9f, maximumEffort: 1f);
+        }
+
+        private static ExecutionEnvelopeV3 CreateEnvelope(float effort, float maximumEffort)
+        {
             return new ExecutionEnvelopeV3(
                 "envelope-v3",
                 "ability-hash-1",
@@ -191,8 +223,8 @@ namespace Volleyball.EditModeTests
                     maxTargetDeviationMeters: 0.15f,
                     minVelocityScale: 0.7f,
                     maxVelocityScale: 1.2f,
-                    maxEffort: 1f),
-                effort: 0.9f,
+                    maxEffort: maximumEffort),
+                effort: effort,
                 samples: System.Array.Empty<ExecutionSampleV3>(),
                 provenance: "test-envelope",
                 lastSampleClassification: null);
@@ -272,6 +304,34 @@ namespace Volleyball.EditModeTests
             Assert.That(awayArtifact, Is.SameAs(homeArtifact));
             Assert.That(awayArtifact.SampleKey, Is.EqualTo("gate-5-sample"));
             Assert.That(awayArtifact.PredictorVersion, Is.EqualTo(BallTrajectoryPredictionProviderV3.PredictorVersion));
+        }
+
+        [Test]
+        public void Predict_DifferentDegradationModeProducesDifferentCachedArtifact()
+        {
+            var provider = new BallTrajectoryPredictionProviderV3();
+            var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
+            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
+
+            var normal = provider.Predict(source, parameters, "same-sample", degradationMode: "normal");
+            var degraded = provider.Predict(source, parameters, "same-sample", degradationMode: "budget-step-1");
+
+            Assert.That(degraded, Is.Not.SameAs(normal));
+            Assert.That(degraded, Is.Not.EqualTo(normal));
+            Assert.That(provider.CacheCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void CacheKey_ChangesWhenPredictorConfigurationChanges()
+        {
+            var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
+            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
+            var fine = new BallTrajectoryPredictionProviderV3(stepSeconds: 1f / 120f);
+            var coarse = new BallTrajectoryPredictionProviderV3(stepSeconds: 1f / 60f);
+
+            Assert.That(
+                coarse.BuildCacheKey(source, parameters, "same-sample"),
+                Is.Not.EqualTo(fine.BuildCacheKey(source, parameters, "same-sample")));
         }
 
         [Test]

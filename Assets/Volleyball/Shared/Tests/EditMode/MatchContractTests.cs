@@ -8,6 +8,17 @@ namespace Volleyball.Shared.EditModeTests
     public sealed class MatchContractTests
     {
         [Test]
+        public void ProductionContractSurface_RequiresConcreteV4ContextAndResult()
+        {
+            var assembly = typeof(MatchContextV1).Assembly;
+            var contextV4 = assembly.GetType("Volleyball.Shared.Contracts.MatchContextV4");
+            var resultV4 = assembly.GetType("Volleyball.Shared.Contracts.MatchResultV4");
+
+            Assert.That(contextV4, Is.Not.Null);
+            Assert.That(resultV4, Is.Not.Null);
+        }
+
+        [Test]
         public void MatchContext_RoundTripsWithStableVersionIdentityAndHash()
         {
             var context = CreateContext(new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"), 7351);

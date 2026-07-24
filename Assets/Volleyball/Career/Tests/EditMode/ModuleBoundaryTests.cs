@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using Volleyball.Bootstrap;
 using Volleyball.Career.Application;
@@ -30,18 +31,51 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void CareerMatchBoundary_AcceptsBothContextAndResultVersions()
+        public void CareerMatchBoundary_AcceptsOnlyConcreteV4Contracts()
         {
-            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV1)), Is.True);
-            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV2)), Is.True);
-            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV1)), Is.True);
-            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV2)), Is.True);
+            var contextV4 = RequiredSharedType("MatchContextV4");
+            var resultV4 = RequiredSharedType("MatchResultV4");
             Assert.That(
                 typeof(CareerMatchRequest).GetProperty(nameof(CareerMatchRequest.Context))?.PropertyType,
-                Is.EqualTo(typeof(IMatchContext)));
+                Is.EqualTo(contextV4));
             Assert.That(
                 typeof(IMatchGateway).GetMethod(nameof(IMatchGateway.Play))?.ReturnType,
-                Is.EqualTo(typeof(IMatchResult)));
+                Is.EqualTo(resultV4));
+        }
+
+        [Test]
+        public void ProductionCareerAndMatchEntrypoints_RejectLegacyAbilityAndContextContracts()
+        {
+            var prohibited = new[]
+            {
+                typeof(PlayerAbilitySnapshotV1), typeof(PlayerAbilitySnapshotV2),
+                typeof(PlayerAbilitySnapshotV3), typeof(MatchContextV2), typeof(MatchContextV3)
+            };
+
+            AssertNoPublicEntryPointAccepts(typeof(CareerMatchRequest).Assembly, prohibited);
+            AssertNoPublicEntryPointAccepts(typeof(ThreeVsThreeRallyBootstrap).Assembly, prohibited);
+        }
+
+        private static System.Type RequiredSharedType(string name)
+        {
+            var type = typeof(MatchContextV1).Assembly.GetType("Volleyball.Shared.Contracts." + name);
+            Assert.That(type, Is.Not.Null, name + " must be the production boundary contract.");
+            return type;
+        }
+
+        private static void AssertNoPublicEntryPointAccepts(Assembly assembly, System.Type[] prohibited)
+        {
+            var parameters = assembly.GetTypes()
+                .Where(type => type.IsPublic)
+                .SelectMany(type => type.GetConstructors().Cast<MethodBase>().Concat(type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)))
+                .SelectMany(method => method.GetParameters())
+                .Select(parameter => parameter.ParameterType)
+                .ToArray();
+            Assert.That(parameters, Has.None.EqualTo(prohibited[0]));
+            Assert.That(parameters, Has.None.EqualTo(prohibited[1]));
+            Assert.That(parameters, Has.None.EqualTo(prohibited[2]));
+            Assert.That(parameters, Has.None.EqualTo(prohibited[3]));
+            Assert.That(parameters, Has.None.EqualTo(prohibited[4]));
         }
 
         private static void AssertReferences(System.Type type, string assemblyName)
