@@ -50,13 +50,16 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void FixedInput_HigherAttackPowerIncreasesAttackDecisionScore()
+        public void FixedInput_HigherAttackPowerDoesNotChangeAttackDecisionScore()
         {
-            var low = AttackDecisionFor(Profile(attackPower: 0.1f));
-            var high = AttackDecisionFor(Profile(attackPower: 0.9f));
+            var lowAbility = Profile(attackPower: 0.1f);
+            var highAbility = Profile(attackPower: 0.9f);
+            var low = AttackDecisionFor(lowAbility);
+            var high = AttackDecisionFor(highAbility);
 
-            Assert.That(AttackDecisionFor(Profile(attackPower: 0.1f)).Score.Total, Is.EqualTo(low.Score.Total));
-            Assert.That(high.Score.Total, Is.GreaterThan(low.Score.Total));
+            Assert.That(AttackDecisionFor(lowAbility).Score.Total, Is.EqualTo(low.Score.Total));
+            Assert.That(highAbility.AttackPowerCapacity, Is.GreaterThan(lowAbility.AttackPowerCapacity));
+            Assert.That(high.Score.Total, Is.EqualTo(low.Score.Total));
         }
 
         [Test]

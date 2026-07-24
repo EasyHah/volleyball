@@ -832,14 +832,14 @@ namespace Volleyball.Domain.Replay
 
         internal void Validate()
         {
-            if (PlannedAttackContactCenter == null || ActualAttackContactCenter == null)
+            if (PlannedAttackContactCenter == null)
             {
                 throw new MatchReplayValidationException(
-                    "Set-chain planned and actual attack contact centers are required.");
+                    "Set-chain planned attack contact center is required.");
             }
 
             PlannedAttackContactCenter.Validate(nameof(PlannedAttackContactCenter));
-            ActualAttackContactCenter.Validate(nameof(ActualAttackContactCenter));
+            ActualAttackContactCenter?.Validate(nameof(ActualAttackContactCenter));
             MatchReplayV1.Required(QualityGrade, nameof(QualityGrade));
             MatchReplayV1.Required(ReplanOutcome, nameof(ReplanOutcome));
             MatchReplayV1.Required(PrimaryResponsibility, nameof(PrimaryResponsibility));

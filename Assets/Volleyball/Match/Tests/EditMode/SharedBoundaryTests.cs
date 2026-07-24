@@ -139,6 +139,23 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlannedAttackGeometry_IsNeverExposedAsObservedGeometry()
+        {
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector).GetProperty("LastActualAttackContactCenter"),
+                Is.Null);
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector).GetProperty("LastReplannedAttackContactCenter"),
+                Is.Not.Null);
+            Assert.That(
+                typeof(ReplaySetChainEvent).GetProperty("ActualAttackContactCenter"),
+                Is.Null);
+            Assert.That(
+                typeof(ReplaySetChainEvent).GetProperty("ReplannedAttackContactCenter"),
+                Is.Not.Null);
+        }
+
+        [Test]
         public void FormalMatchBoundary_HasNoLegacyContextResultOrInitializationTypes()
         {
             var legacyTypes = new[]

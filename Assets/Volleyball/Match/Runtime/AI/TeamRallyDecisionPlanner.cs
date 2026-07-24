@@ -693,15 +693,14 @@ namespace Volleyball.AI
             var nominalRole = NominalRole(input.Stage, player.Id.Role) * input.Weights.RolePreference;
             var approachScore = approach.HasValue
                 ? approach.Value.JumpQuality *
-                  (player.Ability.Jump + player.Ability.AttackDirectionControl) *
+                  player.Ability.Jump *
                   input.Weights.ApproachDistance
                 : 0f;
             var angleScore = approach.HasValue
                 ? -approach.Value.AnglePenalty * (1f - (0.5f * input.Weights.DirectionTolerance))
                 : 0f;
             var techniqueScore = input.Stage == RallyDecisionStage.Attack
-                ? player.Ability.AttackPowerCapacity *
-                  player.Ability.AttackDirectionControl
+                ? 0f
                 : player.Ability.TechniqueFor(ToTechniqueAction(input.Stage));
             // Feasibility is selected separately, so role preference cannot rescue a negative margin.
             var total = (reachability * input.Weights.Reachability) + nominalRole + approachScore + angleScore + techniqueScore;

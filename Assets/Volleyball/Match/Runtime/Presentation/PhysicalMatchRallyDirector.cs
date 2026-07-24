@@ -143,14 +143,14 @@ namespace Volleyball.Presentation
     {
         public ReplaySetChainEvent(
             SimVector3 plannedAttackContactCenter,
-            SimVector3 actualAttackContactCenter,
+            SimVector3 replannedAttackContactCenter,
             SetQualityGrade qualityGrade,
             AttackContactOutcome replanOutcome,
             AttackResponsibility primaryResponsibility,
             string reason)
         {
             PlannedAttackContactCenter = plannedAttackContactCenter;
-            ActualAttackContactCenter = actualAttackContactCenter;
+            ReplannedAttackContactCenter = replannedAttackContactCenter;
             QualityGrade = qualityGrade;
             ReplanOutcome = replanOutcome;
             PrimaryResponsibility = primaryResponsibility;
@@ -158,7 +158,7 @@ namespace Volleyball.Presentation
         }
 
         public SimVector3 PlannedAttackContactCenter { get; }
-        public SimVector3 ActualAttackContactCenter { get; }
+        public SimVector3 ReplannedAttackContactCenter { get; }
         public SetQualityGrade QualityGrade { get; }
         public AttackContactOutcome ReplanOutcome { get; }
         public AttackResponsibility PrimaryResponsibility { get; }
@@ -229,7 +229,7 @@ namespace Volleyball.Presentation
         private SetQualityAssessment? _lastSetQualityAssessment;
         private SimVector3? _scheduledGeometricSetTarget;
         private SimVector3? _lastPlannedAttackContactCenter;
-        private SimVector3? _lastActualAttackContactCenter;
+        private SimVector3? _lastReplannedAttackContactCenter;
         private AttackOutcome _lastSetReplanOutcome;
         private AttackResponsibility _lastAttackResponsibility;
         private PlayerId? _lastSetAttackActor;
@@ -391,7 +391,7 @@ namespace Volleyball.Presentation
 
         public SimVector3? LastPlannedAttackContactCenter => _lastPlannedAttackContactCenter;
 
-        public SimVector3? LastActualAttackContactCenter => _lastActualAttackContactCenter;
+        public SimVector3? LastReplannedAttackContactCenter => _lastReplannedAttackContactCenter;
 
         public AttackOutcome LastSetReplanOutcome => _lastSetReplanOutcome;
 
@@ -2038,7 +2038,7 @@ namespace Volleyball.Presentation
 
             _lastSetQualityAssessment = quality;
             _lastPlannedAttackContactCenter = intendedContactCenter;
-            _lastActualAttackContactCenter = replan.ContactPlan.ContactCenter;
+            _lastReplannedAttackContactCenter = replan.ContactPlan.ContactCenter;
             _lastSetReplanOutcome = replan.Outcome;
             _lastSetAttackActor = provisionalDecision.Actor;
             _lastSetSetterActor = setterActor;
@@ -2073,7 +2073,7 @@ namespace Volleyball.Presentation
             Debug.Log(
                 $"[{_configuration.LogTag}] set-quality team={provisionalDecision.Actor.Team} " +
                 $"grade={quality.Grade} replan={replan.ContactPlan.Outcome} " +
-                $"actual=({replan.ContactPlan.ContactCenter.X:0.00}," +
+                $"replanned=({replan.ContactPlan.ContactCenter.X:0.00}," +
                 $"{replan.ContactPlan.ContactCenter.Y:0.00}," +
                 $"{replan.ContactPlan.ContactCenter.Z:0.00}) {quality.Reason}");
 
@@ -2631,8 +2631,8 @@ namespace Volleyball.Presentation
                     $"surfacePlanError={scheduledActor?.MinimumActiveSurfacePlanError ?? -1f:0.000}; " +
                     $"root={scheduledActor?.transform.position}; surface=" +
                     $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceCenter)}; normal=" +
-                    $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceNormal)}; actualPlan=" +
-                    $"{FormatDiagnosticVector(_lastActualAttackContactCenter)}; " +
+                    $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceNormal)}; replannedContact=" +
+                    $"{FormatDiagnosticVector(_lastReplannedAttackContactCenter)}; " +
                     $"ball=({_ball.State.Position.X:0.000},{_ball.State.Position.Y:0.000}," +
                     $"{_ball.State.Position.Z:0.000}); expected={_expectedContactTime:0.000}; " +
                     $"now={_ball.SimulationTime:0.000}";

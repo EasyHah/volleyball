@@ -33,6 +33,12 @@ namespace Volleyball.Presentation
                 throw new ArgumentNullException(nameof(director));
             }
 
+            if (director.MatchContext != null)
+            {
+                throw new NotSupportedException(
+                    "Formal V4 matches cannot be projected into the legacy V1 replay contract.");
+            }
+
             if (ball == null)
             {
                 throw new ArgumentNullException(nameof(ball));
@@ -262,7 +268,7 @@ namespace Volleyball.Presentation
             return new MatchReplaySetChainV1
             {
                 PlannedAttackContactCenter = ToReplayVector(setChain.PlannedAttackContactCenter),
-                ActualAttackContactCenter = ToReplayVector(setChain.ActualAttackContactCenter),
+                ActualAttackContactCenter = null,
                 QualityGrade = setChain.QualityGrade.ToString(),
                 ReplanOutcome = setChain.ReplanOutcome.ToString(),
                 PrimaryResponsibility = setChain.PrimaryResponsibility.ToString(),

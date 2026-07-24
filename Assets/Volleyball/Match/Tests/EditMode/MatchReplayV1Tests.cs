@@ -166,6 +166,21 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Seal_AllowsActualAttackContactCenterToRemainUnavailable()
+        {
+            var replay = ReplayFixture.CreateValid();
+            replay.Events[0].SetChain = ReplayFixture.CreateSetChain();
+            replay.Events[0].SetChain.ActualAttackContactCenter = null;
+
+            Assert.DoesNotThrow(() => replay.Seal());
+
+            var restored = MatchReplayJson.Deserialize(MatchReplayJson.Serialize(replay));
+            Assert.That(restored.Events[0].SetChain.PlannedAttackContactCenter, Is.Not.Null);
+            Assert.That(restored.Events[0].SetChain.ActualAttackContactCenter, Is.Null);
+            Assert.DoesNotThrow(() => restored.Validate());
+        }
+
+        [Test]
         public void Json_OmitsAbsentSetChainForHistoricalV1Events()
         {
             var json = MatchReplayJson.Serialize(ReplayFixture.CreateValid());

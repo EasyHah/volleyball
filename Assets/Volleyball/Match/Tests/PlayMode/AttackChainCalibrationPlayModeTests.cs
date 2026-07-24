@@ -129,16 +129,6 @@ namespace Volleyball.PlayModeTests
                         value => director = value);
                     Assert.That(SeedFor(director), Is.EqualTo(seed));
                     director.ConfigureInSystemFirstPassCalibration(true);
-                    MatchReplayRecorder replayRecorder = null;
-                    if (director.RosterSize == 6)
-                    {
-                        replayRecorder = MatchReplayRecorder.Attach(
-                            director,
-                            UnityEngine.Object.FindFirstObjectByType<SimulatedBall>(),
-                            UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
-                                FindObjectsSortMode.None));
-                        replayRecorder.StartCapture();
-                    }
 
                     var observedSets = 0;
                     while (inSystemSets + director.InSystemSetterSets < targetInSystemSets &&
@@ -174,11 +164,6 @@ namespace Volleyball.PlayModeTests
                     {
                         lastNoContactDiagnostic = director.LastAGradeNoContactDiagnostic;
                     }
-                    if (replayRecorder != null && replayRecorder.IsComplete)
-                    {
-                        Assert.DoesNotThrow(() => replayRecorder.Complete().Validate());
-                    }
-
                     completedMatches++;
                 }
             }
