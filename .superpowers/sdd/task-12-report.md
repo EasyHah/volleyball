@@ -93,3 +93,48 @@ rg -n "PlayerAbilitySnapshotV[123]|MatchContextV[12]|MatchResultV[12]|MatchRepla
 V3 rules versioning, frozen base and six-group derived fields,
 formula/coefficient versioning, exact verification commands, Gates A–E
 evidence, and the remaining Gates F–K.
+
+## External-review corrections
+
+The V4 active-roster `MatchSet` overload previously passed each
+`IEnumerable<PlayerId>` into the delegated constructor and then enumerated the
+original inputs again for V4 team-membership validation. A one-shot enumerable
+regression first failed with the expected `InvalidOperationException` on the
+second enumeration. The constructor now materializes each input exactly once
+into an owned active-roster snapshot, then validates non-null and non-empty
+inputs, equal counts, per-team uniqueness, cross-team uniqueness, and V4 team
+membership against those same snapshots. The focused regression subsequently
+passed `1/1`.
+
+A second production audit proved that the following non-rule V3 Stage2 types
+were referenced only by themselves and three legacy-only Phase0 contract
+tests:
+
+- `BallTrajectoryArtifactV3`;
+- `BallTrajectoryPredictionProviderV3`;
+- `DeterministicWorkBudgetV3`;
+- `ExecutionEnvelopeV3`.
+
+Those four source files and their `.meta` files were deleted. The three
+legacy-only tests were removed, while the independent
+`PlanCoverageDecision` rule test remains. Current V3 production files are
+limited to rule authority, eligibility, rule facts, and world snapshots.
+
+The consolidated roadmap now records the implemented state:
+`PlayerAbilityProfile` remains only as a runtime wrapper around immutable V4
+derived attributes, and physical 3v3 is hard-cut to a six-player V4 roster with
+three explicit active player IDs.
+
+Fresh post-review verification:
+
+- focused MatchSet/Phase0 regression: `15/15` passed;
+- complete EditMode: `505/505` passed, `0` failed/skipped/inconclusive
+  (`507` before review, plus one regression and minus three obsolete tests);
+- complete PlayMode: `24/24` passed in `524.8943798s`,
+  `0` failed/skipped/inconclusive;
+- result files:
+  `/tmp/volleyball-v4-task12-review-all-editmode.xml` and
+  `/tmp/volleyball-v4-task12-review-all-playmode.xml`.
+
+The required legacy production searches and the added non-rule Stage2 V3
+search return no matches. `git diff --check` remains clean.

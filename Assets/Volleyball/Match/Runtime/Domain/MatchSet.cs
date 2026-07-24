@@ -93,17 +93,27 @@ namespace Volleyball.Domain
             IEnumerable<StablePlayerId> activeAwayPlayers,
             TeamSide firstServer,
             MatchSetRules rules = null)
-            : this(activeHomePlayers, activeAwayPlayers, firstServer, rules)
+            : this(
+                CreateActiveRosterSnapshot(
+                    context,
+                    activeHomePlayers,
+                    activeAwayPlayers),
+                firstServer,
+                rules)
         {
-            Context = context ?? throw new ArgumentNullException(nameof(context));
-            ValidateActivePlayersBelongTo(
-                Context.Home,
-                activeHomePlayers,
-                nameof(activeHomePlayers));
-            ValidateActivePlayersBelongTo(
-                Context.Away,
-                activeAwayPlayers,
-                nameof(activeAwayPlayers));
+        }
+
+        private MatchSet(
+            ActiveRosterSnapshot activeRoster,
+            TeamSide firstServer,
+            MatchSetRules rules)
+            : this(
+                activeRoster.HomePlayers,
+                activeRoster.AwayPlayers,
+                firstServer,
+                rules)
+        {
+            Context = activeRoster.Context;
         }
 
         internal MatchSet(
@@ -312,11 +322,65 @@ namespace Volleyball.Domain
             }
         }
 
-        private static void ValidateActivePlayersBelongTo(
+        private static ActiveRosterSnapshot CreateActiveRosterSnapshot(
+            MatchContextV4 context,
+            IEnumerable<StablePlayerId> activeHomePlayers,
+            IEnumerable<StablePlayerId> activeAwayPlayers)
+        {
+            var matchContext =
+                context ?? throw new ArgumentNullException(nameof(context));
+            var homePlayers =
+                (activeHomePlayers ??
+                 throw new ArgumentNullException(nameof(activeHomePlayers)))
+                .ToArray();
+            var awayPlayers =
+                (activeAwayPlayers ??
+                 throw new ArgumentNullException(nameof(activeAwayPlayers)))
+                .ToArray();
+            if (homePlayers.Length != awayPlayers.Length)
+            {
+                throw new ArgumentException(
+                    "Both active court rosters must have the same size.");
+            }
+
+            if (homePlayers.Length < 1)
+            {
+                throw new ArgumentException(
+                    "Active court rosters must contain at least one player.");
+            }
+
+            ValidateActivePlayers(
+                matchContext.Home,
+                homePlayers,
+                nameof(activeHomePlayers));
+            ValidateActivePlayers(
+                matchContext.Away,
+                awayPlayers,
+                nameof(activeAwayPlayers));
+            if (homePlayers.Intersect(awayPlayers).Any())
+            {
+                throw new ArgumentException(
+                    "Active players cannot appear for both teams.");
+            }
+
+            return new ActiveRosterSnapshot(
+                matchContext,
+                homePlayers,
+                awayPlayers);
+        }
+
+        private static void ValidateActivePlayers(
             TeamSnapshotV4 team,
-            IEnumerable<StablePlayerId> activePlayers,
+            IReadOnlyCollection<StablePlayerId> activePlayers,
             string parameterName)
         {
+            if (activePlayers.Distinct().Count() != activePlayers.Count)
+            {
+                throw new ArgumentException(
+                    "Active players must be unique within each team.",
+                    parameterName);
+            }
+
             var rosterIds = new HashSet<StablePlayerId>(
                 team.Players.Select(player => player.PlayerId));
             foreach (var playerId in activePlayers)
@@ -328,6 +392,23 @@ namespace Volleyball.Domain
                         parameterName);
                 }
             }
+        }
+
+        private sealed class ActiveRosterSnapshot
+        {
+            public ActiveRosterSnapshot(
+                MatchContextV4 context,
+                StablePlayerId[] homePlayers,
+                StablePlayerId[] awayPlayers)
+            {
+                Context = context;
+                HomePlayers = homePlayers;
+                AwayPlayers = awayPlayers;
+            }
+
+            public MatchContextV4 Context { get; }
+            public IReadOnlyList<StablePlayerId> HomePlayers { get; }
+            public IReadOnlyList<StablePlayerId> AwayPlayers { get; }
         }
 
         private void EnsureActive()

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using NUnit.Framework;
 using Volleyball.Domain;
@@ -196,6 +197,41 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void V4ActiveRosterConstructor_EnumeratesEachInputExactlyOnce()
+        {
+            var context = CreateContext();
+            var homePlayers = new OneShotEnumerable<StablePlayerId>(new[]
+            {
+                context.Home.Players[0].PlayerId,
+                context.Home.Players[1].PlayerId,
+                context.Home.Players[2].PlayerId
+            });
+            var awayPlayers = new OneShotEnumerable<StablePlayerId>(new[]
+            {
+                context.Away.Players[0].PlayerId,
+                context.Away.Players[1].PlayerId,
+                context.Away.Players[2].PlayerId
+            });
+
+            var set = new MatchSet(
+                context,
+                homePlayers,
+                awayPlayers,
+                TeamSide.Home,
+                MatchSetRules.ThreeVsThree);
+
+            Assert.That(homePlayers.EnumerationCount, Is.EqualTo(1));
+            Assert.That(awayPlayers.EnumerationCount, Is.EqualTo(1));
+            Assert.That(set.RosterSize, Is.EqualTo(3));
+            Assert.That(
+                set.PlayerAtRotationPosition(TeamSide.Home, 1),
+                Is.EqualTo(context.Home.Players[0].PlayerId));
+            Assert.That(
+                set.PlayerAtRotationPosition(TeamSide.Away, 3),
+                Is.EqualTo(context.Away.Players[2].PlayerId));
+        }
+
+        [Test]
         public void PhysicalDirector_ExposesOnlyTheV4InitializeSignature()
         {
             var initialize = typeof(PhysicalMatchRallyDirector).GetMethod("InitializeV4");
@@ -242,6 +278,35 @@ namespace Volleyball.EditModeTests
         private static MatchContextV4 CreateSixPlayerContext()
         {
             return MatchV4TestFixture.CreateContext();
+        }
+
+        private sealed class OneShotEnumerable<T> : IEnumerable<T>
+        {
+            private readonly IReadOnlyList<T> _values;
+
+            public OneShotEnumerable(IReadOnlyList<T> values)
+            {
+                _values = values;
+            }
+
+            public int EnumerationCount { get; private set; }
+
+            public IEnumerator<T> GetEnumerator()
+            {
+                EnumerationCount++;
+                if (EnumerationCount > 1)
+                {
+                    throw new InvalidOperationException(
+                        "The active roster input was enumerated more than once.");
+                }
+
+                return _values.GetEnumerator();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                return GetEnumerator();
+            }
         }
     }
 }

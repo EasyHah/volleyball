@@ -93,7 +93,9 @@ git diff --check
 
 The Task 12 full-suite evidence on Unity `6000.0.43f1` is:
 
-- EditMode: `507/507` passed, `0` failed, `0` skipped, `0` inconclusive;
+- EditMode: `505/505` passed, `0` failed, `0` skipped, `0` inconclusive
+  after replacing three obsolete V3 Stage2 contract tests with one active-roster
+  enumeration regression;
 - PlayMode: `24/24` passed, `0` failed, `0` skipped, `0` inconclusive;
 - both legacy production searches returned no matches and `git diff --check`
   was clean.

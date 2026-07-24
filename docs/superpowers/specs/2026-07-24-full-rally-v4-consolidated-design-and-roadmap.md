@@ -91,8 +91,9 @@ V4 context 负责向规则层提供球员身份、阵容、轮转和实际几何
 | Shadow diagnostics | 不改变比分、accepted contacts 或 V3 transitions | diagnostics on/off PlayMode |
 
 完整验证使用 Unity `6000.0.43f1`，从被验证 checkout 执行无 `-quit` 的
-batch test 命令。EditMode 为 `507/507` 通过，PlayMode 为 `24/24` 通过，
-两者均为 `0` failed、`0` skipped、`0` inconclusive。以下两个 production
+batch test 命令。删除三条仅覆盖旧 V3 Stage2 合同的测试并新增 one-shot
+active-roster 枚举回归后，EditMode 为 `505/505` 通过；PlayMode 为 `24/24`
+通过。两者均为 `0` failed、`0` skipped、`0` inconclusive。以下两个 production
 搜索均无结果，且 `git diff --check` clean：
 
 ```bash
@@ -413,8 +414,10 @@ Career 创建比赛时调用 V4 derivation，并生成 `MatchContextV4`。Career
 - `MatchSet` 原生持有 `MatchContextV4` 并生成 `MatchResultV4`。
 - 正式 director 不暴露 V1/V2 result/context。
 - V3 rules adapter 直接从 V4 context 创建 eligibility，不要求 `UpgradeFromV2` hash parity。
-- `PlayerAbilityProfile` 从正式路径移除；Player runtime 持有 `DerivedMatchAttributesV4`。
-- 3v3 若继续保留，必须另行决定是否同步硬切 V4；它不能迫使正式 6v6 保留旧属性入口。
+- `PlayerAbilityProfile` 保留为 `DerivedMatchAttributesV4` 的 runtime wrapper；它不持有
+  V1/V2/V3 属性合同，也不绕过 V4 derivation。
+- 3v3 已同步硬切 V4：每队创建六人 V4 roster，并向 `MatchSet` 显式传入三名
+  active player ID，不保留旧属性或 context 入口。
 
 ## 12. Replay V4
 
@@ -471,7 +474,8 @@ base attributes + DominantHand
 ### Gate C：Career/Match 原生 V4 硬切（已完成）
 
 - Career record/gateway、正式 Bootstrap、MatchSet、player binding 和 result 全部切 V4。
-- 删除正式 V1/V2/V3 context/result 和 `PlayerAbilityProfile` 路径。
+- 删除正式 V1/V2/V3 context/result 路径；`PlayerAbilityProfile` 仅保留为
+  `DerivedMatchAttributesV4` 的 runtime wrapper。
 - 正式 6v6 在原有 V3 rules authority 下完成比赛并生成 V4 result。
 - 当前已有动作全部改为消费对应的 V4 派生属性，且 runtime 不得直接读取基础属性。
 - V4 全属性权威在 Gate I/J 激活 soft action、完整攻防和 CourtAwareness 前不得宣告完成。

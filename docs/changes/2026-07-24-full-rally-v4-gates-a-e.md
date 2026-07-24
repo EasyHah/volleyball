@@ -28,6 +28,10 @@
   完整 key 覆盖 ball version/fingerprint、physics、sampling、predictor、envelope 与
   degradation step，请求方队伍不进入 key。
 - Match：正式 6v6 只从 V4 context 初始化；execution envelope、trajectory cache 与 P6 实际几何进入权威路径。
+- Match：删除已被 V4 envelope/prediction 取代且无生产消费者的
+  `ExecutionEnvelopeV3`、`BallTrajectoryArtifactV3`、
+  `BallTrajectoryPredictionProviderV3` 和 `DeterministicWorkBudgetV3`；
+  V3 命名只保留规则 authority 及其输入事实。
 - Replay：只记录和读取 V4 identity、样本分类、完整预测 key 与实际攻击几何。
 - 行为变化：R-REF-002 要求攻击资格基于实际物理几何，非法数据必须拒绝而非修正。
 
@@ -57,11 +61,14 @@ Task 12 的完整 EditMode 使用 Unity `6000.0.43f1` 和无 `-quit` batch 命�
   -logFile /tmp/volleyball-v4-all-editmode.log
 ```
 
-结果为 `507/507` 通过、`0` failed、`0` skipped、`0` inconclusive，高于迁移前
-`491` 测试基线。完整 PlayMode 使用同样命令并把 platform/result/log 改为
+外部审查清理三条仅覆盖已删除 V3 Stage2 合同的测试，并新增 one-shot active-roster
+枚举回归后，最新结果为 `505/505` 通过、`0` failed、`0` skipped、
+`0` inconclusive，高于迁移前 `491` 测试基线。完整 PlayMode 使用同样命令并把
+platform/result/log 改为
 `PlayMode`、`/tmp/volleyball-v4-all-playmode.xml` 和
 `/tmp/volleyball-v4-all-playmode.log`，结果为 `24/24` 通过、`0` failed、
-`0` skipped、`0` inconclusive，耗时 `525.099733s`。
+`0` skipped、`0` inconclusive；external-review 修正后的 fresh run 耗时
+`524.894380s`。
 
 legacy production `rg` 无结果；`git diff --check` 无错误。V4 predictor 只接收不含
 requester provenance 的 key-covered input；artifact 在 canonical identity 冻结前
