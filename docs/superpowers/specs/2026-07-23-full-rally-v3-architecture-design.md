@@ -201,6 +201,14 @@ Lineup and substitution decisions remain match-layer responsibilities during the
 
 ## 8. V3 Ability System
 
+> **2026-07-24 semantic correction:** V3 is a versioned mixed input contract, not
+> the final gameplay-attribute layer. The full correction and V4 successor are
+> specified in `2026-07-24-v3-ability-semantics-and-v4-layered-attributes-design.md`.
+> In particular, the formal runtime at this stage still consumes a V2-shaped
+> `PlayerAbilityProfile`; `AttackControl`, `SoftTouch`, `BlockTechnique`, and
+> `CourtAwareness` are reserved V3 axes until independently wired. `MaxAttackReach`
+> is attack reach, not height or block reach.
+
 V3 uses eleven abilities:
 
 | Ability | Responsibility |
@@ -217,10 +225,11 @@ V3 uses eleven abilities:
 | BlockTechnique | hand shape, coverage area, and block rebound quality |
 | CourtAwareness | observation latency and uncertainty about space, intent, and support |
 
-Ability layers have distinct meanings:
+Ability layers have distinct meanings in the V3 target architecture:
 
 - physical abilities affect whether a responsibility is feasible;
-- technical abilities affect the distribution of execution results;
+- technical abilities affect the distribution of execution results once their
+  corresponding runtime consumption is wired;
 - `CourtAwareness` affects perceived inputs and recognition delay.
 
 Abilities do not directly add arbitrary bonuses to a route's total score.

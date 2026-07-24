@@ -26,6 +26,13 @@ trajectory prediction contract。
 V3 planner、cache、完整 replay payload 或平衡公式已实现。GPU backend 不进入当前 Phase 0/P1；
 第一版以 CPU deterministic backend 为权威。
 
+2026-07-24 属性语义修正：`PlayerAbilitySnapshotV3` 是兼容的混合输入契约，并非已经完全接入的
+“比赛属性层”。正式运行时仍消费 V2-shaped `PlayerAbilityProfile`；`AttackControl`、`SoftTouch`、
+`BlockTechnique`、`CourtAwareness` 当前为 reserved axes，不能表述为已独立影响正式比赛。
+`MaxAttackReach` 仅为进攻触球高度输入，不是身高或拦网高度。V4 将引入基础身体层、技术基础层、
+派生比赛属性层及版本化确定性换算；详见
+`docs/superpowers/specs/2026-07-24-v3-ability-semantics-and-v4-layered-attributes-design.md`。
+
 SP/GM 审查结论：用户原始 P0 四条仍是核心阻塞项；GM 追加的 Replay 契约方向、hash 拆族、
 deterministic work budget、migration invariants、`PlanCoverageDecision`、shared envelope 和
 shared trajectory artifact 是 Phase 0 interface addenda。它们必须在接口设计前命名并预留
