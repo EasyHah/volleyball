@@ -1,5 +1,11 @@
 # V3 Ability Semantics Correction and V4 Layered Attributes Design
 
+> [!IMPORTANT]
+> 本文档中的 V3/V4 兼容迁移与并行运行路线已被
+> `docs/superpowers/specs/2026-07-24-full-rally-v4-consolidated-design-and-roadmap.md`
+> 取代。V4 双端基础属性、确定性派生和 C 型权衡原则继续有效；新的权威决策是不迁移旧
+> 存档/回放，正式 Career/Match 直接硬切 V4，并继续复用 V3 规则引擎。
+
 **Date:** 2026-07-24  
 **Status:** User-approved design  
 **Scope:** Player attribute contracts, runtime consumption, deterministic derivation, replay diagnostics, and benchmark boundaries

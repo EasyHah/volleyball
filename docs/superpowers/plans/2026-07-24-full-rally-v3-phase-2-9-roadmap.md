@@ -1,5 +1,11 @@
 # Full Rally V3 Phase 2--9 Implementation Plan
 
+> [!IMPORTANT]
+> 本计划的 V3 属性、兼容迁移和 Replay V2 交付路线已被
+> `docs/superpowers/specs/2026-07-24-full-rally-v4-consolidated-design-and-roadmap.md`
+> 取代。Phase 1 规则、Stage 1.5 基线和 Stage 3--9 的责任计划思想仍作为历史设计输入；
+> 新实施必须遵循整合文档中的 V4 单轨 Gate A--K。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Complete Full Rally V3 as a deterministic, explainable formal-6v6 rally system without treating V4 as a delivery dependency.

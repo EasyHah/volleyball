@@ -1,5 +1,11 @@
 # Full Rally V3 Architecture Design
 
+> [!IMPORTANT]
+> 本文档的 V3 规则、责任计划、感知、执行器和 director 瘦身设计继续有效；V3 属性合同、
+> 兼容迁移和 Replay V2 路线已被
+> `docs/superpowers/specs/2026-07-24-full-rally-v4-consolidated-design-and-roadmap.md`
+> 取代。新实施采用 V4 属性/比赛合同并复用 V3 规则引擎。
+
 **Date:** 2026-07-23
 
 **Status:** User-approved design
