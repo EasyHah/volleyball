@@ -59,14 +59,19 @@ namespace Volleyball.EditModeTests
         [Test]
         public void BeginRally_RefreshesRotationAndServerEligibility()
         {
-            var legacyContext = CreateFormalV2Context();
-            var set = new MatchSet(legacyContext, TeamSide.Home);
-            var context = MatchContextV3.UpgradeFromV2(legacyContext);
+            var context = CreateFormalV4Context();
+            var set = new MatchSet(context, TeamSide.Home);
             var initialHome = RotationFor(set, TeamSide.Home);
             var initialAway = RotationFor(set, TeamSide.Away);
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
-                CreateEligibility(context, initialHome, initialAway),
+                ContractVersions.MatchV3,
+                OnCourtLineupRulesV3.Create(
+                    context,
+                    initialHome,
+                    initialAway,
+                    initialHome[0],
+                    initialAway[0],
+                    Array.Empty<LiberoReplacementV3>()),
                 TeamSide.Home,
                 V3RulesMode.Shadow);
             var initialAwayServer = set.ServerFor(TeamSide.Away);
@@ -120,7 +125,7 @@ namespace Volleyball.EditModeTests
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
 
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                ContractVersions.MatchV3,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -177,7 +182,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                ContractVersions.MatchV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -221,7 +226,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                ContractVersions.MatchV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -248,7 +253,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                ContractVersions.MatchV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -308,9 +313,7 @@ namespace Volleyball.EditModeTests
                 SetPrivateField(director, "_rallyActive", true);
 
                 Assert.That(
-                    () => director.ConfigureV3Rules(
-                        MatchContextV3.UpgradeFromV2(context),
-                        V3RulesMode.Shadow),
+                    () => director.ConfigureV3Rules(V3RulesMode.Shadow),
                     Throws.TypeOf<InvalidOperationException>());
             }
             finally
@@ -320,23 +323,21 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void ConfigureV3Rules_InvalidReplacementPreservesExistingShadowConfiguration()
+        public void ConfigureV3Rules_DisablingRemovesExistingShadowConfiguration()
         {
             var gameObject = new GameObject("configured-formal-director");
             try
             {
                 var director = gameObject.AddComponent<PhysicalMatchRallyDirector>();
-                var context = PrepareFormalDirector(director);
-                director.ConfigureV3Rules(
-                    MatchContextV3.UpgradeFromV2(context),
-                    V3RulesMode.Shadow);
+                PrepareFormalDirector(director);
+                director.ConfigureV3Rules(V3RulesMode.Shadow);
                 var originalAdapter = GetPrivateField(director, "_v3RulesAdapter");
 
-                Assert.That(
-                    () => director.ConfigureV3Rules(CreateContext(), V3RulesMode.Shadow),
-                    Throws.TypeOf<ArgumentException>());
-                Assert.That(GetPrivateField(director, "_v3RulesAdapter"), Is.SameAs(originalAdapter));
-                Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Shadow));
+                director.ConfigureV3Rules(V3RulesMode.Disabled);
+
+                Assert.That(originalAdapter, Is.Not.Null);
+                Assert.That(GetPrivateField(director, "_v3RulesAdapter"), Is.Null);
+                Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
             }
             finally
             {
@@ -349,7 +350,7 @@ namespace Volleyball.EditModeTests
             var context = CreateContext();
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
             return new FullRallyV3RulesRuntimeAdapter(
-                context,
+                ContractVersions.MatchV3,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Shadow);
@@ -378,10 +379,13 @@ namespace Volleyball.EditModeTests
                 Array.Empty<LiberoReplacementV3>());
         }
 
-        private static MatchContextV2 PrepareFormalDirector(PhysicalMatchRallyDirector director)
+        private static MatchContextV4 PrepareFormalDirector(PhysicalMatchRallyDirector director)
         {
-            var context = CreateFormalV2Context();
-            SetPrivateField(director, "_set", new MatchSet(context, TeamSide.Home));
+            var context = CreateFormalV4Context();
+            var set = new MatchSet(context, TeamSide.Home);
+            SetPrivateField(director, "_set", set);
+            SetPrivateField(director, "_formalSet", set);
+            SetPrivateField(director, "_matchContext", context);
             SetPrivateField(
                 director,
                 "_configuration",
@@ -389,12 +393,12 @@ namespace Volleyball.EditModeTests
             return context;
         }
 
-        private static MatchContextV2 CreateFormalV2Context()
+        private static MatchContextV4 CreateFormalV4Context()
         {
             var createContext = typeof(FormalSixVsSixRallyBootstrap).GetMethod(
                 "CreateSandboxContext",
                 BindingFlags.Static | BindingFlags.NonPublic);
-            return (MatchContextV2)createContext.Invoke(null, null);
+            return (MatchContextV4)createContext.Invoke(null, null);
         }
 
         private static PlayerId[] RotationFor(MatchSet set, TeamSide side)

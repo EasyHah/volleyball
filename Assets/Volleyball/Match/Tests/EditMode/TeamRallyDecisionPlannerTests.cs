@@ -853,7 +853,7 @@ namespace Volleyball.EditModeTests
 
         private static PlayerAbilityProfile Ability(float mobility)
         {
-            return new PlayerAbilityProfile(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+            return MatchV4TestFixture.CreateAbility(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
         }
 
         private static RallyPlayerSnapshot Snapshot(PlayerRole role, int slot, float x)

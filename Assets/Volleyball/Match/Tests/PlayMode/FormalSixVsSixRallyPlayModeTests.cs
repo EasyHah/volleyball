@@ -15,7 +15,7 @@ using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
-using MatchContextV3 = Volleyball.Shared.Contracts.MatchContextV3;
+using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 
@@ -40,11 +40,11 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.RosterSize, Is.EqualTo(6));
             Assert.That(director.TargetScore, Is.EqualTo(25));
             Assert.That(director.CourtHalfLength, Is.EqualTo(9f));
-            Assert.That(director.MatchContextV2, Is.Not.Null);
-            Assert.That(director.MatchContext, Is.Null);
+            Assert.That(director.MatchContext, Is.Not.Null);
             Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Authority));
             Assert.That(players, Has.Some.Matches<PrototypePlayerAgent>(
-                player => player.Id.Role == PlayerRole.MiddleBlocker && player.Ability.MaxAttackReach == 3.48f));
+                player => player.Id.Role == PlayerRole.MiddleBlocker &&
+                          player.Ability.PlannedAttackContactHeightMeters > 3.4f));
             AssertRoster(players, director);
 
             var resolvedRallies = 0;
@@ -67,7 +67,7 @@ namespace Volleyball.PlayModeTests
             var minimumSameTeamSeparation = float.PositiveInfinity;
             var awaitingFirstPostRotationRally = false;
             var verifiedPostRotationV3Eligibility = false;
-            while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
+            while (director.Result == null && Time.realtimeSinceStartup < timeout)
             {
                 foreach (var player in players)
                 {
@@ -92,13 +92,13 @@ namespace Volleyball.PlayModeTests
                 yield return null;
             }
 
-            Assert.That(director.ResultV2, Is.Not.Null, "Formal 6v6 set did not complete in real time.");
-            Assert.That(Mathf.Max(director.ResultV2.HomeScore, director.ResultV2.AwayScore),
+            Assert.That(director.Result, Is.Not.Null, "Formal 6v6 set did not complete in real time.");
+            Assert.That(Mathf.Max(director.Result.HomeScore, director.Result.AwayScore),
                 Is.GreaterThanOrEqualTo(25));
-            Assert.That(Mathf.Abs(director.ResultV2.HomeScore - director.ResultV2.AwayScore),
+            Assert.That(Mathf.Abs(director.Result.HomeScore - director.Result.AwayScore),
                 Is.GreaterThanOrEqualTo(2));
-            Assert.That(director.ResultV2.PlayerStats, Has.Count.EqualTo(12));
-            Assert.DoesNotThrow(() => director.ResultV2.ValidateAgainst(director.MatchContextV2));
+            Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(12));
+            Assert.DoesNotThrow(() => director.Result.ValidateAgainst(director.MatchContext));
             Assert.That(director.V3RuleTransitions, Is.GreaterThan(0));
             Assert.That(director.V3RuleTransitions, Is.EqualTo(director.SuccessfulContacts));
             Assert.That(director.V3RuleParityMatches, Is.EqualTo(director.V3RuleTransitions));
@@ -113,14 +113,14 @@ namespace Volleyball.PlayModeTests
             Assert.That(replayedContacts, Is.EqualTo(director.SuccessfulContacts));
             Assert.That(
                 resolvedRallies,
-                Is.EqualTo(director.ResultV2.HomeScore + director.ResultV2.AwayScore),
+                Is.EqualTo(director.Result.HomeScore + director.Result.AwayScore),
                 "Each completed rally must advance the score exactly once.");
             Assert.That(
-                director.ResultV2.PlayerStats.Sum(stat => stat.Contacts),
+                director.Result.PlayerStats.Sum(stat => stat.Contacts),
                 Is.EqualTo(
                     director.SuccessfulContacts +
-                    director.ResultV2.HomeScore +
-                    director.ResultV2.AwayScore));
+                    director.Result.HomeScore +
+                    director.Result.AwayScore));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.ScheduledMultiBlockUnits, Is.GreaterThan(0));
@@ -366,9 +366,8 @@ namespace Volleyball.PlayModeTests
             var createContext = typeof(FormalSixVsSixRallyBootstrap).GetMethod(
                 "CreateSandboxContext",
                 BindingFlags.Static | BindingFlags.NonPublic);
-            var legacyContext = (Volleyball.Shared.Contracts.MatchContextV2)createContext.Invoke(null, null);
-            set = new MatchSet(legacyContext, TeamSide.Home);
-            var context = MatchContextV3.UpgradeFromV2(legacyContext);
+            var context = (MatchContextV4)createContext.Invoke(null, null);
+            set = new MatchSet(context, TeamSide.Home);
             homeRotation = RotationFor(set, TeamSide.Home);
             awayRotation = RotationFor(set, TeamSide.Away);
             var eligibility = OnCourtLineupRulesV3.Create(
@@ -379,7 +378,7 @@ namespace Volleyball.PlayModeTests
                 set.ServerFor(TeamSide.Away),
                 System.Array.Empty<LiberoReplacementV3>());
             return new FullRallyV3RulesRuntimeAdapter(
-                context,
+                context.RulesVersion,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Authority);

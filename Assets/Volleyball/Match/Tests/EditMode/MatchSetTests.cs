@@ -104,18 +104,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void CreateResult_CompletedSet_ContainsAllSixPlayersAndValidatedStatistics()
+        public void CreateResult_CompletedSet_ContainsAllTwelvePlayersAndValidatedV4Statistics()
         {
             var set = CreateSet(TeamSide.Home);
             var homeSetter = new StablePlayerId("home-setter");
-            var awayDefender = new StablePlayerId("away-defender");
+            var awayDefender = new StablePlayerId("away-libero");
 
             set.RecordContact(homeSetter, 3.5f);
             set.ResolveRally(TeamSide.Home, homeSetter, awayDefender);
             Resolve(set, TeamSide.Home, 14);
-            var result = set.CreateResult();
+            var result = set.CreateResult(acceptedContacts: 1, v3RuleTransitionCount: 1);
 
-            Assert.That(result.PlayerStats, Has.Count.EqualTo(6));
+            Assert.That(result.PlayerStats, Has.Count.EqualTo(12));
             Assert.That(Stat(result, homeSetter).Points, Is.EqualTo(1));
             Assert.That(Stat(result, homeSetter).Contacts, Is.EqualTo(1));
             Assert.That(Stat(result, homeSetter).Workload, Is.EqualTo(4.5f));
@@ -126,7 +126,8 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CreateResult_IncompleteSet_ThrowsInvalidOperationException()
         {
-            Assert.Throws<InvalidOperationException>(() => CreateSet(TeamSide.Home).CreateResult());
+            Assert.Throws<InvalidOperationException>(() =>
+                CreateSet(TeamSide.Home).CreateResult(0, 0));
         }
 
         [Test]
@@ -174,46 +175,35 @@ namespace Volleyball.EditModeTests
             Assert.That(set.IsComplete, Is.True);
             Assert.That(set.HomeScore, Is.EqualTo(26));
             Assert.That(set.AwayScore, Is.EqualTo(24));
-            Assert.That(set.CreateResult().PlayerStats, Has.Count.EqualTo(12));
+            Assert.That(set.CreateResult(0, 0).PlayerStats, Has.Count.EqualTo(12));
         }
 
         [Test]
-        public void V2Context_ProducesAV2ResultWithTheSameContextIdentity()
+        public void V4Context_ProducesAV4ResultWithTheSameContextIdentityAndAuthoritySummary()
         {
-            var context = MatchContextV2.UpgradeFromV1(CreateContext());
+            var context = CreateContext();
             var set = new MatchSet(context, TeamSide.Home);
-            Resolve(set, TeamSide.Home, 15);
+            Resolve(set, TeamSide.Home, 25);
 
-            var result = set.CreateResultV2();
+            var result = set.CreateResult(acceptedContacts: 72, v3RuleTransitionCount: 70);
 
-            Assert.That(set.Context, Is.Null);
-            Assert.That(set.ContextV2, Is.SameAs(context));
-            Assert.That(result.ContractVersion, Is.EqualTo(ContractVersions.MatchV2));
+            Assert.That(set.Context, Is.SameAs(context));
+            Assert.That(result.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
+            Assert.That(result.RalliesPlayed, Is.EqualTo(25));
+            Assert.That(result.AcceptedContacts, Is.EqualTo(72));
+            Assert.That(result.V3RuleTransitionCount, Is.EqualTo(70));
             Assert.DoesNotThrow(() => result.ValidateAgainst(context));
         }
 
         [Test]
-        public void PhysicalDirector_ExposesOnlyTheLegacyInitializeSignature()
+        public void PhysicalDirector_ExposesOnlyTheV4InitializeSignature()
         {
-            var initializeMethods = typeof(PhysicalMatchRallyDirector).GetMethods();
-            var v1Overloads = 0;
-            foreach (var method in initializeMethods)
-            {
-                if (method.Name == "Initialize" && method.GetParameters().Length >= 3 &&
-                    method.GetParameters()[2].ParameterType == typeof(MatchContextV1))
-                {
-                    v1Overloads++;
-                }
+            var initialize = typeof(PhysicalMatchRallyDirector).GetMethod("InitializeV4");
 
-                Assert.That(
-                    method.Name == "Initialize" && method.GetParameters().Length >= 3 &&
-                    method.GetParameters()[2].ParameterType == typeof(MatchContextV2),
-                    Is.False,
-                    "V2 initialization must not overload the V1 API because literal null becomes ambiguous.");
-            }
-
-            Assert.That(v1Overloads, Is.EqualTo(1));
-            Assert.That(typeof(PhysicalMatchRallyDirector).GetMethod("InitializeV2"), Is.Not.Null);
+            Assert.That(initialize, Is.Not.Null);
+            Assert.That(initialize.GetParameters()[2].ParameterType, Is.EqualTo(typeof(MatchContextV4)));
+            Assert.That(typeof(PhysicalMatchRallyDirector).GetMethod("Initialize"), Is.Null);
+            Assert.That(typeof(PhysicalMatchRallyDirector).GetMethod("InitializeV2"), Is.Null);
         }
 
         private static void Resolve(MatchSet set, TeamSide winner, int count)
@@ -224,7 +214,7 @@ namespace Volleyball.EditModeTests
             }
         }
 
-        private static PlayerMatchStatsV1 Stat(MatchResultV1 result, StablePlayerId playerId)
+        private static PlayerMatchStatsV4 Stat(MatchResultV4 result, StablePlayerId playerId)
         {
             foreach (var stat in result.PlayerStats)
             {
@@ -240,70 +230,18 @@ namespace Volleyball.EditModeTests
 
         private static MatchSet CreateSet(TeamSide servingSide)
         {
-            return new MatchSet(CreateContext(), servingSide);
+            return new MatchSet(CreateContext(), servingSide, MatchSetRules.ThreeVsThree);
         }
 
-        private static MatchContextV1 CreateContext()
+        private static MatchContextV4 CreateContext()
         {
-            return MatchContextV1.Create(
-                Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                7351,
-                CreateTeam("home", "Home", TeamSide.Home, "home"),
-                CreateTeam("away", "Away", TeamSide.Away, "away"));
+            return MatchV4TestFixture.CreateContext(
+                Guid.Parse("11111111-1111-1111-1111-111111111111"));
         }
 
-        private static MatchContextV1 CreateSixPlayerContext()
+        private static MatchContextV4 CreateSixPlayerContext()
         {
-            return MatchContextV1.Create(
-                Guid.Parse("66666666-6666-6666-6666-666666666666"),
-                7351,
-                CreateSixPlayerTeam("home6", "Home 6", TeamSide.Home, "home"),
-                CreateSixPlayerTeam("away6", "Away 6", TeamSide.Away, "away"));
-        }
-
-        private static TeamSnapshotV1 CreateSixPlayerTeam(
-            string id,
-            string name,
-            TeamSide side,
-            string prefix)
-        {
-            return new TeamSnapshotV1(
-                new TeamId(id),
-                name,
-                side,
-                new List<PlayerSnapshotV1>
-                {
-                    CreatePlayer(prefix + "-opposite", "Opposite", 1, PlayerPosition.Opposite),
-                    CreatePlayer(prefix + "-outside-a", "Outside A", 2, PlayerPosition.OutsideHitter),
-                    CreatePlayer(prefix + "-middle-a", "Middle A", 3, PlayerPosition.MiddleBlocker),
-                    CreatePlayer(prefix + "-setter", "Setter", 4, PlayerPosition.Setter),
-                    CreatePlayer(prefix + "-outside-b", "Outside B", 5, PlayerPosition.OutsideHitter),
-                    CreatePlayer(prefix + "-libero", "Libero", 6, PlayerPosition.Libero)
-                });
-        }
-
-        private static TeamSnapshotV1 CreateTeam(string id, string name, TeamSide side, string prefix)
-        {
-            return new TeamSnapshotV1(
-                new TeamId(id),
-                name,
-                side,
-                new List<PlayerSnapshotV1>
-                {
-                    CreatePlayer(prefix + "-setter", "Setter", 1, PlayerPosition.Setter),
-                    CreatePlayer(prefix + "-attacker", "Attacker", 2, PlayerPosition.OutsideHitter),
-                    CreatePlayer(prefix + "-defender", "Defender", 3, PlayerPosition.Defender)
-                });
-        }
-
-        private static PlayerSnapshotV1 CreatePlayer(string id, string name, int number, PlayerPosition position)
-        {
-            return new PlayerSnapshotV1(
-                new StablePlayerId(id),
-                name,
-                number,
-                position,
-                new PlayerAbilitySnapshotV1(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f));
+            return MatchV4TestFixture.CreateContext();
         }
     }
 }

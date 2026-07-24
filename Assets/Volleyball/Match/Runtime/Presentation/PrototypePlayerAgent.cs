@@ -200,7 +200,7 @@ namespace Volleyball.Presentation
             DisableBlockContactWindow();
             _scheduledAction = action;
             var powerScale = action == TechniqueAction.Attack
-                ? 0.90f + (Ability.AttackPower * 0.10f)
+                ? 0.90f + (Ability.AttackPowerCapacity * 0.10f)
                 : 1f;
             _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
             if (action == TechniqueAction.Set)

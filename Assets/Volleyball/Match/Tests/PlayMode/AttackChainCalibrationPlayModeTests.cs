@@ -71,14 +71,14 @@ namespace Volleyball.PlayModeTests
                         firstServer: setIndex % 2 == 0 ? TeamSide.Home : TeamSide.Away,
                         value => director = value);
                     var timeout = Time.realtimeSinceStartup + 30f;
-                    while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
+                    while (director.Result == null && Time.realtimeSinceStartup < timeout)
                     {
                         Time.timeScale = 8f;
                         yield return null;
                     }
 
-                    Assert.That(director.ResultV2, Is.Not.Null, $"Calibration set {setIndex + 1} timed out.");
-                    if (director.ResultV2.HomeScore > director.ResultV2.AwayScore)
+                    Assert.That(director.Result, Is.Not.Null, $"Calibration set {setIndex + 1} timed out.");
+                    if (director.Result.HomeScore > director.Result.AwayScore)
                     {
                         blueWins++;
                     }
@@ -127,7 +127,7 @@ namespace Volleyball.PlayModeTests
                         targetScore: 50,
                         firstServer: completedMatches % 2 == 0 ? TeamSide.Home : TeamSide.Away,
                         value => director = value);
-                    Assert.That(director.MatchContextV2.Seed, Is.EqualTo(seed));
+                    Assert.That(SeedFor(director), Is.EqualTo(seed));
                     director.ConfigureInSystemFirstPassCalibration(true);
                     MatchReplayRecorder replayRecorder = null;
                     if (director.RosterSize == 6)
@@ -142,7 +142,7 @@ namespace Volleyball.PlayModeTests
 
                     var observedSets = 0;
                     while (inSystemSets + director.InSystemSetterSets < targetInSystemSets &&
-                           director.ResultV2 == null &&
+                           !HasCompletedResult(director) &&
                            Time.realtimeSinceStartup < timeout)
                     {
                         Time.timeScale = 20f;
@@ -226,7 +226,9 @@ namespace Volleyball.PlayModeTests
             var score = UnityEngine.Object.FindFirstObjectByType<ScoreDisplay>();
             var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
             Assert.That(previous, Is.Not.Null);
-            var context = previous.MatchContextV2;
+            var formalContext = previous.MatchContext;
+            var prototypeContext =
+                (previous as ThreeVsThreeRallyDirector)?.PrototypeLegacyContext;
             var rosterSize = previous.RosterSize;
             var host = previous.gameObject;
             UnityEngine.Object.Destroy(previous);
@@ -243,17 +245,45 @@ namespace Volleyball.PlayModeTests
                 baseConfiguration,
                 targetScore,
                 1);
-            PhysicalMatchRallyDirector director = rosterSize == 6
-                ? host.AddComponent<FormalSixVsSixRallyDirector>()
-                : host.AddComponent<ThreeVsThreeRallyDirector>();
-            director.InitializeV2(
-                ball,
-                players,
-                context,
-                score,
-                configuration: configuration,
-                firstServingSide: firstServer);
+            PhysicalMatchRallyDirector director;
+            if (rosterSize == 6)
+            {
+                var formal = host.AddComponent<FormalSixVsSixRallyDirector>();
+                formal.InitializeV4(
+                    ball,
+                    players,
+                    formalContext,
+                    score,
+                    configuration: configuration,
+                    firstServingSide: firstServer);
+                formal.ConfigureV3Rules(V3RulesMode.Authority);
+                director = formal;
+            }
+            else
+            {
+                var prototype = host.AddComponent<ThreeVsThreeRallyDirector>();
+                prototype.InitializePrototypeLegacyV2(
+                    ball,
+                    players,
+                    prototypeContext,
+                    score,
+                    configuration: configuration,
+                    firstServingSide: firstServer);
+                director = prototype;
+            }
             completed(director);
+        }
+
+        private static bool HasCompletedResult(PhysicalMatchRallyDirector director)
+        {
+            return director.Result != null ||
+                   (director as ThreeVsThreeRallyDirector)?.PrototypeLegacyResult != null;
+        }
+
+        private static int SeedFor(PhysicalMatchRallyDirector director)
+        {
+            return director.MatchContext?.Seed ??
+                   ((ThreeVsThreeRallyDirector)director).PrototypeLegacyContext.Seed;
         }
 
         private sealed class AttackChainCalibrationReport

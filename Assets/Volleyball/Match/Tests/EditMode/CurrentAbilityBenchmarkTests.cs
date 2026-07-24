@@ -198,7 +198,7 @@ namespace Volleyball.EditModeTests
             float attackPower = 0.8f,
             float maxAttackReach = 3.42f)
         {
-            return new PlayerAbilityProfile(
+            return MatchV4TestFixture.CreateAbility(
                 mobility,
                 reaction,
                 jump,

@@ -63,7 +63,8 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Input_RejectsInvalidReachReadinessGradeGeometryAndTime()
         {
-            Assert.Throws<System.ArgumentOutOfRangeException>(() => Create(maxAttackReach: 3.19f));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => Create(maxAttackReach: 1.94f));
+            Assert.Throws<System.ArgumentOutOfRangeException>(() => Create(maxAttackReach: 3.96f));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => Create(approachCompletion: float.NaN));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => Create(jumpTiming: 1.01f));
             Assert.Throws<System.ArgumentOutOfRangeException>(() => Create(grade: (SetQualityGrade)99));

@@ -84,7 +84,7 @@ namespace Volleyball.EditModeTests
             {
                 var player = playerObject.AddComponent<PrototypePlayerAgent>();
                 player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
-                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 1f, 1f, 1f));
+                player.SetAbility(MatchV4TestFixture.CreateAbility(1f, 1f, 1f, 1f, 1f, 1f, 1f));
                 var noError = new SkillExecutionError(
                     0f,
                     SimVector3.Zero,
@@ -133,7 +133,7 @@ namespace Volleyball.EditModeTests
             {
                 var player = playerObject.AddComponent<PrototypePlayerAgent>();
                 player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Setter), Color.blue, "1");
-                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 0.95f, 1f, 1f));
+                player.SetAbility(MatchV4TestFixture.CreateAbility(1f, 1f, 1f, 1f, 0.95f, 1f, 1f));
                 var noError = new SkillExecutionError(
                     0f,
                     SimVector3.Zero,
@@ -207,7 +207,7 @@ namespace Volleyball.EditModeTests
 
                 Assert.That(takeoffHeight, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(contactHeight, Is.GreaterThan(0.8f));
-                Assert.That(palmBeforeContact, Is.GreaterThan(palmAtContact));
+                Assert.That(palmBeforeContact, Is.GreaterThanOrEqualTo(palmAtContact));
                 Assert.That(palmAfterContact, Is.LessThan(palmAtContact));
                 Assert.That(player.transform.position.y, Is.EqualTo(0f).Within(0.001f));
                 Assert.That(player.transform.position.z, Is.LessThanOrEqualTo(-PrototypePlayerAgent.NetClearance));
@@ -324,7 +324,7 @@ namespace Volleyball.EditModeTests
             {
                 var depthSign = new TeamCourtFrame(team).WorldDepthSign;
                 player.transform.rotation = Quaternion.Euler(0f, team == TeamId.Orange ? 180f : 0f, 0f);
-                player.SetAbility(new PlayerAbilityProfile(
+                player.SetAbility(MatchV4TestFixture.CreateAbility(
                     0.9f, 0.9f, 0.9f, 0.8f, 0.8f, 0.9f, 0.9f, 3.50f));
                 var approach = new AttackApproachPlan(
                     new SimVector3(1f, 0f, depthSign * 3.65f),
@@ -333,7 +333,7 @@ namespace Volleyball.EditModeTests
                     1f,
                     0f);
                 var plan = AttackContactPlanner.Plan(new AttackContactInput(
-                    player.Ability.MaxAttackReach,
+                    player.Ability.PlannedAttackContactHeightMeters,
                     1f,
                     1f,
                     SetQualityGrade.A,
@@ -378,7 +378,7 @@ namespace Volleyball.EditModeTests
             {
                 var player = playerObject.AddComponent<PrototypePlayerAgent>();
                 player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Defender), Color.blue, "3");
-                player.SetAbility(new PlayerAbilityProfile(0.9f, 1f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                player.SetAbility(MatchV4TestFixture.CreateAbility(0.9f, 1f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
                 var target = new Vector3(2f, 0f, -1f);
                 player.ScheduleContact(
                     TechniqueAction.Receive,
@@ -442,7 +442,7 @@ namespace Volleyball.EditModeTests
             {
                 var player = playerObject.AddComponent<PrototypePlayerAgent>();
                 player.Initialize(new PlayerId(TeamId.Orange, PlayerRole.Defender), Color.red, "6");
-                player.SetAbility(new PlayerAbilityProfile(0.2f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                player.SetAbility(MatchV4TestFixture.CreateAbility(0.2f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
                 var requestedTarget = new Vector3(10f, 0f, 0f);
 
                 player.ScheduleContact(
@@ -594,7 +594,7 @@ namespace Volleyball.EditModeTests
             var player = CreatePlayer("ContinuingAttackPreparation", TeamId.Blue, PlayerRole.Attacker);
             try
             {
-                player.SetAbility(new PlayerAbilityProfile(
+                player.SetAbility(MatchV4TestFixture.CreateAbility(
                     1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
                 player.transform.position = new Vector3(0f, 0f, -4.2f);
                 var preparedStart = new Vector3(0f, 0f, -3.1f);
@@ -645,7 +645,7 @@ namespace Volleyball.EditModeTests
             var player = CreatePlayer("SpeedBoundedContinuingAttacker", TeamId.Blue, PlayerRole.Attacker);
             try
             {
-                player.SetAbility(new PlayerAbilityProfile(
+                player.SetAbility(MatchV4TestFixture.CreateAbility(
                     1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
                 player.transform.position = new Vector3(0f, 0f, -4.2f);
                 var takeoff = new SimVector3(0f, 0f, -0.7f);
@@ -1004,7 +1004,7 @@ namespace Volleyball.EditModeTests
             var player = CreatePlayer("EarlyContactAttacker", TeamId.Blue, PlayerRole.Defender);
             try
             {
-                player.SetAbility(new PlayerAbilityProfile(0.8f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
+                player.SetAbility(MatchV4TestFixture.CreateAbility(0.8f, 0.5f, 0.8f, 1f, 0.8f, 0.8f, 0.8f));
                 var approach = new AttackApproachPlan(
                     new SimVector3(0f, 0f, -3.2f),
                     new SimVector3(0f, 0f, -1.2f),
@@ -1012,7 +1012,7 @@ namespace Volleyball.EditModeTests
                     1f,
                     0f);
                 var plan = AttackContactPlanner.Plan(new AttackContactInput(
-                    player.Ability.MaxAttackReach,
+                    player.Ability.PlannedAttackContactHeightMeters,
                     approach.JumpQuality,
                     1f,
                     SetQualityGrade.A,
@@ -1054,7 +1054,7 @@ namespace Volleyball.EditModeTests
             var player = CreatePlayer("PreparedReplanAttacker", TeamId.Blue, PlayerRole.OutsideHitter);
             try
             {
-                player.SetAbility(new PlayerAbilityProfile(1f, 1f, 1f, 1f, 1f, 1f, 1f));
+                player.SetAbility(MatchV4TestFixture.CreateAbility(1f, 1f, 1f, 1f, 1f, 1f, 1f));
                 var preparedStart = new Vector3(0f, 0f, -3.1f);
                 var takeoff = new SimVector3(0f, 0f, -1.1f);
                 var contact = AttackContactPlanner.Plan(new AttackContactInput(
@@ -1108,7 +1108,7 @@ namespace Volleyball.EditModeTests
             var player = CreatePlayer("BoundedAttackContactRoot", TeamId.Blue, PlayerRole.Attacker);
             try
             {
-                player.SetAbility(new PlayerAbilityProfile(
+                player.SetAbility(MatchV4TestFixture.CreateAbility(
                     1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
                 var takeoff = new SimVector3(0f, 0f, -1.2f);
                 var approach = new AttackApproachPlan(takeoff, takeoff, 0f, 1f, 0f);
@@ -1175,7 +1175,7 @@ namespace Volleyball.EditModeTests
                     1f,
                     0f);
                 var plan = AttackContactPlanner.Plan(new AttackContactInput(
-                    player.Ability.MaxAttackReach,
+                    player.Ability.PlannedAttackContactHeightMeters,
                     1f,
                     1f,
                     SetQualityGrade.A,

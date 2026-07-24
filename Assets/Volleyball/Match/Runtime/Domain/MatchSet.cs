@@ -16,7 +16,51 @@ namespace Volleyball.Domain
         BackCenter = 6
     }
 
-    public sealed class MatchSet
+    public interface IMatchSetRuntime
+    {
+        int HomeScore { get; }
+        int AwayScore { get; }
+        TeamSide ServingSide { get; }
+        TeamSide ReceivingSide { get; }
+        bool IsComplete { get; }
+        int SetTargetScore { get; }
+        int RosterSize { get; }
+        int RotationOffsetFor(TeamSide side);
+        StablePlayerId ServerFor(TeamSide side);
+        StablePlayerId PlayerAtRotationPosition(TeamSide side, int position);
+        int RotationPositionFor(StablePlayerId playerId);
+        bool IsFrontRow(StablePlayerId playerId);
+        void RecordContact(StablePlayerId playerId, float movementDistance);
+        void ResolveRally(
+            TeamSide winner,
+            StablePlayerId? pointScorer,
+            StablePlayerId? errorPlayer);
+    }
+
+    internal readonly struct RuntimePlayerStats
+    {
+        public RuntimePlayerStats(
+            StablePlayerId playerId,
+            int points,
+            int contacts,
+            int errors,
+            float workload)
+        {
+            PlayerId = playerId;
+            Points = points;
+            Contacts = contacts;
+            Errors = errors;
+            Workload = workload;
+        }
+
+        public StablePlayerId PlayerId { get; }
+        public int Points { get; }
+        public int Contacts { get; }
+        public int Errors { get; }
+        public float Workload { get; }
+    }
+
+    public sealed class MatchSet : IMatchSetRuntime
     {
         public const int TargetScore = 15;
         public const int MinimumLead = 2;
@@ -30,60 +74,48 @@ namespace Volleyball.Domain
         private int _awayRotationOffset;
 
         public MatchSet(
-            MatchContextV1 context,
+            MatchContextV4 context,
+            TeamSide firstServer,
+            MatchSetRules rules = null)
+            : this(
+                (context ?? throw new ArgumentNullException(nameof(context))).Home.Players
+                    .Select(player => player.PlayerId),
+                context.Away.Players.Select(player => player.PlayerId),
+                firstServer,
+                rules)
+        {
+            Context = context;
+        }
+
+        internal MatchSet(
+            IEnumerable<StablePlayerId> homePlayers,
+            IEnumerable<StablePlayerId> awayPlayers,
             TeamSide firstServer,
             MatchSetRules rules = null)
         {
-            Context = context ?? throw new ArgumentNullException(nameof(context));
             if (!Enum.IsDefined(typeof(TeamSide), firstServer))
             {
                 throw new ArgumentOutOfRangeException(nameof(firstServer));
             }
 
-            _statsByPlayer = new Dictionary<StablePlayerId, MutablePlayerStats>();
-            _sideByPlayer = new Dictionary<StablePlayerId, TeamSide>();
-            AddTeam(Context.Home);
-            AddTeam(Context.Away);
-            if (Context.Home.Players.Count != Context.Away.Players.Count)
+            var home = (homePlayers ?? throw new ArgumentNullException(nameof(homePlayers))).ToArray();
+            var away = (awayPlayers ?? throw new ArgumentNullException(nameof(awayPlayers))).ToArray();
+            if (home.Length != away.Length)
             {
-                throw new ArgumentException("Both court rosters must have the same size.", nameof(context));
-            }
-
-            _rules = rules ?? MatchSetRules.ForRosterSize(Context.Home.Players.Count);
-            _homeRotation = new TeamRotation(Context.Home.Players.Select(player => player.PlayerId));
-            _awayRotation = new TeamRotation(Context.Away.Players.Select(player => player.PlayerId));
-            ServingSide = firstServer;
-        }
-
-        public MatchSet(
-            MatchContextV2 context,
-            TeamSide firstServer,
-            MatchSetRules rules = null)
-        {
-            ContextV2 = context ?? throw new ArgumentNullException(nameof(context));
-            if (!Enum.IsDefined(typeof(TeamSide), firstServer))
-            {
-                throw new ArgumentOutOfRangeException(nameof(firstServer));
+                throw new ArgumentException("Both court rosters must have the same size.");
             }
 
             _statsByPlayer = new Dictionary<StablePlayerId, MutablePlayerStats>();
             _sideByPlayer = new Dictionary<StablePlayerId, TeamSide>();
-            AddTeam(ContextV2.Home);
-            AddTeam(ContextV2.Away);
-            if (ContextV2.Home.Players.Count != ContextV2.Away.Players.Count)
-            {
-                throw new ArgumentException("Both court rosters must have the same size.", nameof(context));
-            }
-
-            _rules = rules ?? MatchSetRules.ForRosterSize(ContextV2.Home.Players.Count);
-            _homeRotation = new TeamRotation(ContextV2.Home.Players.Select(player => player.PlayerId));
-            _awayRotation = new TeamRotation(ContextV2.Away.Players.Select(player => player.PlayerId));
+            AddTeam(home, TeamSide.Home);
+            AddTeam(away, TeamSide.Away);
+            _rules = rules ?? MatchSetRules.ForRosterSize(home.Length);
+            _homeRotation = new TeamRotation(home);
+            _awayRotation = new TeamRotation(away);
             ServingSide = firstServer;
         }
 
-        public MatchContextV1 Context { get; }
-
-        public MatchContextV2 ContextV2 { get; }
+        public MatchContextV4 Context { get; }
 
         public int HomeScore { get; private set; }
 
@@ -217,7 +249,9 @@ namespace Volleyball.Domain
                          Math.Abs(HomeScore - AwayScore) >= _rules.MinimumLead;
         }
 
-        public MatchResultV1 CreateResult()
+        public MatchResultV4 CreateResult(
+            int acceptedContacts,
+            int v3RuleTransitionCount)
         {
             if (!IsComplete)
             {
@@ -227,46 +261,35 @@ namespace Volleyball.Domain
             var winner = WinnerSide == TeamSide.Home ? Context.Home.TeamId : Context.Away.TeamId;
             var stats = _statsByPlayer
                 .OrderBy(entry => entry.Key.Value, StringComparer.Ordinal)
-                .Select(entry => entry.Value.ToContract(entry.Key))
+                .Select(entry => entry.Value.ToContractV4(entry.Key))
                 .ToArray();
-            return MatchResultV1.Create(Context, winner, HomeScore, AwayScore, stats);
+            return MatchResultV4.Create(
+                Context,
+                winner,
+                HomeScore,
+                AwayScore,
+                HomeScore + AwayScore,
+                acceptedContacts,
+                v3RuleTransitionCount,
+                stats);
         }
 
-        public MatchResultV2 CreateResultV2()
+        internal RuntimePlayerStats[] CreateRuntimeStats()
         {
-            if (!IsComplete)
-            {
-                throw new InvalidOperationException("A result is available only after the set completes.");
-            }
-
-            if (ContextV2 == null)
-            {
-                throw new InvalidOperationException("This set was created with a V1 context.");
-            }
-
-            var winner = WinnerSide == TeamSide.Home ? ContextV2.Home.TeamId : ContextV2.Away.TeamId;
-            var stats = _statsByPlayer
+            return _statsByPlayer
                 .OrderBy(entry => entry.Key.Value, StringComparer.Ordinal)
-                .Select(entry => entry.Value.ToContractV2(entry.Key))
+                .Select(entry => entry.Value.ToRuntime(entry.Key))
                 .ToArray();
-            return MatchResultV2.Create(ContextV2, winner, HomeScore, AwayScore, stats);
         }
 
-        private void AddTeam(TeamSnapshotV1 team)
+        private void AddTeam(
+            IEnumerable<StablePlayerId> playerIds,
+            TeamSide side)
         {
-            foreach (var player in team.Players)
+            foreach (var playerId in playerIds)
             {
-                _statsByPlayer.Add(player.PlayerId, new MutablePlayerStats());
-                _sideByPlayer.Add(player.PlayerId, team.Side);
-            }
-        }
-
-        private void AddTeam(TeamSnapshotV2 team)
-        {
-            foreach (var player in team.Players)
-            {
-                _statsByPlayer.Add(player.PlayerId, new MutablePlayerStats());
-                _sideByPlayer.Add(player.PlayerId, team.Side);
+                _statsByPlayer.Add(playerId, new MutablePlayerStats());
+                _sideByPlayer.Add(playerId, side);
             }
         }
 
@@ -333,14 +356,19 @@ namespace Volleyball.Domain
             public int Errors;
             public float Workload;
 
-            public PlayerMatchStatsV1 ToContract(StablePlayerId playerId)
+            public RuntimePlayerStats ToRuntime(StablePlayerId playerId)
             {
-                return new PlayerMatchStatsV1(playerId, Points, Contacts, Errors, Workload);
+                return new RuntimePlayerStats(
+                    playerId,
+                    Points,
+                    Contacts,
+                    Errors,
+                    Workload);
             }
 
-            public PlayerMatchStatsV2 ToContractV2(StablePlayerId playerId)
+            public PlayerMatchStatsV4 ToContractV4(StablePlayerId playerId)
             {
-                return new PlayerMatchStatsV2(playerId, Points, Contacts, Errors, Workload);
+                return new PlayerMatchStatsV4(playerId, Points, Contacts, Errors, Workload);
             }
         }
     }

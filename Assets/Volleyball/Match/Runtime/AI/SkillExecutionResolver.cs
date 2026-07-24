@@ -24,7 +24,14 @@ namespace Volleyball.AI
 
             var random = new Random(CombineSeed(seed, playerStableId, rallyNumber, actionIndex, (int)action));
             var technique = profile.TechniqueFor(action);
-            var executionScale = (1f - technique) * difficulty;
+            var directionControl = action == TechniqueAction.Attack
+                ? profile.AttackDirectionControl
+                : technique;
+            var speedControl = action == TechniqueAction.Attack
+                ? profile.AttackSpeedControl
+                : technique;
+            var directionErrorScale = (1f - directionControl) * difficulty;
+            var speedErrorScale = (1f - speedControl) * difficulty;
             var reactionDelay = NextPositive(random) * MaximumReactionDelaySeconds *
                                 (1f - profile.Reaction) * difficulty;
             var positionRange = action switch
@@ -38,12 +45,12 @@ namespace Volleyball.AI
 
             return new SkillExecutionError(
                 reactionDelay,
-                RandomVector(random, positionRange) * executionScale,
-                RandomVector(random, new SimVector3(normalRangeDegrees, normalRangeDegrees, normalRangeDegrees)) * executionScale,
-                NextSigned(random) * 0.08f * executionScale,
-                1f + (NextSigned(random) * speedRange * executionScale),
-                RandomVector(random, new SimVector3(1.5f, 1.5f, 1.5f)) * executionScale,
-                TechniqueControlPolicy.MaximumControlFor(action) * technique);
+                RandomVector(random, positionRange) * directionErrorScale,
+                RandomVector(random, new SimVector3(normalRangeDegrees, normalRangeDegrees, normalRangeDegrees)) * directionErrorScale,
+                NextSigned(random) * 0.08f * speedErrorScale,
+                1f + (NextSigned(random) * speedRange * speedErrorScale),
+                RandomVector(random, new SimVector3(1.5f, 1.5f, 1.5f)) * directionErrorScale,
+                TechniqueControlPolicy.MaximumControlFor(action) * directionControl);
         }
 
         private static SimVector3 RandomVector(Random random, SimVector3 range)

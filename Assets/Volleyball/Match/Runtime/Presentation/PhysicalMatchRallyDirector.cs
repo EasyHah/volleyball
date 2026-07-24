@@ -8,11 +8,8 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
-using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
-using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
-using MatchContextV3 = Volleyball.Shared.Contracts.MatchContextV3;
-using MatchResultV1 = Volleyball.Shared.Contracts.MatchResultV1;
-using MatchResultV2 = Volleyball.Shared.Contracts.MatchResultV2;
+using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
@@ -212,7 +209,7 @@ namespace Volleyball.Presentation
         private BlockImpactFeedback _blockImpactFeedback;
         private AiDecisionTimeController _aiDecisionTimeController;
         private PhysicalRallyTactics _currentTactics;
-        private MatchSet _set;
+        private IMatchSetRuntime _set;
         private RallyTouchState _touchState;
         private TeamRallyDecision _scheduledDecision;
         private TeamRallyDecision _plannedAttackDecision;
@@ -249,7 +246,8 @@ namespace Volleyball.Presentation
         private int _aiRequestSequence;
         private int _contactGroupSequence = 3000;
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
-        private MatchContextV3 _v3Context;
+        private MatchContextV4 _matchContext;
+        private MatchSet _formalSet;
         private PendingV3AuthorityContact _pendingV3AuthorityContact;
         private StablePlayerId? _lastAcceptedV3Actor;
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
@@ -428,11 +426,17 @@ namespace Volleyball.Presentation
 
         public bool IsLoopRunning => _rallyActive && !_restartScheduled;
 
-        public MatchResultV1 Result { get; private set; }
+        public MatchResultV4 Result { get; private set; }
 
-        public MatchResultV2 ResultV2 { get; private set; }
+        private bool HasResult => Result != null || HasPrototypeResult;
 
-        private bool HasResult => Result != null || ResultV2 != null;
+        protected virtual bool HasPrototypeResult => false;
+
+        protected virtual void CompletePrototypeMatch()
+        {
+            throw new InvalidOperationException(
+                "Only an explicitly isolated prototype director may complete a legacy match.");
+        }
 
         public int PlayerCount => _players.Count;
 
@@ -476,9 +480,7 @@ namespace Volleyball.Presentation
 
         public int AwayRotationOffset => _set == null ? 0 : _set.RotationOffsetFor(TeamSide.Away);
 
-        public MatchContextV1 MatchContext => _set?.Context;
-
-        public MatchContextV2 MatchContextV2 => _set?.ContextV2;
+        public MatchContextV4 MatchContext => _matchContext;
 
         public bool IsFrontRow(PlayerId player)
         {
@@ -490,49 +492,43 @@ namespace Volleyball.Presentation
             return _set == null ? 0 : _set.RotationPositionFor(StableId(player));
         }
 
-        public void Initialize(
+        public void InitializeV4(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
-            MatchContextV1 context,
+            MatchContextV4 context,
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
             PhysicalMatchConfiguration configuration = null,
             TeamSide firstServingSide = TeamSide.Home)
         {
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
+            if (matchContext.RulesVersion != 3)
+            {
+                throw new ArgumentException(
+                    "Formal match runtime requires the independently versioned V3 rules.",
+                    nameof(context));
+            }
+
+            _matchContext = matchContext;
             InitializeCore(
                 ball,
                 agents,
                 scoreDisplay,
                 tacticalWeightSource,
-                configuration,
+                configuration ?? PhysicalMatchConfiguration.FormalIndoorSixVsSix,
                 matchContext.Home.Players.Count,
                 matchContext.Away.Players.Count,
-                () => new MatchSet(matchContext, firstServingSide, _configuration.SetRules));
+                () =>
+                {
+                    _formalSet = new MatchSet(
+                        matchContext,
+                        firstServingSide,
+                        _configuration.SetRules);
+                    return _formalSet;
+                });
         }
 
-        public void InitializeV2(
-            SimulatedBall ball,
-            IEnumerable<PrototypePlayerAgent> agents,
-            MatchContextV2 context,
-            ScoreDisplay scoreDisplay,
-            IRallyTacticalWeightSource tacticalWeightSource = null,
-            PhysicalMatchConfiguration configuration = null,
-            TeamSide firstServingSide = TeamSide.Home)
-        {
-            var matchContext = context ?? throw new ArgumentNullException(nameof(context));
-            InitializeCore(
-                ball,
-                agents,
-                scoreDisplay,
-                tacticalWeightSource,
-                configuration,
-                matchContext.Home.Players.Count,
-                matchContext.Away.Players.Count,
-                () => new MatchSet(matchContext, firstServingSide, _configuration.SetRules));
-        }
-
-        private void InitializeCore(
+        protected void InitializeCore(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
             ScoreDisplay scoreDisplay,
@@ -540,7 +536,7 @@ namespace Volleyball.Presentation
             PhysicalMatchConfiguration configuration,
             int homeRosterSize,
             int awayRosterSize,
-            Func<MatchSet> createSet)
+            Func<IMatchSetRuntime> createSet)
         {
             _configuration = configuration ?? PhysicalMatchConfiguration.ThreeVsThree;
             _ball = ball != null ? ball : throw new ArgumentNullException(nameof(ball));
@@ -623,7 +619,7 @@ namespace Volleyball.Presentation
                 minimumSimulationWindowSeconds);
         }
 
-        public void ConfigureV3Rules(MatchContextV3 context, V3RulesMode mode)
+        public void ConfigureV3Rules(V3RulesMode mode)
         {
             if (_set == null)
             {
@@ -644,7 +640,6 @@ namespace Volleyball.Presentation
             if (mode == V3RulesMode.Disabled)
             {
                 _v3RulesAdapter = null;
-                _v3Context = null;
                 _pendingV3AuthorityContact = null;
                 if (_ball != null)
                 {
@@ -655,32 +650,25 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            if (_configuration.RosterSize != 6 || _set.ContextV2 == null)
+            if (_configuration.RosterSize != 6 || _matchContext == null)
             {
                 throw new InvalidOperationException(
-                    "V3 rules can only be configured for a V2 formal six-player match.");
+                    "V3 rules can only be configured for a V4 formal six-player match.");
             }
 
-            var upgradedContext = context ?? throw new ArgumentNullException(nameof(context));
-            var expectedContext = MatchContextV3.UpgradeFromV2(_set.ContextV2);
-            if (!string.Equals(
-                    upgradedContext.ContextHash,
-                    expectedContext.ContextHash,
-                    StringComparison.Ordinal))
+            if (_matchContext.RulesVersion != 3)
             {
-                throw new ArgumentException(
-                    "The V3 context must be the explicit upgrade of the initialized V2 match.",
-                    nameof(context));
+                throw new InvalidOperationException(
+                    "The formal V4 context must select V3 rules.");
             }
 
-            var eligibility = CreateV3Eligibility(upgradedContext);
+            var eligibility = CreateV3Eligibility(_matchContext);
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                upgradedContext,
+                _matchContext.RulesVersion,
                 eligibility,
                 _set.ServingSide,
                 mode);
             _v3RulesAdapter = adapter;
-            _v3Context = upgradedContext;
             V3RulesMode = mode;
             _pendingV3AuthorityContact = null;
             if (_ball != null)
@@ -827,7 +815,7 @@ namespace Volleyball.Presentation
             if (_v3RulesAdapter != null)
             {
                 _v3RulesAdapter.BeginRally(
-                    CreateV3Eligibility(_v3Context),
+                    CreateV3Eligibility(_matchContext),
                     _set.ServingSide);
                 _pendingV3AuthorityContact = null;
                 _lastAcceptedV3Actor = null;
@@ -2022,7 +2010,7 @@ namespace Volleyball.Presentation
                 plannedContact,
                 actualArrival.Position,
                 actualArrival.TimeSeconds,
-                attacker.Ability.MaxAttackReach,
+                attacker.Ability.PlannedAttackContactHeightMeters,
                 provisionalDecision.Actor.Role,
                 provisionalDecision.Actor.Team,
                 setterDepthFromNet,
@@ -2317,7 +2305,7 @@ namespace Volleyball.Presentation
             return rotation;
         }
 
-        private OnCourtEligibilitySnapshot CreateV3Eligibility(MatchContextV3 context)
+        private OnCourtEligibilitySnapshot CreateV3Eligibility(MatchContextV4 context)
         {
             return OnCourtLineupRulesV3.Create(
                 context,
@@ -2727,13 +2715,15 @@ namespace Volleyball.Presentation
                 $"score={_set.HomeScore}:{_set.AwayScore}");
             if (_set.IsComplete)
             {
-                if (_set.ContextV2 != null)
+                if (_formalSet != null)
                 {
-                    ResultV2 = _set.CreateResultV2();
+                    Result = _formalSet.CreateResult(
+                        SuccessfulContacts,
+                        V3RuleTransitions);
                 }
                 else
                 {
-                    Result = _set.CreateResult();
+                    CompletePrototypeMatch();
                 }
                 _ball.Stop();
                 _status = $"RESULT READY  {_set.HomeScore}:{_set.AwayScore}";

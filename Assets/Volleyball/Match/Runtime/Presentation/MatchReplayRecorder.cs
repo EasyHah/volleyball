@@ -442,9 +442,9 @@ namespace Volleyball.Presentation
                     Jump = ability.Jump,
                     ReceiveTechnique = ability.ReceiveTechnique,
                     SetTechnique = ability.SetTechnique,
-                    AttackTechnique = ability.AttackTechnique,
-                    AttackPower = ability.AttackPower,
-                    MaxAttackReach = ability.MaxAttackReach
+                    AttackTechnique = ability.AttackDirectionControl,
+                    AttackPower = ability.AttackPowerCapacity,
+                    MaxAttackReach = ability.PlannedAttackContactHeightMeters
                 });
             }
 
@@ -478,9 +478,9 @@ namespace Volleyball.Presentation
             {
                 Receive = ability.ReceiveTechnique,
                 Set = ability.SetTechnique,
-                Attack = ability.AttackTechnique,
+                Attack = ability.AttackDirectionControl,
                 Block = ability.Jump,
-                Serve = ability.AttackPower,
+                Serve = ability.Attributes.Serve.PowerCapacity,
                 Speed = ability.Mobility
             };
         }
@@ -489,7 +489,7 @@ namespace Volleyball.Presentation
         {
             var ability = PlayerFor(playerId).Ability;
             return action == TechniqueAction.Attack
-                ? ability.AttackPower * ability.AttackTechnique
+                ? ability.AttackPowerCapacity * ability.AttackDirectionControl
                 : ability.TechniqueFor(action);
         }
 

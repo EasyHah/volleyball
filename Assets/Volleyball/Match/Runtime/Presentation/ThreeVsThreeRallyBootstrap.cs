@@ -2,11 +2,16 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
+using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
+using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
+using MatchAttributeDerivationV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationV4;
 using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
+using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
 using PlayerAbilitySnapshotV2 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV2;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
 using PlayerSnapshotV2 = Volleyball.Shared.Contracts.PlayerSnapshotV2;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using TeamSnapshotV2 = Volleyball.Shared.Contracts.TeamSnapshotV2;
 
@@ -26,7 +31,7 @@ namespace Volleyball.Presentation
             var agents = CreateSixAgents(context);
             var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<ThreeVsThreeRallyDirector>();
-            director.InitializeV2(ball, agents, context, scoreDisplay);
+            director.InitializePrototypeLegacyV2(ball, agents, context, scoreDisplay);
             var cameras = gameObject.AddComponent<RallyCameraController>();
             cameras.Initialize(ball);
         }
@@ -90,7 +95,14 @@ namespace Volleyball.Presentation
 
             var agent = playerObject.AddComponent<PrototypePlayerAgent>();
             agent.Initialize(new PlayerId(team, role), color, jerseyNumber);
-            agent.SetAbility(new PlayerAbilityProfile(AbilityFor(context, team, role)));
+            var positionForAbility = role switch
+            {
+                PlayerRole.Defender => PlayerPosition.Defender,
+                PlayerRole.Setter => PlayerPosition.Setter,
+                PlayerRole.Attacker => PlayerPosition.OutsideHitter,
+                _ => throw new System.ArgumentOutOfRangeException(nameof(role))
+            };
+            agent.SetAbility(AbilityFor(positionForAbility));
             agents.Add(agent);
         }
 
@@ -156,9 +168,9 @@ namespace Volleyball.Presentation
                     ability.Jump,
                     ability.ReceiveTechnique,
                     ability.SetTechnique,
-                    ability.AttackTechnique,
-                    ability.AttackPower,
-                    ReachFor(position)));
+                    ability.AttackDirectionControl,
+                    ability.AttackPowerCapacity,
+                    Mathf.Max(3.20f, ability.PlannedAttackContactHeightMeters)));
         }
 
         private static PlayerAbilityProfile AbilityFor(PlayerPosition position)
@@ -166,18 +178,44 @@ namespace Volleyball.Presentation
             return position switch
             {
                 PlayerPosition.Defender => new PlayerAbilityProfile(
-                    0.88f, 0.91f, 0.78f, 0.94f, 0.74f, 0.70f, 0.68f),
+                    Derive(0.88f, 0.91f, 0.78f, 0.94f, 0.74f, 0.70f, 0.68f)),
                 PlayerPosition.Setter => new PlayerAbilityProfile(
-                    0.90f, 0.93f, 0.80f, 0.80f, 0.95f, 0.74f, 0.70f),
+                    Derive(0.90f, 0.93f, 0.80f, 0.80f, 0.95f, 0.74f, 0.70f)),
                 PlayerPosition.OutsideHitter => new PlayerAbilityProfile(
-                    0.91f, 0.89f, 0.94f, 0.72f, 0.72f, 0.93f, 0.92f),
+                    Derive(0.91f, 0.89f, 0.94f, 0.72f, 0.72f, 0.93f, 0.92f)),
                 _ => throw new System.ArgumentOutOfRangeException(nameof(position))
             };
         }
 
-        private static float ReachFor(PlayerPosition position)
+        private static Volleyball.Shared.Contracts.DerivedMatchAttributesV4 Derive(
+            float mobility,
+            float reaction,
+            float jump,
+            float receiveTechnique,
+            float setTechnique,
+            float attackTechnique,
+            float attackPower)
         {
-            return position == PlayerPosition.OutsideHitter ? 3.42f : 3.20f;
+            return MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(
+                    1.90f,
+                    2.42f,
+                    jump,
+                    mobility,
+                    reaction,
+                    0.8f),
+                new TechnicalBaseAttributesV4(
+                    attackTechnique,
+                    attackPower,
+                    0.8f,
+                    receiveTechnique,
+                    receiveTechnique,
+                    setTechnique,
+                    attackTechnique,
+                    0.8f,
+                    reaction),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
         }
     }
 }
