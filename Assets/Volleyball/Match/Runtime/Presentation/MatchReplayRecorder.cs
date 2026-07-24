@@ -33,7 +33,7 @@ namespace Volleyball.Presentation
                 throw new ArgumentNullException(nameof(director));
             }
 
-            if (director.MatchContext != null)
+            if (director is FormalSixVsSixRallyDirector)
             {
                 throw new NotSupportedException(
                     "Formal V4 matches cannot be projected into the legacy V1 replay contract.");
