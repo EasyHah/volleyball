@@ -248,6 +248,8 @@ namespace Volleyball.Presentation
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
         private MatchContextV4 _matchContext;
         private MatchSet _formalSet;
+        private ExecutionEnvelopeV4 _lastPlannedExecutionEnvelopeV4;
+        private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
         private PendingV3AuthorityContact _pendingV3AuthorityContact;
         private StablePlayerId? _lastAcceptedV3Actor;
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
@@ -481,6 +483,37 @@ namespace Volleyball.Presentation
         public int AwayRotationOffset => _set == null ? 0 : _set.RotationOffsetFor(TeamSide.Away);
 
         public MatchContextV4 MatchContext => _matchContext;
+
+        public ExecutionEnvelopeV4 LastPlannedExecutionEnvelopeV4 =>
+            _lastPlannedExecutionEnvelopeV4;
+
+        public ExecutionSampleClassificationV4 LastExecutionSampleClassificationV4 =>
+            _lastExecutionSampleClassificationV4;
+
+        public static ExecutionEnvelopeV4 PlanExecutionEnvelopeV4(
+            Volleyball.Shared.Contracts.DerivedMatchAttributesV4 derivedAttributes,
+            ExecutionIntentV4 selectedIntent,
+            string samplingKey,
+            ExecutionEnvelopePolicyV4 policy)
+        {
+            return ExecutionEnvelopeFactoryV4.Create(
+                derivedAttributes,
+                selectedIntent,
+                samplingKey,
+                policy);
+        }
+
+        public static ExecutionSampleClassificationV4 ExecuteExecutionSampleV4(
+            ExecutionEnvelopeV4 plannedEnvelope,
+            ExecutionSampleV4 sample)
+        {
+            if (plannedEnvelope == null)
+            {
+                throw new ArgumentNullException(nameof(plannedEnvelope));
+            }
+
+            return plannedEnvelope.Classify(sample);
+        }
 
         public bool IsFrontRow(PlayerId player)
         {
@@ -1280,6 +1313,23 @@ namespace Volleyball.Presentation
                     SimulatedBall.DefaultFixedStep,
                     SimulationParameters).InitialVelocity;
             }
+            var executionCandidateCategory = ToExecutionCandidateCategoryV4(decision.Action);
+            var executionIntentIdentity =
+                $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
+                $"{_tacticRevision}:{_decisionIndex}:{SuccessfulContacts}:{(int)decision.Actor.Team}:" +
+                $"{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}:{(int)decision.Action}";
+            var executionSamplingKey = executionIntentIdentity + ":sample";
+            var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
+                actor.Ability.Derived,
+                new ExecutionIntentV4(
+                    executionIntentIdentity,
+                    executionCandidateCategory,
+                    outgoingTarget,
+                    outgoing,
+                    requestedEffort: 0.6f),
+                executionSamplingKey,
+                ExecutionEnvelopePolicyV4.Default);
+            _lastPlannedExecutionEnvelopeV4 = plannedExecutionEnvelope;
             var execution = _forceInSystemReceiveExecution &&
                             decision.Action == TechniqueAction.Receive
                 ? InSystemReceiveExecution()
@@ -1292,6 +1342,16 @@ namespace Volleyball.Presentation
                     7351,
                     0.72f);
             ExecutionErrorApplications++;
+            var executionSample = new ExecutionSampleV4(
+                plannedExecutionEnvelope.Identity,
+                executionSamplingKey,
+                executionCandidateCategory,
+                outgoingTarget + execution.ContactPositionError,
+                (outgoing * execution.SurfaceSpeedScale) + execution.TargetVelocityError,
+                effort: plannedExecutionEnvelope.RequestedEffort);
+            _lastExecutionSampleClassificationV4 = ExecuteExecutionSampleV4(
+                plannedExecutionEnvelope,
+                executionSample);
 
             _expectedContactTime = _ball.SimulationTime + flightSeconds;
             if (decision.Action == TechniqueAction.Receive)
@@ -1340,7 +1400,8 @@ namespace Volleyball.Presentation
             actor.ScheduleContact(
                 decision.Action,
                 _expectedContactTime,
-                outgoing,
+                plannedExecutionEnvelope,
+                executionSample,
                 execution,
                 NextContactGroup(),
                 authoritativeContactCenter,
@@ -1430,6 +1491,26 @@ namespace Volleyball.Presentation
                 1f,
                 SimVector3.Zero,
                 TechniqueControlPolicy.MaximumControlFor(TechniqueAction.Receive));
+        }
+
+        private static ExecutionCandidateCategoryV4 ToExecutionCandidateCategoryV4(
+            TechniqueAction action)
+        {
+            switch (action)
+            {
+                case TechniqueAction.Receive:
+                    return ExecutionCandidateCategoryV4.Receive;
+                case TechniqueAction.Set:
+                    return ExecutionCandidateCategoryV4.Set;
+                case TechniqueAction.Attack:
+                    return ExecutionCandidateCategoryV4.Attack;
+                case TechniqueAction.Block:
+                    return ExecutionCandidateCategoryV4.Block;
+                case TechniqueAction.Serve:
+                    return ExecutionCandidateCategoryV4.Serve;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(action), action, null);
+            }
         }
 
         private void PrepareAttackerForReceive(

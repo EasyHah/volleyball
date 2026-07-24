@@ -6,6 +6,7 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
@@ -63,6 +64,10 @@ namespace Volleyball.Presentation
         public SimVector3 LastScheduledSurfaceCenter { get; private set; }
 
         public SimVector3 LastScheduledSurfaceNormal { get; private set; }
+
+        public ExecutionEnvelopeV4 ScheduledExecutionEnvelopeV4 { get; private set; }
+
+        public ExecutionSampleV4 ScheduledExecutionSampleV4 { get; private set; }
 
         internal float MinimumActiveSurfacePlanError { get; private set; }
 
@@ -160,6 +165,70 @@ namespace Volleyball.Presentation
         public void ScheduleContact(
             TechniqueAction action,
             float scheduledSimulationTime,
+            ExecutionEnvelopeV4 plannedEnvelope,
+            ExecutionSampleV4 executionSample,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null)
+        {
+            if (plannedEnvelope == null)
+            {
+                throw new ArgumentNullException(nameof(plannedEnvelope));
+            }
+
+            if (executionSample == null)
+            {
+                throw new ArgumentNullException(nameof(executionSample));
+            }
+
+            var classification = plannedEnvelope.Classify(executionSample);
+            if (classification.Kind ==
+                ExecutionSampleClassificationKindV4.UnexpectedExecutionSample)
+            {
+                throw new ArgumentException(
+                    "Execution sample does not belong to the planned V4 envelope.",
+                    nameof(executionSample));
+            }
+
+            var consumedVelocityError = new SkillExecutionError(
+                executionError.ReactionDelay,
+                executionError.ContactPositionError,
+                executionError.ContactNormalErrorDegrees,
+                executionError.ContactTimingError,
+                executionError.SurfaceSpeedScale,
+                SimVector3.Zero,
+                executionError.MaximumTechniqueControl);
+            ScheduleContact(
+                action,
+                scheduledSimulationTime,
+                executionSample.Velocity,
+                consumedVelocityError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute);
+
+            // The V4 sample is already the fully resolved command. The legacy
+            // overload applies an attack multiplier, so overwrite that
+            // compatibility transform instead of mutating the sample.
+            _targetVelocity = executionSample.Velocity;
+            ScheduledExecutionEnvelopeV4 = plannedEnvelope;
+            ScheduledExecutionSampleV4 = executionSample;
+        }
+
+        public void ScheduleContact(
+            TechniqueAction action,
+            float scheduledSimulationTime,
             SimVector3 targetVelocity,
             SkillExecutionError executionError,
             int contactGroupId,
@@ -171,6 +240,8 @@ namespace Volleyball.Presentation
             AttackContactPlan? attackContactPlan = null,
             SetRoute? normalSetRoute = null)
         {
+            ScheduledExecutionEnvelopeV4 = null;
+            ScheduledExecutionSampleV4 = null;
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
                 throw new ArgumentException("Only attack contacts may include an approach plan.", nameof(attackApproach));

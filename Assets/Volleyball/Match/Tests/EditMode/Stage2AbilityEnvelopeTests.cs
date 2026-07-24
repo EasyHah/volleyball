@@ -1,7 +1,13 @@
 using NUnit.Framework;
+using UnityEngine;
+using Volleyball.Domain.Players;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
+using PrototypePlayerId = Volleyball.Domain.Prototype.PlayerId;
+using PrototypePlayerRole = Volleyball.Domain.Prototype.PlayerRole;
+using PrototypeTeamId = Volleyball.Domain.Prototype.TeamId;
 
 namespace Volleyball.EditModeTests
 {
@@ -106,128 +112,467 @@ namespace Volleyball.EditModeTests
     public sealed class Stage2ExecutionEnvelopeTests
     {
         [Test]
-        public void FullEnvelope_SameInputProducesSameIdentity()
+        public void Create_SameInputsProduceEqualIdentityAndCanonicalBytes()
         {
-            var first = CreateFullEnvelope();
-            var second = CreateFullEnvelope();
+            var first = CreateEnvelope();
+            var second = CreateEnvelope();
 
+            Assert.That(second.Identity, Is.EqualTo(first.Identity));
             Assert.That(second, Is.EqualTo(first));
             Assert.That(second.GetHashCode(), Is.EqualTo(first.GetHashCode()));
+            CollectionAssert.AreEqual(first.ToCanonicalBytes(), second.ToCanonicalBytes());
         }
 
         [Test]
-        public void ClassifySample_WithinEnvelope()
+        public void PlannerAndExecutor_UseTheExactSameEnvelopeInstance()
         {
-            var envelope = CreateFullEnvelope();
-            var sample = new ExecutionSampleV3(
-                envelope.DeterministicSampleKey,
-                new SimVector3(0.05f, 0.05f, 0.05f),
-                velocityScale: 0.95f,
-                effort: 0.9f,
-                sampleClass: "normal");
+            var planned = PhysicalMatchRallyDirector.PlanExecutionEnvelopeV4(
+                MatchV4TestFixture.CreateDerived(),
+                CreateIntent(),
+                "sample-17",
+                CreatePolicy());
+            var sample = SampleAtBaseline(planned);
 
-            Assert.That(envelope.ClassifySample(sample), Is.EqualTo(ExecutionSampleClassification.WithinEnvelope));
+            var executed = PhysicalMatchRallyDirector.ExecuteExecutionSampleV4(planned, sample);
+
+            Assert.That(executed.TestedEnvelope, Is.SameAs(planned));
+            Assert.That(executed.Sample, Is.SameAs(sample));
+            Assert.That(executed.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.Accepted));
         }
 
         [Test]
-        public void ClassifySample_EnvelopeExceeded()
+        public void PhysicalExecutor_UsesExactEnvelopeSampleAndVelocity()
         {
-            var envelope = CreateFullEnvelope();
-            var sample = new ExecutionSampleV3(
-                envelope.DeterministicSampleKey,
-                new SimVector3(2f, 2f, 2f),
-                velocityScale: 1.5f,
-                effort: 1f,
-                sampleClass: "out-of-bounds");
+            var derived = MatchV4TestFixture.CreateDerived();
+            var envelope = CreateEnvelope(derived: derived);
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                envelope.BaselineTarget,
+                new SimVector3(3f, 4f, 5f),
+                envelope.RequestedEffort);
+            var noError = new SkillExecutionError(
+                0f,
+                SimVector3.Zero,
+                SimVector3.Zero,
+                0f,
+                1f,
+                SimVector3.Zero,
+                1f);
+            var playerObject = new GameObject("V4EnvelopeExecutor");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(
+                    new PrototypePlayerId(
+                        PrototypeTeamId.Blue,
+                        PrototypePlayerRole.Attacker),
+                    Color.blue,
+                    "2");
+                player.SetAbility(new PlayerAbilityProfile(derived));
 
-            Assert.That(envelope.ClassifySample(sample), Is.EqualTo(ExecutionSampleClassification.EnvelopeExceeded));
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2f,
+                    envelope,
+                    sample,
+                    noError,
+                    contactGroupId: 171);
+                var contacts = new System.Collections.Generic.List<BallContactCandidate>();
+                player.CollectContacts(2f, 1f / 120f, contacts);
+
+                Assert.That(player.ScheduledExecutionEnvelopeV4, Is.SameAs(envelope));
+                Assert.That(player.ScheduledExecutionSampleV4, Is.SameAs(sample));
+                Assert.That(contacts, Is.Not.Empty);
+                Assert.That(contacts[0].TargetVelocity, Is.EqualTo(sample.Velocity));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
         }
 
         [Test]
-        public void EnvelopeIdentity_ChangesWhenEffortOrMaximumEffortChanges()
+        public void Identity_IncludesEveryBoundaryEffortDistributionSamplingSourceAndVersion()
         {
-            var baseline = CreateEnvelope(effort: 0.5f, maximumEffort: 0.8f);
-            var changedEffort = CreateEnvelope(effort: 0.6f, maximumEffort: 0.8f);
-            var changedMaximum = CreateEnvelope(effort: 0.5f, maximumEffort: 0.9f);
+            var baseline = CreateEnvelope();
+            var variants = new[]
+            {
+                CreateEnvelope(derived: MatchV4TestFixture.CreateDerived(attackTechnique: 0.42f)),
+                CreateEnvelope(derived: MatchV4TestFixture.CreateDerived(attackPower: 0.42f)),
+                CreateEnvelope(intent: CreateIntent(sourceIdentity: "intent-2")),
+                CreateEnvelope(intent: CreateIntent(target: new SimVector3(1.01f, 2f, 3f))),
+                CreateEnvelope(intent: CreateIntent(velocity: new SimVector3(4.01f, 5f, 6f))),
+                CreateEnvelope(intent: CreateIntent(requestedEffort: 0.51f)),
+                CreateEnvelope(samplingKey: "sample-18"),
+                CreateEnvelope(policy: CreatePolicy(envelopeVersion: 5)),
+                CreateEnvelope(policy: CreatePolicy(policyVersion: 2)),
+                CreateEnvelope(policy: CreatePolicy(sampleCount: 9)),
+                CreateEnvelope(policy: CreatePolicy(
+                    candidateOrder: new[]
+                    {
+                        ExecutionCandidateCategoryV4.Attack,
+                        ExecutionCandidateCategoryV4.Receive,
+                        ExecutionCandidateCategoryV4.Set,
+                        ExecutionCandidateCategoryV4.Block,
+                        ExecutionCandidateCategoryV4.Serve
+                    })),
+                CreateEnvelope(policy: CreatePolicy(
+                    degradationLadder: new[]
+                    {
+                        ExecutionDegradationStepV4.FullSampling,
+                        ExecutionDegradationStepV4.DeterministicSafeFallback
+                    })),
+                CreateEnvelope(policy: CreatePolicy(maximumExpansionCount: 3)),
+                CreateEnvelope(policy: CreatePolicy(allowedExpansionCount: 1)),
+                CreateEnvelope(policy: CreatePolicy(perStepExpansionFactor: 1.4f)),
+                CreateEnvelope(policy: CreatePolicy(
+                    targetDistributionKind: BoundedErrorDistributionKindV4.SymmetricTriangular)),
+                CreateEnvelope(policy: CreatePolicy(
+                    velocityDistributionKind: BoundedErrorDistributionKindV4.SymmetricTriangular))
+            };
 
-            Assert.That(changedEffort, Is.Not.EqualTo(baseline));
-            Assert.That(changedMaximum, Is.Not.EqualTo(baseline));
+            foreach (var variant in variants)
+            {
+                Assert.That(variant.Identity, Is.Not.EqualTo(baseline.Identity));
+                CollectionAssert.AreNotEqual(variant.ToCanonicalBytes(), baseline.ToCanonicalBytes());
+            }
         }
 
         [Test]
-        public void ClassifySample_DoesNotClampVelocityBackIntoEnvelope()
+        public void AttackDirectionControl_ChangesOnlyTargetErrorBounds()
         {
-            var envelope = CreateFullEnvelope();
-            var sample = new ExecutionSampleV3(
-                envelope.DeterministicSampleKey,
-                new SimVector3(0.05f, 0f, 0f),
-                velocityScale: envelope.Bounds.MaxVelocityScale + 0.01f,
-                effort: envelope.Effort,
-                sampleClass: "invalid-velocity");
+            var lowDirection = CreateEnvelope(
+                derived: CreateDerivedForIndependentControls(courtAwareness: 0.2f));
+            var highDirection = CreateEnvelope(
+                derived: CreateDerivedForIndependentControls(courtAwareness: 0.9f));
 
             Assert.That(
-                envelope.ClassifySample(sample),
-                Is.EqualTo(ExecutionSampleClassification.EnvelopeExceeded));
+                highDirection.TargetError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(lowDirection.TargetError.MaximumAbsoluteError.Magnitude));
+            Assert.That(highDirection.VelocityError, Is.EqualTo(lowDirection.VelocityError));
+            Assert.That(highDirection.MaximumVelocity, Is.EqualTo(lowDirection.MaximumVelocity));
+            Assert.That(highDirection.MaximumEffort, Is.EqualTo(lowDirection.MaximumEffort));
         }
 
         [Test]
-        public void ClassifySample_UnexpectedExecutionSample_WrongKey()
+        public void AttackSpeedControl_ChangesOnlyVelocityErrorBounds()
         {
-            var envelope = CreateFullEnvelope();
-            var sample = new ExecutionSampleV3(
-                "different-sample-key",
-                new SimVector3(0.05f, 0.05f, 0.05f),
-                velocityScale: 0.95f,
-                effort: 0.9f,
-                sampleClass: "normal");
+            var lowSpeed = CreateEnvelope(
+                derived: CreateDerivedForIndependentControls(softTouch: 0.2f));
+            var highSpeed = CreateEnvelope(
+                derived: CreateDerivedForIndependentControls(softTouch: 0.9f));
 
-            Assert.That(envelope.ClassifySample(sample), Is.EqualTo(ExecutionSampleClassification.UnexpectedExecutionSample));
+            Assert.That(
+                highSpeed.VelocityError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(lowSpeed.VelocityError.MaximumAbsoluteError.Magnitude));
+            Assert.That(highSpeed.TargetError, Is.EqualTo(lowSpeed.TargetError));
+            Assert.That(highSpeed.MaximumVelocity, Is.EqualTo(lowSpeed.MaximumVelocity));
+            Assert.That(highSpeed.MaximumEffort, Is.EqualTo(lowSpeed.MaximumEffort));
         }
 
         [Test]
-        public void IdentityConstructor_RemainsCompatibleWithPhase0Contract()
+        public void AttackPower_ChangesMaximumVelocityAndEffortWithoutChangingErrorBounds()
         {
-            var envelope = new ExecutionEnvelopeV3(
-                "envelope-v3",
-                "ability-hash-1",
-                "source-v3",
-                "attack",
-                "target-baseline-1",
-                "distribution-1",
-                "sample-1");
+            var lowPower = CreateEnvelope(
+                derived: MatchV4TestFixture.CreateDerived(attackTechnique: 0.7f, attackPower: 0.2f));
+            var highPower = CreateEnvelope(
+                derived: MatchV4TestFixture.CreateDerived(attackTechnique: 0.7f, attackPower: 0.9f));
 
-            Assert.That(envelope.Version, Is.EqualTo("envelope-v3"));
-            Assert.That(envelope.Samples.Count, Is.EqualTo(0));
-            Assert.That(envelope.Effort, Is.EqualTo(1f));
+            Assert.That(highPower.MaximumVelocity.Magnitude, Is.GreaterThan(lowPower.MaximumVelocity.Magnitude));
+            Assert.That(highPower.MaximumEffort, Is.GreaterThan(lowPower.MaximumEffort));
+            Assert.That(highPower.TargetError, Is.EqualTo(lowPower.TargetError));
+            Assert.That(highPower.VelocityError, Is.EqualTo(lowPower.VelocityError));
         }
 
-        internal static ExecutionEnvelopeV3 CreateFullEnvelope()
+        [Test]
+        public void Classify_NonFiniteSampleIsUnexpected()
         {
-            return CreateEnvelope(effort: 0.9f, maximumEffort: 1f);
+            var envelope = CreateEnvelope();
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                new SimVector3(float.NaN, 2f, 3f),
+                envelope.BaselineVelocity,
+                envelope.RequestedEffort);
+
+            var result = envelope.Classify(sample);
+
+            Assert.That(result.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.UnexpectedExecutionSample));
+            CollectionAssert.Contains(result.OffendingDimensions, "target.x");
+            Assert.That(result.TestedEnvelopeIdentity, Is.EqualTo(envelope.Identity));
         }
 
-        private static ExecutionEnvelopeV3 CreateEnvelope(float effort, float maximumEffort)
+        [Test]
+        public void Classify_FiniteSampleOutsideMaximumVelocityIsExceeded()
         {
-            return new ExecutionEnvelopeV3(
-                "envelope-v3",
-                "ability-hash-1",
-                "source-v3",
-                "attack",
-                "target-baseline-1",
-                "distribution-1",
-                "sample-1",
-                new SimVector3(0f, 3f, -1f),
-                new SimVector3(5f, 8f, 3f),
-                new EnvelopeBoundsV3(
-                    minTargetDeviationMeters: 0f,
-                    maxTargetDeviationMeters: 0.15f,
-                    minVelocityScale: 0.7f,
-                    maxVelocityScale: 1.2f,
-                    maxEffort: maximumEffort),
-                effort: effort,
-                samples: System.Array.Empty<ExecutionSampleV3>(),
-                provenance: "test-envelope",
-                lastSampleClassification: null);
+            var envelope = CreateEnvelope();
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                envelope.BaselineTarget,
+                new SimVector3(envelope.MaximumVelocity.X + 0.01f, 0f, 0f),
+                envelope.RequestedEffort);
+
+            var result = envelope.Classify(sample);
+
+            Assert.That(result.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExceeded));
+            CollectionAssert.Contains(result.OffendingDimensions, "velocity.maximum.x");
+        }
+
+        [Test]
+        public void Classify_ExpansionRequiresExplicitAllowedPolicyStepAndRecordsBothIdentities()
+        {
+            var prohibited = CreateEnvelope(policy: CreatePolicy(allowedExpansionCount: 0));
+            var allowed = CreateEnvelope(policy: CreatePolicy(allowedExpansionCount: 1));
+            var outsideCurrent = new SimVector3(
+                allowed.BaselineTarget.X + (allowed.TargetError.MaximumAbsoluteError.X * 1.2f),
+                allowed.BaselineTarget.Y,
+                allowed.BaselineTarget.Z);
+            var prohibitedSample = new ExecutionSampleV4(
+                prohibited.Identity,
+                prohibited.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                outsideCurrent,
+                prohibited.BaselineVelocity,
+                prohibited.RequestedEffort);
+            var allowedSample = new ExecutionSampleV4(
+                allowed.Identity,
+                allowed.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                outsideCurrent,
+                allowed.BaselineVelocity,
+                allowed.RequestedEffort);
+
+            var withoutPolicyStep = prohibited.Classify(prohibitedSample);
+            var withPolicyStep = allowed.Classify(allowedSample);
+
+            Assert.That(
+                withoutPolicyStep.Kind,
+                Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExceeded));
+            Assert.That(
+                withPolicyStep.Kind,
+                Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExpanded));
+            Assert.That(withPolicyStep.TestedEnvelopeIdentity, Is.EqualTo(allowed.Identity));
+            Assert.That(withPolicyStep.ExpandedEnvelope, Is.Not.Null);
+            Assert.That(
+                withPolicyStep.ExpandedEnvelopeIdentity,
+                Is.EqualTo(withPolicyStep.ExpandedEnvelope.Identity));
+            Assert.That(
+                withPolicyStep.ExpandedEnvelope.Expansion.CurrentExpansionCount,
+                Is.EqualTo(1));
+            CollectionAssert.AreNotEqual(
+                allowed.ToCanonicalBytes(),
+                withPolicyStep.ExpandedEnvelope.ToCanonicalBytes(),
+                "Expansion count must be part of canonical identity.");
+        }
+
+        [Test]
+        public void Classify_SequentialExplicitExpansionsProduceNewImmutableEnvelopes()
+        {
+            var initial = CreateEnvelope(policy: CreatePolicy(allowedExpansionCount: 2));
+            var firstSample = SampleWithTargetErrorScale(initial, 1.2f);
+
+            var first = initial.Classify(firstSample);
+            var secondEnvelope = first.ExpandedEnvelope;
+            var secondSample = SampleWithTargetErrorScale(secondEnvelope, 1.8f);
+            var second = secondEnvelope.Classify(secondSample);
+
+            Assert.That(first.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExpanded));
+            Assert.That(second.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExpanded));
+            Assert.That(second.ExpandedEnvelope.Expansion.CurrentExpansionCount, Is.EqualTo(2));
+            Assert.That(second.ExpandedEnvelopeIdentity, Is.Not.EqualTo(first.ExpandedEnvelopeIdentity));
+            var acceptedSample = SampleWithTargetErrorScale(
+                second.ExpandedEnvelope,
+                1.8f);
+            Assert.That(
+                second.ExpandedEnvelope.Classify(acceptedSample).Kind,
+                Is.EqualTo(ExecutionSampleClassificationKindV4.Accepted));
+        }
+
+        [Test]
+        public void Classify_ReturnsOriginalSampleWithoutClampOrRepair()
+        {
+            var envelope = CreateEnvelope();
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                new SimVector3(envelope.BaselineTarget.X + 10f, 2f, 3f),
+                new SimVector3(envelope.MaximumVelocity.X + 10f, 5f, 6f),
+                envelope.MaximumEffort + 0.1f);
+
+            var result = envelope.Classify(sample);
+
+            Assert.That(result.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.EnvelopeExceeded));
+            Assert.That(result.Sample, Is.SameAs(sample));
+            Assert.That(result.Sample.Target, Is.EqualTo(sample.Target));
+            Assert.That(result.Sample.Velocity, Is.EqualTo(sample.Velocity));
+            Assert.That(result.Sample.Effort, Is.EqualTo(sample.Effort));
+        }
+
+        [Test]
+        public void Classify_WrongEnvelopeIdentityIsUnexpectedBeforeBoundsChecks()
+        {
+            var envelope = CreateEnvelope();
+            var sample = new ExecutionSampleV4(
+                "wrong-envelope",
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                new SimVector3(envelope.BaselineTarget.X + 100f, 2f, 3f),
+                envelope.BaselineVelocity,
+                envelope.RequestedEffort);
+
+            var result = envelope.Classify(sample);
+
+            Assert.That(result.Kind, Is.EqualTo(ExecutionSampleClassificationKindV4.UnexpectedExecutionSample));
+            CollectionAssert.Contains(result.OffendingDimensions, "envelopeIdentity");
+        }
+
+        [Test]
+        public void Create_RejectsRequestedEffortAbovePowerCapacity()
+        {
+            var derived = MatchV4TestFixture.CreateDerived(
+                attackTechnique: 0.7f,
+                attackPower: 0f);
+
+            Assert.Throws<System.ArgumentException>(
+                () => CreateEnvelope(
+                    derived: derived,
+                    intent: CreateIntent(requestedEffort: 1f)));
+        }
+
+        [Test]
+        public void Create_RejectsBaselineVelocityAbovePowerCapacity()
+        {
+            Assert.Throws<System.ArgumentException>(
+                () => CreateEnvelope(
+                    intent: CreateIntent(
+                        velocity: new SimVector3(100f, 0f, 0f))));
+        }
+
+        private static ExecutionEnvelopeV4 CreateEnvelope(
+            DerivedMatchAttributesV4 derived = null,
+            ExecutionIntentV4 intent = null,
+            string samplingKey = "sample-17",
+            ExecutionEnvelopePolicyV4 policy = null)
+        {
+            return ExecutionEnvelopeFactoryV4.Create(
+                derived ?? MatchV4TestFixture.CreateDerived(),
+                intent ?? CreateIntent(),
+                samplingKey,
+                policy ?? CreatePolicy());
+        }
+
+        private static ExecutionIntentV4 CreateIntent(
+            string sourceIdentity = "intent-1",
+            SimVector3? target = null,
+            SimVector3? velocity = null,
+            float requestedEffort = 0.5f)
+        {
+            return new ExecutionIntentV4(
+                sourceIdentity,
+                ExecutionCandidateCategoryV4.Attack,
+                target ?? new SimVector3(1f, 2f, 3f),
+                velocity ?? new SimVector3(4f, 5f, 6f),
+                requestedEffort);
+        }
+
+        private static ExecutionEnvelopePolicyV4 CreatePolicy(
+            int envelopeVersion = ExecutionEnvelopeV4.CurrentVersion,
+            int policyVersion = 1,
+            ExecutionCandidateCategoryV4[] candidateOrder = null,
+            int sampleCount = 7,
+            int maximumExpansionCount = 2,
+            int allowedExpansionCount = 0,
+            float perStepExpansionFactor = 1.5f,
+            ExecutionDegradationStepV4[] degradationLadder = null,
+            BoundedErrorDistributionKindV4 targetDistributionKind =
+                BoundedErrorDistributionKindV4.BoundedUniform,
+            BoundedErrorDistributionKindV4 velocityDistributionKind =
+                BoundedErrorDistributionKindV4.BoundedUniform)
+        {
+            return new ExecutionEnvelopePolicyV4(
+                envelopeVersion,
+                policyVersion,
+                candidateOrder ?? new[]
+                {
+                    ExecutionCandidateCategoryV4.Receive,
+                    ExecutionCandidateCategoryV4.Set,
+                    ExecutionCandidateCategoryV4.Attack,
+                    ExecutionCandidateCategoryV4.Block,
+                    ExecutionCandidateCategoryV4.Serve
+                },
+                sampleCount,
+                maximumExpansionCount,
+                allowedExpansionCount,
+                perStepExpansionFactor,
+                degradationLadder ?? new[]
+                {
+                    ExecutionDegradationStepV4.FullSampling,
+                    ExecutionDegradationStepV4.ReducedSampleCount,
+                    ExecutionDegradationStepV4.CachedCoarseDistribution,
+                    ExecutionDegradationStepV4.DeterministicSafeFallback
+                },
+                targetDistributionKind,
+                velocityDistributionKind);
+        }
+
+        private static ExecutionSampleV4 SampleAtBaseline(ExecutionEnvelopeV4 envelope)
+        {
+            return new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                envelope.BaselineTarget,
+                envelope.BaselineVelocity,
+                envelope.RequestedEffort);
+        }
+
+        private static ExecutionSampleV4 SampleWithTargetErrorScale(
+            ExecutionEnvelopeV4 envelope,
+            float scale)
+        {
+            return new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Attack,
+                new SimVector3(
+                    envelope.BaselineTarget.X +
+                    (envelope.TargetError.MaximumAbsoluteError.X * scale),
+                    envelope.BaselineTarget.Y,
+                    envelope.BaselineTarget.Z),
+                envelope.BaselineVelocity,
+                envelope.RequestedEffort);
+        }
+
+        private static DerivedMatchAttributesV4 CreateDerivedForIndependentControls(
+            float softTouch = 0.7f,
+            float courtAwareness = 0.7f)
+        {
+            return MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(
+                    1.91f,
+                    2.43f,
+                    0.73f,
+                    0.71f,
+                    0.72f,
+                    0.70f),
+                new TechnicalBaseAttributesV4(
+                    attackTechnique: 0.7f,
+                    attackPower: 0.7f,
+                    blockTechnique: 0.7f,
+                    defenseTechnique: 0.7f,
+                    receiveTechnique: 0.7f,
+                    setTechnique: 0.7f,
+                    serveTechnique: 0.7f,
+                    softTouch: softTouch,
+                    courtAwareness: courtAwareness),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
         }
     }
 
