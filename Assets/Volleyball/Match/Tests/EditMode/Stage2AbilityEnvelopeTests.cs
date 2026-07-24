@@ -701,168 +701,420 @@ namespace Volleyball.EditModeTests
 
     public sealed class Stage2TrajectoryPredictionProviderTests
     {
+        private const string PredictorHashA =
+            BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash;
+        private const string PredictorHashB =
+            "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        private const string EnvelopeA =
+            "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        private const string EnvelopeB =
+            "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
         [Test]
-        public void Predict_CachesByDeterministicKey()
+        public void CacheKey_EveryBehaviorFieldChangesArtifactIdentityAndRequiresCacheMiss()
         {
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var source = new BallState(
-                new SimVector3(1f, 3f, -2f),
-                new SimVector3(2f, 4f, 5f),
-                0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
+            var provider = Provider(capacity: 32);
+            var baselineRequest = Request();
+            var requests = new[]
+            {
+                Request(ballStateVersion: 8),
+                Request(source: Source(positionX: 1.25f)),
+                Request(
+                    parameters: new BallSimulationParameters(-9.7f, 0.9995f),
+                    physicsConfigurationHash:
+                        BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                            new BallSimulationParameters(-9.7f, 0.9995f))),
+                Request(samplingKey: "sample-b"),
+                Request(envelopeIdentity: EnvelopeB),
+                Request(degradationStep: ExecutionDegradationStepV4.ReducedSampleCount)
+            };
 
-            var first = provider.Predict(source, parameters, "sample-key-1");
-            var second = provider.Predict(source, parameters, "sample-key-1");
+            var baselineArtifact = provider.Predict(baselineRequest);
+            foreach (var request in requests)
+            {
+                var artifact = provider.Predict(request);
+                Assert.That(request.Key, Is.Not.EqualTo(baselineRequest.Key));
+                Assert.That(request.Key.Identity, Is.Not.EqualTo(baselineRequest.Key.Identity));
+                Assert.That(artifact, Is.Not.SameAs(baselineArtifact));
+                Assert.That(artifact.ArtifactIdentity, Is.Not.EqualTo(baselineArtifact.ArtifactIdentity));
+            }
 
-            Assert.That(second, Is.SameAs(first));
+            var changedVersionArtifact = Provider(
+                    predictorVersion: 5,
+                    predictorConfigurationHash: PredictorHashA)
+                .Predict(Request(predictorVersion: 5));
+            var changedConfigurationArtifact = Provider(
+                    predictorVersion: 4,
+                    predictorConfigurationHash: PredictorHashB)
+                .Predict(Request(predictorConfigurationHash: PredictorHashB));
+            Assert.That(
+                changedVersionArtifact.ArtifactIdentity,
+                Is.Not.EqualTo(baselineArtifact.ArtifactIdentity));
+            Assert.That(
+                changedConfigurationArtifact.ArtifactIdentity,
+                Is.Not.EqualTo(baselineArtifact.ArtifactIdentity));
+
+            Assert.That(provider.CacheCount, Is.EqualTo(7));
+            Assert.That(baselineRequest.Key.BallStateVersion, Is.EqualTo(7));
+            Assert.That(
+                baselineRequest.Key.BallStateFingerprint,
+                Is.EqualTo(BallTrajectoryPredictionRequestV4.BuildBallStateFingerprint(Source())));
+            Assert.That(
+                baselineRequest.Key.PhysicsConfigurationHash,
+                Is.EqualTo(
+                    BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                        new BallSimulationParameters(-9.8f, 0.9995f))));
+            Assert.That(baselineRequest.Key.SamplingKey, Is.EqualTo("sample-a"));
+            Assert.That(baselineRequest.Key.PredictorVersion, Is.EqualTo(4));
+            Assert.That(baselineRequest.Key.PredictorConfigurationHash, Is.EqualTo(PredictorHashA));
+            Assert.That(baselineRequest.Key.EnvelopeIdentity, Is.EqualTo(EnvelopeA));
+            Assert.That(
+                baselineRequest.Key.DegradationStep,
+                Is.EqualTo((int)ExecutionDegradationStepV4.FullSampling));
+        }
+
+        [Test]
+        public void Predict_HomeAndAwayExactKeyShareArtifactIdentityAndCanonicalBytes()
+        {
+            var provider = Provider();
+            var homeRequest = Request(requestingTeam: TeamSide.Home);
+            var awayRequest = Request(requestingTeam: TeamSide.Away);
+
+            var homeArtifact = provider.Predict(homeRequest);
+            var awayArtifact = provider.Predict(awayRequest);
+
+            Assert.That(awayRequest.Key, Is.EqualTo(homeRequest.Key));
+            Assert.That(awayArtifact, Is.SameAs(homeArtifact));
+            Assert.That(awayArtifact.ArtifactIdentity, Is.EqualTo(homeArtifact.ArtifactIdentity));
+            Assert.That(awayArtifact.ToCanonicalBytes(), Is.EqualTo(homeArtifact.ToCanonicalBytes()));
             Assert.That(provider.CacheCount, Is.EqualTo(1));
         }
 
         [Test]
-        public void Predict_DifferentSampleKeysProduceDifferentArtifacts()
+        public void Request_RejectsPhysicsHashThatDoesNotMatchSimulationParameters()
         {
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var source = new BallState(
-                new SimVector3(1f, 3f, -2f),
+            Assert.That(
+                () => Request(
+                    parameters: new BallSimulationParameters(-9.7f, 0.9995f),
+                    physicsConfigurationHash:
+                        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                Throws.TypeOf<System.ArgumentException>()
+                    .With.Message.Contains("physicsConfigurationHash"));
+        }
+
+        [Test]
+        public void CacheKey_RejectsMalformedHashIdentities()
+        {
+            Assert.That(
+                () => Key(ballStateFingerprint: "not-a-hash"),
+                Throws.TypeOf<System.ArgumentException>());
+            Assert.That(
+                () => Key(physicsConfigurationHash: "not-a-hash"),
+                Throws.TypeOf<System.ArgumentException>());
+            Assert.That(
+                () => Key(predictorConfigurationHash: "not-a-hash"),
+                Throws.TypeOf<System.ArgumentException>());
+            Assert.That(
+                () => Key(envelopeIdentity: "not-a-hash"),
+                Throws.TypeOf<System.ArgumentException>());
+        }
+
+        [Test]
+        public void Predict_RejectsRequestWhosePredictorIdentityDoesNotMatchProviderConfiguration()
+        {
+            var provider = Provider();
+
+            Assert.That(
+                () => provider.Predict(Request(predictorVersion: 5)),
+                Throws.TypeOf<System.ArgumentException>()
+                    .With.Message.Contains("PredictorVersion"));
+            Assert.That(
+                () => provider.Predict(
+                    Request(predictorConfigurationHash: PredictorHashB)),
+                Throws.TypeOf<System.ArgumentException>()
+                    .With.Message.Contains("PredictorConfigurationHash"));
+            Assert.That(provider.CacheCount, Is.Zero);
+        }
+
+        [Test]
+        public void Provider_DefaultStrategyRejectsUnsupportedPredictorIdentity()
+        {
+            Assert.That(
+                () => new BallTrajectoryPredictionProviderV4(
+                    new TrajectoryPredictionProviderConfigurationV4(
+                        16,
+                        TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                        5,
+                        PredictorHashA)),
+                Throws.TypeOf<System.ArgumentException>());
+            Assert.That(
+                () => new BallTrajectoryPredictionProviderV4(
+                    new TrajectoryPredictionProviderConfigurationV4(
+                        16,
+                        TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                        4,
+                        PredictorHashB)),
+                Throws.TypeOf<System.ArgumentException>());
+        }
+
+        [Test]
+        public void DirectorGate5_FailureAdvancesToNextDegradationKey()
+        {
+            var strategy = new RecordingTrajectoryPredictorV4(
+                4,
+                PredictorHashA,
+                failStep: ExecutionDegradationStepV4.FullSampling);
+            var provider = new BallTrajectoryPredictionProviderV4(
+                new TrajectoryPredictionProviderConfigurationV4(
+                    16,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    4,
+                    PredictorHashA),
+                strategy);
+            var request = Request();
+
+            var artifact = PhysicalMatchRallyDirector.PredictSharedGate5TrajectoryV4(
+                provider,
+                request,
+                ExecutionEnvelopePolicyV4.Default);
+
+            Assert.That(
+                strategy.Attempts,
+                Is.EqualTo(new[]
+                {
+                    ExecutionDegradationStepV4.FullSampling,
+                    ExecutionDegradationStepV4.ReducedSampleCount
+                }));
+            Assert.That(
+                artifact.Key.DegradationStep,
+                Is.EqualTo((int)ExecutionDegradationStepV4.ReducedSampleCount));
+            Assert.That(
+                provider.TryGetCached(request.Key, out _),
+                Is.False);
+            Assert.That(
+                provider.TryGetCached(
+                    request.WithDegradationStep(
+                        ExecutionDegradationStepV4.ReducedSampleCount).Key,
+                    out var cached),
+                Is.True);
+            Assert.That(cached, Is.SameAs(artifact));
+        }
+
+        [Test]
+        public void Predict_ArtifactRecordsCompleteKeyPredictorAndSampleProvenance()
+        {
+            var provider = Provider();
+            var request = Request();
+
+            var artifact = provider.Predict(request);
+
+            Assert.That(artifact.Key, Is.EqualTo(request.Key));
+            Assert.That(artifact.KeyIdentity, Is.EqualTo(request.Key.Identity));
+            Assert.That(artifact.PredictorSource, Is.EqualTo(BallTrajectoryPredictionProviderV4.PredictorSource));
+            Assert.That(artifact.PredictorVersion, Is.EqualTo(request.Key.PredictorVersion));
+            Assert.That(
+                artifact.PredictorConfigurationHash,
+                Is.EqualTo(request.Key.PredictorConfigurationHash));
+            Assert.That(artifact.SampleTimestamps, Has.Count.GreaterThan(0));
+            Assert.That(artifact.SamplePositions, Has.Count.EqualTo(artifact.SampleTimestamps.Count));
+            Assert.That(artifact.SamplePositions[0], Is.EqualTo(Source().Position));
+            Assert.That(artifact.ArtifactIdentity, Has.Length.EqualTo(64));
+            Assert.That(artifact.ToCanonicalBytes(), Is.Not.Empty);
+        }
+
+        [Test]
+        public void Cache_EvictsOldestInsertedKeyAtContextConfiguredCapacity()
+        {
+            var provider = Provider(capacity: 2);
+            var firstRequest = Request(samplingKey: "sample-1");
+            var secondRequest = Request(samplingKey: "sample-2");
+            var thirdRequest = Request(samplingKey: "sample-3");
+            var firstArtifact = provider.Predict(firstRequest);
+            provider.Predict(secondRequest);
+
+            Assert.That(provider.Predict(firstRequest), Is.SameAs(firstArtifact));
+            provider.Predict(thirdRequest);
+
+            Assert.That(provider.CacheCount, Is.EqualTo(2));
+            Assert.That(provider.TryGetCached(firstRequest.Key, out _), Is.False);
+            Assert.That(provider.TryGetCached(secondRequest.Key, out _), Is.True);
+            Assert.That(provider.TryGetCached(thirdRequest.Key, out _), Is.True);
+
+            var regenerated = provider.Predict(firstRequest);
+            Assert.That(regenerated, Is.Not.SameAs(firstArtifact));
+            Assert.That(regenerated.ArtifactIdentity, Is.EqualTo(firstArtifact.ArtifactIdentity));
+            Assert.That(regenerated.ToCanonicalBytes(), Is.EqualTo(firstArtifact.ToCanonicalBytes()));
+        }
+
+        [Test]
+        public void Director_CreatesPerRallyProviderFromV4MatchContextConfiguration()
+        {
+            var context = MatchV4TestFixture.CreateContext(predictionCacheCapacity: 3);
+
+            var provider = PhysicalMatchRallyDirector.CreateTrajectoryPredictionProviderV4(context);
+            var nextRallyProvider =
+                PhysicalMatchRallyDirector.CreateTrajectoryPredictionProviderV4(context);
+
+            Assert.That(provider.CacheCapacity, Is.EqualTo(3));
+            Assert.That(nextRallyProvider, Is.Not.SameAs(provider));
+            Assert.That(
+                provider.CacheEvictionPolicy,
+                Is.EqualTo(TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut));
+            Assert.That(
+                provider.PredictorVersion,
+                Is.EqualTo(context.TrajectoryPredictionProviderConfiguration.PredictorVersion));
+            Assert.That(
+                provider.PredictorConfigurationHash,
+                Is.EqualTo(
+                    context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash));
+        }
+
+        [Test]
+        public void DirectorFactory_RejectsContextWhosePhysicsHashDoesNotMatchRuntimePhysics()
+        {
+            var baseline = MatchV4TestFixture.CreateContext();
+            var mismatched = MatchContextV4.Create(
+                baseline.SessionId,
+                baseline.Seed,
+                baseline.Home,
+                baseline.Away,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                baseline.TrajectoryPredictionProviderConfiguration,
+                baseline.RulesVersion);
+
+            Assert.That(
+                () => PhysicalMatchRallyDirector
+                    .CreateTrajectoryPredictionProviderV4(mismatched),
+                Throws.TypeOf<System.ArgumentException>()
+                    .With.Message.Contains("PhysicsConfigurationHash"));
+        }
+
+        private static BallTrajectoryPredictionProviderV4 Provider(
+            int capacity = 16,
+            int predictorVersion = 4,
+            string predictorConfigurationHash = PredictorHashA)
+        {
+            var configuration = new TrajectoryPredictionProviderConfigurationV4(
+                capacity,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                predictorVersion,
+                predictorConfigurationHash);
+            return predictorVersion ==
+                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion &&
+                predictorConfigurationHash ==
+                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash
+                ? new BallTrajectoryPredictionProviderV4(configuration)
+                : new BallTrajectoryPredictionProviderV4(
+                    configuration,
+                    new RecordingTrajectoryPredictorV4(
+                        predictorVersion,
+                        predictorConfigurationHash));
+        }
+
+        private static BallTrajectoryPredictionCacheKeyV4 Key(
+            string ballStateFingerprint = EnvelopeA,
+            string physicsConfigurationHash = EnvelopeA,
+            string predictorConfigurationHash = PredictorHashA,
+            string envelopeIdentity = EnvelopeA)
+        {
+            return new BallTrajectoryPredictionCacheKeyV4(
+                7,
+                ballStateFingerprint,
+                physicsConfigurationHash,
+                "sample-a",
+                4,
+                predictorConfigurationHash,
+                envelopeIdentity,
+                (int)ExecutionDegradationStepV4.FullSampling);
+        }
+
+        private static BallTrajectoryPredictionRequestV4 Request(
+            TeamSide requestingTeam = TeamSide.Home,
+            long ballStateVersion = 7,
+            BallState source = null,
+            BallSimulationParameters? parameters = null,
+            string physicsConfigurationHash = null,
+            string samplingKey = "sample-a",
+            int predictorVersion = 4,
+            string predictorConfigurationHash = PredictorHashA,
+            string envelopeIdentity = EnvelopeA,
+            ExecutionDegradationStepV4 degradationStep =
+                ExecutionDegradationStepV4.FullSampling)
+        {
+            var resolvedParameters =
+                parameters ?? new BallSimulationParameters(-9.8f, 0.9995f);
+            return new BallTrajectoryPredictionRequestV4(
+                requestingTeam,
+                ballStateVersion,
+                source ?? Source(),
+                resolvedParameters,
+                physicsConfigurationHash ??
+                    BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                        resolvedParameters),
+                samplingKey,
+                predictorVersion,
+                predictorConfigurationHash,
+                envelopeIdentity,
+                degradationStep);
+        }
+
+        private static BallState Source(float positionX = 1f)
+        {
+            return new BallState(
+                new SimVector3(positionX, 3f, -2f),
                 new SimVector3(2f, 4f, 5f),
                 0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
-
-            var first = provider.Predict(source, parameters, "sample-key-1");
-            var second = provider.Predict(source, parameters, "sample-key-2");
-
-            Assert.That(second, Is.Not.EqualTo(first));
-            Assert.That(provider.CacheCount, Is.EqualTo(2));
         }
 
-        [Test]
-        public void Predict_DifferentBallStateProducesDifferentArtifact()
+        private sealed class RecordingTrajectoryPredictorV4 :
+            IBallTrajectoryPredictorV4
         {
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
+            private readonly ExecutionDegradationStepV4? _failStep;
+            private readonly System.Collections.Generic.List<
+                ExecutionDegradationStepV4> _attempts =
+                new System.Collections.Generic.List<ExecutionDegradationStepV4>();
 
-            var sourceA = new BallState(
-                new SimVector3(1f, 3f, -2f),
-                new SimVector3(2f, 4f, 5f),
-                0.12f);
-            var sourceB = new BallState(
-                new SimVector3(2f, 3f, -2f),
-                new SimVector3(2f, 4f, 5f),
-                0.12f);
+            public RecordingTrajectoryPredictorV4(
+                int predictorVersion,
+                string predictorConfigurationHash,
+                ExecutionDegradationStepV4? failStep = null)
+            {
+                PredictorVersion = predictorVersion;
+                PredictorConfigurationHash = predictorConfigurationHash;
+                _failStep = failStep;
+            }
 
-            var first = provider.Predict(sourceA, parameters, "sample-key-1");
-            var second = provider.Predict(sourceB, parameters, "sample-key-1");
+            public string PredictorSource =>
+                "Volleyball.EditModeTests.RecordingTrajectoryPredictorV4";
 
-            Assert.That(second, Is.Not.EqualTo(first));
-        }
+            public int PredictorVersion { get; }
 
-        [Test]
-        public void Predict_BothTeamsShareArtifactForSameInput()
-        {
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var source = new BallState(
-                new SimVector3(1f, 3f, -2f),
-                new SimVector3(2f, 4f, 5f),
-                0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
+            public string PredictorConfigurationHash { get; }
 
-            var homeArtifact = provider.Predict(source, parameters, "gate-5-sample");
-            var awayArtifact = provider.Predict(source, parameters, "gate-5-sample");
+            public System.Collections.Generic.IReadOnlyList<
+                ExecutionDegradationStepV4> Attempts => _attempts;
 
-            Assert.That(awayArtifact, Is.SameAs(homeArtifact));
-            Assert.That(awayArtifact.SampleKey, Is.EqualTo("gate-5-sample"));
-            Assert.That(awayArtifact.PredictorVersion, Is.EqualTo(BallTrajectoryPredictionProviderV3.PredictorVersion));
-        }
+            public TrajectoryPrediction Predict(
+                BallTrajectoryPredictionRequestV4 request,
+                float stepSeconds,
+                float maximumTimeSeconds,
+                int maximumSamples)
+            {
+                _attempts.Add(request.DegradationStep);
+                if (_failStep.HasValue &&
+                    _failStep.Value == request.DegradationStep)
+                {
+                    throw new System.InvalidOperationException(
+                        "Injected deterministic predictor failure.");
+                }
 
-        [Test]
-        public void Predict_DifferentDegradationModeProducesDifferentCachedArtifact()
-        {
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
-
-            var normal = provider.Predict(source, parameters, "same-sample", degradationMode: "normal");
-            var degraded = provider.Predict(source, parameters, "same-sample", degradationMode: "budget-step-1");
-
-            Assert.That(degraded, Is.Not.SameAs(normal));
-            Assert.That(degraded, Is.Not.EqualTo(normal));
-            Assert.That(provider.CacheCount, Is.EqualTo(2));
-        }
-
-        [Test]
-        public void CacheKey_ChangesWhenPredictorConfigurationChanges()
-        {
-            var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var predict = RequiredVersionedPredict();
-
-            var first = (BallTrajectoryArtifactV3)predict.Invoke(
-                provider, new object[] { source, parameters, "same-sample", "predictor-v4-1", "config-a" });
-            var second = (BallTrajectoryArtifactV3)predict.Invoke(
-                provider, new object[] { source, parameters, "same-sample", "predictor-v4-1", "config-b" });
-
-            Assert.That(second, Is.Not.SameAs(first));
-            Assert.That(second, Is.Not.EqualTo(first));
-            Assert.That(provider.CacheCount, Is.EqualTo(2));
-        }
-
-        [Test]
-        public void PredictorVersion_ChangesArtifactIdentityAndRequiresAnIndependentCacheMiss()
-        {
-            var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var predict = RequiredVersionedPredict();
-            var first = (BallTrajectoryArtifactV3)predict.Invoke(
-                provider, new object[] { source, parameters, "same-sample", "predictor-v4-1", "config-a" });
-            var second = (BallTrajectoryArtifactV3)predict.Invoke(
-                provider, new object[] { source, parameters, "same-sample", "predictor-v4-2", "config-a" });
-
-            Assert.That(second, Is.Not.SameAs(first));
-            Assert.That(second, Is.Not.EqualTo(first));
-            Assert.That(provider.CacheCount, Is.EqualTo(2));
-        }
-
-        private static System.Reflection.MethodInfo RequiredVersionedPredict()
-        {
-            var predict = typeof(BallTrajectoryPredictionProviderV3).GetMethod(
-                nameof(BallTrajectoryPredictionProviderV3.Predict),
-                new[] { typeof(BallState), typeof(BallSimulationParameters), typeof(string), typeof(string), typeof(string) });
-            Assert.That(predict, Is.Not.Null, "Prediction requests must carry predictor version and configuration independently.");
-            return predict;
-        }
-
-        [Test]
-        public void Predict_ProducesTrajectoryWithSamples()
-        {
-            var provider = new BallTrajectoryPredictionProviderV3();
-            var source = new BallState(
-                new SimVector3(0f, 3f, 0f),
-                new SimVector3(1f, 2f, 1f),
-                0.12f);
-            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
-
-            var artifact = provider.Predict(source, parameters, "trajectory-test");
-
-            Assert.That(artifact.Prediction, Is.Not.Null);
-            Assert.That(artifact.Prediction.Samples.Count, Is.GreaterThan(0));
-            Assert.That(artifact.Prediction.Samples[0].Position, Is.EqualTo(source.Position));
-        }
-
-        [Test]
-        public void BuildBallStateVersion_IsDeterministic()
-        {
-            var source = new BallState(
-                new SimVector3(1f, 2f, 3f),
-                new SimVector3(4f, 5f, 6f),
-                0.12f);
-
-            var first = BallTrajectoryPredictionProviderV3.BuildBallStateVersion(source);
-            var second = BallTrajectoryPredictionProviderV3.BuildBallStateVersion(source);
-
-            Assert.That(second, Is.EqualTo(first));
-            Assert.That(first.Length, Is.EqualTo(64));
+                return TrajectoryPredictor.Predict(
+                    request.Source,
+                    request.Parameters,
+                    stepSeconds,
+                    maximumTimeSeconds,
+                    maximumSamples);
+            }
         }
     }
 

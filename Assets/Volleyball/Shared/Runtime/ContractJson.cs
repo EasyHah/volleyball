@@ -141,6 +141,7 @@ namespace Volleyball.Shared.Contracts
                     "sessionId",
                     "seed",
                     "physicsConfigurationHash",
+                    "trajectoryPredictionProviderConfiguration",
                     "formulaVersion",
                     "coefficientVersion",
                     "home",
@@ -158,6 +159,30 @@ namespace Volleyball.Shared.Contracts
                 var seed = StrictJsonV4.RequiredInt(root, "seed");
                 var physicsConfigurationHash =
                     StrictJsonV4.RequiredString(root, "physicsConfigurationHash");
+                var predictionConfigurationValue = StrictJsonV4.RequiredObject(
+                    root,
+                    "trajectoryPredictionProviderConfiguration");
+                StrictJsonV4.RequireExactProperties(
+                    predictionConfigurationValue,
+                    "cacheCapacity",
+                    "cacheEvictionPolicy",
+                    "predictorVersion",
+                    "predictorConfigurationHash");
+                var predictionConfiguration =
+                    new TrajectoryPredictionProviderConfigurationV4(
+                        StrictJsonV4.RequiredInt(
+                            predictionConfigurationValue,
+                            "cacheCapacity"),
+                        (TrajectoryPredictionCacheEvictionPolicyV4)
+                        StrictJsonV4.RequiredInt(
+                            predictionConfigurationValue,
+                            "cacheEvictionPolicy"),
+                        StrictJsonV4.RequiredInt(
+                            predictionConfigurationValue,
+                            "predictorVersion"),
+                        StrictJsonV4.RequiredString(
+                            predictionConfigurationValue,
+                            "predictorConfigurationHash"));
                 var formulaVersion = StrictJsonV4.RequiredInt(root, "formulaVersion");
                 var coefficientVersion =
                     StrictJsonV4.RequiredInt(root, "coefficientVersion");
@@ -176,6 +201,7 @@ namespace Volleyball.Shared.Contracts
                     home,
                     away,
                     physicsConfigurationHash,
+                    predictionConfiguration,
                     rulesVersion);
                 if (context.FormulaVersion != formulaVersion ||
                     context.CoefficientVersion != coefficientVersion)

@@ -13,6 +13,8 @@ namespace Volleyball.Shared.Contracts
             TeamSnapshotV4 home,
             TeamSnapshotV4 away,
             string physicsConfigurationHash,
+            TrajectoryPredictionProviderConfigurationV4
+                trajectoryPredictionProviderConfiguration,
             int rulesVersion)
         {
             ContractVersion = ContractVersions.MatchV4;
@@ -22,6 +24,10 @@ namespace Volleyball.Shared.Contracts
             Home = home ?? throw new ContractValidationException("home is required.");
             Away = away ?? throw new ContractValidationException("away is required.");
             PhysicsConfigurationHash = physicsConfigurationHash;
+            TrajectoryPredictionProviderConfiguration =
+                trajectoryPredictionProviderConfiguration ??
+                throw new ContractValidationException(
+                    "trajectoryPredictionProviderConfiguration is required.");
             FormulaVersion = FirstPlayer(Home).Derived.FormulaVersion;
             CoefficientVersion = FirstPlayer(Home).Derived.CoefficientVersion;
             ValidatePayload();
@@ -34,6 +40,8 @@ namespace Volleyball.Shared.Contracts
         public Guid SessionId { get; }
         public int Seed { get; }
         public string PhysicsConfigurationHash { get; }
+        public TrajectoryPredictionProviderConfigurationV4
+            TrajectoryPredictionProviderConfiguration { get; }
         public int FormulaVersion { get; }
         public int CoefficientVersion { get; }
         public TeamSnapshotV4 Home { get; }
@@ -46,6 +54,8 @@ namespace Volleyball.Shared.Contracts
             TeamSnapshotV4 home,
             TeamSnapshotV4 away,
             string physicsConfigurationHash,
+            TrajectoryPredictionProviderConfigurationV4
+                trajectoryPredictionProviderConfiguration,
             int rulesVersion = ContractVersions.MatchV3)
         {
             if (sessionId == Guid.Empty)
@@ -59,6 +69,7 @@ namespace Volleyball.Shared.Contracts
                 home,
                 away,
                 physicsConfigurationHash,
+                trajectoryPredictionProviderConfiguration,
                 rulesVersion);
         }
 
@@ -98,6 +109,11 @@ namespace Volleyball.Shared.Contracts
             ContractGuard.Hash(
                 PhysicsConfigurationHash,
                 nameof(PhysicsConfigurationHash));
+            if (TrajectoryPredictionProviderConfiguration == null)
+            {
+                throw new ContractValidationException(
+                    "trajectoryPredictionProviderConfiguration is required.");
+            }
             if (Home == null || Away == null)
             {
                 throw new ContractValidationException(
@@ -196,6 +212,26 @@ namespace Volleyball.Shared.Contracts
                 .Append(context.Seed.ToString(CultureInfo.InvariantCulture));
             output.Append(",\"physicsConfigurationHash\":")
                 .Append(Quote(context.PhysicsConfigurationHash));
+            output.Append(",\"trajectoryPredictionProviderConfiguration\":{");
+            output.Append("\"cacheCapacity\":")
+                .Append(
+                    context.TrajectoryPredictionProviderConfiguration.CacheCapacity
+                        .ToString(CultureInfo.InvariantCulture));
+            output.Append(",\"cacheEvictionPolicy\":")
+                .Append(
+                    ((int)context.TrajectoryPredictionProviderConfiguration
+                        .CacheEvictionPolicy)
+                    .ToString(CultureInfo.InvariantCulture));
+            output.Append(",\"predictorVersion\":")
+                .Append(
+                    context.TrajectoryPredictionProviderConfiguration.PredictorVersion
+                        .ToString(CultureInfo.InvariantCulture));
+            output.Append(",\"predictorConfigurationHash\":")
+                .Append(
+                    Quote(
+                        context.TrajectoryPredictionProviderConfiguration
+                            .PredictorConfigurationHash));
+            output.Append('}');
             output.Append(",\"formulaVersion\":")
                 .Append(context.FormulaVersion.ToString(CultureInfo.InvariantCulture));
             output.Append(",\"coefficientVersion\":")

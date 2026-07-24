@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using Volleyball.Domain.Players;
+using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.EditModeTests
@@ -11,14 +13,21 @@ namespace Volleyball.EditModeTests
             Guid? sessionId = null,
             int seed = 7351,
             float attackTechnique = 0.76f,
-            float attackPower = 0.77f)
+            float attackPower = 0.77f,
+            int predictionCacheCapacity = 128)
         {
             return MatchContextV4.Create(
                 sessionId ?? Guid.Parse("66666666-6666-6666-6666-666666666666"),
                 seed,
                 CreateTeam("home6", "Home 6", TeamSide.Home, "home", attackTechnique, attackPower),
                 CreateTeam("away6", "Away 6", TeamSide.Away, "away", attackTechnique, attackPower),
-                new string('a', 64),
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                    new BallSimulationParameters(-9.8f, 0.9995f)),
+                new TrajectoryPredictionProviderConfigurationV4(
+                    predictionCacheCapacity,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
                 rulesVersion: ContractVersions.MatchV3);
         }
 

@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
+using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
 using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
@@ -13,6 +15,10 @@ using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using TeamSnapshotV4 = Volleyball.Shared.Contracts.TeamSnapshotV4;
+using TrajectoryPredictionCacheEvictionPolicyV4 =
+    Volleyball.Shared.Contracts.TrajectoryPredictionCacheEvictionPolicyV4;
+using TrajectoryPredictionProviderConfigurationV4 =
+    Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV4;
 
 namespace Volleyball.Presentation
 {
@@ -131,7 +137,13 @@ namespace Volleyball.Presentation
                 7351,
                 CreateTeam("formal-home", "Blue", TeamSide.Home, "home"),
                 CreateTeam("formal-away", "Orange", TeamSide.Away, "away"),
-                new string('f', 64),
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                    new BallSimulationParameters(-9.8f, 0.9995f)),
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
                 rulesVersion: 3);
         }
 

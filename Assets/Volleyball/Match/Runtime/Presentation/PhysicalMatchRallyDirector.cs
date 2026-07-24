@@ -250,6 +250,8 @@ namespace Volleyball.Presentation
         private MatchSet _formalSet;
         private ExecutionEnvelopeV4 _lastPlannedExecutionEnvelopeV4;
         private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
+        private BallTrajectoryPredictionProviderV4 _trajectoryPredictionProviderV4;
+        private BallTrajectoryPredictionArtifactV4 _lastTrajectoryPredictionArtifactV4;
         private PendingV3AuthorityContact _pendingV3AuthorityContact;
         private StablePlayerId? _lastAcceptedV3Actor;
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
@@ -489,6 +491,60 @@ namespace Volleyball.Presentation
 
         public ExecutionSampleClassificationV4 LastExecutionSampleClassificationV4 =>
             _lastExecutionSampleClassificationV4;
+
+        public BallTrajectoryPredictionArtifactV4 LastTrajectoryPredictionArtifactV4 =>
+            _lastTrajectoryPredictionArtifactV4;
+
+        public static BallTrajectoryPredictionProviderV4
+            CreateTrajectoryPredictionProviderV4(MatchContextV4 context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            var runtimePhysicsHash =
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                    SimulationParameters);
+            if (!string.Equals(
+                    context.PhysicsConfigurationHash,
+                    runtimePhysicsHash,
+                    StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "MatchContextV4 PhysicsConfigurationHash does not match the formal runtime physics.",
+                    nameof(context));
+            }
+
+            return new BallTrajectoryPredictionProviderV4(
+                context.TrajectoryPredictionProviderConfiguration);
+        }
+
+        public static BallTrajectoryPredictionArtifactV4
+            PredictSharedGate5TrajectoryV4(
+                BallTrajectoryPredictionProviderV4 provider,
+                BallTrajectoryPredictionRequestV4 request,
+                ExecutionEnvelopePolicyV4 policy)
+        {
+            if (provider == null)
+            {
+                throw new ArgumentNullException(nameof(provider));
+            }
+
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            if (policy == null)
+            {
+                throw new ArgumentNullException(nameof(policy));
+            }
+
+            return provider.PredictWithDegradation(
+                request,
+                policy.DegradationLadder);
+        }
 
         public static ExecutionEnvelopeV4 PlanExecutionEnvelopeV4(
             Volleyball.Shared.Contracts.DerivedMatchAttributesV4 derivedAttributes,
@@ -838,6 +894,13 @@ namespace Volleyball.Presentation
             _rallyActive = false;
             yield return new WaitForSeconds(delay);
 
+            if (_matchContext != null)
+            {
+                _trajectoryPredictionProviderV4 =
+                    CreateTrajectoryPredictionProviderV4(_matchContext);
+                _lastTrajectoryPredictionArtifactV4 = null;
+            }
+
             foreach (var pair in _players)
             {
                 pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
@@ -1042,7 +1105,10 @@ namespace Volleyball.Presentation
                 team,
                 stage,
                 Mathf.Max(0.10f, availableSeconds),
-                PredictBallCenter(Mathf.Max(0.10f, availableSeconds)));
+                PredictGate5BallCenterV4(
+                    team,
+                    stage,
+                    Mathf.Max(0.10f, availableSeconds)));
         }
 
         private TeamRallyDecision PlanDecisionAt(
@@ -3278,6 +3344,124 @@ namespace Volleyball.Presentation
                 BallIntegrator.Step(prediction, SimulatedBall.DefaultFixedStep, SimulationParameters);
             }
             return prediction.Position;
+        }
+
+        private SimVector3 PredictGate5BallCenterV4(
+            TeamId requestingTeam,
+            RallyDecisionStage stage,
+            float flightSeconds)
+        {
+            if (_matchContext == null)
+            {
+                return PredictBallCenter(flightSeconds);
+            }
+
+            if (_trajectoryPredictionProviderV4 == null)
+            {
+                throw new InvalidOperationException(
+                    "The per-rally V4 trajectory provider is not initialized.");
+            }
+
+            var stateVersion =
+                (long)(uint)BitConverter.ToInt32(
+                    BitConverter.GetBytes(_ball.SimulationTime),
+                    0);
+            var samplingKey =
+                "gate-5:" + ((int)stage).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                stateVersion.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                BitConverter.ToInt32(
+                    BitConverter.GetBytes(flightSeconds),
+                    0).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+            var envelopeIdentity = BuildGate5EnvelopeIdentityV4(
+                stage,
+                flightSeconds);
+            var request = new BallTrajectoryPredictionRequestV4(
+                requestingTeam == TeamId.Blue
+                    ? TeamSide.Home
+                    : TeamSide.Away,
+                stateVersion,
+                _ball.State,
+                SimulationParameters,
+                _matchContext.PhysicsConfigurationHash,
+                samplingKey,
+                _matchContext.TrajectoryPredictionProviderConfiguration
+                    .PredictorVersion,
+                _matchContext.TrajectoryPredictionProviderConfiguration
+                    .PredictorConfigurationHash,
+                envelopeIdentity,
+                ExecutionDegradationStepV4.FullSampling);
+            _lastTrajectoryPredictionArtifactV4 =
+                PredictSharedGate5TrajectoryV4(
+                    _trajectoryPredictionProviderV4,
+                    request,
+                    ExecutionEnvelopePolicyV4.Default);
+            return ClosestTrajectoryPosition(
+                _lastTrajectoryPredictionArtifactV4.Prediction,
+                flightSeconds);
+        }
+
+        private static string BuildGate5EnvelopeIdentityV4(
+            RallyDecisionStage stage,
+            float flightSeconds)
+        {
+            var canonical =
+                "volleyball.gate-5-sampling-envelope.v4\nstage=" +
+                ((int)stage).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) +
+                "\nflightSeconds=" +
+                BitConverter.ToInt32(
+                    BitConverter.GetBytes(flightSeconds),
+                    0).ToString(
+                    "x8",
+                    System.Globalization.CultureInfo.InvariantCulture) +
+                "\nexecutionEnvelopePolicy=" +
+                Convert.ToBase64String(
+                    ExecutionEnvelopePolicyV4.Default.ToCanonicalBytes()) +
+                "\n";
+            using var sha256 =
+                System.Security.Cryptography.SHA256.Create();
+            var hash = sha256.ComputeHash(
+                System.Text.Encoding.UTF8.GetBytes(canonical));
+            var output = new System.Text.StringBuilder(hash.Length * 2);
+            for (var index = 0; index < hash.Length; index++)
+            {
+                output.Append(
+                    hash[index].ToString(
+                        "x2",
+                        System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            return output.ToString();
+        }
+
+        private static SimVector3 ClosestTrajectoryPosition(
+            TrajectoryPrediction prediction,
+            float flightSeconds)
+        {
+            if (prediction == null || prediction.Samples.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "V4 trajectory prediction returned no samples.");
+            }
+
+            var best = prediction.Samples[0];
+            var bestTimeError = Mathf.Abs(best.TimeSeconds - flightSeconds);
+            for (var index = 1; index < prediction.Samples.Count; index++)
+            {
+                var candidate = prediction.Samples[index];
+                var timeError = Mathf.Abs(
+                    candidate.TimeSeconds - flightSeconds);
+                if (timeError < bestTimeError)
+                {
+                    best = candidate;
+                    bestTimeError = timeError;
+                }
+            }
+
+            return best.Position;
         }
 
         private static SimVector3 ContactCenter(

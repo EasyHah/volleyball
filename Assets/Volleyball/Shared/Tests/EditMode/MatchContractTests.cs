@@ -863,6 +863,18 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(restored.CoefficientVersion, Is.EqualTo(1));
             Assert.That(restored.PhysicsConfigurationHash, Is.EqualTo(PhysicsConfigurationHashV4));
             Assert.That(
+                restored.TrajectoryPredictionProviderConfiguration.CacheCapacity,
+                Is.EqualTo(128));
+            Assert.That(
+                restored.TrajectoryPredictionProviderConfiguration.CacheEvictionPolicy,
+                Is.EqualTo(TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut));
+            Assert.That(
+                restored.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                Is.EqualTo(4));
+            Assert.That(
+                restored.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                Is.EqualTo(PredictorConfigurationHashV4));
+            Assert.That(
                 restored.Home.RotationOrder.Select(player => player.PlayerId.Value),
                 Is.EqualTo(new[]
                 {
@@ -874,6 +886,84 @@ namespace Volleyball.Shared.EditModeTests
                     "blue-player-6"
                 }));
             Assert.That(restored.ContextHash, Is.EqualTo(context.ContextHash));
+        }
+
+        [Test]
+        public void TrajectoryPredictionProviderConfigurationV4_RequiresBoundedFifoAndVersionedHash()
+        {
+            var configuration = CreatePredictionProviderConfigurationV4();
+
+            Assert.That(configuration.CacheCapacity, Is.EqualTo(128));
+            Assert.That(
+                configuration.CacheEvictionPolicy,
+                Is.EqualTo(TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut));
+            Assert.That(configuration.PredictorVersion, Is.EqualTo(4));
+            Assert.That(
+                configuration.PredictorConfigurationHash,
+                Is.EqualTo(PredictorConfigurationHashV4));
+            Assert.That(
+                () => new TrajectoryPredictionProviderConfigurationV4(
+                    0,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    4,
+                    PredictorConfigurationHashV4),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    (TrajectoryPredictionCacheEvictionPolicyV4)999,
+                    4,
+                    PredictorConfigurationHashV4),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    0,
+                    PredictorConfigurationHashV4),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    4,
+                    "not-a-hash"),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void NativeV4ContextHashIncludesEveryPredictionProviderConfigurationField()
+        {
+            var sessionId = new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4");
+            var baseline = CreateContextV4(sessionId, 7351);
+            var changedCapacity = CreateContextV4(
+                sessionId,
+                7351,
+                predictionConfiguration: new TrajectoryPredictionProviderConfigurationV4(
+                    64,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    4,
+                    PredictorConfigurationHashV4));
+            var changedVersion = CreateContextV4(
+                sessionId,
+                7351,
+                predictionConfiguration: new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    5,
+                    PredictorConfigurationHashV4));
+            var changedHash = CreateContextV4(
+                sessionId,
+                7351,
+                predictionConfiguration: new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    4,
+                    AlternatePredictorConfigurationHashV4));
+
+            Assert.That(changedCapacity.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
+            Assert.That(changedVersion.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
+            Assert.That(changedHash.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
         }
 
         [Test]
@@ -911,6 +1001,7 @@ namespace Volleyball.Shared.EditModeTests
                     baseline.Home,
                     baseline.Away,
                     baseline.PhysicsConfigurationHash,
+                    baseline.TrajectoryPredictionProviderConfiguration,
                     rulesVersion: 4),
                 Throws.TypeOf<ContractValidationException>().With.Message.Contains("rulesVersion"));
         }
@@ -1033,14 +1124,30 @@ namespace Volleyball.Shared.EditModeTests
             var missing = json.Replace(
                 "\"physicsConfigurationHash\":\"" + PhysicsConfigurationHashV4 + "\",",
                 string.Empty);
+            var missingPredictionConfiguration = json.Replace(
+                "\"trajectoryPredictionProviderConfiguration\":" +
+                "{\"cacheCapacity\":128,\"cacheEvictionPolicy\":0,\"predictorVersion\":4," +
+                "\"predictorConfigurationHash\":\"" + PredictorConfigurationHashV4 + "\"},",
+                string.Empty);
+            var unknownPredictionConfigurationField = json.Replace(
+                "\"cacheCapacity\":128,",
+                "\"cacheCapacity\":128,\"requestingTeam\":0,");
             var legacyAbility = json.Replace("\"derived\":{", "\"ability\":{},\"derived\":{");
             var wrongVersion = json.Replace("\"contractVersion\":4", "\"contractVersion\":3");
 
             Assert.That(missing, Is.Not.EqualTo(json));
+            Assert.That(missingPredictionConfiguration, Is.Not.EqualTo(json));
+            Assert.That(unknownPredictionConfigurationField, Is.Not.EqualTo(json));
             Assert.That(legacyAbility, Is.Not.EqualTo(json));
             Assert.That(wrongVersion, Is.Not.EqualTo(json));
             Assert.That(
                 () => ContractJson.DeserializeMatchContextV4(missing),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(missingPredictionConfiguration),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(unknownPredictionConfigurationField),
                 Throws.TypeOf<ContractValidationException>());
             Assert.That(
                 () => ContractJson.DeserializeMatchContextV4(legacyAbility),
@@ -1286,12 +1393,19 @@ namespace Volleyball.Shared.EditModeTests
         private const string PhysicsConfigurationHashV4 =
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
+        private const string PredictorConfigurationHashV4 =
+            "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0";
+
+        private const string AlternatePredictorConfigurationHashV4 =
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
         private static MatchContextV4 CreateContextV4(
             Guid sessionId,
             int seed,
             PhysicalBaseAttributesV4 firstPhysical = null,
             DominantHandV4 firstHand = DominantHandV4.Right,
-            MatchAttributeDerivationConfigV4 config = null)
+            MatchAttributeDerivationConfigV4 config = null,
+            TrajectoryPredictionProviderConfigurationV4 predictionConfiguration = null)
         {
             var derivationConfig = config ?? MatchAttributeDerivationConfigV4.Version1;
             return MatchContextV4.Create(
@@ -1310,7 +1424,18 @@ namespace Volleyball.Shared.EditModeTests
                     "orange",
                     config: derivationConfig),
                 PhysicsConfigurationHashV4,
+                predictionConfiguration ?? CreatePredictionProviderConfigurationV4(),
                 rulesVersion: ContractVersions.MatchV3);
+        }
+
+        private static TrajectoryPredictionProviderConfigurationV4
+            CreatePredictionProviderConfigurationV4()
+        {
+            return new TrajectoryPredictionProviderConfigurationV4(
+                128,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                4,
+                PredictorConfigurationHashV4);
         }
 
         private static TeamSnapshotV4 CreateTeamV4(

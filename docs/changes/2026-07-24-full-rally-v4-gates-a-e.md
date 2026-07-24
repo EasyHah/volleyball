@@ -19,6 +19,11 @@
 
 - Career：gateway/request 改为具体 `MatchContextV4`/`MatchResultV4`，移除旧能力和 context 的生产入口。
 - Shared：提供 V4 player/team/context/result/replay 合同及独立 canonical hash。
+- Shared / Match（Task 8）：`MatchContextV4` 现要求不可变的 trajectory
+  provider 配置（容量、FIFO eviction、predictor version/config hash），并将其写入
+  strict canonical JSON/hash。正式 director 每个 rally 从该配置建立一个共享 provider；
+  完整 key 覆盖 ball version/fingerprint、physics、sampling、predictor、envelope 与
+  degradation step，请求方队伍不进入 key。
 - Match：正式 6v6 只从 V4 context 初始化；execution envelope、trajectory cache 与 P6 实际几何进入权威路径。
 - Replay：只记录和读取 V4 identity、样本分类、完整预测 key 与实际攻击几何。
 - 行为变化：R-REF-002 要求攻击资格基于实际物理几何，非法数据必须拒绝而非修正。
@@ -39,6 +44,11 @@
 - [ ] 序列化、存档或迁移验证（Gate E 完成后；不迁移旧存档）
 
 Gate A 使用 Unity `6000.0.43f1` 批处理 EditMode 命令记录当前缺口；红线测试在相应 gate 实现前预期失败。
+
+Task 8 专项 Shared/context + trajectory 测试 `69/69` 通过；Task 1 focused 为
+`113/114`，全量 EditMode 为 `543/544`。两者唯一失败均为后续 Task 9 的
+`CommitContact_ObservedGeometryDecidesOtherwiseIdenticalAttackEligibility`；
+Task 8 没有实现 P6 或 Replay V4。
 
 ## 回滚与风险
 
