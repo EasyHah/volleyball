@@ -842,6 +842,254 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void MatchContextV4_CanonicalJsonIsByteStableAndPreservesExplicitRotationOrder()
+        {
+            var context = CreateContextV4(
+                new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"),
+                7351);
+            var expected = ContractJson.SerializeV4(context);
+
+            for (var repetition = 0; repetition < 100; repetition++)
+            {
+                Assert.That(ContractJson.SerializeV4(context), Is.EqualTo(expected));
+            }
+
+            var restored = ContractJson.DeserializeMatchContextV4(expected);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(expected));
+            Assert.That(restored.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
+            Assert.That(restored.RulesVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(restored.FormulaVersion, Is.EqualTo(1));
+            Assert.That(restored.CoefficientVersion, Is.EqualTo(1));
+            Assert.That(restored.PhysicsConfigurationHash, Is.EqualTo(PhysicsConfigurationHashV4));
+            Assert.That(
+                restored.Home.RotationOrder.Select(player => player.PlayerId.Value),
+                Is.EqualTo(new[]
+                {
+                    "blue-player-1",
+                    "blue-player-2",
+                    "blue-player-3",
+                    "blue-player-4",
+                    "blue-player-5",
+                    "blue-player-6"
+                }));
+            Assert.That(restored.ContextHash, Is.EqualTo(context.ContextHash));
+        }
+
+        [Test]
+        public void NativeV4FingerprintsCoverBaseHandDerivationSeedAndRulesIdentity()
+        {
+            var baseline = CreateContextV4(
+                new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"),
+                7351);
+            var changedBase = CreateContextV4(
+                baseline.SessionId,
+                baseline.Seed,
+                firstPhysical: new PhysicalBaseAttributesV4(1.90f, 2.50f, 0.36f, 0.70f, 0.70f, 0.55f));
+            var changedHand = CreateContextV4(
+                baseline.SessionId,
+                baseline.Seed,
+                firstHand: DominantHandV4.Left);
+            var changedVersion = CreateContextV4(
+                baseline.SessionId,
+                baseline.Seed,
+                config: new MatchAttributeDerivationConfigV4(
+                    formulaVersion: 2,
+                    coefficientVersion: 1,
+                    MatchAttributeDerivationConfigV4.Version1.Coefficients));
+            var changedSeed = CreateContextV4(baseline.SessionId, 7352);
+
+            Assert.That(
+                changedBase.Home.RotationOrder[0].Derived.InputFingerprint,
+                Is.Not.EqualTo(baseline.Home.RotationOrder[0].Derived.InputFingerprint));
+            Assert.That(
+                changedBase.Home.RotationOrder[0].Derived.ResultFingerprint,
+                Is.Not.EqualTo(baseline.Home.RotationOrder[0].Derived.ResultFingerprint));
+            Assert.That(
+                changedHand.Home.RotationOrder[0].Derived.ResultFingerprint,
+                Is.Not.EqualTo(baseline.Home.RotationOrder[0].Derived.ResultFingerprint));
+            Assert.That(
+                changedVersion.Home.RotationOrder[0].Derived.ResultFingerprint,
+                Is.Not.EqualTo(baseline.Home.RotationOrder[0].Derived.ResultFingerprint));
+            Assert.That(changedSeed.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
+            Assert.That(changedBase.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
+            Assert.That(changedHand.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
+            Assert.That(changedVersion.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
+            Assert.That(
+                () => MatchContextV4.Create(
+                    baseline.SessionId,
+                    baseline.Seed,
+                    baseline.Home,
+                    baseline.Away,
+                    baseline.PhysicsConfigurationHash,
+                    rulesVersion: 4),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("rulesVersion"));
+        }
+
+        [Test]
+        public void PlayerSnapshotV4_RecomputesDerivationAndRejectsSuppliedFingerprintMismatch()
+        {
+            var physical = CreateDerivationPhysical();
+            var technical = CreateDerivationTechnical();
+            var supplied = MatchAttributeDerivationV4.Derive(
+                physical,
+                technical,
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+
+            Assert.That(
+                () => new PlayerSnapshotV4(
+                    new PlayerId("player-one"),
+                    "Player One",
+                    1,
+                    PlayerPosition.Setter,
+                    DominantHandV4.Left,
+                    physical,
+                    technical,
+                    MatchAttributeDerivationConfigV4.Version1,
+                    supplied),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("fingerprint"));
+        }
+
+        [Test]
+        public void TeamSnapshotV4_RequiresExactlySixUniquePlayersInRotationOrder()
+        {
+            var players = CreatePlayersV4("blue");
+            var team = new TeamSnapshotV4(new TeamId("team-blue"), "Blue Team", TeamSide.Home, players);
+
+            Assert.That(team.RotationOrder, Has.Count.EqualTo(6));
+            Assert.That(team.Players, Is.EqualTo(team.RotationOrder));
+            Assert.That(
+                () => new TeamSnapshotV4(
+                    new TeamId("too-small"),
+                    "Too Small",
+                    TeamSide.Home,
+                    players.Take(5).ToArray()),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("exactly six"));
+            Assert.That(
+                () => new TeamSnapshotV4(
+                    new TeamId("duplicates"),
+                    "Duplicates",
+                    TeamSide.Home,
+                    players.Take(5).Concat(new[] { players[0] }).ToArray()),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("unique"));
+        }
+
+        [Test]
+        public void MatchContextV4DeserializerRejectsMissingLegacyUnknownAndWrongVersionPayloads()
+        {
+            var context = CreateContextV4(Guid.NewGuid(), 19);
+            var json = ContractJson.SerializeV4(context);
+            var missing = json.Replace(
+                "\"physicsConfigurationHash\":\"" + PhysicsConfigurationHashV4 + "\",",
+                string.Empty);
+            var legacyAbility = json.Replace("\"derived\":{", "\"ability\":{},\"derived\":{");
+            var wrongVersion = json.Replace("\"contractVersion\":4", "\"contractVersion\":3");
+
+            Assert.That(missing, Is.Not.EqualTo(json));
+            Assert.That(legacyAbility, Is.Not.EqualTo(json));
+            Assert.That(wrongVersion, Is.Not.EqualTo(json));
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(missing),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(legacyAbility),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(wrongVersion),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(
+                    ContractJson.Serialize(CreateContext(Guid.NewGuid(), 19))),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(
+                    ContractJson.SerializeV2(CreateContextV2(Guid.NewGuid(), 19))),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchContextV4(
+                    ContractJson.SerializeV3(CreateContextV3(Guid.NewGuid(), 19))),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void MatchResultV4_CanonicalJsonRoundTripsWithAuthoritySummary()
+        {
+            var context = CreateContextV4(
+                new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"),
+                7351);
+            var result = MatchResultV4.Create(
+                context,
+                context.Home.TeamId,
+                homeScore: 15,
+                awayScore: 12,
+                ralliesPlayed: 27,
+                acceptedContacts: 81,
+                v3RuleTransitionCount: 81,
+                new[]
+                {
+                    new PlayerMatchStatsV4(
+                        context.Home.RotationOrder[0].PlayerId,
+                        points: 6,
+                        contacts: 12,
+                        errors: 1,
+                        workload: 16.5f)
+                });
+            var expected = ContractJson.SerializeV4(result);
+
+            for (var repetition = 0; repetition < 100; repetition++)
+            {
+                Assert.That(ContractJson.SerializeV4(result), Is.EqualTo(expected));
+            }
+
+            var restored = ContractJson.DeserializeMatchResultV4(expected);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(expected));
+            Assert.DoesNotThrow(() => restored.ValidateAgainst(context));
+            Assert.That(restored.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
+            Assert.That(restored.WinnerTeamId, Is.EqualTo(context.Home.TeamId));
+            Assert.That(restored.HomeScore, Is.EqualTo(15));
+            Assert.That(restored.AwayScore, Is.EqualTo(12));
+            Assert.That(restored.RalliesPlayed, Is.EqualTo(27));
+            Assert.That(restored.AcceptedContacts, Is.EqualTo(81));
+            Assert.That(restored.V3RuleTransitionCount, Is.EqualTo(81));
+            Assert.That(restored.ResultHash, Is.EqualTo(result.ResultHash));
+        }
+
+        [Test]
+        public void MatchResultV4DeserializerRejectsMissingUnknownWrongVersionAndLegacyJson()
+        {
+            var context = CreateContextV4(Guid.NewGuid(), 17);
+            var result = MatchResultV4.Create(
+                context,
+                context.Home.TeamId,
+                15,
+                9,
+                24,
+                72,
+                72,
+                Array.Empty<PlayerMatchStatsV4>());
+            var json = ContractJson.SerializeV4(result);
+            var missing = json.Replace("\"acceptedContacts\":72,", string.Empty);
+            var unknown = json.Replace("\"winnerTeamId\":", "\"ability\":{},\"winnerTeamId\":");
+            var wrongVersion = json.Replace("\"contractVersion\":4", "\"contractVersion\":3");
+            var v3 = CreateContextV3(Guid.NewGuid(), 17);
+            var v3Result = MatchResultV3.Create(
+                v3,
+                v3.Home.TeamId,
+                25,
+                20,
+                Array.Empty<PlayerMatchStatsV3>());
+
+            Assert.That(() => ContractJson.DeserializeMatchResultV4(missing), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => ContractJson.DeserializeMatchResultV4(unknown), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => ContractJson.DeserializeMatchResultV4(wrongVersion), Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchResultV4(ContractJson.SerializeV3(v3Result)),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
         public void MatchReplayV2_RoundTripsWithFormatVersionAndReservedDiagnostics()
         {
             var replay = MatchReplayV2.Create(
@@ -963,6 +1211,84 @@ namespace Volleyball.Shared.EditModeTests
                         coefficient.InputName,
                         value)
                     : coefficient);
+        }
+
+        private const string PhysicsConfigurationHashV4 =
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        private static MatchContextV4 CreateContextV4(
+            Guid sessionId,
+            int seed,
+            PhysicalBaseAttributesV4 firstPhysical = null,
+            DominantHandV4 firstHand = DominantHandV4.Right,
+            MatchAttributeDerivationConfigV4 config = null)
+        {
+            var derivationConfig = config ?? MatchAttributeDerivationConfigV4.Version1;
+            return MatchContextV4.Create(
+                sessionId,
+                seed,
+                CreateTeamV4(
+                    "team-blue",
+                    TeamSide.Home,
+                    "blue",
+                    firstPhysical,
+                    firstHand,
+                    derivationConfig),
+                CreateTeamV4(
+                    "team-orange",
+                    TeamSide.Away,
+                    "orange",
+                    config: derivationConfig),
+                PhysicsConfigurationHashV4,
+                rulesVersion: ContractVersions.MatchV3);
+        }
+
+        private static TeamSnapshotV4 CreateTeamV4(
+            string teamId,
+            TeamSide side,
+            string playerPrefix,
+            PhysicalBaseAttributesV4 firstPhysical = null,
+            DominantHandV4 firstHand = DominantHandV4.Right,
+            MatchAttributeDerivationConfigV4 config = null)
+        {
+            return new TeamSnapshotV4(
+                new TeamId(teamId),
+                side == TeamSide.Home ? "Blue Team" : "Orange Team",
+                side,
+                CreatePlayersV4(playerPrefix, firstPhysical, firstHand, config));
+        }
+
+        private static PlayerSnapshotV4[] CreatePlayersV4(
+            string playerPrefix,
+            PhysicalBaseAttributesV4 firstPhysical = null,
+            DominantHandV4 firstHand = DominantHandV4.Right,
+            MatchAttributeDerivationConfigV4 config = null)
+        {
+            var derivationConfig = config ?? MatchAttributeDerivationConfigV4.Version1;
+            var positions = new[]
+            {
+                PlayerPosition.Setter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.MiddleBlocker,
+                PlayerPosition.Opposite,
+                PlayerPosition.Libero,
+                PlayerPosition.Defender
+            };
+            var players = new PlayerSnapshotV4[6];
+            for (var index = 0; index < players.Length; index++)
+            {
+                players[index] = new PlayerSnapshotV4(
+                    new PlayerId(playerPrefix + "-player-" + (index + 1)),
+                    playerPrefix + " Player " + (index + 1),
+                    index + 1,
+                    positions[index],
+                    index == 0 ? firstHand : DominantHandV4.Right,
+                    index == 0 && firstPhysical != null ? firstPhysical : CreateDerivationPhysical(),
+                    CreateDerivationTechnical(),
+                    derivationConfig);
+            }
+
+            return players;
         }
 
         private static MatchContextV1 CreateContext(Guid sessionId, int seed)
