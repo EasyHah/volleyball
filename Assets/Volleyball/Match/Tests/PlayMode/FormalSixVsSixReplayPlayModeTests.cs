@@ -52,6 +52,7 @@ namespace Volleyball.PlayModeTests
             Assert.That(decisions, Has.All.Matches<MatchReplayEventV1>(replayEvent =>
                 replayEvent.Decision.Candidates.Count == 6));
             AssertCandidateScores(replay, decisions);
+            AssertOrganizationDiagnostics(replay, decisions);
             AssertReplayOrdering(replay);
             AssertRegularCadence(replay);
 
@@ -114,6 +115,33 @@ namespace Volleyball.PlayModeTests
             }
 
             Assert.That(sawExcludedCandidate, Is.True);
+        }
+
+        private static void AssertOrganizationDiagnostics(
+            MatchReplayV1 replay,
+            IEnumerable<MatchReplayEventV1> decisions)
+        {
+            var playerIds = replay.Players.Select(player => player.PlayerId).ToHashSet();
+            var organizationDecisions = decisions
+                .Where(replayEvent => replayEvent.Decision.Stage == "Organize")
+                .ToList();
+            Assert.That(organizationDecisions, Is.Not.Empty);
+            foreach (var decisionEvent in organizationDecisions)
+            {
+                var organization = decisionEvent.Decision.Diagnostics?.Organization;
+                Assert.That(organization, Is.Not.Null);
+                Assert.That(organization.Target, Is.Not.Null);
+                Assert.That(organization.FirstPassLanding, Is.Not.Null);
+                Assert.That(
+                    new[] { "Best", "Secondary", "Poor" },
+                    Does.Contain(organization.ZoneGrade));
+                Assert.That(playerIds.Contains(organization.SetterPlayerId), Is.True);
+                Assert.That(playerIds.Contains(organization.OrganizerPlayerId), Is.True);
+                Assert.That(
+                    new[] { "Reachable", "Unreachable", "PreviousTouch" },
+                    Does.Contain(organization.SetterArrival));
+                Assert.That(organization.SetterMovementMeters, Is.GreaterThanOrEqualTo(0f));
+            }
         }
 
         private static void AssertReplayOrdering(MatchReplayV1 replay)

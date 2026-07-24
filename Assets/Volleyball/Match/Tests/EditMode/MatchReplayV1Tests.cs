@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using NUnit.Framework;
 using Volleyball.Domain.Replay;
+using Volleyball.Presentation;
 
 namespace Volleyball.EditModeTests
 {
@@ -200,6 +202,54 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Json_RoundTripsOptionalDecisionDiagnosticsAndPreservesTheirCanonicalPayload()
+        {
+            var replay = ReplayFixture.CreateValidWithDecisionDiagnostics();
+
+            var restored = MatchReplayJson.Deserialize(MatchReplayJson.Serialize(replay));
+
+            var diagnostics = restored.Events[0].Decision.Diagnostics;
+            Assert.That(diagnostics, Is.Not.Null);
+            Assert.That(diagnostics.ConsumedAbilities, Has.Count.EqualTo(2));
+            Assert.That(diagnostics.ConsumedAbilities[0].PlayerId, Is.EqualTo("player-1"));
+            Assert.That(diagnostics.ConsumedAbilities[0].MaxAttackReach, Is.EqualTo(3.42f));
+            Assert.That(diagnostics.Organization.Target.X, Is.EqualTo(1.5f));
+            Assert.That(diagnostics.Organization.ZoneGrade, Is.EqualTo("Best"));
+            Assert.That(restored.ContentChecksum, Is.EqualTo(replay.ContentChecksum));
+            Assert.DoesNotThrow(() => restored.Validate());
+        }
+
+        [Test]
+        public void Validate_RejectsDecisionDiagnosticsThatReferenceAnUnknownPlayer()
+        {
+            var replay = ReplayFixture.CreateValidWithDecisionDiagnostics();
+            replay.Events[0].Decision.Diagnostics.ConsumedAbilities[0].PlayerId = "unknown-player";
+
+            Assert.That(
+                () => replay.Seal(),
+                Throws.TypeOf<MatchReplayValidationException>()
+                    .With.Message.Contains("Consumed ability PlayerId"));
+        }
+
+        [Test]
+        public void HtmlWriter_EmbedsAndLabelsProvidedDecisionDiagnostics()
+        {
+            var replay = ReplayFixture.CreateValidWithDecisionDiagnostics();
+            var outputDirectory = Path.Combine(
+                Path.GetTempPath(),
+                "volleyball-match-replay-tests",
+                Guid.NewGuid().ToString("N"));
+
+            MatchReplayArtifactWriter.Write(outputDirectory, replay);
+
+            var html = File.ReadAllText(Path.Combine(outputDirectory, "index.html"));
+            Assert.That(html, Does.Contain("Live V2 ability profile"));
+            Assert.That(html, Does.Contain("Organization diagnostics"));
+            Assert.That(html, Does.Contain("maxAttackReach"));
+            Assert.That(html, Does.Contain("Predicted first-pass landing"));
+        }
+
+        [Test]
         public void Deserialize_RejectsJsonMissingFormatVersion()
         {
             var json = MatchReplayJson.Serialize(ReplayFixture.CreateValid());
@@ -299,6 +349,54 @@ namespace Volleyball.EditModeTests
                 };
                 replay.Events[0].Decision.Weights.Add(firstWeight, WeightValue(firstWeight));
                 replay.Events[0].Decision.Weights.Add(secondWeight, WeightValue(secondWeight));
+                replay.Seal();
+                return replay;
+            }
+
+            public static MatchReplayV1 CreateValidWithDecisionDiagnostics()
+            {
+                var replay = CreateValidWithDecisionWeights("attack", "reachability");
+                replay.Events[0].Decision.Diagnostics = new MatchReplayDecisionDiagnosticsV1
+                {
+                    ConsumedAbilities = new List<MatchReplayConsumedAbilityV1>
+                    {
+                        new MatchReplayConsumedAbilityV1
+                        {
+                            PlayerId = "player-1",
+                            Mobility = 0.71f,
+                            Reaction = 0.72f,
+                            Jump = 0.73f,
+                            ReceiveTechnique = 0.74f,
+                            SetTechnique = 0.75f,
+                            AttackTechnique = 0.76f,
+                            AttackPower = 0.77f,
+                            MaxAttackReach = 3.42f
+                        },
+                        new MatchReplayConsumedAbilityV1
+                        {
+                            PlayerId = "player-2",
+                            Mobility = 0.61f,
+                            Reaction = 0.62f,
+                            Jump = 0.63f,
+                            ReceiveTechnique = 0.64f,
+                            SetTechnique = 0.65f,
+                            AttackTechnique = 0.66f,
+                            AttackPower = 0.67f,
+                            MaxAttackReach = 3.32f
+                        }
+                    },
+                    Organization = new MatchReplayOrganizationDiagnosticsV1
+                    {
+                        Target = new MatchReplayVector3V1 { X = 1.5f, Y = 2.4f, Z = -1.1f },
+                        FirstPassLanding = new MatchReplayVector3V1 { X = 1.45f, Y = 2.3f, Z = -1.12f },
+                        ZoneGrade = "Best",
+                        SetterPlayerId = "player-1",
+                        SetterArrival = "AtTarget",
+                        SetterMovementMeters = 0.12f,
+                        OrganizerPlayerId = "player-1",
+                        FallbackReason = string.Empty
+                    }
+                };
                 replay.Seal();
                 return replay;
             }

@@ -191,7 +191,12 @@ namespace Volleyball.Presentation
                     Weights = ToReplayWeights(replayEvent.Weights),
                     SelectedPlayerId = StableId(replayEvent.SelectedPlayer),
                     SelectedAction = replayEvent.SelectedAction.ToString(),
-                    Candidates = ToReplayCandidates(replayEvent)
+                    Candidates = ToReplayCandidates(replayEvent),
+                    Diagnostics = new MatchReplayDecisionDiagnosticsV1
+                    {
+                        ConsumedAbilities = ToReplayConsumedAbilities(replayEvent),
+                        Organization = ToReplayOrganizationDiagnostics(replayEvent.OrganizationDiagnostic)
+                    }
                 }
             });
         }
@@ -422,6 +427,51 @@ namespace Volleyball.Presentation
             return candidates;
         }
 
+        private List<MatchReplayConsumedAbilityV1> ToReplayConsumedAbilities(ReplayDecisionEvent replayEvent)
+        {
+            var abilities = new List<MatchReplayConsumedAbilityV1>(replayEvent.Candidates.Count);
+            foreach (var candidate in replayEvent.Candidates)
+            {
+                var player = PlayerFor(candidate.Actor);
+                var ability = player.Ability;
+                abilities.Add(new MatchReplayConsumedAbilityV1
+                {
+                    PlayerId = player.StableId.Value,
+                    Mobility = ability.Mobility,
+                    Reaction = ability.Reaction,
+                    Jump = ability.Jump,
+                    ReceiveTechnique = ability.ReceiveTechnique,
+                    SetTechnique = ability.SetTechnique,
+                    AttackTechnique = ability.AttackTechnique,
+                    AttackPower = ability.AttackPower,
+                    MaxAttackReach = ability.MaxAttackReach
+                });
+            }
+
+            return abilities;
+        }
+
+        private MatchReplayOrganizationDiagnosticsV1 ToReplayOrganizationDiagnostics(
+            ReplayOrganizationDecisionDiagnostic diagnostic)
+        {
+            if (diagnostic == null)
+            {
+                return null;
+            }
+
+            return new MatchReplayOrganizationDiagnosticsV1
+            {
+                Target = ToReplayVector(diagnostic.Target),
+                FirstPassLanding = ToReplayVector(diagnostic.FirstPassLanding),
+                ZoneGrade = diagnostic.ZoneGrade.ToString(),
+                SetterPlayerId = StableId(diagnostic.Setter),
+                SetterArrival = diagnostic.SetterReachStatus,
+                SetterMovementMeters = diagnostic.SetterPrepositionMovementMeters,
+                OrganizerPlayerId = StableId(diagnostic.Organizer),
+                FallbackReason = diagnostic.FallbackReason
+            };
+        }
+
         private static MatchReplayAbilityV1 ToReplayAbility(PlayerAbilityProfile ability)
         {
             return new MatchReplayAbilityV1
@@ -437,16 +487,20 @@ namespace Volleyball.Presentation
 
         private float TechniqueFor(PlayerId playerId, TechniqueAction action)
         {
+            var ability = PlayerFor(playerId).Ability;
+            return action == TechniqueAction.Attack
+                ? ability.AttackPower * ability.AttackTechnique
+                : ability.TechniqueFor(action);
+        }
+
+        private PrototypePlayerAgent PlayerFor(PlayerId playerId)
+        {
             foreach (var player in _players)
             {
-                if (!player.Id.Equals(playerId))
+                if (player.Id.Equals(playerId))
                 {
-                    continue;
+                    return player;
                 }
-
-                return action == TechniqueAction.Attack
-                    ? player.Ability.AttackPower * player.Ability.AttackTechnique
-                    : player.Ability.TechniqueFor(action);
             }
 
             throw new InvalidOperationException("Replay decision references an unknown player.");

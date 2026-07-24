@@ -71,6 +71,53 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.Action, Is.EqualTo(TechniqueAction.Set));
         }
 
+        [Test]
+        public void Plan_OrganizeReachableSetterWinsEvenWhenBackupHasTheHigherScore()
+        {
+            var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
+            var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+                new RallyPlayerSnapshot(setter, new SimVector3(1f, 0f, -2f), Ability(0f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(1f)),
+                availableSeconds: 2f));
+
+            var defenderCandidate = FindCandidate(decision, PlayerRole.Defender);
+            var setterCandidate = FindCandidate(decision, PlayerRole.Setter);
+            Assert.That(defenderCandidate.Score.Total, Is.GreaterThan(setterCandidate.Score.Total));
+            Assert.That(decision.Actor, Is.EqualTo(setter));
+        }
+
+        [Test]
+        public void Plan_OrganizeFallsBackWhenTheSetterIsUnreachable()
+        {
+            var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
+            var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+                new RallyPlayerSnapshot(setter, new SimVector3(20f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                availableSeconds: 0.5f));
+
+            Assert.That(FindCandidate(decision, PlayerRole.Setter).IsFeasible, Is.False);
+            Assert.That(decision.Actor, Is.EqualTo(defender));
+        }
+
+        [Test]
+        public void Plan_OrganizeFallsBackWhenTheSetterIsExcludedByThePreviousTouch()
+        {
+            var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
+            var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+                new RallyPlayerSnapshot(setter, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                lastCountedActor: setter));
+
+            Assert.That(FindCandidate(decision, PlayerRole.Setter).IsFeasible, Is.False);
+            Assert.That(decision.Actor, Is.EqualTo(defender));
+        }
+
         [TestCase(TeamId.Blue)]
         [TestCase(TeamId.Orange)]
         public void Plan_OrganizeTargetsTheFutureAttackerContactPointInTheTeamCourtFrame(TeamId team)
@@ -461,7 +508,7 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Plan_NonPreferredRoleCanWinWhenItsReachabilityScoreIsHigher()
+        public void Plan_OrganizeSetterWinsWhenAnotherReachableRoleScoresHigher()
         {
             var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
                 TeamId.Blue,
@@ -472,12 +519,12 @@ namespace Volleyball.EditModeTests
                 new SimVector3(0f, 0f, -2f),
                 availableSeconds: 0.5f));
 
-            Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
-            Assert.That(decision.Score.NominalRole, Is.Zero);
-            Assert.That(decision.Score.Total, Is.GreaterThan(0f));
+            Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Setter)));
+            Assert.That(decision.Score.NominalRole, Is.GreaterThan(0f));
             var setter = FindCandidate(decision, PlayerRole.Setter);
             Assert.That(setter.IsFeasible, Is.True);
-            Assert.That(decision.Score.Total, Is.GreaterThan(setter.Score.Total));
+            var defender = FindCandidate(decision, PlayerRole.Defender);
+            Assert.That(defender.Score.Total, Is.GreaterThan(setter.Score.Total));
         }
 
         [Test]
@@ -719,6 +766,28 @@ namespace Volleyball.EditModeTests
                 CreateTactic(SpikeRoute.Line),
                 players,
                 predictedBallCenter,
+                availableSeconds,
+                5f,
+                0,
+                lastCountedActor,
+                0,
+                0,
+                RallyDecisionStage.Organize,
+                RallyTacticalWeights.Default);
+        }
+
+        private static TeamRallyDecisionInput CreateOrganizeInput(
+            RallyPlayerSnapshot setter,
+            RallyPlayerSnapshot attacker,
+            RallyPlayerSnapshot defender,
+            float availableSeconds = 2f,
+            PlayerId? lastCountedActor = null)
+        {
+            return new TeamRallyDecisionInput(
+                TeamId.Blue,
+                CreateTactic(SpikeRoute.Line),
+                new[] { setter, attacker, defender },
+                new SimVector3(0f, 2f, -2f),
                 availableSeconds,
                 5f,
                 0,

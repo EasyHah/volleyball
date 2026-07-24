@@ -249,7 +249,7 @@ namespace Volleyball.Presentation
             }
             if (attackApproach.HasValue)
             {
-                ConfigureAttackApproach(attackApproach.Value);
+                ConfigureAttackApproach(attackApproach.Value, continuePreparedAttack);
             }
             _continueAttackPreparation = false;
             _motionOrigin = _movementTargetPosition;
@@ -1152,7 +1152,7 @@ namespace Volleyball.Presentation
             var correction = _plannedContactCenter - currentCenter;
             var maximumCorrection = _isControlledHandling ? 0.70f : _scheduledAction switch
             {
-                TechniqueAction.Attack => 0.70f,
+                TechniqueAction.Attack => 0.18f,
                 TechniqueAction.Set => 0.30f,
                 _ => 0.16f
             };
@@ -1197,9 +1197,7 @@ namespace Volleyball.Presentation
         private Vector3 EvaluatePlannedAttackPosition(float simulationTime, Vector3 movementPosition)
         {
             var approachStartTime = _movementEndSimulationTime;
-            var jumpLead = _hasAttackContactPlan
-                ? Mathf.Lerp(0.24f, 0.38f, _attackContactPlan.JumpTiming)
-                : 0.38f;
+            var jumpLead = AttackJumpLead();
             var takeoffTime = Mathf.Max(
                 approachStartTime + 0.01f,
                 _actionTimeline.ActualContactTime - jumpLead);
@@ -1209,6 +1207,11 @@ namespace Volleyball.Presentation
 
             if (_hasAttackContactPlan)
             {
+                if (simulationTime < takeoffTime)
+                {
+                    return position;
+                }
+
                 if (simulationTime <= _actionTimeline.ActualContactTime)
                 {
                     var ascent = Mathf.InverseLerp(takeoffTime, _actionTimeline.ActualContactTime, simulationTime);
@@ -1234,10 +1237,21 @@ namespace Volleyball.Presentation
             return position;
         }
 
-        private void ConfigureAttackApproach(AttackApproachPlan approach)
+        private void ConfigureAttackApproach(AttackApproachPlan approach, bool useContinuationTakeoff)
         {
             var approachStart = _movementTargetPosition;
             var requestedTakeoff = ConstrainGroundPosition(ToUnity(approach.Takeoff));
+            if (useContinuationTakeoff)
+            {
+                _attackTakeoffPosition = approachStart;
+                if (_hasAttackContactPlan)
+                {
+                    ConfigureAttackContactRootPosition();
+                }
+
+                return;
+            }
+
             var takeoffTime = Mathf.Max(
                 _movementEndSimulationTime + 0.01f,
                 _actionTimeline.ActualContactTime - 0.38f);
@@ -1249,10 +1263,42 @@ namespace Volleyball.Presentation
                 maximumSpeed * availableSeconds);
             if (_hasAttackContactPlan)
             {
-                _attackContactRootPosition = AttackRootContactPosition(_attackContactPlan);
+                ConfigureAttackContactRootPosition();
             }
             ScheduledMovementDistance += Vector3.Distance(approachStart, _attackTakeoffPosition);
             MovementShortfall += Vector3.Distance(_attackTakeoffPosition, requestedTakeoff);
+        }
+
+        private float AttackJumpLead()
+        {
+            return _hasAttackContactPlan
+                ? Mathf.Lerp(0.24f, 0.38f, _attackContactPlan.JumpTiming)
+                : 0.38f;
+        }
+
+        private void ConfigureAttackContactRootPosition()
+        {
+            var requestedRootPosition = AttackRootContactPosition(_attackContactPlan);
+            var maximumHorizontalDistance = _moveSpeed *
+                                            (0.65f + (Ability.Mobility * 0.5f)) *
+                                            AttackJumpLead();
+            var takeoffHorizontal = new Vector3(
+                _attackTakeoffPosition.x,
+                0f,
+                _attackTakeoffPosition.z);
+            var requestedHorizontal = new Vector3(
+                requestedRootPosition.x,
+                0f,
+                requestedRootPosition.z);
+            var reachableHorizontal = Vector3.MoveTowards(
+                takeoffHorizontal,
+                requestedHorizontal,
+                maximumHorizontalDistance);
+            _attackContactRootPosition = new Vector3(
+                reachableHorizontal.x,
+                requestedRootPosition.y,
+                reachableHorizontal.z);
+            MovementShortfall += Vector3.Distance(reachableHorizontal, requestedHorizontal);
         }
 
         private void ConfigureScheduledMovement(
@@ -1296,11 +1342,16 @@ namespace Volleyball.Presentation
                 _movementStartSimulationTime + 0.01f,
                 scheduledContactTime - 0.38f);
             var requestedTarget = ConstrainGroundPosition(requestedTakeoff);
-            _movementTargetPosition = requestedTarget;
+            var availableSeconds = _movementEndSimulationTime - _movementStartSimulationTime;
+            var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
+            _movementTargetPosition = Vector3.MoveTowards(
+                _movementStartPosition,
+                requestedTarget,
+                maximumSpeed * availableSeconds);
             ScheduledMovementDistance = Vector3.Distance(
                 _movementStartPosition,
                 _movementTargetPosition);
-            MovementShortfall = 0f;
+            MovementShortfall = Vector3.Distance(_movementTargetPosition, requestedTarget);
             _hasScheduledMovement = ScheduledMovementDistance > 0.01f;
         }
 

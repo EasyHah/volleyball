@@ -597,6 +597,8 @@ namespace Volleyball.Domain.Replay
         [DataMember(Name = "selectedPlayerId", Order = 7)] public string SelectedPlayerId { get; set; }
         [DataMember(Name = "selectedAction", Order = 8)] public string SelectedAction { get; set; }
         [DataMember(Name = "candidates", Order = 9)] public List<MatchReplayCandidateScoreV1> Candidates { get; set; } = new List<MatchReplayCandidateScoreV1>();
+        [DataMember(Name = "diagnostics", Order = 10, EmitDefaultValue = false)]
+        public MatchReplayDecisionDiagnosticsV1 Diagnostics { get; set; }
 
         internal void Validate(ISet<string> playerIds)
         {
@@ -634,6 +636,8 @@ namespace Volleyball.Domain.Replay
                     throw new MatchReplayValidationException("Decision candidate IDs must be unique.");
                 }
             }
+
+            Diagnostics?.Validate(playerIds);
         }
 
         internal MatchReplayDecisionV1 CanonicalCopy()
@@ -654,8 +658,161 @@ namespace Volleyball.Domain.Replay
                 Weights = weights,
                 SelectedPlayerId = SelectedPlayerId,
                 SelectedAction = SelectedAction,
-                Candidates = Candidates
+                Candidates = Candidates,
+                Diagnostics = Diagnostics == null ? null : Diagnostics.CanonicalCopy()
             };
+        }
+    }
+
+    [DataContract]
+    public sealed class MatchReplayDecisionDiagnosticsV1
+    {
+        [DataMember(Name = "consumedAbilities", Order = 1, EmitDefaultValue = false)]
+        public List<MatchReplayConsumedAbilityV1> ConsumedAbilities { get; set; } = new List<MatchReplayConsumedAbilityV1>();
+
+        [DataMember(Name = "organization", Order = 2, EmitDefaultValue = false)]
+        public MatchReplayOrganizationDiagnosticsV1 Organization { get; set; }
+
+        internal void Validate(ISet<string> playerIds)
+        {
+            if (ConsumedAbilities == null)
+            {
+                throw new MatchReplayValidationException("Consumed abilities are required when decision diagnostics are present.");
+            }
+
+            var consumedPlayerIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < ConsumedAbilities.Count; index++)
+            {
+                var ability = ConsumedAbilities[index] ?? throw new MatchReplayValidationException("Consumed abilities cannot contain null.");
+                ability.Validate(playerIds);
+                if (!consumedPlayerIds.Add(ability.PlayerId))
+                {
+                    throw new MatchReplayValidationException("Consumed ability player IDs must be unique.");
+                }
+            }
+
+            Organization?.Validate(playerIds);
+        }
+
+        internal MatchReplayDecisionDiagnosticsV1 CanonicalCopy()
+        {
+            var abilities = new List<MatchReplayConsumedAbilityV1>(ConsumedAbilities.Count);
+            for (var index = 0; index < ConsumedAbilities.Count; index++)
+            {
+                abilities.Add(ConsumedAbilities[index].CanonicalCopy());
+            }
+
+            return new MatchReplayDecisionDiagnosticsV1
+            {
+                ConsumedAbilities = abilities,
+                Organization = Organization == null ? null : Organization.CanonicalCopy()
+            };
+        }
+    }
+
+    [DataContract]
+    public sealed class MatchReplayConsumedAbilityV1
+    {
+        [DataMember(Name = "playerId", Order = 1)] public string PlayerId { get; set; }
+        [DataMember(Name = "mobility", Order = 2)] public float Mobility { get; set; }
+        [DataMember(Name = "reaction", Order = 3)] public float Reaction { get; set; }
+        [DataMember(Name = "jump", Order = 4)] public float Jump { get; set; }
+        [DataMember(Name = "receiveTechnique", Order = 5)] public float ReceiveTechnique { get; set; }
+        [DataMember(Name = "setTechnique", Order = 6)] public float SetTechnique { get; set; }
+        [DataMember(Name = "attackTechnique", Order = 7)] public float AttackTechnique { get; set; }
+        [DataMember(Name = "attackPower", Order = 8)] public float AttackPower { get; set; }
+        [DataMember(Name = "maxAttackReach", Order = 9)] public float MaxAttackReach { get; set; }
+
+        internal void Validate(ISet<string> playerIds)
+        {
+            MatchReplayV1.Required(PlayerId, nameof(PlayerId));
+            MatchReplayV1.OptionalPlayer(playerIds, PlayerId, "Consumed ability " + nameof(PlayerId));
+            ValidateUnit(Mobility, nameof(Mobility));
+            ValidateUnit(Reaction, nameof(Reaction));
+            ValidateUnit(Jump, nameof(Jump));
+            ValidateUnit(ReceiveTechnique, nameof(ReceiveTechnique));
+            ValidateUnit(SetTechnique, nameof(SetTechnique));
+            ValidateUnit(AttackTechnique, nameof(AttackTechnique));
+            ValidateUnit(AttackPower, nameof(AttackPower));
+            MatchReplayV1.Finite(MaxAttackReach, nameof(MaxAttackReach));
+            if (MaxAttackReach < 3.20f || MaxAttackReach > 3.55f)
+            {
+                throw new MatchReplayValidationException("MaxAttackReach must be in the range [3.20, 3.55].");
+            }
+        }
+
+        internal MatchReplayConsumedAbilityV1 CanonicalCopy()
+        {
+            return new MatchReplayConsumedAbilityV1
+            {
+                PlayerId = PlayerId,
+                Mobility = Mobility,
+                Reaction = Reaction,
+                Jump = Jump,
+                ReceiveTechnique = ReceiveTechnique,
+                SetTechnique = SetTechnique,
+                AttackTechnique = AttackTechnique,
+                AttackPower = AttackPower,
+                MaxAttackReach = MaxAttackReach
+            };
+        }
+
+        private static void ValidateUnit(float value, string name)
+        {
+            MatchReplayV1.Finite(value, name);
+            if (value < 0f || value > 1f)
+            {
+                throw new MatchReplayValidationException(name + " must be in the range [0, 1].");
+            }
+        }
+    }
+
+    [DataContract]
+    public sealed class MatchReplayOrganizationDiagnosticsV1
+    {
+        [DataMember(Name = "target", Order = 1, EmitDefaultValue = false)] public MatchReplayVector3V1 Target { get; set; }
+        [DataMember(Name = "firstPassLanding", Order = 2, EmitDefaultValue = false)] public MatchReplayVector3V1 FirstPassLanding { get; set; }
+        [DataMember(Name = "zoneGrade", Order = 3, EmitDefaultValue = false)] public string ZoneGrade { get; set; }
+        [DataMember(Name = "setterPlayerId", Order = 4, EmitDefaultValue = false)] public string SetterPlayerId { get; set; }
+        [DataMember(Name = "setterArrival", Order = 5, EmitDefaultValue = false)] public string SetterArrival { get; set; }
+        [DataMember(Name = "setterMovementMeters", Order = 6, EmitDefaultValue = false)] public float? SetterMovementMeters { get; set; }
+        [DataMember(Name = "organizerPlayerId", Order = 7, EmitDefaultValue = false)] public string OrganizerPlayerId { get; set; }
+        [DataMember(Name = "fallbackReason", Order = 8, EmitDefaultValue = false)] public string FallbackReason { get; set; }
+
+        internal void Validate(ISet<string> playerIds)
+        {
+            Target?.Validate(nameof(Target));
+            FirstPassLanding?.Validate(nameof(FirstPassLanding));
+            MatchReplayV1.OptionalPlayer(playerIds, SetterPlayerId, nameof(SetterPlayerId));
+            MatchReplayV1.OptionalPlayer(playerIds, OrganizerPlayerId, nameof(OrganizerPlayerId));
+            if (SetterMovementMeters.HasValue)
+            {
+                MatchReplayV1.Finite(SetterMovementMeters.Value, nameof(SetterMovementMeters));
+                if (SetterMovementMeters.Value < 0f)
+                {
+                    throw new MatchReplayValidationException("SetterMovementMeters cannot be negative.");
+                }
+            }
+        }
+
+        internal MatchReplayOrganizationDiagnosticsV1 CanonicalCopy()
+        {
+            return new MatchReplayOrganizationDiagnosticsV1
+            {
+                Target = Copy(Target),
+                FirstPassLanding = Copy(FirstPassLanding),
+                ZoneGrade = ZoneGrade,
+                SetterPlayerId = SetterPlayerId,
+                SetterArrival = SetterArrival,
+                SetterMovementMeters = SetterMovementMeters,
+                OrganizerPlayerId = OrganizerPlayerId,
+                FallbackReason = FallbackReason
+            };
+        }
+
+        private static MatchReplayVector3V1 Copy(MatchReplayVector3V1 value)
+        {
+            return value == null ? null : new MatchReplayVector3V1 { X = value.X, Y = value.Y, Z = value.Z };
         }
     }
 

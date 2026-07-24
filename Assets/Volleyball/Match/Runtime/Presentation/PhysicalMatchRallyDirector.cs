@@ -18,6 +18,38 @@ using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
+    public sealed class ReplayOrganizationDecisionDiagnostic
+    {
+        public ReplayOrganizationDecisionDiagnostic(
+            SimVector3 target,
+            SimVector3 firstPassLanding,
+            SetterOrganizationZoneGrade zoneGrade,
+            PlayerId setter,
+            string setterReachStatus,
+            float setterPrepositionMovementMeters,
+            PlayerId organizer,
+            string fallbackReason)
+        {
+            Target = target;
+            FirstPassLanding = firstPassLanding;
+            ZoneGrade = zoneGrade;
+            Setter = setter;
+            SetterReachStatus = setterReachStatus;
+            SetterPrepositionMovementMeters = setterPrepositionMovementMeters;
+            Organizer = organizer;
+            FallbackReason = fallbackReason;
+        }
+
+        public SimVector3 Target { get; }
+        public SimVector3 FirstPassLanding { get; }
+        public SetterOrganizationZoneGrade ZoneGrade { get; }
+        public PlayerId Setter { get; }
+        public string SetterReachStatus { get; }
+        public float SetterPrepositionMovementMeters { get; }
+        public PlayerId Organizer { get; }
+        public string FallbackReason { get; }
+    }
+
     public sealed class ReplayDecisionEvent
     {
         private ReplayDecisionEvent(
@@ -27,7 +59,8 @@ namespace Volleyball.Presentation
             float availableSeconds,
             SimVector3 predictedBallTarget,
             RallyTacticalWeights weights,
-            TeamRallyDecision decision)
+            TeamRallyDecision decision,
+            ReplayOrganizationDecisionDiagnostic organizationDiagnostic)
         {
             SimulationTimeSeconds = simulationTimeSeconds;
             Stage = stage;
@@ -38,6 +71,7 @@ namespace Volleyball.Presentation
             SelectedPlayer = decision.Actor;
             SelectedAction = decision.Action;
             Candidates = new List<RallyDecisionCandidate>(decision.Candidates).AsReadOnly();
+            OrganizationDiagnostic = organizationDiagnostic;
         }
 
         public float SimulationTimeSeconds { get; }
@@ -49,6 +83,7 @@ namespace Volleyball.Presentation
         public PlayerId SelectedPlayer { get; }
         public TechniqueAction SelectedAction { get; }
         public IReadOnlyList<RallyDecisionCandidate> Candidates { get; }
+        public ReplayOrganizationDecisionDiagnostic OrganizationDiagnostic { get; }
 
         internal static ReplayDecisionEvent Create(
             float simulationTimeSeconds,
@@ -57,7 +92,8 @@ namespace Volleyball.Presentation
             float availableSeconds,
             SimVector3 predictedBallTarget,
             RallyTacticalWeights weights,
-            TeamRallyDecision decision)
+            TeamRallyDecision decision,
+            ReplayOrganizationDecisionDiagnostic organizationDiagnostic = null)
         {
             return new ReplayDecisionEvent(
                 simulationTimeSeconds,
@@ -66,7 +102,8 @@ namespace Volleyball.Presentation
                 availableSeconds,
                 predictedBallTarget,
                 weights,
-                decision);
+                decision,
+                organizationDiagnostic);
         }
     }
 
@@ -1053,6 +1090,9 @@ namespace Volleyball.Presentation
                 $"score={decision.Score.Total:0.00} reach={decision.Score.Reachability:0.00} " +
                 $"role={decision.Score.NominalRole:0.00} approach={decision.Score.Approach:0.00} " +
                 $"angle={decision.Score.Angle:0.00}");
+            var organizationDiagnostic = stage == RallyDecisionStage.Organize
+                ? CreateOrganizationDiagnostic(team, decision, predictedBallCenter, lastCountedActor)
+                : null;
             NotifyReplay(
                 ReplayDecisionPlanned,
                 ReplayDecisionEvent.Create(
@@ -1062,8 +1102,73 @@ namespace Volleyball.Presentation
                     availableSeconds,
                     predictedBallCenter,
                     _activeTacticalWeights,
-                    decision));
+                    decision,
+                    organizationDiagnostic));
             return decision;
+        }
+
+        private ReplayOrganizationDecisionDiagnostic CreateOrganizationDiagnostic(
+            TeamId team,
+            TeamRallyDecision decision,
+            SimVector3 firstPassLanding,
+            PlayerId? lastCountedActor)
+        {
+            var target = SetterOrganizationZone.DefaultWorldTarget(team);
+            var assessment = SetterOrganizationZone.AssessWorldTarget(team, firstPassLanding);
+            var setter = FindPlayer(team, role => role == PlayerRole.Setter);
+            var setterCandidate = FindCandidate(decision.Candidates, setter.Id);
+            var setterWasPreviousTouch = lastCountedActor.HasValue && lastCountedActor.Value.Equals(setter.Id);
+            var setterReachStatus = setterWasPreviousTouch
+                ? "PreviousTouch"
+                : setterCandidate.IsFeasible ? "Reachable" : "Unreachable";
+            var fallbackReason = decision.Actor.Equals(setter.Id)
+                ? string.Empty
+                : setterWasPreviousTouch ? "SetterPreviousTouch" : "SetterUnreachable";
+            var settingContactCenter = NextContactCenter(team, TechniqueAction.Set);
+            var settingRoot = setter.ResolveContactRootTarget(
+                TechniqueAction.Set,
+                settingContactCenter,
+                ToUnity(target));
+            var movement = Vector3.Distance(setter.transform.position, settingRoot);
+            return new ReplayOrganizationDecisionDiagnostic(
+                target,
+                firstPassLanding,
+                CombineOrganizationGrade(assessment),
+                setter.Id,
+                setterReachStatus,
+                movement,
+                decision.Actor,
+                fallbackReason);
+        }
+
+        private static RallyDecisionCandidate FindCandidate(
+            IReadOnlyList<RallyDecisionCandidate> candidates,
+            PlayerId player)
+        {
+            for (var index = 0; index < candidates.Count; index++)
+            {
+                if (candidates[index].Actor.Equals(player))
+                {
+                    return candidates[index];
+                }
+            }
+
+            throw new InvalidOperationException("Organization decision did not include the registered setter.");
+        }
+
+        private static SetterOrganizationZoneGrade CombineOrganizationGrade(
+            SetterOrganizationZoneAssessment assessment)
+        {
+            if (assessment.LateralGrade == SetterOrganizationZoneGrade.Poor ||
+                assessment.DepthGrade == SetterOrganizationZoneGrade.Poor)
+            {
+                return SetterOrganizationZoneGrade.Poor;
+            }
+
+            return assessment.LateralGrade == SetterOrganizationZoneGrade.Best &&
+                   assessment.DepthGrade == SetterOrganizationZoneGrade.Best
+                ? SetterOrganizationZoneGrade.Best
+                : SetterOrganizationZoneGrade.Secondary;
         }
 
         private void ScheduleDecision(TeamRallyDecision decision, float flightSeconds)
@@ -1319,7 +1424,7 @@ namespace Volleyball.Presentation
             var settingRoot = setter.ResolveContactRootTarget(
                 TechniqueAction.Set,
                 settingContactCenter,
-                ToUnity(TacticFor(receiveDecision.Actor.Team).SetterPosition));
+                ToUnity(SetterOrganizationZone.DefaultWorldTarget(receiveDecision.Actor.Team)));
             setter.ScheduleSetPreparation(
                 _expectedContactTime,
                 settingRoot,
@@ -2843,7 +2948,9 @@ namespace Volleyball.Presentation
         private SimVector3 NextContactCenter(TeamId team, TechniqueAction action)
         {
             var tactic = TacticFor(team);
-            var point = action == TechniqueAction.Set ? tactic.SetterPosition : tactic.AttackerPosition;
+            SimVector3 point = action == TechniqueAction.Set
+                ? SetterOrganizationZone.DefaultWorldTarget(team)
+                : new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
             var player = FindPlayer(
                 team,
                 role => action == TechniqueAction.Set

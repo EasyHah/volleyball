@@ -85,6 +85,11 @@ tr.selected { background:rgba(89,217,255,.12); }
 .set-quality-grid div { padding:8px; border:1px solid #20364d; border-radius:8px; }
 .set-quality-grid span { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; }
 .set-quality-reason { grid-column:1/-1; }
+.diagnostic-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; padding:13px 15px; }
+.diagnostic-grid div { padding:8px; border:1px solid #20364d; border-radius:8px; }
+.diagnostic-grid span { display:block; color:var(--muted); font-size:10px; text-transform:uppercase; }
+.diagnostic-wide { grid-column:1/-1; }
+.ability-table { overflow:auto; max-height:31vh; }
 .player-label { fill:#fff; font-size:13px; font-weight:800; paint-order:stroke; stroke:#08111d; stroke-width:3px; stroke-linejoin:round; }
 .court-note { fill:#a9c7df; font-size:12px; letter-spacing:.12em; }
 @media (max-width:900px) { .workspace { grid-template-columns:1fr; } .scoreboard { grid-template-columns:repeat(3,1fr); } #court { max-height:none; } }
@@ -125,6 +130,14 @@ tr.selected { background:rgba(89,217,255,.12); }
         <div class='panel-head'><h2>Set quality</h2><div id='set-quality-summary'></div></div>
         <div id='set-quality-content' class='empty'>Move to a set-contact event to inspect its attack chain.</div>
       </div>
+      <div id='ability-diagnostics' class='card'>
+        <div class='panel-head'><h2>Live V2 ability profile</h2><div id='ability-diagnostics-summary'></div></div>
+        <div id='ability-diagnostics-content' class='empty'>No consumed ability values were recorded for this event.</div>
+      </div>
+      <div id='organization-diagnostics' class='card'>
+        <div class='panel-head'><h2>Organization diagnostics</h2><div id='organization-diagnostics-summary'></div></div>
+        <div id='organization-diagnostics-content' class='empty'>No organization diagnostic was recorded for this event.</div>
+      </div>
     </div>
   </section>
 </main>
@@ -140,7 +153,9 @@ const ui={
   markers:document.querySelector('#event-markers'), caption:document.querySelector('#event-caption'),
   previous:document.querySelector('#previous-event'), next:document.querySelector('#next-event'),
   summary:document.querySelector('#decision-summary'), candidates:document.querySelector('#candidate-content'),
-  setQualitySummary:document.querySelector('#set-quality-summary'), setQuality:document.querySelector('#set-quality-content')
+  setQualitySummary:document.querySelector('#set-quality-summary'), setQuality:document.querySelector('#set-quality-content'),
+  abilityDiagnosticsSummary:document.querySelector('#ability-diagnostics-summary'), abilityDiagnostics:document.querySelector('#ability-diagnostics-content'),
+  organizationDiagnosticsSummary:document.querySelector('#organization-diagnostics-summary'), organizationDiagnostics:document.querySelector('#organization-diagnostics-content')
 };
 let replay=null;
 let playing=false;
@@ -297,6 +312,41 @@ function renderSetQuality(event){
   ui.setQuality.innerHTML=`<div><span>Planned contact</span>${vector(chain.plannedAttackContactCenter)}</div><div><span>Actual contact</span>${vector(chain.actualAttackContactCenter)}</div><div><span>Replan</span>${escapeHtml(chain.replanOutcome)}</div><div><span>Responsibility</span>${escapeHtml(chain.primaryResponsibility)}</div><div class='set-quality-reason'><span>Reason</span>${escapeHtml(chain.reason)}</div>`;
 }
 
+function playerLabel(playerId){
+  const metadata=playerMetadata.get(playerId);
+  return metadata ? `${metadata.team.toUpperCase()} P${metadata.rosterSlot} ${metadata.role}` : playerId;
+}
+
+function renderAbilityDiagnostics(event){
+  const diagnostics=event && event.decision ? event.decision.diagnostics : null;
+  const abilities=diagnostics && diagnostics.consumedAbilities;
+  if(!Array.isArray(abilities) || abilities.length===0){
+    ui.abilityDiagnosticsSummary.textContent='';
+    ui.abilityDiagnostics.className='empty';
+    ui.abilityDiagnostics.textContent='No consumed ability values were recorded for this event.';
+    return;
+  }
+  ui.abilityDiagnosticsSummary.textContent=`${abilities.length} evaluated player${abilities.length===1?'':'s'}`;
+  const rows=abilities.map(ability=>`<tr><td>${escapeHtml(playerLabel(ability.playerId))}</td><td>${ability.mobility.toFixed(2)}</td><td>${ability.reaction.toFixed(2)}</td><td>${ability.jump.toFixed(2)}</td><td>${ability.receiveTechnique.toFixed(2)}</td><td>${ability.setTechnique.toFixed(2)}</td><td>${ability.attackTechnique.toFixed(2)}</td><td>${ability.attackPower.toFixed(2)}</td><td>${ability.maxAttackReach.toFixed(2)} m</td></tr>`).join('');
+  ui.abilityDiagnostics.className='ability-table';
+  ui.abilityDiagnostics.innerHTML=`<table><thead><tr><th>Player</th><th>Move</th><th>React</th><th>Jump</th><th>Receive</th><th>Set</th><th>Attack tech</th><th>Power</th><th>Reach</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function renderOrganizationDiagnostics(event){
+  const organization=event && event.decision && event.decision.diagnostics ? event.decision.diagnostics.organization : null;
+  if(!organization){
+    ui.organizationDiagnosticsSummary.textContent='';
+    ui.organizationDiagnostics.className='empty';
+    ui.organizationDiagnostics.textContent='No organization diagnostic was recorded for this event.';
+    return;
+  }
+  const vector=value=>value ? `(${value.x.toFixed(2)}, ${value.y.toFixed(2)}, ${value.z.toFixed(2)})` : 'Not recorded';
+  const movement=organization.setterMovementMeters===undefined || organization.setterMovementMeters===null ? 'Not recorded' : `${organization.setterMovementMeters.toFixed(2)} m`;
+  ui.organizationDiagnosticsSummary.textContent=organization.zoneGrade || 'Recorded';
+  ui.organizationDiagnostics.className='diagnostic-grid';
+  ui.organizationDiagnostics.innerHTML=`<div><span>Organization target</span>${vector(organization.target)}</div><div><span>Predicted first-pass landing</span>${vector(organization.firstPassLanding)}</div><div><span>Zone grade</span>${escapeHtml(organization.zoneGrade || 'Not recorded')}</div><div><span>Setter</span>${escapeHtml(organization.setterPlayerId ? playerLabel(organization.setterPlayerId) : 'Not recorded')}</div><div><span>Setter arrival</span>${escapeHtml(organization.setterArrival || 'Not recorded')}</div><div><span>Setter movement</span>${movement}</div><div><span>Organizer</span>${escapeHtml(organization.organizerPlayerId ? playerLabel(organization.organizerPlayerId) : 'Not recorded')}</div><div><span>Fallback</span>${escapeHtml(organization.fallbackReason || 'None')}</div>`;
+}
+
 function render(time,preferredSnapshotIndex=null,eventIndex=null){
   currentTime=Math.max(Number(ui.timeline.min),Math.min(Number(ui.timeline.max),time));
   activeEventIndex=eventIndex===null ? activeEventAt(currentTime) : eventIndex;
@@ -314,6 +364,8 @@ function render(time,preferredSnapshotIndex=null,eventIndex=null){
   renderCourt(snapshot,decision);
   renderDecision(event);
   renderSetQuality(event);
+  renderAbilityDiagnostics(event);
+  renderOrganizationDiagnostics(event);
 }
 
 function setPlaying(value){ playing=value; ui.play.textContent=playing?'Pause':'Play'; lastFrame=performance.now(); }

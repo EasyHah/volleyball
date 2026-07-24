@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260724-001 | 2026-07-24 | 进行中 | Match / Docs | 模块内部 | [Stage 2 能力投影、共享执行 envelope 与物理预测 cache](2026-07-24-001-stage2-ability-envelope-and-prediction.md) |
 | CHG-20260723-001 | 2026-07-23 | 已完成 | Shared / Match / Career / Docs | **跨模块（重点）** | [Full Rally V3 架构与 Shared 契约预留](2026-07-23-001-full-rally-v3-architecture.md) |
 | CHG-20260722-002 | 2026-07-22 | 已完成 | Match / Docs | 模块内部 | [几何进攻与拦网对抗](2026-07-22-002-geometric-attack-block-counterplay.md) |
 | CHG-20260721-001 | 2026-07-21 | 已完成 | Shared / Match / Docs | **跨模块（重点）** | [统一进攻链 V2、50 分封顶与全手臂拦网](2026-07-21-001-unified-attack-chain.md) |

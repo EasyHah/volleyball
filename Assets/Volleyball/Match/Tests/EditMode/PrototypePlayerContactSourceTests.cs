@@ -640,6 +640,91 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ContinueAttackPreparation_CapsRemainingTakeoffMovementByAvailableSpeed()
+        {
+            var player = CreatePlayer("SpeedBoundedContinuingAttacker", TeamId.Blue, PlayerRole.Attacker);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(
+                    1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
+                player.transform.position = new Vector3(0f, 0f, -4.2f);
+                var takeoff = new SimVector3(0f, 0f, -0.7f);
+                var contact = AttackContactPlanner.Plan(new AttackContactInput(
+                    3.42f, 1f, 1f, SetQualityGrade.A, takeoff, 0.4f, 1f));
+                var approach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -3.9f),
+                    takeoff,
+                    3.5f,
+                    1f,
+                    0f);
+
+                player.ScheduleAttackPreparation(2f, new Vector3(0f, 0f, -3.1f), 1f);
+                Collect(player, 1.95f);
+                var continuationStart = player.transform.position;
+
+                player.ContinueAttackPreparation(approach, contact, 2.6f);
+                var continuationDistance = player.ScheduledMovementDistance;
+                var continuationShortfall = player.MovementShortfall;
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2.6f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    710,
+                    contact.ContactCenter,
+                    movementStartSimulationTime: 1.95f,
+                    attackApproach: approach,
+                    attackContactPlan: contact);
+                var maximumSpeed = 7f * (0.65f + (player.Ability.Mobility * 0.5f));
+                var availableSeconds = 2.6f - 0.38f - 2f;
+
+                Assert.That(
+                    continuationDistance,
+                    Is.LessThanOrEqualTo((maximumSpeed * availableSeconds) + 0.001f));
+                Assert.That(continuationShortfall, Is.GreaterThan(0f));
+
+                var previous = continuationStart;
+                foreach (var sampleTime in new[] { 2.05f, 2.10f, 2.15f, 2.20f })
+                {
+                    Collect(player, sampleTime);
+                    Assert.That(
+                        Vector3.Distance(previous, player.transform.position),
+                        Is.LessThanOrEqualTo((maximumSpeed * 0.05f * 1.5f) + 0.001f),
+                        "Continuation samples must follow the bounded approach trajectory.");
+                    previous = player.transform.position;
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledAttack_ContactAlignmentNeverExceedsPointEighteenMeters()
+        {
+            var player = CreatePlayer("BoundedAttackAlignment", TeamId.Blue, PlayerRole.Attacker);
+            try
+            {
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    709,
+                    new SimVector3(4f, 4f, -1f));
+
+                Collect(player, 2f);
+
+                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.18f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void SetPreparation_ReplacesAnOldContactAndMovesWithoutAddingContactCandidates()
         {
             var gameObject = new GameObject("SetPreparationPlayer");
@@ -1004,9 +1089,70 @@ namespace Volleyball.EditModeTests
                 var afterSchedulePosition = player.transform.position;
 
                 Assert.That(afterSchedulePosition.z, Is.GreaterThanOrEqualTo(preparedPosition.z - 0.001f));
+                var maximumSpeed = 7f * (0.65f + (player.Ability.Mobility * 0.5f));
+                var availableSeconds = 1.4f - 0.38f - 0.9f;
                 Assert.That(
                     player.ScheduledMovementDistance,
-                    Is.EqualTo(Mathf.Abs(takeoff.Z - preparedPosition.z)).Within(0.01f));
+                    Is.LessThanOrEqualTo((maximumSpeed * availableSeconds) + 0.001f));
+                Assert.That(player.MovementShortfall, Is.GreaterThan(0f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ScheduledAttackApproach_CapsFarContactRootTravelDuringJump()
+        {
+            var player = CreatePlayer("BoundedAttackContactRoot", TeamId.Blue, PlayerRole.Attacker);
+            try
+            {
+                player.SetAbility(new PlayerAbilityProfile(
+                    1f, 1f, 1f, 1f, 1f, 1f, 1f, 3.42f));
+                var takeoff = new SimVector3(0f, 0f, -1.2f);
+                var approach = new AttackApproachPlan(takeoff, takeoff, 0f, 1f, 0f);
+                var farContact = new AttackContactPlan(
+                    takeoff,
+                    new SimVector3(4.2f, 3.5f, -1.2f),
+                    1f,
+                    1f,
+                    0.4f,
+                    1f,
+                    AttackContactOutcome.FullAttack);
+                player.transform.position = new Vector3(0f, 0f, -1.2f);
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    2f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    711,
+                    farContact.ContactCenter,
+                    movementStartSimulationTime: 1f,
+                    attackApproach: approach,
+                    attackContactPlan: farContact);
+
+                Collect(player, 1.62f);
+                var takeoffPosition = player.transform.position;
+                Collect(player, 1.81f);
+                var midJumpPosition = player.transform.position;
+                Collect(player, 2f);
+                var contactPosition = player.transform.position;
+                Collect(player, 2.45f);
+                var landingPosition = player.transform.position;
+                var maximumSpeed = 7f * (0.65f + (player.Ability.Mobility * 0.5f));
+                const float jumpSeconds = 0.38f;
+
+                Assert.That(
+                    HorizontalDistance(takeoffPosition, contactPosition),
+                    Is.LessThanOrEqualTo((maximumSpeed * jumpSeconds) + 0.181f));
+                Assert.That(
+                    HorizontalDistance(takeoffPosition, midJumpPosition),
+                    Is.LessThanOrEqualTo((maximumSpeed * 0.19f * 1.5f) + 0.001f));
+                Assert.That(
+                    HorizontalDistance(contactPosition, landingPosition),
+                    Is.LessThanOrEqualTo(0.181f),
+                    "Only the bounded contact-alignment allowance may separate contact and landing.");
             }
             finally
             {
@@ -1063,7 +1209,7 @@ namespace Volleyball.EditModeTests
                 Assert.That(
                     (palmCenter - plan.ContactCenter).Magnitude,
                     Is.LessThan(0.01f));
-                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.70f));
+                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.18f));
             }
             finally
             {
@@ -1175,6 +1321,13 @@ namespace Volleyball.EditModeTests
             var contacts = new List<BallContactCandidate>();
             player.CollectContacts(simulationTime, 1f / 120f, contacts);
             return contacts;
+        }
+
+        private static float HorizontalDistance(Vector3 first, Vector3 second)
+        {
+            first.y = 0f;
+            second.y = 0f;
+            return Vector3.Distance(first, second);
         }
 
         private static void ScheduleApproach(

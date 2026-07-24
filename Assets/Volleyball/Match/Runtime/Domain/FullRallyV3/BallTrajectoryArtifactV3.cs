@@ -1,32 +1,45 @@
 using System;
+using System.Collections.Generic;
+using Volleyball.Domain.Simulation;
 
 namespace Volleyball.Match.Domain.FullRallyV3
 {
     public sealed class BallTrajectoryArtifactV3 : IEquatable<BallTrajectoryArtifactV3>
     {
+        private readonly string _ballStateVersion;
+        private readonly string _physicsConfigHash;
+        private readonly string _sampleKey;
+        private readonly string _predictorVersion;
+        private readonly string _degradationMode;
+        private readonly TrajectoryPrediction _prediction;
+
         private BallTrajectoryArtifactV3(
             string ballStateVersion,
             string physicsConfigHash,
             string sampleKey,
             string predictorVersion,
-            string degradationMode)
+            string degradationMode,
+            TrajectoryPrediction prediction)
         {
-            BallStateVersion = Required(ballStateVersion, nameof(ballStateVersion));
-            PhysicsConfigHash = Required(physicsConfigHash, nameof(physicsConfigHash));
-            SampleKey = Required(sampleKey, nameof(sampleKey));
-            PredictorVersion = Required(predictorVersion, nameof(predictorVersion));
-            DegradationMode = Required(degradationMode, nameof(degradationMode));
+            _ballStateVersion = Required(ballStateVersion, nameof(ballStateVersion));
+            _physicsConfigHash = Required(physicsConfigHash, nameof(physicsConfigHash));
+            _sampleKey = Required(sampleKey, nameof(sampleKey));
+            _predictorVersion = Required(predictorVersion, nameof(predictorVersion));
+            _degradationMode = Required(degradationMode, nameof(degradationMode));
+            _prediction = prediction;
         }
 
-        public string BallStateVersion { get; }
+        public string BallStateVersion => _ballStateVersion;
 
-        public string PhysicsConfigHash { get; }
+        public string PhysicsConfigHash => _physicsConfigHash;
 
-        public string SampleKey { get; }
+        public string SampleKey => _sampleKey;
 
-        public string PredictorVersion { get; }
+        public string PredictorVersion => _predictorVersion;
 
-        public string DegradationMode { get; }
+        public string DegradationMode => _degradationMode;
+
+        public TrajectoryPrediction Prediction => _prediction;
 
         public static BallTrajectoryArtifactV3 CreateIdentity(
             string ballStateVersion,
@@ -40,7 +53,25 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 physicsConfigHash,
                 sampleKey,
                 predictorVersion,
-                degradationMode);
+                degradationMode,
+                null);
+        }
+
+        public static BallTrajectoryArtifactV3 CreateWithPrediction(
+            string ballStateVersion,
+            string physicsConfigHash,
+            string sampleKey,
+            string predictorVersion,
+            string degradationMode,
+            TrajectoryPrediction prediction)
+        {
+            return new BallTrajectoryArtifactV3(
+                ballStateVersion,
+                physicsConfigHash,
+                sampleKey,
+                predictorVersion,
+                degradationMode,
+                prediction);
         }
 
         public bool Equals(BallTrajectoryArtifactV3 other)

@@ -598,6 +598,7 @@ namespace Volleyball.AI
                 }
             }
 
+            bestIndex = PreferEligibleSetterForOrganization(input, candidates, bestIndex);
             if (bestIndex < 0)
             {
                 return TeamRallyDecision.NoDecision;
@@ -627,6 +628,34 @@ namespace Volleyball.AI
             return input.Stage != RallyDecisionStage.Receive &&
                    input.LastCountedActor.HasValue &&
                    input.LastCountedActor.Value.Equals(actor);
+        }
+
+        private static int PreferEligibleSetterForOrganization(
+            TeamRallyDecisionInput input,
+            IReadOnlyList<RallyDecisionCandidate> candidates,
+            int fallbackIndex)
+        {
+            if (input.Stage != RallyDecisionStage.Organize)
+            {
+                return fallbackIndex;
+            }
+
+            var setterIndex = -1;
+            for (var index = 0; index < candidates.Count; index++)
+            {
+                var candidate = candidates[index];
+                if (!candidate.IsFeasible || candidate.Actor.Role != PlayerRole.Setter)
+                {
+                    continue;
+                }
+
+                if (setterIndex < 0 || IsBetter(candidates, index, setterIndex))
+                {
+                    setterIndex = index;
+                }
+            }
+
+            return setterIndex >= 0 ? setterIndex : fallbackIndex;
         }
 
         private static bool IsBetter(IReadOnlyList<RallyDecisionCandidate> candidates, int index, int bestIndex)
