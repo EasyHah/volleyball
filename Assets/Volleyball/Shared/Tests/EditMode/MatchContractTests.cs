@@ -354,6 +354,293 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void MatchAttributeDerivationV4_ProducesByteIdenticalCanonicalResultsForIdenticalInputs()
+        {
+            var physical = CreateDerivationPhysical();
+            var technical = CreateDerivationTechnical();
+
+            var first = MatchAttributeDerivationV4.Derive(
+                physical,
+                technical,
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+            var second = MatchAttributeDerivationV4.Derive(
+                physical,
+                technical,
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+
+            CollectionAssert.AreEqual(first.ToCanonicalBytes(), second.ToCanonicalBytes());
+            Assert.That(second.Attributes, Is.EqualTo(first.Attributes));
+            Assert.That(second.InputFingerprint, Is.EqualTo(first.InputFingerprint));
+            Assert.That(second.ResultFingerprint, Is.EqualTo(first.ResultFingerprint));
+            Assert.That(second.InputFingerprint, Has.Length.EqualTo(64));
+            Assert.That(second.ResultFingerprint, Has.Length.EqualTo(64));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_UsesFrozenVersionOneFormulasAndExplanationOrder()
+        {
+            var derived = MatchAttributeDerivationV4.Derive(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+
+            Assert.That(derived.FormulaVersion, Is.EqualTo(1));
+            Assert.That(derived.CoefficientVersion, Is.EqualTo(1));
+            Assert.That(derived.Attributes.Attack.DirectionControl, Is.EqualTo(0.655f).Within(0.000001f));
+            Assert.That(derived.Attributes.Attack.SpeedControl, Is.EqualTo(0.6425f).Within(0.000001f));
+            Assert.That(derived.Attributes.Attack.PowerCapacity, Is.EqualTo(0.65f).Within(0.000001f));
+            Assert.That(derived.Attributes.Attack.ContactHeightMeters, Is.EqualTo(2.96f).Within(0.000001f));
+            Assert.That(derived.Attributes.Attack.ApproachMobility, Is.EqualTo(0.655f).Within(0.000001f));
+            Assert.That(derived.Attributes.Block.Timing, Is.EqualTo(0.655f).Within(0.000001f));
+            Assert.That(derived.Attributes.Block.HandControl, Is.EqualTo(0.62f).Within(0.000001f));
+            Assert.That(derived.Attributes.Block.ReachHeightMeters, Is.EqualTo(2.8925f).Within(0.000001f));
+            Assert.That(derived.Attributes.Block.LateralMobility, Is.EqualTo(0.70f).Within(0.000001f));
+            Assert.That(derived.Attributes.Defense.Reaction, Is.EqualTo(0.67f).Within(0.000001f));
+            Assert.That(derived.Attributes.Defense.PlatformControl, Is.EqualTo(0.5875f).Within(0.000001f));
+            Assert.That(derived.Attributes.Defense.CoverageMobility, Is.EqualTo(0.69f).Within(0.000001f));
+            Assert.That(derived.Attributes.Defense.Awareness, Is.EqualTo(0.6f));
+            Assert.That(derived.Attributes.Receive.FirstTouchControl, Is.EqualTo(0.6225f).Within(0.000001f));
+            Assert.That(derived.Attributes.Receive.Reaction, Is.EqualTo(0.67f).Within(0.000001f));
+            Assert.That(derived.Attributes.Receive.Movement, Is.EqualTo(0.655f).Within(0.000001f));
+            Assert.That(derived.Attributes.Receive.Awareness, Is.EqualTo(0.6f));
+            Assert.That(derived.Attributes.Set.PlacementControl, Is.EqualTo(0.6425f).Within(0.000001f));
+            Assert.That(derived.Attributes.Set.TempoControl, Is.EqualTo(0.68f).Within(0.000001f));
+            Assert.That(derived.Attributes.Set.SoftTouch, Is.EqualTo(0.6175f).Within(0.000001f));
+            Assert.That(derived.Attributes.Set.Movement, Is.EqualTo(0.655f).Within(0.000001f));
+            Assert.That(derived.Attributes.Set.Awareness, Is.EqualTo(0.6f));
+            Assert.That(derived.Attributes.Serve.DirectionControl, Is.EqualTo(0.6225f).Within(0.000001f));
+            Assert.That(derived.Attributes.Serve.SpeedControl, Is.EqualTo(0.615f).Within(0.000001f));
+            Assert.That(derived.Attributes.Serve.PowerCapacity, Is.EqualTo(0.695f).Within(0.000001f));
+            Assert.That(derived.Attributes.Serve.Consistency, Is.EqualTo(0.6325f).Within(0.000001f));
+            Assert.That(
+                derived.Explanations.Select(explanation => explanation.OutputName),
+                Is.EqualTo(new[]
+                {
+                    "Attack.DirectionControl",
+                    "Attack.SpeedControl",
+                    "Attack.PowerCapacity",
+                    "Attack.ContactHeightMeters",
+                    "Attack.ApproachMobility",
+                    "Block.Timing",
+                    "Block.HandControl",
+                    "Block.ReachHeightMeters",
+                    "Block.LateralMobility",
+                    "Defense.Reaction",
+                    "Defense.PlatformControl",
+                    "Defense.CoverageMobility",
+                    "Defense.Awareness",
+                    "Receive.FirstTouchControl",
+                    "Receive.Reaction",
+                    "Receive.Movement",
+                    "Receive.Awareness",
+                    "Set.PlacementControl",
+                    "Set.TempoControl",
+                    "Set.SoftTouch",
+                    "Set.Movement",
+                    "Set.Awareness",
+                    "Serve.DirectionControl",
+                    "Serve.SpeedControl",
+                    "Serve.PowerCapacity",
+                    "Serve.Consistency"
+                }));
+            Assert.That(derived.Explanations[0].InputNames, Is.EqualTo(new[]
+            {
+                "AttackTechnique", "Coordination", "CourtAwareness"
+            }));
+            Assert.That(derived.Explanations[0].Coefficients, Is.EqualTo(new[] { 0.65f, 0.20f, 0.15f }));
+            Assert.That(derived.Explanations[0].Result, Is.EqualTo(derived.Attributes.Attack.DirectionControl));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_EveryFormulaInputChangesItsDocumentedOutput()
+        {
+            var baseline = DeriveV4(CreateDerivationPhysical(), CreateDerivationTechnical());
+
+            AssertDerivedOutputChanges(
+                baseline,
+                DeriveV4(CreateDerivationPhysical(standingReachMeters: 2.51f), CreateDerivationTechnical()),
+                attributes => attributes.Attack.ContactHeightMeters);
+            AssertDerivedOutputChanges(
+                baseline,
+                DeriveV4(CreateDerivationPhysical(jump: 0.61f), CreateDerivationTechnical()),
+                attributes => attributes.Attack.PowerCapacity);
+            AssertDerivedOutputChanges(
+                baseline,
+                DeriveV4(CreateDerivationPhysical(mobility: 0.61f), CreateDerivationTechnical()),
+                attributes => attributes.Attack.ApproachMobility);
+            AssertDerivedOutputChanges(
+                baseline,
+                DeriveV4(CreateDerivationPhysical(reaction: 0.71f), CreateDerivationTechnical()),
+                attributes => attributes.Defense.Reaction);
+            AssertDerivedOutputChanges(
+                baseline,
+                DeriveV4(CreateDerivationPhysical(coordination: 0.56f), CreateDerivationTechnical()),
+                attributes => attributes.Attack.DirectionControl);
+
+            for (var field = 0; field < 9; field++)
+            {
+                var changed = DeriveV4(CreateDerivationPhysical(), CreateDerivationTechnical(0.01f, field));
+                Assert.That(
+                    changed.Attributes,
+                    Is.Not.EqualTo(baseline.Attributes),
+                    "Technical base field " + field + " must affect at least one derived output.");
+            }
+
+            var changedHeight = DeriveV4(
+                CreateDerivationPhysical(heightMeters: 1.91f),
+                CreateDerivationTechnical());
+            Assert.That(changedHeight.Attributes, Is.EqualTo(baseline.Attributes));
+            Assert.That(changedHeight.InputFingerprint, Is.Not.EqualTo(baseline.InputFingerprint));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_SeparatesAttackTechniqueFromPowerAuthority()
+        {
+            var baseline = DeriveV4(CreateDerivationPhysical(), CreateDerivationTechnical());
+            var greaterPower = DeriveV4(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(0.01f, technicalField: 1));
+            var greaterTechnique = DeriveV4(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(0.01f, technicalField: 0));
+
+            Assert.That(greaterPower.Attributes.Attack.PowerCapacity,
+                Is.GreaterThan(baseline.Attributes.Attack.PowerCapacity));
+            Assert.That(greaterPower.Attributes.Serve.PowerCapacity,
+                Is.GreaterThan(baseline.Attributes.Serve.PowerCapacity));
+            Assert.That(greaterPower.Attributes.Attack.DirectionControl,
+                Is.EqualTo(baseline.Attributes.Attack.DirectionControl));
+            Assert.That(greaterTechnique.Attributes.Attack.DirectionControl,
+                Is.GreaterThan(baseline.Attributes.Attack.DirectionControl));
+            Assert.That(greaterTechnique.Attributes.Attack.SpeedControl,
+                Is.GreaterThan(baseline.Attributes.Attack.SpeedControl));
+            Assert.That(greaterTechnique.Attributes.Attack.PowerCapacity,
+                Is.EqualTo(baseline.Attributes.Attack.PowerCapacity));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_PreservesSpecialistV4AuthoritiesInDeclaredGroups()
+        {
+            var baseline = DeriveV4(CreateDerivationPhysical(), CreateDerivationTechnical());
+            var softTouch = DeriveV4(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(0.01f, technicalField: 7));
+            var blockTechnique = DeriveV4(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(0.01f, technicalField: 2));
+            var awareness = DeriveV4(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(0.01f, technicalField: 8));
+
+            Assert.That(softTouch.Attributes.Set.SoftTouch, Is.GreaterThan(baseline.Attributes.Set.SoftTouch));
+            Assert.That(softTouch.Attributes.Receive.FirstTouchControl,
+                Is.GreaterThan(baseline.Attributes.Receive.FirstTouchControl));
+            Assert.That(blockTechnique.Attributes.Block.Timing, Is.GreaterThan(baseline.Attributes.Block.Timing));
+            Assert.That(blockTechnique.Attributes.Block.HandControl,
+                Is.GreaterThan(baseline.Attributes.Block.HandControl));
+            Assert.That(awareness.Attributes.Defense.Awareness, Is.GreaterThan(baseline.Attributes.Defense.Awareness));
+            Assert.That(awareness.Attributes.Receive.Awareness, Is.GreaterThan(baseline.Attributes.Receive.Awareness));
+            Assert.That(awareness.Attributes.Set.Awareness, Is.GreaterThan(baseline.Attributes.Set.Awareness));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_HandednessChangesInputAndResultIdentity()
+        {
+            var left = MatchAttributeDerivationV4.Derive(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(),
+                DominantHandV4.Left,
+                MatchAttributeDerivationConfigV4.Version1);
+            var right = MatchAttributeDerivationV4.Derive(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+
+            Assert.That(left.Attributes.DominantHand, Is.EqualTo(DominantHandV4.Left));
+            Assert.That(right.Attributes.DominantHand, Is.EqualTo(DominantHandV4.Right));
+            Assert.That(right.InputFingerprint, Is.Not.EqualTo(left.InputFingerprint));
+            Assert.That(right.ResultFingerprint, Is.Not.EqualTo(left.ResultFingerprint));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_VersionsChangeResultIdentityWithoutChangingNumericOutputs()
+        {
+            var baseline = DeriveV4(CreateDerivationPhysical(), CreateDerivationTechnical());
+            var formulaVersion = MatchAttributeDerivationV4.Derive(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(),
+                DominantHandV4.Right,
+                new MatchAttributeDerivationConfigV4(
+                    formulaVersion: 2,
+                    coefficientVersion: 1,
+                    MatchAttributeDerivationConfigV4.Version1.Coefficients));
+            var coefficientVersion = MatchAttributeDerivationV4.Derive(
+                CreateDerivationPhysical(),
+                CreateDerivationTechnical(),
+                DominantHandV4.Right,
+                new MatchAttributeDerivationConfigV4(
+                    formulaVersion: 1,
+                    coefficientVersion: 2,
+                    MatchAttributeDerivationConfigV4.Version1.Coefficients));
+
+            Assert.That(formulaVersion.Attributes, Is.EqualTo(baseline.Attributes));
+            Assert.That(coefficientVersion.Attributes, Is.EqualTo(baseline.Attributes));
+            Assert.That(formulaVersion.InputFingerprint, Is.EqualTo(baseline.InputFingerprint));
+            Assert.That(coefficientVersion.InputFingerprint, Is.EqualTo(baseline.InputFingerprint));
+            Assert.That(formulaVersion.ResultFingerprint, Is.Not.EqualTo(baseline.ResultFingerprint));
+            Assert.That(coefficientVersion.ResultFingerprint, Is.Not.EqualTo(baseline.ResultFingerprint));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationConfigV4_RejectsIncompleteDuplicateNonFiniteAndNonUnitWeights()
+        {
+            var coefficients = MatchAttributeDerivationConfigV4.Version1.Coefficients;
+            Assert.That(
+                () => new MatchAttributeDerivationConfigV4(1, 1, coefficients.Skip(1)),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("missing"));
+            Assert.That(
+                () => new MatchAttributeDerivationConfigV4(1, 1, coefficients.Concat(new[] { coefficients[0] })),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("duplicate"));
+            Assert.That(
+                () => new MatchAttributeDerivationConfigV4(
+                    1,
+                    1,
+                    ReplaceCoefficient(coefficients, 0, float.NaN)),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("finite"));
+            Assert.That(
+                () => new MatchAttributeDerivationConfigV4(
+                    1,
+                    1,
+                    ReplaceCoefficient(coefficients, 0, 0.64f)),
+                Throws.TypeOf<ContractValidationException>().With.Message.Contains("sum to 1"));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV4_RejectsInvalidOutputsWithoutClamping()
+        {
+            var coefficients = MatchAttributeDerivationConfigV4.Version1.Coefficients;
+            var invalid = ReplaceCoefficient(coefficients, 0, -2f).ToArray();
+            invalid = ReplaceCoefficient(invalid, 1, 3f).ToArray();
+            invalid = ReplaceCoefficient(invalid, 2, 0f).ToArray();
+            var config = new MatchAttributeDerivationConfigV4(1, 2, invalid);
+            var technical = new TechnicalBaseAttributesV4(
+                1f, 0.75f, 0.65f, 0.6f, 0.65f, 0.7f, 0.65f, 0.6f, 0.6f);
+
+            Assert.That(
+                () => MatchAttributeDerivationV4.Derive(
+                    CreateDerivationPhysical(),
+                    technical,
+                    DominantHandV4.Right,
+                    config),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("directionControl"));
+        }
+
+        [Test]
         public void PlayerAbilitySnapshotV3_MigrationIsDeterministicAndRecordsProvenance()
         {
             var source = new PlayerAbilitySnapshotV2(0.7f, 0.6f, 0.8f, 0.5f, 0.9f, 0.75f, 0.85f, 3.42f);
@@ -611,6 +898,71 @@ namespace Volleyball.Shared.EditModeTests
 
             return new TechnicalBaseAttributesV4(
                 values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
+        }
+
+        private static PhysicalBaseAttributesV4 CreateDerivationPhysical(
+            float heightMeters = 1.90f,
+            float standingReachMeters = 2.50f,
+            float jump = 0.35f,
+            float mobility = 0.70f,
+            float reaction = 0.70f,
+            float coordination = 0.55f)
+        {
+            return new PhysicalBaseAttributesV4(
+                heightMeters,
+                standingReachMeters,
+                jump,
+                mobility,
+                reaction,
+                coordination);
+        }
+
+        private static TechnicalBaseAttributesV4 CreateDerivationTechnical(
+            float delta = 0f,
+            int technicalField = -1)
+        {
+            var values = new[] { 0.70f, 0.75f, 0.65f, 0.60f, 0.65f, 0.70f, 0.65f, 0.60f, 0.60f };
+            if (technicalField >= 0)
+            {
+                values[technicalField] += delta;
+            }
+
+            return new TechnicalBaseAttributesV4(
+                values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
+        }
+
+        private static DerivedMatchAttributesV4 DeriveV4(
+            PhysicalBaseAttributesV4 physical,
+            TechnicalBaseAttributesV4 technical)
+        {
+            return MatchAttributeDerivationV4.Derive(
+                physical,
+                technical,
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+        }
+
+        private static void AssertDerivedOutputChanges(
+            DerivedMatchAttributesV4 baseline,
+            DerivedMatchAttributesV4 changed,
+            Func<MatchAttributesV4, float> select)
+        {
+            Assert.That(select(changed.Attributes), Is.Not.EqualTo(select(baseline.Attributes)));
+            Assert.That(changed.ResultFingerprint, Is.Not.EqualTo(baseline.ResultFingerprint));
+        }
+
+        private static IEnumerable<MatchAttributeCoefficientV4> ReplaceCoefficient(
+            IEnumerable<MatchAttributeCoefficientV4> source,
+            int index,
+            float value)
+        {
+            return source.Select((coefficient, current) =>
+                current == index
+                    ? new MatchAttributeCoefficientV4(
+                        coefficient.OutputName,
+                        coefficient.InputName,
+                        value)
+                    : coefficient);
         }
 
         private static MatchContextV1 CreateContext(Guid sessionId, int seed)

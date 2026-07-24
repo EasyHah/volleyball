@@ -213,6 +213,15 @@ Tests must prove:
 - formula/coefficient version changes alter the result fingerprint even when numeric outputs happen to match;
 - invalid outputs throw and are never clamped.
 
+`HeightMeters` is a structural input rather than a direct V1 formula term. It
+constrains and influences authored physical attributes, especially
+`StandingReachMeters`, and participates in input validation and the canonical
+input fingerprint. The frozen V1 formulas use `StandingReachMeters` directly
+for contact geometry and must not add `HeightMeters` again, which would
+double-count that geometry. Tests therefore prove that height changes input
+identity and remains validated, while every formula-participating base field
+changes at least one declared numeric output.
+
 - [ ] **Step 2: Define the frozen six-group output**
 
 ```csharp
