@@ -25,7 +25,9 @@ namespace Volleyball.Shared.Contracts
         public const int MatchV1 = 1;
         public const int MatchV2 = 2;
         public const int MatchV3 = 3;
+        public const int MatchV4 = 4;
         public const int ReplayV2 = 2;
+        public const int ReplayV4 = 4;
 
         public static bool SupportsMatch(int version)
         {
@@ -176,6 +178,16 @@ namespace Volleyball.Shared.Contracts
             return value;
         }
 
+        public static float HeightMeters(float value, string name)
+        {
+            return FiniteRange(value, name, 1.40f, 2.30f);
+        }
+
+        public static float StandingReachMeters(float value, string name)
+        {
+            return FiniteRange(value, name, 1.70f, 3.10f);
+        }
+
         public static void DefinedEnum<T>(T value, string name) where T : struct
         {
             if (!Enum.IsDefined(typeof(T), value))
@@ -208,6 +220,17 @@ namespace Volleyball.Shared.Contracts
                     throw new ContractValidationException(name + " must use lowercase hexadecimal characters.");
                 }
             }
+        }
+
+        private static float FiniteRange(float value, string name, float minimum, float maximum)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) || value < minimum || value > maximum)
+            {
+                throw new ContractValidationException(
+                    name + " must be finite and in the range [" + minimum.ToString("F2") + ", " + maximum.ToString("F2") + "].");
+            }
+
+            return value;
         }
     }
 }

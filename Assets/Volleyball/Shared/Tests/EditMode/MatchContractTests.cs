@@ -233,6 +233,127 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void ContractVersions_ReserveV4MatchAndReplayIndependentlyOfV3Rules()
+        {
+            Assert.That(ContractVersions.MatchV3, Is.EqualTo(3));
+            Assert.That(ContractVersions.MatchV4, Is.EqualTo(4));
+            Assert.That(ContractVersions.ReplayV4, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void DominantHandV4_DeclaresExactlyBothValidHands()
+        {
+            Assert.That(DominantHandV4.Left, Is.EqualTo((DominantHandV4)0));
+            Assert.That(DominantHandV4.Right, Is.EqualTo((DominantHandV4)1));
+            Assert.That(Enum.IsDefined(typeof(DominantHandV4), DominantHandV4.Left), Is.True);
+            Assert.That(Enum.IsDefined(typeof(DominantHandV4), DominantHandV4.Right), Is.True);
+            Assert.That(Enum.IsDefined(typeof(DominantHandV4), (DominantHandV4)2), Is.False);
+        }
+
+        [Test]
+        public void PhysicalBaseAttributesV4_PreservesEveryValidBoundaryAndUsesValueEquality()
+        {
+            var minimum = new PhysicalBaseAttributesV4(1.40f, 1.70f, 0f, 0f, 0f, 0f);
+            var maximum = new PhysicalBaseAttributesV4(2.30f, 3.10f, 1f, 1f, 1f, 1f);
+            var sameAsMinimum = new PhysicalBaseAttributesV4(1.40f, 1.70f, 0f, 0f, 0f, 0f);
+
+            Assert.That(minimum.HeightMeters, Is.EqualTo(1.40f));
+            Assert.That(minimum.StandingReachMeters, Is.EqualTo(1.70f));
+            Assert.That(minimum.Jump, Is.Zero);
+            Assert.That(minimum.Mobility, Is.Zero);
+            Assert.That(minimum.Reaction, Is.Zero);
+            Assert.That(minimum.Coordination, Is.Zero);
+            Assert.That(maximum.HeightMeters, Is.EqualTo(2.30f));
+            Assert.That(maximum.StandingReachMeters, Is.EqualTo(3.10f));
+            Assert.That(maximum.Jump, Is.EqualTo(1f));
+            Assert.That(maximum.Mobility, Is.EqualTo(1f));
+            Assert.That(maximum.Reaction, Is.EqualTo(1f));
+            Assert.That(maximum.Coordination, Is.EqualTo(1f));
+            Assert.That(sameAsMinimum, Is.EqualTo(minimum));
+            Assert.That(sameAsMinimum.GetHashCode(), Is.EqualTo(minimum.GetHashCode()));
+
+            var baseline = CreatePhysicalBaseAttributes(0f, -1);
+            for (var field = 0; field < 6; field++)
+            {
+                Assert.That(CreatePhysicalBaseAttributes(field < 2 ? baseline.HeightMeters + 0.01f : 0.51f, field),
+                    Is.Not.EqualTo(baseline), "Physical equality must include field " + field + ".");
+            }
+        }
+
+        [Test]
+        public void PhysicalBaseAttributesV4_RejectsNonFiniteAndOutOfRangeValuesForEveryField()
+        {
+            var minimums = new[] { 1.40f, 1.70f, 0f, 0f, 0f, 0f };
+            var maximums = new[] { 2.30f, 3.10f, 1f, 1f, 1f, 1f };
+
+            for (var field = 0; field < minimums.Length; field++)
+            {
+                AssertPhysicalBaseAttributeRejected(field, float.NaN);
+                AssertPhysicalBaseAttributeRejected(field, float.PositiveInfinity);
+                AssertPhysicalBaseAttributeRejected(field, float.NegativeInfinity);
+                AssertPhysicalBaseAttributeRejected(field, minimums[field] - 0.001f);
+                AssertPhysicalBaseAttributeRejected(field, maximums[field] + 0.001f);
+            }
+        }
+
+        [Test]
+        public void PhysicalBaseAttributesV4_RejectsStandingReachBelowHeightWithoutCorrectingIt()
+        {
+            Assert.That(
+                () => new PhysicalBaseAttributesV4(2.0f, 1.99f, 0.5f, 0.5f, 0.5f, 0.5f),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void TechnicalBaseAttributesV4_PreservesEveryValidBoundaryAndUsesValueEquality()
+        {
+            var minimum = CreateTechnicalBaseAttributes(0f, -1);
+            var maximum = CreateTechnicalBaseAttributes(1f, -1);
+            var sameAsMinimum = CreateTechnicalBaseAttributes(0f, -1);
+
+            Assert.That(minimum.AttackTechnique, Is.Zero);
+            Assert.That(minimum.AttackPower, Is.Zero);
+            Assert.That(minimum.BlockTechnique, Is.Zero);
+            Assert.That(minimum.DefenseTechnique, Is.Zero);
+            Assert.That(minimum.ReceiveTechnique, Is.Zero);
+            Assert.That(minimum.SetTechnique, Is.Zero);
+            Assert.That(minimum.ServeTechnique, Is.Zero);
+            Assert.That(minimum.SoftTouch, Is.Zero);
+            Assert.That(minimum.CourtAwareness, Is.Zero);
+            Assert.That(maximum.AttackTechnique, Is.EqualTo(1f));
+            Assert.That(maximum.AttackPower, Is.EqualTo(1f));
+            Assert.That(maximum.BlockTechnique, Is.EqualTo(1f));
+            Assert.That(maximum.DefenseTechnique, Is.EqualTo(1f));
+            Assert.That(maximum.ReceiveTechnique, Is.EqualTo(1f));
+            Assert.That(maximum.SetTechnique, Is.EqualTo(1f));
+            Assert.That(maximum.ServeTechnique, Is.EqualTo(1f));
+            Assert.That(maximum.SoftTouch, Is.EqualTo(1f));
+            Assert.That(maximum.CourtAwareness, Is.EqualTo(1f));
+            Assert.That(sameAsMinimum, Is.EqualTo(minimum));
+            Assert.That(sameAsMinimum.GetHashCode(), Is.EqualTo(minimum.GetHashCode()));
+
+            var baseline = CreateTechnicalBaseAttributes(0.5f, -1);
+            for (var field = 0; field < 9; field++)
+            {
+                Assert.That(CreateTechnicalBaseAttributes(0.51f, field),
+                    Is.Not.EqualTo(baseline), "Technical equality must include field " + field + ".");
+            }
+        }
+
+        [Test]
+        public void TechnicalBaseAttributesV4_RejectsNonFiniteAndOutOfRangeValuesForEveryField()
+        {
+            for (var field = 0; field < 9; field++)
+            {
+                AssertTechnicalBaseAttributeRejected(field, float.NaN);
+                AssertTechnicalBaseAttributeRejected(field, float.PositiveInfinity);
+                AssertTechnicalBaseAttributeRejected(field, float.NegativeInfinity);
+                AssertTechnicalBaseAttributeRejected(field, -0.001f);
+                AssertTechnicalBaseAttributeRejected(field, 1.001f);
+            }
+        }
+
+        [Test]
         public void PlayerAbilitySnapshotV3_MigrationIsDeterministicAndRecordsProvenance()
         {
             var source = new PlayerAbilitySnapshotV2(0.7f, 0.6f, 0.8f, 0.5f, 0.9f, 0.75f, 0.85f, 3.42f);
@@ -449,6 +570,47 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(restored.ReservedSections, Does.Contain("PlanCoverageDecision"));
             Assert.That(restored.ReservedSections, Does.Contain("ExecutionEnvelopeV3"));
             Assert.That(restored.ReservedSections, Does.Contain("BallTrajectoryArtifactV3"));
+        }
+
+        private static void AssertPhysicalBaseAttributeRejected(int field, float value)
+        {
+            Assert.That(
+                () => CreatePhysicalBaseAttributes(value, field),
+                Throws.TypeOf<ContractValidationException>(),
+                "Physical field " + field + " must reject " + value + ".");
+        }
+
+        private static PhysicalBaseAttributesV4 CreatePhysicalBaseAttributes(float value, int field)
+        {
+            var values = new[] { 1.80f, 2.35f, 0.5f, 0.5f, 0.5f, 0.5f };
+            if (field >= 0)
+            {
+                values[field] = value;
+            }
+
+            return new PhysicalBaseAttributesV4(
+                values[0], values[1], values[2], values[3], values[4], values[5]);
+        }
+
+        private static void AssertTechnicalBaseAttributeRejected(int field, float value)
+        {
+            Assert.That(
+                () => CreateTechnicalBaseAttributes(value, field),
+                Throws.TypeOf<ContractValidationException>(),
+                "Technical field " + field + " must reject " + value + ".");
+        }
+
+        private static TechnicalBaseAttributesV4 CreateTechnicalBaseAttributes(float value, int field)
+        {
+            var values = new[] { value, value, value, value, value, value, value, value, value };
+            if (field >= 0)
+            {
+                values = new[] { 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f };
+                values[field] = value;
+            }
+
+            return new TechnicalBaseAttributesV4(
+                values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
         }
 
         private static MatchContextV1 CreateContext(Guid sessionId, int seed)
