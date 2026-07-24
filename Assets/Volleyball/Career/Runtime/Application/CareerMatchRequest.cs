@@ -1,24 +1,19 @@
 using System;
-using Volleyball.Career.Domain;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.Application
 {
     public sealed class CareerMatchRequest
     {
-        public CareerMatchRequest(CareerPlayerRecord focusPlayer, IMatchContext context)
+        public CareerMatchRequest(
+            MatchContextV4 context,
+            Action<MatchResultV4> complete)
         {
-            FocusPlayer = focusPlayer ?? throw new ArgumentNullException(nameof(focusPlayer));
             Context = context ?? throw new ArgumentNullException(nameof(context));
+            Complete = complete ?? throw new ArgumentNullException(nameof(complete));
         }
 
-        public CareerPlayerRecord FocusPlayer { get; }
-
-        public IMatchContext Context { get; }
-    }
-
-    public interface IMatchGateway
-    {
-        IMatchResult Play(CareerMatchRequest request);
+        public MatchContextV4 Context { get; }
+        public Action<MatchResultV4> Complete { get; }
     }
 }

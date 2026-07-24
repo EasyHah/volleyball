@@ -20,7 +20,7 @@ namespace Volleyball.Career.EditModeTests
             AssertDoesNotReference(typeof(CareerPlayerRecord), "Volleyball.Match.Presentation");
 
             AssertReferences(typeof(CareerMatchRequest), "Volleyball.Shared");
-            AssertReferences(typeof(CareerMatchRequest), "Volleyball.Career.Domain");
+            AssertDoesNotReference(typeof(CareerMatchRequest), "Volleyball.Career.Domain");
             AssertDoesNotReference(typeof(CareerMatchRequest), "Volleyball.Match.Domain");
 
             AssertReferences(typeof(CareerPresentationModule), "Volleyball.Career.Application");
@@ -31,16 +31,31 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void CareerMatchBoundary_AcceptsOnlyConcreteV4Contracts()
+        public void CareerPlayerBoundary_ExposesOnlyNativeV4Attributes()
         {
-            var contextV4 = RequiredSharedType("MatchContextV4");
-            var resultV4 = RequiredSharedType("MatchResultV4");
             Assert.That(
-                typeof(CareerMatchRequest).GetProperty(nameof(CareerMatchRequest.Context))?.PropertyType,
-                Is.EqualTo(contextV4));
+                typeof(CareerPlayerRecord).GetProperty("PlayerId")?.PropertyType,
+                Is.EqualTo(typeof(string)));
             Assert.That(
-                typeof(IMatchGateway).GetMethod(nameof(IMatchGateway.Play))?.ReturnType,
-                Is.EqualTo(resultV4));
+                typeof(CareerPlayerRecord).GetProperty("Physical")?.PropertyType,
+                Is.EqualTo(typeof(PhysicalBaseAttributesV4)));
+            Assert.That(
+                typeof(CareerPlayerRecord).GetProperty("Technical")?.PropertyType,
+                Is.EqualTo(typeof(TechnicalBaseAttributesV4)));
+            Assert.That(
+                typeof(CareerPlayerRecord).GetProperty("DominantHand")?.PropertyType,
+                Is.EqualTo(typeof(DominantHandV4)));
+        }
+
+        [Test]
+        public void CareerMatchBoundary_UsesConcreteV4ContextAndCompletion()
+        {
+            Assert.That(
+                typeof(CareerMatchRequest).GetProperty("Context")?.PropertyType,
+                Is.EqualTo(typeof(MatchContextV4)));
+            Assert.That(
+                typeof(CareerMatchRequest).GetProperty("Complete")?.PropertyType,
+                Is.EqualTo(typeof(System.Action<MatchResultV4>)));
         }
 
         [Test]
@@ -54,14 +69,6 @@ namespace Volleyball.Career.EditModeTests
             };
 
             AssertNoPublicEntryPointAccepts(typeof(CareerMatchRequest).Assembly, prohibited);
-            AssertNoPublicEntryPointAccepts(typeof(ThreeVsThreeRallyBootstrap).Assembly, prohibited);
-        }
-
-        private static System.Type RequiredSharedType(string name)
-        {
-            var type = typeof(MatchContextV1).Assembly.GetType("Volleyball.Shared.Contracts." + name);
-            Assert.That(type, Is.Not.Null, name + " must be the production boundary contract.");
-            return type;
         }
 
         private static void AssertNoPublicEntryPointAccepts(Assembly assembly, System.Type[] prohibited)

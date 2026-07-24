@@ -6,24 +6,30 @@ namespace Volleyball.Career.Domain
     public sealed class CareerPlayerRecord
     {
         public CareerPlayerRecord(
-            PlayerId playerId,
-            string displayName,
-            PlayerAbilitySnapshotV1 ability)
+            string playerId,
+            PhysicalBaseAttributesV4 physical,
+            TechnicalBaseAttributesV4 technical,
+            DominantHandV4 dominantHand)
         {
-            if (string.IsNullOrWhiteSpace(displayName))
+            if (string.IsNullOrWhiteSpace(playerId))
             {
-                throw new ArgumentException("A career player requires a display name.", nameof(displayName));
+                throw new ArgumentException("A career player requires an ID.", nameof(playerId));
             }
 
             PlayerId = playerId;
-            DisplayName = displayName;
-            Ability = ability ?? throw new ArgumentNullException(nameof(ability));
+            Physical = physical ?? throw new ArgumentNullException(nameof(physical));
+            Technical = technical ?? throw new ArgumentNullException(nameof(technical));
+            if (!Enum.IsDefined(typeof(DominantHandV4), dominantHand))
+            {
+                throw new ArgumentOutOfRangeException(nameof(dominantHand));
+            }
+
+            DominantHand = dominantHand;
         }
 
-        public PlayerId PlayerId { get; }
-
-        public string DisplayName { get; }
-
-        public PlayerAbilitySnapshotV1 Ability { get; }
+        public string PlayerId { get; }
+        public PhysicalBaseAttributesV4 Physical { get; }
+        public TechnicalBaseAttributesV4 Technical { get; }
+        public DominantHandV4 DominantHand { get; }
     }
 }
