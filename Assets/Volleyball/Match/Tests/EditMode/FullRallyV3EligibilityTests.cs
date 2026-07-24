@@ -219,6 +219,51 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.IsEligible, Is.False);
         }
 
+        [TestCase(2.43f, true)]
+        [TestCase(2.4301f, false)]
+        public void CanAttempt_AttackGeometryFactUsesExactNetHeightThreshold(
+            float contactHeight,
+            bool expectedEligible)
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var player = snapshot.For(HomeRotationOrder[0]);
+            var geometry = new AttackGeometryFactV3(
+                player.PlayerId,
+                player.Side,
+                new SimVector3(0f, 0f, -1f),
+                new SimVector3(0f, contactHeight, -0.2f),
+                3f,
+                2.43f);
+
+            var decision = AttackEligibilityRulesV3.CanAttempt(player, geometry);
+
+            Assert.That(decision.IsEligible, Is.EqualTo(expectedEligible));
+            Assert.That(
+                decision.Reason,
+                Is.EqualTo(
+                    expectedEligible
+                        ? "eligible attack attempt"
+                        : "ineligible above-net front-zone attack"));
+        }
+
+        [Test]
+        public void CanAttempt_AttackGeometryFactMustMatchEligiblePlayer()
+        {
+            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var player = snapshot.For(HomeRotationOrder[0]);
+            var geometry = new AttackGeometryFactV3(
+                HomeRotationOrder[4],
+                player.Side,
+                new SimVector3(0f, 0f, -3.1f),
+                new SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            Assert.That(
+                () => AttackEligibilityRulesV3.CanAttempt(player, geometry),
+                Throws.ArgumentException);
+        }
+
         [Test]
         public void CanAttempt_RejectsMissingPlayerAndInvalidGeometry()
         {

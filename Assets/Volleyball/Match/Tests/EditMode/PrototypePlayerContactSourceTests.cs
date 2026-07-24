@@ -5,6 +5,7 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
 
 namespace Volleyball.EditModeTests
@@ -1049,6 +1050,70 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ObservedAttackTakeoff_PlannedBehindLineButActualFrontZoneReportsActual()
+        {
+            var player = CreatePlayer("ObservedFrontZoneAttacker", TeamId.Blue, PlayerRole.Defender);
+            try
+            {
+                player.transform.position = new Vector3(0f, 0f, -1.2f);
+                var plannedTakeoff = new SimVector3(0f, 0f, -3.2f);
+                ScheduleObservedGeometryAttack(player, plannedTakeoff);
+
+                Collect(player, 5f);
+
+                Assert.That(player.TryGetObservedAttackTakeoff(out var observed), Is.True);
+                var observedGeometry = new AttackGeometryFactV3(
+                    player.StableId,
+                    Volleyball.Shared.Contracts.TeamSide.Home,
+                    observed.Point,
+                    new SimVector3(0f, 2.5f, -0.2f),
+                    3f,
+                    CourtBuilder.NetHeight);
+                Assert.That(plannedTakeoff.Z, Is.LessThan(-3f));
+                Assert.That(observed.Point.Z, Is.GreaterThan(-3f));
+                Assert.That(observed.SimulationTime, Is.LessThan(5f));
+                Assert.That(observedGeometry.IsTakeoffInFrontZone, Is.True);
+                Assert.That(observedGeometry.IsContactAboveNet, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void ObservedAttackTakeoff_PlannedFrontZoneButActualBehindLineReportsActual()
+        {
+            var player = CreatePlayer("ObservedBackZoneAttacker", TeamId.Blue, PlayerRole.Defender);
+            try
+            {
+                player.transform.position = new Vector3(0f, 0f, -3.4f);
+                var plannedTakeoff = new SimVector3(0f, 0f, -2.5f);
+                ScheduleObservedGeometryAttack(player, plannedTakeoff);
+
+                Collect(player, 5f);
+
+                Assert.That(player.TryGetObservedAttackTakeoff(out var observed), Is.True);
+                var observedGeometry = new AttackGeometryFactV3(
+                    player.StableId,
+                    Volleyball.Shared.Contracts.TeamSide.Home,
+                    observed.Point,
+                    new SimVector3(0f, 2.5f, -0.2f),
+                    3f,
+                    CourtBuilder.NetHeight);
+                Assert.That(plannedTakeoff.Z, Is.GreaterThan(-3f));
+                Assert.That(observed.Point.Z, Is.LessThan(-3f));
+                Assert.That(observed.SimulationTime, Is.LessThan(5f));
+                Assert.That(observedGeometry.IsTakeoffInFrontZone, Is.False);
+                Assert.That(observedGeometry.IsContactAboveNet, Is.True);
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void ScheduledAttackApproach_ReplanAfterPreparationPreservesRemainingApproachProgress()
         {
             var player = CreatePlayer("PreparedReplanAttacker", TeamId.Blue, PlayerRole.OutsideHitter);
@@ -1343,6 +1408,42 @@ namespace Volleyball.EditModeTests
                 703,
                 movementStartSimulationTime: 4f,
                 attackApproach: approach);
+        }
+
+        private static void ScheduleObservedGeometryAttack(
+            PrototypePlayerAgent player,
+            SimVector3 plannedTakeoff)
+        {
+            var approach = new AttackApproachPlan(
+                new SimVector3(
+                    player.transform.position.x,
+                    0f,
+                    player.transform.position.z),
+                plannedTakeoff,
+                (plannedTakeoff - new SimVector3(
+                    player.transform.position.x,
+                    0f,
+                    player.transform.position.z)).Magnitude,
+                1f,
+                0f);
+            var contactPlan = AttackContactPlanner.Plan(new AttackContactInput(
+                player.Ability.PlannedAttackContactHeightMeters,
+                1f,
+                1f,
+                SetQualityGrade.A,
+                plannedTakeoff,
+                0.8f,
+                1.1f));
+            player.ScheduleContact(
+                TechniqueAction.Attack,
+                5f,
+                new SimVector3(0f, -4f, 14f),
+                NoExecutionError(),
+                708,
+                contactPlan.ContactCenter,
+                movementStartSimulationTime: 4.7f,
+                attackApproach: approach,
+                attackContactPlan: contactPlan);
         }
     }
 }

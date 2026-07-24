@@ -136,13 +136,6 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CommitContact_ObservedGeometryDecidesOtherwiseIdenticalAttackEligibility()
         {
-            var method = typeof(FullRallyV3RulesRuntimeAdapter).GetMethod(
-                nameof(FullRallyV3RulesRuntimeAdapter.CommitContact),
-                new[]
-                {
-                    typeof(PlayerId), typeof(TeamSide), typeof(RallyContactClassificationV3),
-                    typeof(long), typeof(AttackGeometryFactV3)
-                });
             var illegalGeometry = new AttackGeometryFactV3(
                 HomeRotation[4], TeamSide.Home,
                 new Volleyball.Domain.Simulation.SimVector3(0f, 1f, -1f),
@@ -156,25 +149,216 @@ namespace Volleyball.EditModeTests
                 attackLineDistanceFromCenter: 3f,
                 netHeight: 2.43f);
 
-            Assert.That(method, Is.Not.Null, "Attack contacts must carry observed geometry to authority.");
-            var legal = (RuleTransitionV3)method.Invoke(
-                CreateAdapter(),
-                new object[]
-                {
-                    HomeRotation[4], TeamSide.Home, RallyContactClassificationV3.TeamContact,
-                    901L, legalGeometry
-                });
-            var illegal = (RuleTransitionV3)method.Invoke(
-                CreateAdapter(),
-                new object[]
-                {
-                    HomeRotation[4], TeamSide.Home, RallyContactClassificationV3.TeamContact,
-                    901L, illegalGeometry
-                });
+            var legal = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                901L,
+                legalGeometry);
+            var illegal = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                901L,
+                illegalGeometry);
 
             Assert.That(legal.Accepted, Is.True);
             Assert.That(illegal.Accepted, Is.False);
             Assert.That(illegal.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [TestCase(2.43f, true)]
+        [TestCase(2.431f, false)]
+        public void EvaluateContact_ObservedHeightThresholdReturnsExactV3Decision(
+            float observedContactHeight,
+            bool expectedAccepted)
+        {
+            var geometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, observedContactHeight, -0.2f),
+                attackLineDistanceFromCenter: 3f,
+                netHeight: 2.43f);
+
+            var transition = CreateAdapter().EvaluateContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                902L,
+                geometry);
+
+            Assert.That(transition.Accepted, Is.EqualTo(expectedAccepted));
+            Assert.That(
+                transition.RejectionReason,
+                Is.EqualTo(
+                    expectedAccepted
+                        ? RuleRejectionReasonV3.None
+                        : RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [Test]
+        public void CommitContact_RejectsGeometryForAnotherActorOrSide()
+        {
+            var actorMismatch = new AttackGeometryFactV3(
+                HomeRotation[5],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+            var sideMismatch = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Away,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, 3.1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, 0.2f),
+                3f,
+                2.43f);
+
+            Assert.That(
+                () => CreateAdapter().CommitContact(
+                    HomeRotation[4],
+                    TeamSide.Home,
+                    RallyContactClassificationV3.TeamContact,
+                    903L,
+                    actorMismatch),
+                Throws.ArgumentException);
+            Assert.That(
+                () => CreateAdapter().CommitContact(
+                    HomeRotation[4],
+                    TeamSide.Home,
+                    RallyContactClassificationV3.TeamContact,
+                    904L,
+                    sideMismatch),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void CommitContact_PlannedLegalObservedIllegal_UsesObservedTransition()
+        {
+            var plannedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+            var observedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            var transition = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                905L,
+                observedGeometry);
+
+            Assert.That(plannedGeometry.IsTakeoffInFrontZone, Is.False);
+            Assert.That(observedGeometry.IsTakeoffInFrontZone, Is.True);
+            Assert.That(transition.Accepted, Is.False);
+            Assert.That(
+                transition.RejectionReason,
+                Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [Test]
+        public void CommitContact_PlannedIllegalObservedLegal_UsesObservedTransition()
+        {
+            var plannedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+            var observedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            var transition = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                906L,
+                observedGeometry);
+
+            Assert.That(plannedGeometry.IsTakeoffInFrontZone, Is.True);
+            Assert.That(observedGeometry.IsTakeoffInFrontZone, Is.False);
+            Assert.That(transition.Accepted, Is.True);
+            Assert.That(transition.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.None));
+        }
+
+        [Test]
+        public void AttackGeometryEvaluateAndCommit_ReturnIdenticalDecisionAndCommitOnce()
+        {
+            var adapter = CreateAdapter();
+            var geometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            var evaluation = adapter.EvaluateContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                907L,
+                geometry);
+            var committed = adapter.CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                907L,
+                geometry);
+
+            Assert.That(evaluation.Accepted, Is.True);
+            Assert.That(evaluation.RejectionReason, Is.EqualTo(committed.RejectionReason));
+            Assert.That(evaluation.Before.CountedHits, Is.Zero);
+            Assert.That(committed.Before.CountedHits, Is.Zero);
+            Assert.That(committed.After.CountedHits, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CreateObservedAttackGeometryFact_UsesCollisionPointAndValidatesTakeoffTime()
+        {
+            var method = typeof(PhysicalMatchRallyDirector).GetMethod(
+                "CreateObservedAttackGeometryFact",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var takeoff = new ObservedAttackTakeoff(
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1.2f),
+                4.62f);
+            var hit = new Volleyball.Domain.Simulation.SweptBallHit(
+                0.5f,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.55f, -0.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.42f, -0.2f),
+                Volleyball.Domain.Simulation.SimVector3.Up,
+                Volleyball.Domain.Simulation.SimVector3.Zero,
+                908,
+                1f);
+
+            Assert.That(method, Is.Not.Null);
+            var fact = (AttackGeometryFactV3)method.Invoke(
+                null,
+                new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 5f });
+
+            Assert.That(fact.TakeoffPoint, Is.EqualTo(takeoff.Point));
+            Assert.That(fact.ContactPoint, Is.EqualTo(hit.ContactPoint));
+            Assert.That(fact.IsContactAboveNet, Is.False);
+            var exception = Assert.Throws<TargetInvocationException>(() => method.Invoke(
+                null,
+                new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 4.61f }));
+            Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
         }
 
         [Test]

@@ -1633,11 +1633,25 @@ namespace Volleyball.Presentation
 
             if (V3RulesMode == V3RulesMode.Authority)
             {
-                return ToBallContactResolution(_v3RulesAdapter.EvaluateContact(
-                    StableId(candidate.Actor.Value),
-                    ToSide(candidate.Actor.Value.Team),
-                    ToV3Classification(candidate.Action),
-                    hit.ContactGroupId));
+                var stableActor = StableId(candidate.Actor.Value);
+                var side = ToSide(candidate.Actor.Value.Team);
+                var classification = ToV3Classification(candidate.Action);
+                var transition = candidate.Action == TechniqueAction.Attack
+                    ? _v3RulesAdapter.EvaluateContact(
+                        stableActor,
+                        side,
+                        classification,
+                        hit.ContactGroupId,
+                        CreateObservedAttackGeometry(
+                            candidate,
+                            hit,
+                            contactSimulationTime))
+                    : _v3RulesAdapter.EvaluateContact(
+                        stableActor,
+                        side,
+                        classification,
+                        hit.ContactGroupId);
+                return ToBallContactResolution(transition);
             }
 
             var evaluation = _touchState.Evaluate(
@@ -1670,11 +1684,22 @@ namespace Volleyball.Presentation
             var actor = candidate.Actor.Value;
             var stableActor = StableId(actor);
             var classification = ToV3Classification(candidate.Action);
-            var transition = _v3RulesAdapter.CommitContact(
-                stableActor,
-                ToSide(actor.Team),
-                classification,
-                hit.ContactGroupId);
+            var side = ToSide(actor.Team);
+            var transition = candidate.Action == TechniqueAction.Attack
+                ? _v3RulesAdapter.CommitContact(
+                    stableActor,
+                    side,
+                    classification,
+                    hit.ContactGroupId,
+                    CreateObservedAttackGeometry(
+                        candidate,
+                        hit,
+                        contactSimulationTime))
+                : _v3RulesAdapter.CommitContact(
+                    stableActor,
+                    side,
+                    classification,
+                    hit.ContactGroupId);
             var resolution = ToBallContactResolution(transition);
             if (!transition.Accepted)
             {
@@ -1714,6 +1739,69 @@ namespace Volleyball.Presentation
                 scenario,
                 diagnosticExceptionType);
             return resolution;
+        }
+
+        private AttackGeometryFactV3 CreateObservedAttackGeometry(
+            BallContactCandidate candidate,
+            SweptBallHit hit,
+            float contactSimulationTime)
+        {
+            if (candidate.Action != TechniqueAction.Attack || !candidate.Actor.HasValue)
+            {
+                throw new ArgumentException(
+                    "Observed attack geometry requires an attack candidate with an actor.",
+                    nameof(candidate));
+            }
+
+            var actor = candidate.Actor.Value;
+            if (!_players[actor].TryGetObservedAttackTakeoff(out var takeoff))
+            {
+                throw new InvalidOperationException(
+                    "The attack contact source did not capture an observed takeoff.");
+            }
+
+            return CreateObservedAttackGeometryFact(
+                StableId(actor),
+                ToSide(actor.Team),
+                takeoff,
+                hit,
+                contactSimulationTime);
+        }
+
+        private static AttackGeometryFactV3 CreateObservedAttackGeometryFact(
+            Volleyball.Shared.Contracts.PlayerId actor,
+            TeamSide side,
+            ObservedAttackTakeoff takeoff,
+            SweptBallHit hit,
+            float contactSimulationTime)
+        {
+            if (!hit.ContactPoint.IsFinite || !hit.ImpactCenter.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(hit),
+                    "Observed player and ball contact points must be finite.");
+            }
+            if (float.IsNaN(contactSimulationTime) ||
+                float.IsInfinity(contactSimulationTime))
+            {
+                throw new ArgumentOutOfRangeException(nameof(contactSimulationTime));
+            }
+            if (takeoff.SimulationTime > contactSimulationTime)
+            {
+                throw new InvalidOperationException(
+                    "Observed attack takeoff cannot occur after physical contact.");
+            }
+
+            // ContactPoint is the actual shared player/ball collision point.
+            // ImpactCenter is also validated so malformed ball geometry cannot
+            // enter the observed authority boundary.
+            return new AttackGeometryFactV3(
+                actor,
+                side,
+                takeoff.Point,
+                hit.ContactPoint,
+                attackLineDistanceFromCenter: 3f,
+                netHeight: CourtBuilder.NetHeight);
         }
 
         private static BallContactResolution ToBallContactResolution(RuleTransitionV3 transition)

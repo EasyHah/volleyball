@@ -77,8 +77,33 @@ namespace Volleyball.Presentation
             RallyContactClassificationV3 classification,
             long contactGroup)
         {
+            return EvaluateContactCore(actor, side, classification, contactGroup, null);
+        }
+
+        public RuleTransitionV3 EvaluateContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
+            return EvaluateContactCore(
+                actor,
+                side,
+                classification,
+                contactGroup,
+                attackGeometry ?? throw new ArgumentNullException(nameof(attackGeometry)));
+        }
+
+        private RuleTransitionV3 EvaluateContactCore(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
             var contact = CreateContact(actor, side, classification, contactGroup);
-            var eligibilityRejection = EvaluateEligibility(contact);
+            var eligibilityRejection = EvaluateEligibility(contact, attackGeometry);
             return eligibilityRejection ?? _engine.CanAttempt(contact);
         }
 
@@ -88,8 +113,33 @@ namespace Volleyball.Presentation
             RallyContactClassificationV3 classification,
             long contactGroup)
         {
+            return CommitContactCore(actor, side, classification, contactGroup, null);
+        }
+
+        public RuleTransitionV3 CommitContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
+            return CommitContactCore(
+                actor,
+                side,
+                classification,
+                contactGroup,
+                attackGeometry ?? throw new ArgumentNullException(nameof(attackGeometry)));
+        }
+
+        private RuleTransitionV3 CommitContactCore(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
             var contact = CreateContact(actor, side, classification, contactGroup);
-            var eligibilityRejection = EvaluateEligibility(contact);
+            var eligibilityRejection = EvaluateEligibility(contact, attackGeometry);
             return eligibilityRejection ?? _engine.Apply(contact);
         }
 
@@ -120,7 +170,9 @@ namespace Volleyball.Presentation
             return contact;
         }
 
-        private RuleTransitionV3 EvaluateEligibility(ActualContactEventV3 contact)
+        private RuleTransitionV3 EvaluateEligibility(
+            ActualContactEventV3 contact,
+            AttackGeometryFactV3 attackGeometry)
         {
             OnCourtPlayerEligibilityV3 eligibleActor;
             try
@@ -134,6 +186,12 @@ namespace Volleyball.Presentation
 
             if (contact.Classification == RallyContactClassificationV3.BlockContact &&
                 !BlockEligibilityRulesV3.CanAttempt(eligibleActor).IsEligible)
+            {
+                return Reject(RuleRejectionReasonV3.ActionIneligible);
+            }
+
+            if (attackGeometry != null &&
+                !AttackEligibilityRulesV3.CanAttempt(eligibleActor, attackGeometry).IsEligible)
             {
                 return Reject(RuleRejectionReasonV3.ActionIneligible);
             }
