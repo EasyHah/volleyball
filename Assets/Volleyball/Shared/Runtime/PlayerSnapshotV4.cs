@@ -53,6 +53,7 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException("derivationConfig is required.");
             }
 
+            ValidatePublishedConfig(derivationConfig);
             JerseyNumber = jerseyNumber;
             Position = position;
             DominantHand = dominantHand;
@@ -106,15 +107,17 @@ namespace Volleyball.Shared.Contracts
                     "Physical, technical, and derived V4 attributes are required.");
             }
 
-            var config = new MatchAttributeDerivationConfigV4(
-                Derived.FormulaVersion,
-                Derived.CoefficientVersion,
-                MatchAttributeDerivationConfigV4.Version1.Coefficients);
+            if (Derived.FormulaVersion != 1 || Derived.CoefficientVersion != 1)
+            {
+                throw new ContractValidationException(
+                    "Derived attributes must use the published V1 formula and coefficient table.");
+            }
+
             var recomputed = MatchAttributeDerivationV4.Derive(
                 Physical,
                 Technical,
                 DominantHand,
-                config);
+                MatchAttributeDerivationConfigV4.Version1);
             if (!string.Equals(
                     Derived.InputFingerprint,
                     recomputed.InputFingerprint,
@@ -126,6 +129,29 @@ namespace Volleyball.Shared.Contracts
             {
                 throw new ContractValidationException(
                     "The derived fingerprint does not match the V4 player base attributes.");
+            }
+        }
+
+        private static void ValidatePublishedConfig(
+            MatchAttributeDerivationConfigV4 derivationConfig)
+        {
+            var published = MatchAttributeDerivationConfigV4.Version1;
+            if (derivationConfig.FormulaVersion != published.FormulaVersion ||
+                derivationConfig.CoefficientVersion != published.CoefficientVersion ||
+                derivationConfig.Coefficients.Count != published.Coefficients.Count)
+            {
+                throw new ContractValidationException(
+                    "derivationConfig must use the published V1 formula and coefficient table.");
+            }
+
+            for (var index = 0; index < published.Coefficients.Count; index++)
+            {
+                if (!derivationConfig.Coefficients[index].Equals(
+                        published.Coefficients[index]))
+                {
+                    throw new ContractValidationException(
+                        "derivationConfig must use the published V1 formula and coefficient table.");
+                }
             }
         }
     }

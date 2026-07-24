@@ -877,7 +877,7 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
-        public void NativeV4FingerprintsCoverBaseHandDerivationSeedAndRulesIdentity()
+        public void NativeV4FingerprintsCoverBaseHandSeedAndRulesIdentity()
         {
             var baseline = CreateContextV4(
                 new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"),
@@ -890,13 +890,6 @@ namespace Volleyball.Shared.EditModeTests
                 baseline.SessionId,
                 baseline.Seed,
                 firstHand: DominantHandV4.Left);
-            var changedVersion = CreateContextV4(
-                baseline.SessionId,
-                baseline.Seed,
-                config: new MatchAttributeDerivationConfigV4(
-                    formulaVersion: 2,
-                    coefficientVersion: 1,
-                    MatchAttributeDerivationConfigV4.Version1.Coefficients));
             var changedSeed = CreateContextV4(baseline.SessionId, 7352);
 
             Assert.That(
@@ -908,13 +901,9 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(
                 changedHand.Home.RotationOrder[0].Derived.ResultFingerprint,
                 Is.Not.EqualTo(baseline.Home.RotationOrder[0].Derived.ResultFingerprint));
-            Assert.That(
-                changedVersion.Home.RotationOrder[0].Derived.ResultFingerprint,
-                Is.Not.EqualTo(baseline.Home.RotationOrder[0].Derived.ResultFingerprint));
             Assert.That(changedSeed.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
             Assert.That(changedBase.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
             Assert.That(changedHand.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
-            Assert.That(changedVersion.ContextHash, Is.Not.EqualTo(baseline.ContextHash));
             Assert.That(
                 () => MatchContextV4.Create(
                     baseline.SessionId,
@@ -924,6 +913,67 @@ namespace Volleyball.Shared.EditModeTests
                     baseline.PhysicsConfigurationHash,
                     rulesVersion: 4),
                 Throws.TypeOf<ContractValidationException>().With.Message.Contains("rulesVersion"));
+        }
+
+        [Test]
+        public void PlayerSnapshotV4_RejectsEveryNonAuthoritativeDerivationConfigAtBoundary()
+        {
+            var published = MatchAttributeDerivationConfigV4.Version1;
+            var reweighted = ReplaceCoefficient(
+                published.Coefficients,
+                0,
+                0.64f).ToArray();
+            reweighted = ReplaceCoefficient(reweighted, 1, 0.21f).ToArray();
+            var unsupported = new[]
+            {
+                new MatchAttributeDerivationConfigV4(
+                    formulaVersion: 2,
+                    coefficientVersion: 1,
+                    published.Coefficients),
+                new MatchAttributeDerivationConfigV4(
+                    formulaVersion: 1,
+                    coefficientVersion: 2,
+                    published.Coefficients),
+                new MatchAttributeDerivationConfigV4(
+                    formulaVersion: 1,
+                    coefficientVersion: 1,
+                    reweighted)
+            };
+
+            foreach (var config in unsupported)
+            {
+                Assert.That(
+                    () => new PlayerSnapshotV4(
+                        new PlayerId("non-authoritative"),
+                        "Non Authoritative",
+                        1,
+                        PlayerPosition.Setter,
+                        DominantHandV4.Right,
+                        CreateDerivationPhysical(),
+                        CreateDerivationTechnical(),
+                        config),
+                    Throws.TypeOf<ContractValidationException>()
+                        .With.Message.Contains("published V1"));
+            }
+        }
+
+        [Test]
+        public void PlayerSnapshotV4_PublishedV1PreservesDerivedFingerprintThroughContextRoundTrip()
+        {
+            var context = CreateContextV4(
+                new Guid("42e99cf4-b7bf-449e-9281-f82dbe0f6aa4"),
+                7351,
+                config: MatchAttributeDerivationConfigV4.Version1);
+            var expected = context.Home.RotationOrder[0].Derived.ResultFingerprint;
+
+            var restored = ContractJson.DeserializeMatchContextV4(
+                ContractJson.SerializeV4(context));
+
+            Assert.That(restored.FormulaVersion, Is.EqualTo(1));
+            Assert.That(restored.CoefficientVersion, Is.EqualTo(1));
+            Assert.That(
+                restored.Home.RotationOrder[0].Derived.ResultFingerprint,
+                Is.EqualTo(expected));
         }
 
         [Test]
@@ -1073,6 +1123,20 @@ namespace Volleyball.Shared.EditModeTests
             var missing = json.Replace("\"acceptedContacts\":72,", string.Empty);
             var unknown = json.Replace("\"winnerTeamId\":", "\"ability\":{},\"winnerTeamId\":");
             var wrongVersion = json.Replace("\"contractVersion\":4", "\"contractVersion\":3");
+            var v1 = CreateContext(Guid.NewGuid(), 17);
+            var v1Result = MatchResultV1.Create(
+                v1,
+                v1.Home.TeamId,
+                25,
+                18,
+                Array.Empty<PlayerMatchStatsV1>());
+            var v2 = CreateContextV2(Guid.NewGuid(), 17);
+            var v2Result = MatchResultV2.Create(
+                v2,
+                v2.Home.TeamId,
+                25,
+                19,
+                Array.Empty<PlayerMatchStatsV2>());
             var v3 = CreateContextV3(Guid.NewGuid(), 17);
             var v3Result = MatchResultV3.Create(
                 v3,
@@ -1084,6 +1148,12 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(() => ContractJson.DeserializeMatchResultV4(missing), Throws.TypeOf<ContractValidationException>());
             Assert.That(() => ContractJson.DeserializeMatchResultV4(unknown), Throws.TypeOf<ContractValidationException>());
             Assert.That(() => ContractJson.DeserializeMatchResultV4(wrongVersion), Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchResultV4(ContractJson.Serialize(v1Result)),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => ContractJson.DeserializeMatchResultV4(ContractJson.SerializeV2(v2Result)),
+                Throws.TypeOf<ContractValidationException>());
             Assert.That(
                 () => ContractJson.DeserializeMatchResultV4(ContractJson.SerializeV3(v3Result)),
                 Throws.TypeOf<ContractValidationException>());
