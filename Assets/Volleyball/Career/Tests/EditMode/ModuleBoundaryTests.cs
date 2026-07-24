@@ -49,7 +49,8 @@ namespace Volleyball.Career.EditModeTests
             var prohibited = new[]
             {
                 typeof(PlayerAbilitySnapshotV1), typeof(PlayerAbilitySnapshotV2),
-                typeof(PlayerAbilitySnapshotV3), typeof(MatchContextV2), typeof(MatchContextV3)
+                typeof(PlayerAbilitySnapshotV3), typeof(MatchContextV2), typeof(MatchContextV3),
+                typeof(IMatchContext), typeof(IMatchResult)
             };
 
             AssertNoPublicEntryPointAccepts(typeof(CareerMatchRequest).Assembly, prohibited);
@@ -68,14 +69,20 @@ namespace Volleyball.Career.EditModeTests
             var parameters = assembly.GetTypes()
                 .Where(type => type.IsPublic)
                 .SelectMany(type => type.GetConstructors().Cast<MethodBase>().Concat(type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)))
-                .SelectMany(method => method.GetParameters())
-                .Select(parameter => parameter.ParameterType)
+                .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType)
+                    .Concat(new[] { method is MethodInfo methodInfo ? methodInfo.ReturnType : null }))
+                .Concat(assembly.GetTypes().Where(type => type.IsPublic)
+                    .SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+                    .Select(property => property.PropertyType))
+                .Where(type => type != null)
                 .ToArray();
             Assert.That(parameters, Has.None.EqualTo(prohibited[0]));
             Assert.That(parameters, Has.None.EqualTo(prohibited[1]));
             Assert.That(parameters, Has.None.EqualTo(prohibited[2]));
             Assert.That(parameters, Has.None.EqualTo(prohibited[3]));
             Assert.That(parameters, Has.None.EqualTo(prohibited[4]));
+            Assert.That(parameters, Has.None.EqualTo(prohibited[5]));
+            Assert.That(parameters, Has.None.EqualTo(prohibited[6]));
         }
 
         private static void AssertReferences(System.Type type, string assemblyName)

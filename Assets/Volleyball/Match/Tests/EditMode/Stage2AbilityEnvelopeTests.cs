@@ -326,12 +326,43 @@ namespace Volleyball.EditModeTests
         {
             var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
             var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
-            var fine = new BallTrajectoryPredictionProviderV3(stepSeconds: 1f / 120f);
-            var coarse = new BallTrajectoryPredictionProviderV3(stepSeconds: 1f / 60f);
+            var provider = new BallTrajectoryPredictionProviderV3();
+            var predict = RequiredVersionedPredict();
 
-            Assert.That(
-                coarse.BuildCacheKey(source, parameters, "same-sample"),
-                Is.Not.EqualTo(fine.BuildCacheKey(source, parameters, "same-sample")));
+            var first = (BallTrajectoryArtifactV3)predict.Invoke(
+                provider, new object[] { source, parameters, "same-sample", "predictor-v4-1", "config-a" });
+            var second = (BallTrajectoryArtifactV3)predict.Invoke(
+                provider, new object[] { source, parameters, "same-sample", "predictor-v4-1", "config-b" });
+
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second, Is.Not.EqualTo(first));
+            Assert.That(provider.CacheCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void PredictorVersion_ChangesArtifactIdentityAndRequiresAnIndependentCacheMiss()
+        {
+            var source = new BallState(new SimVector3(1f, 3f, -2f), new SimVector3(2f, 4f, 5f), 0.12f);
+            var parameters = new BallSimulationParameters(-9.8f, 0.9995f);
+            var provider = new BallTrajectoryPredictionProviderV3();
+            var predict = RequiredVersionedPredict();
+            var first = (BallTrajectoryArtifactV3)predict.Invoke(
+                provider, new object[] { source, parameters, "same-sample", "predictor-v4-1", "config-a" });
+            var second = (BallTrajectoryArtifactV3)predict.Invoke(
+                provider, new object[] { source, parameters, "same-sample", "predictor-v4-2", "config-a" });
+
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second, Is.Not.EqualTo(first));
+            Assert.That(provider.CacheCount, Is.EqualTo(2));
+        }
+
+        private static System.Reflection.MethodInfo RequiredVersionedPredict()
+        {
+            var predict = typeof(BallTrajectoryPredictionProviderV3).GetMethod(
+                nameof(BallTrajectoryPredictionProviderV3.Predict),
+                new[] { typeof(BallState), typeof(BallSimulationParameters), typeof(string), typeof(string), typeof(string) });
+            Assert.That(predict, Is.Not.Null, "Prediction requests must carry predictor version and configuration independently.");
+            return predict;
         }
 
         [Test]

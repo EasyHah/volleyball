@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 using Volleyball.Shared.Contracts;
 
@@ -16,6 +18,26 @@ namespace Volleyball.Shared.EditModeTests
 
             Assert.That(contextV4, Is.Not.Null);
             Assert.That(resultV4, Is.Not.Null);
+            AssertNoPublicEntryPointAccepts(typeof(ContractJson).Assembly, typeof(IMatchContext), typeof(IMatchResult));
+        }
+
+        private static void AssertNoPublicEntryPointAccepts(Assembly assembly, params Type[] prohibited)
+        {
+            var publicTypes = assembly.GetTypes().Where(type => type.IsPublic).ToArray();
+            var exposedTypes = publicTypes
+                .SelectMany(type => type.GetConstructors().Cast<MethodBase>()
+                    .Concat(type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static)))
+                .SelectMany(method => method.GetParameters().Select(parameter => parameter.ParameterType)
+                    .Concat(new[] { method is MethodInfo methodInfo ? methodInfo.ReturnType : null }))
+                .Concat(publicTypes.SelectMany(type => type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static))
+                    .Select(property => property.PropertyType))
+                .Where(type => type != null)
+                .ToArray();
+
+            foreach (var type in prohibited)
+            {
+                Assert.That(exposedTypes, Has.None.EqualTo(type), "Production entry points must not expose " + type.Name + ".");
+            }
         }
 
         [Test]

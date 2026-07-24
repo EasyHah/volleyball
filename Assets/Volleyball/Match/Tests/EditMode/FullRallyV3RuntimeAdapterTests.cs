@@ -129,9 +129,8 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void CommitContact_RequiresObservedAttackGeometryAndRejectsIllegalContact()
+        public void CommitContact_ObservedGeometryDecidesOtherwiseIdenticalAttackEligibility()
         {
-            var adapter = CreateAdapter();
             var method = typeof(FullRallyV3RulesRuntimeAdapter).GetMethod(
                 nameof(FullRallyV3RulesRuntimeAdapter.CommitContact),
                 new[]
@@ -139,24 +138,38 @@ namespace Volleyball.EditModeTests
                     typeof(PlayerId), typeof(TeamSide), typeof(RallyContactClassificationV3),
                     typeof(long), typeof(AttackGeometryFactV3)
                 });
-            var geometry = new AttackGeometryFactV3(
+            var illegalGeometry = new AttackGeometryFactV3(
                 HomeRotation[4], TeamSide.Home,
                 new Volleyball.Domain.Simulation.SimVector3(0f, 1f, -1f),
                 new Volleyball.Domain.Simulation.SimVector3(0f, 2.50f, -0.2f),
                 attackLineDistanceFromCenter: 3f,
                 netHeight: 2.43f);
+            var legalGeometry = new AttackGeometryFactV3(
+                HomeRotation[4], TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 1f, -3.1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.50f, -0.2f),
+                attackLineDistanceFromCenter: 3f,
+                netHeight: 2.43f);
 
             Assert.That(method, Is.Not.Null, "Attack contacts must carry observed geometry to authority.");
-            var transition = (RuleTransitionV3)method.Invoke(
-                adapter,
+            var legal = (RuleTransitionV3)method.Invoke(
+                CreateAdapter(),
                 new object[]
                 {
                     HomeRotation[4], TeamSide.Home, RallyContactClassificationV3.TeamContact,
-                    901L, geometry
+                    901L, legalGeometry
+                });
+            var illegal = (RuleTransitionV3)method.Invoke(
+                CreateAdapter(),
+                new object[]
+                {
+                    HomeRotation[4], TeamSide.Home, RallyContactClassificationV3.TeamContact,
+                    901L, illegalGeometry
                 });
 
-            Assert.That(transition.Accepted, Is.False);
-            Assert.That(transition.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+            Assert.That(legal.Accepted, Is.True);
+            Assert.That(illegal.Accepted, Is.False);
+            Assert.That(illegal.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
         }
 
         [Test]
