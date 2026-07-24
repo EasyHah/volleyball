@@ -102,6 +102,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(
                 restored.Context.RulesVersion,
                 Is.EqualTo(ContractVersions.MatchV3));
+            AssertV4Identity(restored.Context.ContextHash, "formal context");
+            AssertV4Identity(restored.ReplayHash, "formal replay");
             Assert.That(restored.Events, Is.Not.Empty);
             foreach (var replayEvent in restored.Events)
             {
@@ -112,6 +114,30 @@ namespace Volleyball.PlayModeTests
                 Assert.That(replayEvent.Trajectory, Is.Not.Null);
                 Assert.That(replayEvent.AbilityConsumptions, Is.Not.Empty);
                 Assert.That(replayEvent.Classification, Is.Not.Null);
+                Assert.That(
+                    replayEvent.TestedEnvelope.Version,
+                    Is.EqualTo(ContractVersions.ReplayV4));
+                Assert.That(
+                    replayEvent.ExecutableEnvelope.Version,
+                    Is.EqualTo(ContractVersions.ReplayV4));
+                AssertV4Identity(
+                    replayEvent.TestedEnvelope.Identity,
+                    "tested execution envelope");
+                AssertV4Identity(
+                    replayEvent.ExecutableEnvelope.Identity,
+                    "executable execution envelope");
+                AssertV4Identity(
+                    replayEvent.TestedEnvelope.DerivedAttributesFingerprint,
+                    "derived V4 attributes");
+                AssertV4Identity(
+                    replayEvent.Trajectory.ArtifactIdentity,
+                    "trajectory artifact");
+                AssertV4Identity(
+                    replayEvent.Trajectory.CacheKey.Identity,
+                    "trajectory cache key");
+                Assert.That(
+                    replayEvent.Trajectory.CacheKey.BallStateVersion,
+                    Is.GreaterThanOrEqualTo(0));
                 Assert.That(replayEvent.RuleDecision.RulesVersion, Is.EqualTo(3));
                 Assert.That(replayEvent.RuleDecision.Accepted, Is.True);
                 Assert.That(
@@ -219,6 +245,11 @@ namespace Volleyball.PlayModeTests
                         Is.EqualTo("ExecutionEnvelopeFactoryRead"));
                 }
             }
+        }
+
+        private static void AssertV4Identity(string value, string subject)
+        {
+            Assert.That(value, Is.Not.Null.And.Length.EqualTo(64), subject);
         }
     }
 }

@@ -15,6 +15,7 @@ using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
+using BitConverter = System.BitConverter;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
@@ -23,6 +24,49 @@ namespace Volleyball.PlayModeTests
 {
     public sealed class FormalSixVsSixRallyPlayModeTests
     {
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator Formal6v6_ReplayDiagnosticRecordingPreservesFixedSeedAuthority()
+        {
+            FormalAuthoritySummary baseline = null;
+            FormalAuthoritySummary recorded = null;
+
+            yield return RunFixedSeedFormalFixture(
+                recordDiagnostics: false,
+                value => baseline = value);
+            yield return RunFixedSeedFormalFixture(
+                recordDiagnostics: true,
+                value => recorded = value);
+
+            Assert.That(baseline, Is.Not.Null);
+            Assert.That(baseline.HasDiagnosticReplay, Is.False);
+            Assert.That(baseline.DiagnosticRecordCount, Is.Zero);
+            Assert.That(recorded, Is.Not.Null);
+            Assert.That(recorded.HasDiagnosticReplay, Is.True);
+            Assert.That(recorded.DiagnosticRecordCount, Is.EqualTo(recorded.AcceptedContacts));
+            Assert.That(recorded.WinnerTeamId, Is.EqualTo(baseline.WinnerTeamId));
+            Assert.That(recorded.HomeScore, Is.EqualTo(baseline.HomeScore));
+            Assert.That(recorded.AwayScore, Is.EqualTo(baseline.AwayScore));
+            Assert.That(recorded.AcceptedContacts, Is.EqualTo(baseline.AcceptedContacts));
+            Assert.That(recorded.V3TransitionCount, Is.EqualTo(baseline.V3TransitionCount));
+            CollectionAssert.AreEqual(baseline.V3ReasonCodes, recorded.V3ReasonCodes);
+            CollectionAssert.AreEqual(baseline.AcceptedBallStateVersions, recorded.AcceptedBallStateVersions);
+            CollectionAssert.AreEqual(
+                baseline.AcceptedAuthorityFingerprints,
+                recorded.AcceptedAuthorityFingerprints);
+
+            Debug.Log(
+                "[Formal6v6AuthorityInvariance] " +
+                "winner=" + baseline.WinnerTeamId +
+                ";score=" + baseline.HomeScore + "-" + baseline.AwayScore +
+                ";contacts=" + baseline.AcceptedContacts +
+                ";v3Transitions=" + baseline.V3TransitionCount +
+                ";reasons=" + string.Join(",", baseline.V3ReasonCodes) +
+                ";ballVersions=" + string.Join(",", baseline.AcceptedBallStateVersions) +
+                ";authorityFingerprints=" +
+                string.Join(",", baseline.AcceptedAuthorityFingerprints));
+        }
+
         [UnityTest]
         public IEnumerator FormalScene_CompletesTwentyFivePointSetWithTwelvePlayers()
         {
@@ -99,6 +143,13 @@ namespace Volleyball.PlayModeTests
                 Is.GreaterThanOrEqualTo(2));
             Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(12));
             Assert.DoesNotThrow(() => director.Result.ValidateAgainst(director.MatchContext));
+            Assert.That(director.MatchContext.ContractVersion, Is.EqualTo(4));
+            Assert.That(director.MatchContext.RulesVersion, Is.EqualTo(3));
+            Assert.That(director.Result.ContractVersion, Is.EqualTo(4));
+            Assert.That(director.Result.ContextHash, Is.EqualTo(director.MatchContext.ContextHash));
+            Assert.That(director.Result.ResultHash, Is.Not.Null.And.Length.EqualTo(64));
+            Assert.That(director.Result.AcceptedContacts, Is.EqualTo(director.SuccessfulContacts));
+            Assert.That(director.Result.V3RuleTransitionCount, Is.EqualTo(director.V3RuleTransitions));
             Assert.That(director.V3RuleTransitions, Is.GreaterThan(0));
             Assert.That(director.V3RuleTransitions, Is.EqualTo(director.SuccessfulContacts));
             Assert.That(director.V3RuleParityMatches, Is.EqualTo(director.V3RuleTransitions));
@@ -406,6 +457,177 @@ namespace Volleyball.PlayModeTests
                    transition.RejectionReason == RuleRejectionReasonV3.RallyClosed
                 ? BallContactResolution.Ignore()
                 : BallContactResolution.Fault(transition.RejectionReason.ToString());
+        }
+
+        private static IEnumerator RunFixedSeedFormalFixture(
+            bool recordDiagnostics,
+            System.Action<FormalAuthoritySummary> completed)
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var previous = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = Object.FindFirstObjectByType<SimulatedBall>();
+            var score = Object.FindFirstObjectByType<ScoreDisplay>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            Assert.That(previous, Is.Not.Null);
+            Assert.That(ball, Is.Not.Null);
+            Assert.That(score, Is.Not.Null);
+            Assert.That(players, Has.Length.EqualTo(12));
+
+            var context = previous.MatchContext;
+            var host = previous.gameObject;
+            Object.Destroy(previous);
+            yield return null;
+            foreach (var player in players)
+            {
+                player.CancelScheduledContact();
+            }
+
+            var director = host.AddComponent<FormalSixVsSixRallyDirector>();
+            director.InitializeV4(
+                ball,
+                players,
+                context,
+                score,
+                configuration: PhysicalMatchConfiguration.CreateCalibration(
+                    PhysicalMatchConfiguration.FormalIndoorSixVsSix,
+                    targetScore: 1,
+                    minimumLead: 1));
+            director.ConfigureV3Rules(V3RulesMode.Authority);
+
+            var v3ReasonCodes = new List<string>();
+            var acceptedBallStateVersions = new List<long>();
+            var acceptedAuthorityFingerprints = new List<string>();
+            director.ReplayContactAccepted += replayEvent =>
+            {
+                Assert.That(replayEvent.RuleTransition, Is.Not.Null);
+                Assert.That(replayEvent.TrajectoryArtifact, Is.Not.Null);
+                Assert.That(replayEvent.PlayerId, Is.Not.Null);
+                Assert.That(replayEvent.ExecutionClassification, Is.Not.Null);
+                v3ReasonCodes.Add(replayEvent.RuleTransition.RejectionReason.ToString());
+                acceptedBallStateVersions.Add(
+                    replayEvent.TrajectoryArtifact.Key.BallStateVersion);
+                acceptedAuthorityFingerprints.Add(
+                    AcceptedAuthorityFingerprint(replayEvent));
+            };
+
+            MatchReplayRecorder recorder = null;
+            if (recordDiagnostics)
+            {
+                recorder = MatchReplayRecorder.Attach(director, ball, players);
+                recorder.StartCapture();
+            }
+
+            var originalTimeScale = Time.timeScale;
+            try
+            {
+                var timeout = Time.realtimeSinceStartup + 75f;
+                while (director.Result == null && Time.realtimeSinceStartup < timeout)
+                {
+                    Time.timeScale = 12f;
+                    yield return null;
+                }
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+
+            Assert.That(director.Result, Is.Not.Null, "Fixed-seed formal fixture timed out.");
+            Assert.That(v3ReasonCodes, Has.Count.EqualTo(director.SuccessfulContacts));
+            Assert.That(acceptedBallStateVersions, Has.Count.EqualTo(director.SuccessfulContacts));
+            Assert.That(
+                acceptedAuthorityFingerprints,
+                Has.Count.EqualTo(director.SuccessfulContacts));
+            if (recorder != null)
+            {
+                Assert.That(recorder.IsComplete, Is.True);
+            }
+
+            completed(new FormalAuthoritySummary(
+                director.Result.WinnerTeamId.Value,
+                director.Result.HomeScore,
+                director.Result.AwayScore,
+                director.SuccessfulContacts,
+                director.V3RuleTransitions,
+                v3ReasonCodes,
+                acceptedBallStateVersions,
+                acceptedAuthorityFingerprints,
+                recorder != null,
+                recorder == null ? 0 : recorder.Complete().Events.Count));
+        }
+
+        private static string AcceptedAuthorityFingerprint(ReplayContactEvent replayEvent)
+        {
+            var classification = replayEvent.ExecutionClassification;
+            var testedEnvelope = classification.TestedEnvelope;
+            var executableEnvelope = classification.ExecutableEnvelope;
+            var sample = classification.ExecutableSample;
+            Assert.That(testedEnvelope, Is.Not.Null);
+            Assert.That(executableEnvelope, Is.Not.Null);
+            Assert.That(sample, Is.Not.Null);
+
+            return string.Join(
+                "|",
+                replayEvent.PlayerId.Value.Value,
+                replayEvent.Action.ToString(),
+                classification.Kind.ToString(),
+                testedEnvelope.Identity,
+                executableEnvelope.Identity,
+                sample.EnvelopeIdentity,
+                sample.SamplingKey,
+                sample.CandidateCategory.ToString(),
+                testedEnvelope.SourceIntentIdentity,
+                testedEnvelope.CandidateCategory.ToString(),
+                Bits(sample.Target.X),
+                Bits(sample.Target.Y),
+                Bits(sample.Target.Z),
+                Bits(sample.Velocity.X),
+                Bits(sample.Velocity.Y),
+                Bits(sample.Velocity.Z),
+                Bits(sample.Effort));
+        }
+
+        private static string Bits(float value)
+        {
+            return BitConverter.ToInt32(BitConverter.GetBytes(value), 0).ToString("x8");
+        }
+
+        private sealed class FormalAuthoritySummary
+        {
+            public FormalAuthoritySummary(
+                string winnerTeamId,
+                int homeScore,
+                int awayScore,
+                int acceptedContacts,
+                int v3TransitionCount,
+                IReadOnlyList<string> v3ReasonCodes,
+                IReadOnlyList<long> acceptedBallStateVersions,
+                IReadOnlyList<string> acceptedAuthorityFingerprints,
+                bool hasDiagnosticReplay,
+                int diagnosticRecordCount)
+            {
+                WinnerTeamId = winnerTeamId;
+                HomeScore = homeScore;
+                AwayScore = awayScore;
+                AcceptedContacts = acceptedContacts;
+                V3TransitionCount = v3TransitionCount;
+                V3ReasonCodes = v3ReasonCodes;
+                AcceptedBallStateVersions = acceptedBallStateVersions;
+                AcceptedAuthorityFingerprints = acceptedAuthorityFingerprints;
+                HasDiagnosticReplay = hasDiagnosticReplay;
+                DiagnosticRecordCount = diagnosticRecordCount;
+            }
+
+            public string WinnerTeamId { get; }
+            public int HomeScore { get; }
+            public int AwayScore { get; }
+            public int AcceptedContacts { get; }
+            public int V3TransitionCount { get; }
+            public IReadOnlyList<string> V3ReasonCodes { get; }
+            public IReadOnlyList<long> AcceptedBallStateVersions { get; }
+            public IReadOnlyList<string> AcceptedAuthorityFingerprints { get; }
+            public bool HasDiagnosticReplay { get; }
+            public int DiagnosticRecordCount { get; }
         }
 
         private sealed class FourthContactSource : IBallContactSource

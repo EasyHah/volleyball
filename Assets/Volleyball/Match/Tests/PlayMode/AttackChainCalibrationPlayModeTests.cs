@@ -5,7 +5,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Volleyball.AI;
+using Volleyball.Domain.Players;
 using Volleyball.Presentation;
+using Volleyball.Shared.Contracts;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 
 namespace Volleyball.PlayModeTests
@@ -212,6 +214,10 @@ namespace Volleyball.PlayModeTests
             var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
             Assert.That(previous, Is.Not.Null);
             var formalContext = previous.MatchContext;
+            if (formalContext != null)
+            {
+                AssertFormalV4InitializationAndBindings(formalContext, players);
+            }
             var prototypeContext =
                 (previous as ThreeVsThreeRallyDirector)?.PrototypeLegacyContext;
             var rosterSize = previous.RosterSize;
@@ -269,6 +275,50 @@ namespace Volleyball.PlayModeTests
         {
             return director.MatchContext?.Seed ??
                    ((ThreeVsThreeRallyDirector)director).PrototypeLegacyContext.Seed;
+        }
+
+        private static void AssertFormalV4InitializationAndBindings(
+            MatchContextV4 context,
+            PrototypePlayerAgent[] players)
+        {
+            Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
+            Assert.That(context.RulesVersion, Is.EqualTo(ContractVersions.MatchV3));
+            Assert.That(context.ContextHash, Is.Not.Null.And.Length.EqualTo(64));
+            Assert.That(players, Has.Length.EqualTo(12));
+
+            foreach (var player in players)
+            {
+                var side = player.Id.Team == Volleyball.Domain.Prototype.TeamId.Blue
+                    ? TeamSide.Home
+                    : TeamSide.Away;
+                var team = side == TeamSide.Home ? context.Home : context.Away;
+                var rotationPosition = player.Id.RosterSlot + 1;
+                var snapshot = team.RotationOrder[player.Id.RosterSlot];
+                var binding = new MatchPlayerBinding(
+                    snapshot,
+                    player.Id,
+                    side,
+                    rotationPosition);
+
+                Assert.That(binding.StablePlayerId, Is.EqualTo(player.StableId));
+                Assert.That(binding.Side, Is.EqualTo(side));
+                Assert.That(binding.RotationPosition, Is.EqualTo(rotationPosition));
+                Assert.That(
+                    binding.Derived.InputFingerprint,
+                    Is.EqualTo(snapshot.Derived.InputFingerprint));
+                Assert.That(
+                    binding.Derived.ResultFingerprint,
+                    Is.EqualTo(snapshot.Derived.ResultFingerprint));
+                Assert.That(
+                    player.Ability.Derived.ResultFingerprint,
+                    Is.EqualTo(binding.Derived.ResultFingerprint));
+                Assert.That(
+                    binding.Derived.FormulaVersion,
+                    Is.EqualTo(context.FormulaVersion));
+                Assert.That(
+                    binding.Derived.CoefficientVersion,
+                    Is.EqualTo(context.CoefficientVersion));
+            }
         }
 
         private sealed class AttackChainCalibrationReport
