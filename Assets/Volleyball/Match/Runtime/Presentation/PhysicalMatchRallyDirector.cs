@@ -290,6 +290,10 @@ namespace Volleyball.Presentation
 
         public string LastV3RuleDiagnostic { get; private set; } = string.Empty;
 
+        public int ShadowPlanRecordingFailures { get; private set; }
+
+        public string LastShadowPlanRecordingDiagnostic { get; private set; } = string.Empty;
+
         public int MissedRallies { get; private set; }
 
         public int GroundResolvedRallies { get; private set; }
@@ -793,6 +797,8 @@ namespace Volleyball.Presentation
             V3RuleIntentionalCorrections = 0;
             V3RuleUnexpectedMismatches = 0;
             LastV3RuleDiagnostic = string.Empty;
+            ShadowPlanRecordingFailures = 0;
+            LastShadowPlanRecordingDiagnostic = string.Empty;
             _lastAcceptedV3Actor = null;
             _lastAcceptedV3Classification = null;
         }
@@ -2020,7 +2026,13 @@ namespace Volleyball.Presentation
                 contact.Candidate.Action,
                 contact.Hit.ContactGroupId,
                 authorityContact);
-            RecordShadowPlanV3(acceptedV3Transition, acceptedTrajectoryArtifact);
+            RecordShadowPlanV3(
+                acceptedV3Transition,
+                acceptedTrajectoryArtifact,
+                StableId(actorId),
+                ToSide(actorId.Team),
+                ToV3Classification(contact.Candidate.Action),
+                contact.Hit.ContactGroupId);
             NotifyReplay(
                 ReplayContactAccepted,
                 new ReplayContactEvent(
@@ -2123,7 +2135,11 @@ namespace Volleyball.Presentation
 
         private void RecordShadowPlanV3(
             RuleTransitionV3 acceptedTransition,
-            BallTrajectoryPredictionArtifactV4 acceptedTrajectoryArtifact)
+            BallTrajectoryPredictionArtifactV4 acceptedTrajectoryArtifact,
+            StablePlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            int contactGroup)
         {
             if (_v3RulesAdapter == null)
             {
@@ -2132,15 +2148,41 @@ namespace Volleyball.Presentation
 
             if (acceptedTransition == null || !acceptedTransition.Accepted)
             {
-                throw new InvalidOperationException(
-                    "Shadow plan recording requires an accepted V3 transition.");
+                RecordShadowPlanDiagnostic("v3TransitionNotAccepted");
+                return;
             }
 
             if (acceptedTrajectoryArtifact == null)
             {
-                throw new InvalidOperationException(
-                    "Shadow plan recording requires the event-owned trajectory artifact.");
+                RecordShadowPlanDiagnostic("missingTrajectoryArtifact");
+                return;
             }
+
+            try
+            {
+                RecordAcceptedShadowPlanV3(
+                    acceptedTransition,
+                    acceptedTrajectoryArtifact,
+                    actor,
+                    side,
+                    classification,
+                    contactGroup);
+            }
+            catch (Exception exception)
+            {
+                // Shadow output is diagnostic-only; never let it change a live rally.
+                RecordShadowPlanDiagnostic(exception.GetType().FullName);
+            }
+        }
+
+        private void RecordAcceptedShadowPlanV3(
+            RuleTransitionV3 acceptedTransition,
+            BallTrajectoryPredictionArtifactV4 acceptedTrajectoryArtifact,
+            StablePlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            int contactGroup)
+        {
 
             var eligibility = CreateV3Eligibility(_matchContext);
             var playerFacts = new List<PlayerWorldSnapshotV3>(eligibility.Players.Count);
@@ -2171,8 +2213,17 @@ namespace Volleyball.Presentation
                 playerFacts,
                 acceptedTransition.After,
                 eligibility,
-                new CourtConfigurationV3(),
-                new AcceptedRuleEventV3(PlanCoverageReason.RulesStateChanged),
+                new CourtConfigurationV3(
+                    CourtBuilder.HalfWidth,
+                    CourtHalfLength,
+                    CourtBuilder.NetHeight),
+                new AcceptedRuleEventV3(
+                    PlanCoverageReason.WithinConditionalEnvelope,
+                    RallyPlanConditionV3.Always,
+                    actor,
+                    side,
+                    classification,
+                    contactGroup),
                 V3RuleTransitions);
             var artifactIdentity = acceptedTrajectoryArtifact.ArtifactIdentity;
             var revision = V3RuleTransitions;
@@ -2183,11 +2234,13 @@ namespace Volleyball.Presentation
                 artifactIdentity,
                 revision,
                 V3RuleTransitions,
-                PlanCoverageDecision.Covered(revision.ToString(), PlanCoverageReason.RulesStateChanged));
+                PlanCoverageDecision.Covered(
+                    revision.ToString(),
+                    PlanCoverageReason.WithinConditionalEnvelope));
             var coverage = DeterministicRallyPlanComposerV3.EvaluateCoverage(
                 provisional,
                 snapshot.LatestEvent);
-            ReplayShadowPlanRecorded?.Invoke(new RallyPlanV3(
+            NotifyShadowPlanRecorded(new RallyPlanV3(
                 snapshot,
                 provisional.HomePlan,
                 provisional.AwayPlan,
@@ -2195,6 +2248,33 @@ namespace Volleyball.Presentation
                 revision,
                 V3RuleTransitions,
                 coverage));
+        }
+
+        private void NotifyShadowPlanRecorded(RallyPlanV3 plan)
+        {
+            var handlers = ReplayShadowPlanRecorded;
+            if (handlers == null)
+            {
+                return;
+            }
+
+            foreach (Action<RallyPlanV3> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(plan);
+                }
+                catch (Exception exception)
+                {
+                    RecordShadowPlanDiagnostic(exception.GetType().FullName);
+                }
+            }
+        }
+
+        private void RecordShadowPlanDiagnostic(string reason)
+        {
+            ShadowPlanRecordingFailures++;
+            LastShadowPlanRecordingDiagnostic = reason;
         }
 
         private PrototypePlayerAgent PlayerForStableId(StablePlayerId stableId)

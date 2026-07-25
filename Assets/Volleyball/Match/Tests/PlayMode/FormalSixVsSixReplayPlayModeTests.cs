@@ -195,6 +195,84 @@ namespace Volleyball.PlayModeTests
             Assert.That(
                 recordedPlan.AwayPlan.CandidateEvidence.Single(),
                 Is.EqualTo("artifact=" + recordedPlan.ArtifactIdentity));
+            Assert.That(
+                recordedPlan.WorldSnapshot.LatestEvent.CoverageReason,
+                Is.EqualTo(PlanCoverageReason.WithinConditionalEnvelope));
+            Assert.That(
+                recordedPlan.CoverageDecision.ActivatedDeclaredBranch,
+                Is.EqualTo(RallyPlanBranchV3.Primary));
+            Assert.That(
+                recordedPlan.WorldSnapshot.LatestEvent.ContactGroup,
+                Is.GreaterThanOrEqualTo(0));
+            Assert.That(
+                recordedPlan.WorldSnapshot.Court.HalfLength,
+                Is.EqualTo(director.CourtHalfLength));
+        }
+
+        [UnityTest]
+        public IEnumerator ThrowingShadowObserver_DoesNotAbortAcceptedFormalContact()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var acceptedContacts = 0;
+            director.ReplayShadowPlanRecorded += _ =>
+                throw new InvalidOperationException("shadow observer failure");
+            director.ReplayContactAccepted += _ => acceptedContacts++;
+
+            var timeout = Time.realtimeSinceStartup + 30f;
+            while (acceptedContacts == 0 && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(acceptedContacts, Is.GreaterThan(0));
+            Assert.That(director.SuccessfulContacts, Is.EqualTo(acceptedContacts));
+        }
+
+        [UnityTest]
+        public IEnumerator ShadowListener_DoesNotChangeFixedSeedAcceptedContactSequence()
+        {
+            ContactSequence withoutShadow = default;
+            ContactSequence withShadow = default;
+            for (var run = 0; run < 2; run++)
+            {
+                yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+                var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+                var transitions = new List<string>();
+                if (run == 1)
+                {
+                    director.ReplayShadowPlanRecorded += _ => { };
+                }
+
+                director.ReplayContactAccepted += replayEvent =>
+                    transitions.Add(
+                        replayEvent.RuleTransition.Accepted + ":" +
+                        replayEvent.RuleTransition.RejectionReason + ":" +
+                        replayEvent.RuleTransition.After.CountedHits);
+                var timeout = Time.realtimeSinceStartup + 30f;
+                while (transitions.Count < 3 && Time.realtimeSinceStartup < timeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(transitions, Has.Count.EqualTo(3));
+                var observation = new ContactSequence(
+                    director.HomeScore,
+                    director.AwayScore,
+                    director.SuccessfulContacts,
+                    director.V3RuleTransitions,
+                    transitions.ToArray());
+                if (run == 0)
+                {
+                    withoutShadow = observation;
+                }
+                else
+                {
+                    withShadow = observation;
+                }
+            }
+
+            Assert.That(withShadow, Is.EqualTo(withoutShadow));
         }
 
         [UnityTest]
@@ -343,6 +421,48 @@ namespace Volleyball.PlayModeTests
             public override bool Equals(object obj)
             {
                 return obj is ContactObservation other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return _contacts;
+            }
+        }
+
+        private readonly struct ContactSequence : IEquatable<ContactSequence>
+        {
+            private readonly int _homeScore;
+            private readonly int _awayScore;
+            private readonly int _contacts;
+            private readonly int _transitions;
+            private readonly string[] _acceptedSequence;
+
+            public ContactSequence(
+                int homeScore,
+                int awayScore,
+                int contacts,
+                int transitions,
+                string[] acceptedSequence)
+            {
+                _homeScore = homeScore;
+                _awayScore = awayScore;
+                _contacts = contacts;
+                _transitions = transitions;
+                _acceptedSequence = acceptedSequence;
+            }
+
+            public bool Equals(ContactSequence other)
+            {
+                return _homeScore == other._homeScore &&
+                       _awayScore == other._awayScore &&
+                       _contacts == other._contacts &&
+                       _transitions == other._transitions &&
+                       _acceptedSequence.SequenceEqual(other._acceptedSequence);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is ContactSequence other && Equals(other);
             }
 
             public override int GetHashCode()
