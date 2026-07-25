@@ -10,8 +10,22 @@ namespace Volleyball.Presentation
     {
         private readonly Dictionary<long, T> _plansBySourceSequence =
             new Dictionary<long, T>();
+        private readonly long _captureBaseSourceSequence;
         private long _lastAcceptedSourceSequence;
         private long _lastReplaySourceSequence;
+
+        public ReplayShadowPlanPendingStore(long captureBaseSourceSequence = 0)
+        {
+            if (captureBaseSourceSequence < 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(captureBaseSourceSequence));
+            }
+
+            _captureBaseSourceSequence = captureBaseSourceSequence;
+            _lastAcceptedSourceSequence = captureBaseSourceSequence;
+            _lastReplaySourceSequence = captureBaseSourceSequence;
+        }
 
         public bool TryAdd(long sourceSequence, T plan)
         {
@@ -49,7 +63,8 @@ namespace Volleyball.Presentation
                 throw new ArgumentOutOfRangeException(nameof(replaySequence));
             }
 
-            var expectedSourceSequence = (long)replaySequence + 1L;
+            var expectedSourceSequence = _captureBaseSourceSequence +
+                (long)replaySequence + 1L;
             if (expectedSourceSequence > _lastReplaySourceSequence)
             {
                 _lastReplaySourceSequence = expectedSourceSequence;

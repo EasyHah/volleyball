@@ -583,12 +583,6 @@ namespace Volleyball.Shared.Contracts
                     "Shadow artifact identity must match the event trajectory.");
             }
 
-            // V3 source transitions begin at one; replay events begin at zero.
-            if (Shadow != null && Shadow.SourceSequenceNumber != SequenceNumber + 1)
-            {
-                throw new ContractValidationException(
-                    "Shadow source sequence must be one greater than its replay event.");
-            }
         }
 
         public int SequenceNumber { get; }
@@ -707,7 +701,11 @@ namespace Volleyball.Shared.Contracts
             IReadOnlyList<MatchReplayEventV4> events,
             string replayHash)
         {
-            ReplayContractGuardV4.Hash(replayHash, nameof(replayHash));
+            if (replayHash != null)
+            {
+                ReplayContractGuardV4.Hash(replayHash, nameof(replayHash));
+            }
+
             return new MatchReplayV4(replayId, context, events, replayHash);
         }
 
@@ -1077,19 +1075,37 @@ namespace Volleyball.Shared.Contracts
                     StrictJsonV4.RequiredObject(root, "context")));
             var eventValues = StrictJsonV4.RequiredArray(root, "events");
             var events = new MatchReplayEventV4[eventValues.Count];
+            var hasLegacyShadowCoverage = false;
             for (var index = 0; index < events.Length; index++)
             {
-                events[index] = ParseEvent(
-                    StrictJsonV4.AsObject(
-                        eventValues[index],
-                        "events[" + index + "]"));
+                var eventValue = StrictJsonV4.AsObject(
+                    eventValues[index],
+                    "events[" + index + "]");
+                hasLegacyShadowCoverage |= HasLegacyShadowCoverage(eventValue);
+                events[index] = ParseEvent(eventValue);
             }
 
             return MatchReplayV4.Restore(
                 StrictJsonV4.RequiredString(root, "replayId"),
                 context,
                 events,
-                StrictJsonV4.RequiredString(root, "replayHash"));
+                hasLegacyShadowCoverage
+                    ? null
+                    : StrictJsonV4.RequiredString(root, "replayHash"));
+        }
+
+        private static bool HasLegacyShadowCoverage(StrictJsonObjectV4 value)
+        {
+            var shadow = StrictJsonV4.OptionalNullableObject(value, "shadow");
+            if (shadow == null)
+            {
+                return false;
+            }
+
+            var coverage = StrictJsonV4.RequiredObject(shadow, "coverage");
+            return coverage.Properties.Count == 2 &&
+                coverage.Properties.ContainsKey("decision") &&
+                coverage.Properties.ContainsKey("score");
         }
 
         private static MatchReplayEventV4 ParseEvent(
@@ -1246,6 +1262,20 @@ namespace Volleyball.Shared.Contracts
         private static ReplayCoverageDecisionRecordV4 ParseCoverage(
             StrictJsonObjectV4 value)
         {
+            if (value.Properties.Count == 2 &&
+                value.Properties.ContainsKey("decision") &&
+                value.Properties.ContainsKey("score"))
+            {
+                return new ReplayCoverageDecisionRecordV4(
+                    NormalizeLegacyCoverageDecision(
+                        StrictJsonV4.RequiredString(value, "decision")),
+                    StrictJsonV4.RequiredFloat(value, "score"),
+                    "RallyEnd",
+                    Array.Empty<string>(),
+                    0,
+                    null);
+            }
+
             StrictJsonV4.RequireExactProperties(
                 value,
                 "decision",
@@ -1278,6 +1308,11 @@ namespace Volleyball.Shared.Contracts
                 invalidationSet,
                 StrictJsonV4.RequiredInt(value, "expansionDepth"),
                 branchValue);
+        }
+
+        private static string NormalizeLegacyCoverageDecision(string decision)
+        {
+            return decision == "Uncovered" ? "Terminal" : decision;
         }
 
         private static ReplayExecutionEnvelopeRecordV4 ParseEnvelope(

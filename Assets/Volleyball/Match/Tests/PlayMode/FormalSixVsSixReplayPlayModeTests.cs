@@ -301,6 +301,51 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator Capture_StartedAfterV3TransitionBindsNextShadowWithoutInterruptingRally()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            MatchReplayRecorder recorder = null;
+            var captureBase = -1;
+
+            director.ReplayContactAccepted += _ =>
+            {
+                if (recorder != null || director.V3RuleTransitions < 1)
+                {
+                    return;
+                }
+
+                captureBase = director.V3RuleTransitions;
+                recorder = MatchReplayRecorder.Attach(director, ball, players);
+                recorder.StartCapture();
+            };
+
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while ((recorder == null || !recorder.IsComplete) &&
+                   Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(captureBase, Is.GreaterThanOrEqualTo(1));
+            Assert.That(recorder, Is.Not.Null);
+            Assert.That(recorder.IsComplete, Is.True, "Mid-rally capture interrupted the live rally.");
+            var replay = recorder.Complete();
+            Assert.That(replay.Events, Is.Not.Empty);
+            Assert.That(director.V3RuleTransitions, Is.GreaterThan(captureBase));
+            for (var index = 0; index < replay.Events.Count; index++)
+            {
+                Assert.That(replay.Events[index].Shadow, Is.Not.Null);
+                Assert.That(
+                    replay.Events[index].Shadow.SourceSequenceNumber,
+                    Is.EqualTo(captureBase + index + 1));
+            }
+        }
+
+        [UnityTest]
         public IEnumerator Capture_TwoIndependentFixedSeedFormalRunsAreByteStable()
         {
             var payloads = new byte[2][];

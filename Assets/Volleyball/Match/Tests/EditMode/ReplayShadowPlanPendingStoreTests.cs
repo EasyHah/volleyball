@@ -19,6 +19,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PendingStore_BindsFirstCapturedReplayEventToTransitionAfterCaptureBase()
+        {
+            var store = new ReplayShadowPlanPendingStore<string>(4);
+
+            Assert.That(store.TryAdd(5, "first-after-capture"), Is.True);
+            Assert.That(store.TryTakeForReplaySequence(0, out var first), Is.True);
+            Assert.That(first, Is.EqualTo("first-after-capture"));
+            Assert.That(store.TryAdd(5, "duplicate"), Is.False);
+            Assert.That(store.TryAdd(4, "stale"), Is.False);
+        }
+
+        [Test]
         public void PendingStore_RejectsDuplicateSourceAndCannotAttachStaleOrOutOfOrderPlan()
         {
             var store = new ReplayShadowPlanPendingStore<string>();

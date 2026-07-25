@@ -154,6 +154,29 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CanonicalJson_DeserializesF4EraShadowCoverageWithOnlyUncoveredDecisionAndScore()
+        {
+            var canonical = ContractJson.SerializeV4(CreateReplay(EventWithShadow(0, "Attack", 0)));
+            var coverageStart = canonical.IndexOf("\"coverage\":", StringComparison.Ordinal);
+            var coverageEnd = canonical.IndexOf("}", coverageStart);
+            var legacy = canonical.Substring(0, coverageStart) +
+                "\"coverage\":{\"decision\":\"Uncovered\",\"score\":0" +
+                canonical.Substring(coverageEnd);
+
+            var restored = ContractJson.DeserializeMatchReplayV4(legacy);
+            var coverage = restored.Events[0].Shadow.Coverage;
+            var normalized = ContractJson.SerializeV4(restored);
+
+            Assert.That(coverage.Decision, Is.EqualTo("Terminal"));
+            Assert.That(coverage.Score, Is.Zero);
+            Assert.That(coverage.Reason, Is.EqualTo("RallyEnd"));
+            Assert.That(coverage.InvalidationSet, Is.Empty);
+            Assert.That(coverage.ExpansionDepth, Is.Zero);
+            Assert.That(coverage.ActivatedDeclaredBranch, Is.Null);
+            Assert.That(normalized, Does.Contain("\"decision\":\"Terminal\",\"score\":0,\"reason\":\"RallyEnd\",\"invalidationSet\":[],\"expansionDepth\":0,\"activatedDeclaredBranch\":null"));
+        }
+
+        [Test]
         public void ShadowRecord_RequiresBothSidesAndValidAssignmentsAndCoverage()
         {
             Assert.That(

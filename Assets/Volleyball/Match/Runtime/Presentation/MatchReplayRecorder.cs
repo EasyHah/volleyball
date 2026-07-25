@@ -65,7 +65,8 @@ namespace Volleyball.Presentation
             }
 
             _events = new List<MatchReplayEventV4>();
-            _pendingShadowPlans = new ReplayShadowPlanPendingStore<RallyPlanV3>();
+            _pendingShadowPlans = new ReplayShadowPlanPendingStore<RallyPlanV3>(
+                _director.V3RuleTransitions);
             _capturing = true;
             IsComplete = false;
         }
@@ -141,11 +142,22 @@ namespace Volleyball.Presentation
 
             var sequenceNumber = _events.Count;
             // V3 transitions are one-based; native replay contact indexes are zero-based.
-            var shadow = _pendingShadowPlans.TryTakeForReplaySequence(
-                sequenceNumber,
-                out var pendingPlan)
-                ? ToReplayShadow(pendingPlan)
-                : null;
+            ReplayShadowRecordV4 shadow = null;
+            if (_pendingShadowPlans.TryTakeForReplaySequence(
+                    sequenceNumber,
+                    out var pendingPlan))
+            {
+                try
+                {
+                    shadow = ToReplayShadow(pendingPlan);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning(
+                        "Ignoring shadow plan that could not be converted: " +
+                        exception.GetType().FullName);
+                }
+            }
             _events.Add(CreateContactRecordV4(
                 sequenceNumber,
                 replayEvent,
