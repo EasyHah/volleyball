@@ -143,10 +143,35 @@ namespace Volleyball.PlayModeTests
                     Is.GreaterThanOrEqualTo(0));
                 Assert.That(replayEvent.RuleDecision.RulesVersion, Is.EqualTo(3));
                 Assert.That(replayEvent.RuleDecision.Accepted, Is.True);
+                Assert.That(replayEvent.Shadow, Is.Not.Null);
+                Assert.That(
+                    replayEvent.Shadow.SourceSequenceNumber,
+                    Is.EqualTo(replayEvent.SequenceNumber));
+                Assert.That(
+                    replayEvent.Shadow.ArtifactIdentity,
+                    Is.EqualTo(replayEvent.Trajectory.ArtifactIdentity));
+                Assert.That(replayEvent.Shadow.Home.TeamSide, Is.EqualTo("Home"));
+                Assert.That(replayEvent.Shadow.Away.TeamSide, Is.EqualTo("Away"));
+                Assert.That(replayEvent.Shadow.Home.PrimaryAssignments, Has.Count.EqualTo(6));
+                Assert.That(replayEvent.Shadow.Away.PrimaryAssignments, Has.Count.EqualTo(6));
+                Assert.That(replayEvent.Shadow.Coverage.Decision, Is.EqualTo("Covered"));
+                foreach (var assignment in replayEvent.Shadow.Home.PrimaryAssignments
+                    .Concat(replayEvent.Shadow.Away.PrimaryAssignments))
+                {
+                    Assert.That(assignment.PlayerId, Is.Not.Empty);
+                    Assert.That(assignment.Task, Is.Not.Empty);
+                    Assert.That(assignment.Condition, Is.Not.Empty);
+                    Assert.That(assignment.SpatialClaim, Is.Not.Empty);
+                    Assert.That(assignment.DeclaredBranch, Is.EqualTo("Primary"));
+                    Assert.That(assignment.Value, Is.Not.NaN);
+                    Assert.That(assignment.Rank, Is.GreaterThan(0));
+                }
                 Assert.That(
                     replayEvent.EventKind == "Attack",
                     Is.EqualTo(replayEvent.ObservedP6Geometry != null));
             }
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restored.ReplayHash, Is.EqualTo(replay.ReplayHash));
         }
 
         [UnityTest]

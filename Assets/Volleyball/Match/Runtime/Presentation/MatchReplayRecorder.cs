@@ -19,6 +19,7 @@ namespace Volleyball.Presentation
         private FormalSixVsSixRallyDirector _director;
         private List<PrototypePlayerAgent> _players;
         private List<MatchReplayEventV4> _events;
+        private RallyPlanV3 _pendingShadowPlan;
         private bool _capturing;
 
         public bool IsComplete { get; private set; }
@@ -64,6 +65,7 @@ namespace Volleyball.Presentation
             }
 
             _events = new List<MatchReplayEventV4>();
+            _pendingShadowPlan = null;
             _capturing = true;
             IsComplete = false;
         }
@@ -101,6 +103,7 @@ namespace Volleyball.Presentation
                     left.StableId.Value,
                     right.StableId.Value));
             _director.ReplayContactAccepted += RecordContact;
+            _director.ReplayShadowPlanRecorded += RecordShadowPlan;
             _director.ReplayRallyResolved += RecordResolution;
         }
 
@@ -112,7 +115,26 @@ namespace Volleyball.Presentation
             }
 
             _director.ReplayContactAccepted -= RecordContact;
+            _director.ReplayShadowPlanRecorded -= RecordShadowPlan;
             _director.ReplayRallyResolved -= RecordResolution;
+        }
+
+        private void RecordShadowPlan(RallyPlanV3 plan)
+        {
+            if (!_capturing || IsComplete || plan == null)
+            {
+                return;
+            }
+
+            if (_pendingShadowPlan != null)
+            {
+                Debug.LogWarning("Ignoring duplicate shadow revision before its accepted replay contact.");
+                return;
+            }
+
+            // The V3 source sequence is transition-based (one-based), while native replay
+            // event sequence numbers are zero-based. Bind it to the next accepted contact.
+            _pendingShadowPlan = plan;
         }
 
         private void RecordContact(ReplayContactEvent replayEvent)
@@ -122,12 +144,17 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            _events.Add(
-                CreateContactRecordV4(
-                    _events.Count,
-                    replayEvent,
-                    _director.HomeScore,
-                    _director.AwayScore));
+            var sequenceNumber = _events.Count;
+            var shadow = _pendingShadowPlan == null
+                ? null
+                : ToReplayShadow(_pendingShadowPlan, sequenceNumber);
+            _pendingShadowPlan = null;
+            _events.Add(CreateContactRecordV4(
+                sequenceNumber,
+                replayEvent,
+                _director.HomeScore,
+                _director.AwayScore,
+                shadow));
         }
 
         public static MatchReplayEventV4 CreateContactRecordV4(
@@ -135,6 +162,17 @@ namespace Volleyball.Presentation
             ReplayContactEvent replayEvent,
             int homeScore,
             int awayScore)
+        {
+            return CreateContactRecordV4(
+                sequenceNumber, replayEvent, homeScore, awayScore, null);
+        }
+
+        private static MatchReplayEventV4 CreateContactRecordV4(
+            int sequenceNumber,
+            ReplayContactEvent replayEvent,
+            int homeScore,
+            int awayScore,
+            ReplayShadowRecordV4 shadow)
         {
             if (replayEvent == null)
             {
@@ -178,7 +216,8 @@ namespace Volleyball.Presentation
                 new ReplayRuleDecisionRecordV4(
                     RulesVersions.FullRallyV3,
                     ruleTransition.Accepted,
-                    ruleTransition.RejectionReason.ToString()));
+                    ruleTransition.RejectionReason.ToString()),
+                shadow);
         }
 
         private void RecordResolution(ReplayRallyResolvedEvent replayEvent)
@@ -194,8 +233,102 @@ namespace Volleyball.Presentation
                     "A formal V4 replay segment requires at least one contact event.");
             }
 
+            if (_pendingShadowPlan != null)
+            {
+                Debug.LogWarning("Discarding unmatched shadow revision at rally resolution.");
+                _pendingShadowPlan = null;
+            }
+
             _capturing = false;
             IsComplete = true;
+        }
+
+        private static ReplayShadowRecordV4 ToReplayShadow(
+            RallyPlanV3 plan,
+            int replaySequenceNumber)
+        {
+            return new ReplayShadowRecordV4(
+                CheckedInt(plan.Revision, nameof(plan.Revision)),
+                replaySequenceNumber,
+                plan.ArtifactIdentity,
+                ToReplayTeamPlan(plan.HomePlan),
+                ToReplayTeamPlan(plan.AwayPlan),
+                new ReplayCoverageDecisionRecordV4(
+                    plan.CoverageDecision.Kind ==
+                        PlanCoverageDecisionKind.CoveredActivateBranch
+                        ? "Covered"
+                        : "Uncovered",
+                    plan.CoverageDecision.Kind ==
+                        PlanCoverageDecisionKind.CoveredActivateBranch
+                        ? 1f
+                        : 0f));
+        }
+
+        private static ReplayTeamRallyPlanRecordV4 ToReplayTeamPlan(
+            TeamRallyPlanV3 plan)
+        {
+            var assignments = new ReplayShadowAssignmentRecordV4[plan.Assignments.Count];
+            for (var index = 0; index < assignments.Length; index++)
+            {
+                var assignment = plan.Assignments[index];
+                assignments[index] = new ReplayShadowAssignmentRecordV4(
+                    assignment.Rank,
+                    assignment.PlayerId.Value,
+                    ToReplayTask(assignment.Task),
+                    ToReplayCondition(assignment.Condition),
+                    ToReplayClaim(assignment.SpatialClaim),
+                    assignment.Branch == RallyPlanBranchV3.Primary ? "Primary" : "Fallback",
+                    assignment.Value);
+            }
+
+            return new ReplayTeamRallyPlanRecordV4(plan.Side.ToString(), assignments);
+        }
+
+        private static string ToReplayTask(RallyPlanTaskV3 task)
+        {
+            switch (task)
+            {
+                case RallyPlanTaskV3.Receive: return "Receive";
+                case RallyPlanTaskV3.Set: return "Set";
+                case RallyPlanTaskV3.Attack: return "Attack";
+                case RallyPlanTaskV3.Block: return "Block";
+                default: return "Cover";
+            }
+        }
+
+        private static string ToReplayCondition(RallyPlanConditionV3 condition)
+        {
+            switch (condition)
+            {
+                case RallyPlanConditionV3.BallOnOurSide: return "IfBallIncoming";
+                case RallyPlanConditionV3.BallOnOpponentSide: return "IfAttackIncoming";
+                case RallyPlanConditionV3.AfterFirstContact: return "IfSetAvailable";
+                case RallyPlanConditionV3.AfterSecondContact: return "IfSetAvailable";
+                default: return "Always";
+            }
+        }
+
+        private static string ToReplayClaim(RallyPlanSpatialClaimV3 claim)
+        {
+            switch (claim)
+            {
+                case RallyPlanSpatialClaimV3.FrontRight:
+                case RallyPlanSpatialClaimV3.FrontCenter:
+                case RallyPlanSpatialClaimV3.FrontLeft:
+                    return "NetZone";
+                default:
+                    return "BackcourtZone";
+            }
+        }
+
+        private static int CheckedInt(long value, string name)
+        {
+            if (value > int.MaxValue)
+            {
+                throw new InvalidOperationException(name + " exceeds the replay contract range.");
+            }
+
+            return (int)value;
         }
 
         private static ReplayExecutionEnvelopeRecordV4 ToReplayEnvelope(
