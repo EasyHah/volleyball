@@ -98,6 +98,76 @@ namespace Volleyball.EditModeTests
             Assert.That(() => new RallyPlanV3(snapshot, away, home, "artifact", 0, 0, coverage), Throws.ArgumentException);
         }
 
+        [Test]
+        public void Composer_ComposesSixEligiblePlayersWithOneExclusiveClaimEach()
+        {
+            var snapshot = CreateSnapshot();
+
+            var plan = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, "artifact-1");
+
+            Assert.That(plan.Assignments.Count, Is.EqualTo(6));
+            Assert.That(plan.Assignments.Select(assignment => assignment.PlayerId).Distinct().Count(), Is.EqualTo(6));
+            Assert.That(plan.Assignments.Select(assignment => assignment.SpatialClaim).Distinct().Count(), Is.EqualTo(6));
+            Assert.That(plan.Assignments.All(assignment => snapshot.Eligibility.For(assignment.PlayerId).Side == TeamSide.Home), Is.True);
+        }
+
+        [Test]
+        public void Composer_ExcludesBackRowPlayersFromAttackBeforeScoring()
+        {
+            var snapshot = CreateSnapshot();
+
+            var plan = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, "artifact-1");
+
+            Assert.That(plan.Assignments.Where(assignment => assignment.Task == RallyPlanTaskV3.Attack)
+                .All(assignment => snapshot.Eligibility.For(assignment.PlayerId).CanAttackAboveNetFromFrontZone), Is.True);
+        }
+
+        [Test]
+        public void Composer_UsesStableTieOrderWhenSnapshotPlayersAreReversed()
+        {
+            var original = CreateSnapshot();
+            var reversed = CreateSnapshot(original.Players.Reverse().ToList(), original.Eligibility);
+
+            var first = DeterministicRallyPlanComposerV3.Compose(original, TeamSide.Home, "artifact-1");
+            var second = DeterministicRallyPlanComposerV3.Compose(reversed, TeamSide.Home, "artifact-1");
+
+            Assert.That(second.Assignments.Select(assignment => assignment.PlayerId.Value), Is.EqualTo(first.Assignments.Select(assignment => assignment.PlayerId.Value)));
+            Assert.That(second.Assignments.Select(assignment => assignment.Rank), Is.EqualTo(first.Assignments.Select(assignment => assignment.Rank)));
+        }
+
+        [Test]
+        public void Composer_UsesThePassedArtifactIdentityIndependentlyForBothSides()
+        {
+            var snapshot = CreateSnapshot();
+
+            var home = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, "shared-artifact");
+            var away = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Away, "shared-artifact");
+
+            Assert.That(home.CandidateEvidence.Single(), Is.EqualTo("artifact=shared-artifact"));
+            Assert.That(away.CandidateEvidence.Single(), Is.EqualTo("artifact=shared-artifact"));
+        }
+
+        [TestCase(PlanCoverageReason.WithinConditionalEnvelope, PlanCoverageDecisionKind.CoveredActivateBranch)]
+        [TestCase(PlanCoverageReason.ResponsibleActorChanged, PlanCoverageDecisionKind.LocalRevision)]
+        [TestCase(PlanCoverageReason.BallEnvelopeExceeded, PlanCoverageDecisionKind.ScopedReplan)]
+        [TestCase(PlanCoverageReason.EnvelopeExceeded, PlanCoverageDecisionKind.GlobalReplan)]
+        [TestCase(PlanCoverageReason.RallyEnd, PlanCoverageDecisionKind.TerminalNoPlan)]
+        public void Composer_EvaluatesCoverageAsBoundedDiagnosticWithoutMutatingPlan(
+            PlanCoverageReason reason, PlanCoverageDecisionKind expectedKind)
+        {
+            var snapshot = CreateSnapshot();
+            var home = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, "artifact-1");
+            var away = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Away, "artifact-1");
+            var plan = new RallyPlanV3(snapshot, home, away, "artifact-1", 4, 9, PlanCoverageDecision.Covered("4", PlanCoverageReason.RallyOpen));
+            var before = plan.HomePlan.Assignments.Select(assignment => assignment.PlayerId.Value + ":" + assignment.Rank).ToArray();
+
+            var coverage = DeterministicRallyPlanComposerV3.EvaluateCoverage(plan, new AcceptedRuleEventV3(reason));
+
+            Assert.That(coverage.Kind, Is.EqualTo(expectedKind));
+            Assert.That(coverage.Reason, Is.EqualTo(reason));
+            Assert.That(plan.HomePlan.Assignments.Select(assignment => assignment.PlayerId.Value + ":" + assignment.Rank), Is.EqualTo(before));
+        }
+
         private static List<PlayerResponsibilityAssignmentV3> Assignments(string prefix, int count)
         {
             var assignments = new List<PlayerResponsibilityAssignmentV3>();
@@ -132,6 +202,11 @@ namespace Volleyball.EditModeTests
                 Guid.Parse("5e19eac4-5d3d-4d52-9c8f-f4dd7680c7bd"), 31, homeIds, positions, awayIds, positions);
             var eligibility = OnCourtLineupRulesV3.Create(
                 context, homeIds, awayIds, homeIds[0], awayIds[0], Array.Empty<LiberoReplacementV3>());
+            return CreateSnapshot(players, eligibility);
+        }
+
+        private static RallyWorldSnapshotV3 CreateSnapshot(IReadOnlyList<PlayerWorldSnapshotV3> players, OnCourtEligibilitySnapshot eligibility)
+        {
             return new RallyWorldSnapshotV3(
                 new BallWorldSnapshotV3(SimVector3.Zero, SimVector3.Zero, SimVector3.Zero, 0.1f, 0f),
                 players,

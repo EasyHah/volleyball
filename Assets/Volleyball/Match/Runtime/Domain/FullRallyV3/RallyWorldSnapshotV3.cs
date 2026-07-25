@@ -266,7 +266,21 @@ namespace Volleyball.Match.Domain.FullRallyV3
     public sealed class AcceptedRuleEventV3
     {
         public AcceptedRuleEventV3()
+            : this(PlanCoverageReason.WithinConditionalEnvelope)
         {
         }
+
+        // Coverage classification is immutable diagnostic input, never a command.
+        public AcceptedRuleEventV3(PlanCoverageReason coverageReason)
+        {
+            if (!Enum.IsDefined(typeof(PlanCoverageReason), coverageReason))
+            {
+                throw new ArgumentOutOfRangeException(nameof(coverageReason));
+            }
+
+            CoverageReason = coverageReason;
+        }
+
+        public PlanCoverageReason CoverageReason { get; }
     }
 }
