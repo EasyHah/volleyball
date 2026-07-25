@@ -34,6 +34,24 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void TeamRallyPlan_DefensivelyCopiesAssignmentsAndExposesReadOnlyAssignments()
+        {
+            var snapshot = CreateSnapshot();
+            var assignments = Assignments("home", 6);
+            var plan = new TeamRallyPlanV3(TeamSide.Home, assignments, Array.Empty<string>(), snapshot.Eligibility);
+            assignments[0] = Assignment("home-6", 1);
+
+            Assert.That(plan.Assignments[0].PlayerId, Is.EqualTo(new PlayerId("home-1")));
+
+            var exposedAssignments = plan.Assignments as IList<PlayerResponsibilityAssignmentV3>;
+            Assert.That(exposedAssignments, Is.Not.Null);
+            Assert.That(exposedAssignments.IsReadOnly, Is.True);
+            Assert.That(
+                () => exposedAssignments[0] = Assignment("home-6", 1),
+                Throws.TypeOf<NotSupportedException>());
+        }
+
+        [Test]
         public void TeamRallyPlan_RejectsDuplicateRankOrClaim()
         {
             var snapshot = CreateSnapshot();
