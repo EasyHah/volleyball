@@ -146,7 +146,7 @@ namespace Volleyball.PlayModeTests
                 Assert.That(replayEvent.Shadow, Is.Not.Null);
                 Assert.That(
                     replayEvent.Shadow.SourceSequenceNumber,
-                    Is.EqualTo(replayEvent.SequenceNumber));
+                    Is.EqualTo(replayEvent.SequenceNumber + 1));
                 Assert.That(
                     replayEvent.Shadow.ArtifactIdentity,
                     Is.EqualTo(replayEvent.Trajectory.ArtifactIdentity));

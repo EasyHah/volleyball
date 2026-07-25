@@ -108,7 +108,7 @@ namespace Volleyball.EditModeTests
             Assert.That(json, Does.Contain(
                 "\"rank\":1,\"playerId\":\"home-opposite\",\"task\":\"Receive\",\"condition\":\"Always\",\"spatialClaim\":\"CourtZone\",\"declaredBranch\":\"Primary\",\"value\":0.5"));
             Assert.That(restored.Events[0].Shadow.Revision, Is.Zero);
-            Assert.That(restored.Events[0].Shadow.SourceSequenceNumber, Is.Zero);
+            Assert.That(restored.Events[0].Shadow.SourceSequenceNumber, Is.EqualTo(1));
             Assert.That(restored.Events[0].Shadow.ArtifactIdentity, Is.EqualTo(HashC));
             Assert.That(restored.Events[0].Shadow.Home.TeamSide, Is.EqualTo("Home"));
             Assert.That(restored.Events[0].Shadow.Away.TeamSide, Is.EqualTo("Away"));
@@ -119,7 +119,38 @@ namespace Volleyball.EditModeTests
             Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].DeclaredBranch, Is.EqualTo("Primary"));
             Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Value, Is.EqualTo(0.5f));
             Assert.That(restored.Events[0].Shadow.Coverage.Decision, Is.EqualTo("Covered"));
+            Assert.That(restored.Events[0].Shadow.Coverage.Reason, Is.EqualTo("WithinConditionalEnvelope"));
+            Assert.That(restored.Events[0].Shadow.Coverage.InvalidationSet, Is.Empty);
+            Assert.That(restored.Events[0].Shadow.Coverage.ExpansionDepth, Is.Zero);
+            Assert.That(restored.Events[0].Shadow.Coverage.ActivatedDeclaredBranch, Is.Null);
             Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+        }
+
+        [Test]
+        public void CanonicalJson_PreservesCompleteUncoveredShadowCoverageDecision()
+        {
+            var shadow = new ReplayShadowRecordV4(
+                7,
+                1,
+                HashC,
+                TeamPlan("Home", "home"),
+                TeamPlan("Away", "away"),
+                new ReplayCoverageDecisionRecordV4(
+                    "Scoped",
+                    0f,
+                    "BallEnvelopeExceeded",
+                    new[] { "condition=Always", "player=home-opposite" },
+                    2,
+                    null));
+            var json = ContractJson.SerializeV4(CreateReplay(EventWithShadow(Event(0, "Attack"), shadow)));
+            var coverage = ContractJson.DeserializeMatchReplayV4(json).Events[0].Shadow.Coverage;
+
+            Assert.That(json, Does.Contain("\"decision\":\"Scoped\",\"score\":0,\"reason\":\"BallEnvelopeExceeded\",\"invalidationSet\":[\"condition=Always\",\"player=home-opposite\"],\"expansionDepth\":2,\"activatedDeclaredBranch\":null"));
+            Assert.That(coverage.Decision, Is.EqualTo("Scoped"));
+            Assert.That(coverage.Reason, Is.EqualTo("BallEnvelopeExceeded"));
+            Assert.That(coverage.InvalidationSet, Is.EqualTo(new[] { "condition=Always", "player=home-opposite" }));
+            Assert.That(coverage.ExpansionDepth, Is.EqualTo(2));
+            Assert.That(coverage.ActivatedDeclaredBranch, Is.Null);
         }
 
         [Test]
@@ -190,7 +221,7 @@ namespace Volleyball.EditModeTests
                 TeamPlan("Away", "away").PrimaryAssignments);
             var shadow = new ReplayShadowRecordV4(
                 7,
-                0,
+                1,
                 HashC,
                 swappedHome,
                 TeamPlan("Away", "away"),
@@ -206,7 +237,7 @@ namespace Volleyball.EditModeTests
         {
             var shadow = new ReplayShadowRecordV4(
                 7,
-                0,
+                1,
                 HashC,
                 TeamPlanWithPlayer("Home", "home", 0, "missing-player"),
                 TeamPlan("Away", "away"),
@@ -222,7 +253,7 @@ namespace Volleyball.EditModeTests
         {
             var shadow = new ReplayShadowRecordV4(
                 7,
-                0,
+                1,
                 HashC,
                 TeamPlan("Home", "home"),
                 TeamPlanWithPlayer("Away", "away", 0, "home-opposite"),
@@ -248,7 +279,7 @@ namespace Volleyball.EditModeTests
             var baseline = Event(0, "Attack");
             var shadow = new ReplayShadowRecordV4(
                 7,
-                0,
+                1,
                 HashA,
                 TeamPlan("Home", "home"),
                 TeamPlan("Away", "away"),
@@ -631,7 +662,7 @@ namespace Volleyball.EditModeTests
                 baseline.Classification,
                 baseline.ObservedP6Geometry,
                 baseline.RuleDecision,
-                Shadow(sequence, revision));
+                Shadow(sequence + 1, revision));
         }
 
         private static MatchReplayEventV4 EventWithShadow(

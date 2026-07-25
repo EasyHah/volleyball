@@ -289,17 +289,69 @@ namespace Volleyball.Shared.Contracts
     public sealed class ReplayCoverageDecisionRecordV4
     {
         public ReplayCoverageDecisionRecordV4(string decision, float score)
+            : this(decision, score, "WithinConditionalEnvelope", Array.Empty<string>(), 0, null)
+        {
+        }
+
+        public ReplayCoverageDecisionRecordV4(
+            string decision,
+            float score,
+            string reason,
+            IReadOnlyList<string> invalidationSet,
+            int expansionDepth,
+            string activatedDeclaredBranch)
         {
             Decision = ReplayContractGuardV4.OneOf(
                 decision,
                 nameof(decision),
                 "Covered",
-                "Uncovered");
+                "Local",
+                "Scoped",
+                "Global",
+                "Terminal");
             Score = ReplayContractGuardV4.Finite(score, nameof(score));
+            Reason = ReplayContractGuardV4.OneOf(
+                reason,
+                nameof(reason),
+                "WithinConditionalEnvelope",
+                "ResponsibleActorChanged",
+                "BallEnvelopeExceeded",
+                "EnvelopeExceeded",
+                "EnvelopeExpanded",
+                "UnexpectedExecutionSample",
+                "RulesStateChanged",
+                "CommittedResponsibilityInvalidated",
+                "DependencyCascadeExceeded",
+                "BudgetDegradationRequired",
+                "RallyOpen",
+                "RallyEnd");
+            InvalidationSet = new ReadOnlyCollection<string>(
+                ReplayContractGuardV4.CopyRequiredStrings(
+                    invalidationSet,
+                    nameof(invalidationSet),
+                    true));
+            if (expansionDepth < 0)
+            {
+                throw new ContractValidationException(
+                    "expansionDepth cannot be negative.");
+            }
+
+            ExpansionDepth = expansionDepth;
+            ActivatedDeclaredBranch = activatedDeclaredBranch == null
+                ? null
+                : ReplayContractGuardV4.OneOf(
+                    activatedDeclaredBranch,
+                    nameof(activatedDeclaredBranch),
+                    "Primary",
+                    "Contingency");
         }
 
         public string Decision { get; }
         public float Score { get; }
+        public string Reason { get; }
+        public IReadOnlyList<string> InvalidationSet { get; }
+        public int ExpansionDepth { get; }
+        public string ActivatedDeclaredBranch { get; }
     }
 
     public sealed class ReplayShadowRecordV4
@@ -531,10 +583,11 @@ namespace Volleyball.Shared.Contracts
                     "Shadow artifact identity must match the event trajectory.");
             }
 
-            if (Shadow != null && Shadow.SourceSequenceNumber != SequenceNumber)
+            // V3 source transitions begin at one; replay events begin at zero.
+            if (Shadow != null && Shadow.SourceSequenceNumber != SequenceNumber + 1)
             {
                 throw new ContractValidationException(
-                    "Shadow source sequence must match its replay event.");
+                    "Shadow source sequence must be one greater than its replay event.");
             }
         }
 
@@ -1193,10 +1246,38 @@ namespace Volleyball.Shared.Contracts
         private static ReplayCoverageDecisionRecordV4 ParseCoverage(
             StrictJsonObjectV4 value)
         {
-            StrictJsonV4.RequireExactProperties(value, "decision", "score");
+            StrictJsonV4.RequireExactProperties(
+                value,
+                "decision",
+                "score",
+                "reason",
+                "invalidationSet",
+                "expansionDepth",
+                "activatedDeclaredBranch");
+            var invalidationValues = StrictJsonV4.RequiredArray(value, "invalidationSet");
+            var invalidationSet = new string[invalidationValues.Count];
+            for (var index = 0; index < invalidationSet.Length; index++)
+            {
+                var invalidation = invalidationValues[index];
+                if (invalidation.Kind != StrictJsonKindV4.String)
+                {
+                    throw new ContractValidationException(
+                        "invalidationSet[" + index + "] must be a JSON string.");
+                }
+
+                invalidationSet[index] = (string)invalidation.Value;
+            }
+
+            var branchValue = StrictJsonV4.RequiredNullableString(
+                value,
+                "activatedDeclaredBranch");
             return new ReplayCoverageDecisionRecordV4(
                 StrictJsonV4.RequiredString(value, "decision"),
-                StrictJsonV4.RequiredFloat(value, "score"));
+                StrictJsonV4.RequiredFloat(value, "score"),
+                StrictJsonV4.RequiredString(value, "reason"),
+                invalidationSet,
+                StrictJsonV4.RequiredInt(value, "expansionDepth"),
+                branchValue);
         }
 
         private static ReplayExecutionEnvelopeRecordV4 ParseEnvelope(
@@ -1579,6 +1660,21 @@ namespace Volleyball.Shared.Contracts
                 .Append(Quote(shadow.Coverage.Decision))
                 .Append(",\"score\":");
             Float(output, shadow.Coverage.Score);
+            output.Append(",\"reason\":")
+                .Append(Quote(shadow.Coverage.Reason));
+            output.Append(",\"invalidationSet\":");
+            Strings(output, shadow.Coverage.InvalidationSet);
+            output.Append(",\"expansionDepth\":")
+                .Append(shadow.Coverage.ExpansionDepth);
+            output.Append(",\"activatedDeclaredBranch\":");
+            if (shadow.Coverage.ActivatedDeclaredBranch == null)
+            {
+                output.Append("null");
+            }
+            else
+            {
+                output.Append(Quote(shadow.Coverage.ActivatedDeclaredBranch));
+            }
             output.Append("}}");
         }
 

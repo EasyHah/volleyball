@@ -520,6 +520,29 @@ namespace Volleyball.Shared.Contracts
             return (string)result.Value;
         }
 
+        public static string RequiredNullableString(
+            StrictJsonObjectV4 value,
+            string name)
+        {
+            if (value == null || !value.Properties.TryGetValue(name, out var result))
+            {
+                throw new ContractValidationException(name + " is required.");
+            }
+
+            if (result.Kind == StrictJsonKindV4.Null)
+            {
+                return null;
+            }
+
+            if (result.Kind != StrictJsonKindV4.String)
+            {
+                throw new ContractValidationException(
+                    name + " must be a JSON string or null.");
+            }
+
+            return (string)result.Value;
+        }
+
         public static int RequiredInt(
             StrictJsonObjectV4 value,
             string name)
