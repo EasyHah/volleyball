@@ -99,13 +99,13 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanonicalJson_RoundTripsOptionalShadowPlansAfterRuleDecision()
         {
-            var original = EventWithShadow(0, "Attack");
+            var original = EventWithShadow(0, "Attack", 0);
             var json = ContractJson.SerializeV4(CreateReplay(original));
             var restored = ContractJson.DeserializeMatchReplayV4(json);
 
             Assert.That(json, Does.Contain(
                 "\"ruleDecision\":{\"rulesVersion\":3,\"accepted\":true,\"reasonCode\":\"None\"},\"shadow\":{"));
-            Assert.That(restored.Events[0].Shadow.Revision, Is.EqualTo(7));
+            Assert.That(restored.Events[0].Shadow.Revision, Is.Zero);
             Assert.That(restored.Events[0].Shadow.SourceSequenceNumber, Is.Zero);
             Assert.That(restored.Events[0].Shadow.ArtifactIdentity, Is.EqualTo(HashC));
             Assert.That(restored.Events[0].Shadow.Home.TeamSide, Is.EqualTo("Home"));
@@ -113,6 +113,53 @@ namespace Volleyball.EditModeTests
             Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Rank, Is.EqualTo(1));
             Assert.That(restored.Events[0].Shadow.Coverage.Decision, Is.EqualTo("Covered"));
             Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+        }
+
+        [Test]
+        public void ShadowRecord_RequiresBothSidesAndValidAssignmentsAndCoverage()
+        {
+            Assert.That(
+                () => new ReplayShadowRecordV4(
+                    0, 0, HashC, null, TeamPlan("Away", "away"),
+                    new ReplayCoverageDecisionRecordV4("Covered", 0.75f)),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayShadowRecordV4(
+                    0, 0, HashC, TeamPlan("Home", "home"), null,
+                    new ReplayCoverageDecisionRecordV4("Covered", 0.75f)),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayTeamRallyPlanRecordV4(
+                    "Home",
+                    DuplicatePlayerAssignments()),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayTeamRallyPlanRecordV4(
+                    "Home",
+                    DuplicateRankAssignments()),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayShadowAssignmentRecordV4(
+                    1, "home-player-1", "InvalidTask",
+                    new ReplayVector3RecordV4(0f, 0f, 0f), 0.5f),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayCoverageDecisionRecordV4("InvalidCoverage", 0.75f),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void ShadowRecord_RejectsNonFiniteAssignmentAndCoverageScores()
+        {
+            Assert.That(
+                () => new ReplayShadowAssignmentRecordV4(
+                    1, "home-player-1", "Primary",
+                    new ReplayVector3RecordV4(0f, 0f, 0f), float.NaN),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayCoverageDecisionRecordV4(
+                    "Covered", float.PositiveInfinity),
+                Throws.TypeOf<ContractValidationException>());
         }
 
         [Test]
@@ -493,7 +540,10 @@ namespace Volleyball.EditModeTests
                 new ReplayRuleDecisionRecordV4(3, true, "None"));
         }
 
-        private static MatchReplayEventV4 EventWithShadow(int sequence, string kind)
+        private static MatchReplayEventV4 EventWithShadow(
+            int sequence,
+            string kind,
+            int revision = 7)
         {
             var baseline = Event(sequence, kind);
             return new MatchReplayEventV4(
@@ -510,13 +560,15 @@ namespace Volleyball.EditModeTests
                 baseline.Classification,
                 baseline.ObservedP6Geometry,
                 baseline.RuleDecision,
-                Shadow(sequence));
+                Shadow(sequence, revision));
         }
 
-        private static ReplayShadowRecordV4 Shadow(int sourceSequenceNumber)
+        private static ReplayShadowRecordV4 Shadow(
+            int sourceSequenceNumber,
+            int revision = 7)
         {
             return new ReplayShadowRecordV4(
-                7,
+                revision,
                 sourceSequenceNumber,
                 HashC,
                 TeamPlan("Home", "home"),
@@ -542,6 +594,42 @@ namespace Volleyball.EditModeTests
             return new ReplayTeamRallyPlanRecordV4(
                 teamSide,
                 assignments);
+        }
+
+        private static ReplayShadowAssignmentRecordV4[] DuplicatePlayerAssignments()
+        {
+            var assignments = TeamPlan("Home", "home").PrimaryAssignments;
+            var duplicate = new ReplayShadowAssignmentRecordV4[6];
+            for (var index = 0; index < duplicate.Length; index++)
+            {
+                duplicate[index] = assignments[index];
+            }
+
+            duplicate[5] = new ReplayShadowAssignmentRecordV4(
+                6,
+                duplicate[0].PlayerId,
+                "Primary",
+                new ReplayVector3RecordV4(5f, 0f, 6f),
+                0.55f);
+            return duplicate;
+        }
+
+        private static ReplayShadowAssignmentRecordV4[] DuplicateRankAssignments()
+        {
+            var assignments = TeamPlan("Home", "home").PrimaryAssignments;
+            var duplicate = new ReplayShadowAssignmentRecordV4[6];
+            for (var index = 0; index < duplicate.Length; index++)
+            {
+                duplicate[index] = assignments[index];
+            }
+
+            duplicate[5] = new ReplayShadowAssignmentRecordV4(
+                5,
+                "home-player-6",
+                "Primary",
+                new ReplayVector3RecordV4(5f, 0f, 6f),
+                0.55f);
+            return duplicate;
         }
 
         private static ReplayExecutionEnvelopeRecordV4 Envelope(

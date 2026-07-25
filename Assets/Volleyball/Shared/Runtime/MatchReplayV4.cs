@@ -287,7 +287,7 @@ namespace Volleyball.Shared.Contracts
             ReplayTeamRallyPlanRecordV4 away,
             ReplayCoverageDecisionRecordV4 coverage)
         {
-            Revision = ReplayContractGuardV4.Positive(revision, nameof(revision));
+            Revision = ReplayContractGuardV4.NonNegative(revision, nameof(revision));
             SourceSequenceNumber = ReplayContractGuardV4.NonNegative(
                 sourceSequenceNumber,
                 nameof(sourceSequenceNumber));
