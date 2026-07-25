@@ -105,12 +105,19 @@ namespace Volleyball.EditModeTests
 
             Assert.That(json, Does.Contain(
                 "\"ruleDecision\":{\"rulesVersion\":3,\"accepted\":true,\"reasonCode\":\"None\"},\"shadow\":{"));
+            Assert.That(json, Does.Contain(
+                "\"rank\":1,\"playerId\":\"home-player-1\",\"task\":\"Receive\",\"condition\":\"Always\",\"spatialClaim\":\"CourtZone\",\"declaredBranch\":\"Primary\",\"value\":0.5"));
             Assert.That(restored.Events[0].Shadow.Revision, Is.Zero);
             Assert.That(restored.Events[0].Shadow.SourceSequenceNumber, Is.Zero);
             Assert.That(restored.Events[0].Shadow.ArtifactIdentity, Is.EqualTo(HashC));
             Assert.That(restored.Events[0].Shadow.Home.TeamSide, Is.EqualTo("Home"));
             Assert.That(restored.Events[0].Shadow.Away.TeamSide, Is.EqualTo("Away"));
             Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Rank, Is.EqualTo(1));
+            Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Task, Is.EqualTo("Receive"));
+            Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Condition, Is.EqualTo("Always"));
+            Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].SpatialClaim, Is.EqualTo("CourtZone"));
+            Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].DeclaredBranch, Is.EqualTo("Primary"));
+            Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Value, Is.EqualTo(0.5f));
             Assert.That(restored.Events[0].Shadow.Coverage.Decision, Is.EqualTo("Covered"));
             Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
         }
@@ -140,8 +147,22 @@ namespace Volleyball.EditModeTests
                 Throws.TypeOf<ContractValidationException>());
             Assert.That(
                 () => new ReplayShadowAssignmentRecordV4(
-                    1, "home-player-1", "InvalidTask",
-                    new ReplayVector3RecordV4(0f, 0f, 0f), 0.5f),
+                    1, "home-player-1", "InvalidTask", "Always", "CourtZone", "Primary", 0.5f),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayShadowAssignmentRecordV4(
+                    1, "home-player-1", "Receive", "InvalidCondition", "CourtZone",
+                    "Primary", 0.5f),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayShadowAssignmentRecordV4(
+                    1, "home-player-1", "Receive", "Always", "InvalidClaim", "Primary",
+                    0.5f),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new ReplayShadowAssignmentRecordV4(
+                    1, "home-player-1", "Receive", "Always", "CourtZone", "InvalidBranch",
+                    0.5f),
                 Throws.TypeOf<ContractValidationException>());
             Assert.That(
                 () => new ReplayCoverageDecisionRecordV4("InvalidCoverage", 0.75f),
@@ -153,8 +174,7 @@ namespace Volleyball.EditModeTests
         {
             Assert.That(
                 () => new ReplayShadowAssignmentRecordV4(
-                    1, "home-player-1", "Primary",
-                    new ReplayVector3RecordV4(0f, 0f, 0f), float.NaN),
+                    1, "home-player-1", "Receive", "Always", "CourtZone", "Primary", float.NaN),
                 Throws.TypeOf<ContractValidationException>());
             Assert.That(
                 () => new ReplayCoverageDecisionRecordV4(
@@ -586,8 +606,10 @@ namespace Volleyball.EditModeTests
                 assignments[index] = new ReplayShadowAssignmentRecordV4(
                     index + 1,
                     prefix + "-player-" + (index + 1),
+                    "Receive",
+                    "Always",
+                    "CourtZone",
                     "Primary",
-                    new ReplayVector3RecordV4(index, 0f, index + 1),
                     0.5f + (index * 0.01f));
             }
 
@@ -608,8 +630,10 @@ namespace Volleyball.EditModeTests
             duplicate[5] = new ReplayShadowAssignmentRecordV4(
                 6,
                 duplicate[0].PlayerId,
+                "Receive",
+                "Always",
+                "CourtZone",
                 "Primary",
-                new ReplayVector3RecordV4(5f, 0f, 6f),
                 0.55f);
             return duplicate;
         }
@@ -626,8 +650,10 @@ namespace Volleyball.EditModeTests
             duplicate[5] = new ReplayShadowAssignmentRecordV4(
                 5,
                 "home-player-6",
+                "Receive",
+                "Always",
+                "CourtZone",
                 "Primary",
-                new ReplayVector3RecordV4(5f, 0f, 6f),
                 0.55f);
             return duplicate;
         }

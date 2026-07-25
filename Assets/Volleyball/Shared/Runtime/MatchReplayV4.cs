@@ -195,26 +195,51 @@ namespace Volleyball.Shared.Contracts
         public ReplayShadowAssignmentRecordV4(
             int rank,
             string playerId,
-            string responsibility,
-            ReplayVector3RecordV4 claim,
-            float score)
+            string task,
+            string condition,
+            string spatialClaim,
+            string declaredBranch,
+            float value)
         {
             Rank = ReplayContractGuardV4.Positive(rank, nameof(rank));
             PlayerId = ReplayContractGuardV4.Required(playerId, nameof(playerId));
-            Responsibility = ReplayContractGuardV4.OneOf(
-                responsibility,
-                nameof(responsibility),
-                "Primary");
-            Claim = claim ??
-                throw new ContractValidationException("claim is required.");
-            Score = ReplayContractGuardV4.Finite(score, nameof(score));
+            Task = ReplayContractGuardV4.OneOf(
+                task,
+                nameof(task),
+                "Receive",
+                "Set",
+                "Attack",
+                "Block",
+                "Cover");
+            Condition = ReplayContractGuardV4.OneOf(
+                condition,
+                nameof(condition),
+                "Always",
+                "IfBallIncoming",
+                "IfSetAvailable",
+                "IfAttackIncoming");
+            SpatialClaim = ReplayContractGuardV4.OneOf(
+                spatialClaim,
+                nameof(spatialClaim),
+                "CourtZone",
+                "NetZone",
+                "BackcourtZone",
+                "AttackLane");
+            DeclaredBranch = ReplayContractGuardV4.OneOf(
+                declaredBranch,
+                nameof(declaredBranch),
+                "Primary",
+                "Fallback");
+            Value = ReplayContractGuardV4.Finite(value, nameof(value));
         }
 
         public int Rank { get; }
         public string PlayerId { get; }
-        public string Responsibility { get; }
-        public ReplayVector3RecordV4 Claim { get; }
-        public float Score { get; }
+        public string Task { get; }
+        public string Condition { get; }
+        public string SpatialClaim { get; }
+        public string DeclaredBranch { get; }
+        public float Value { get; }
     }
 
     public sealed class ReplayTeamRallyPlanRecordV4
@@ -243,12 +268,12 @@ namespace Volleyball.Shared.Contracts
                 var assignment = primaryAssignments[index] ??
                     throw new ContractValidationException(
                         "primaryAssignments cannot contain null records.");
-                if (assignment.Responsibility != "Primary" ||
+                if (assignment.DeclaredBranch != "Primary" ||
                     assignment.Rank != index + 1 ||
                     !playerIds.Add(assignment.PlayerId))
                 {
                     throw new ContractValidationException(
-                        "primaryAssignments must be distinct rank-ordered primary assignments.");
+                        "primaryAssignments must be distinct rank-ordered primary-branch assignments.");
                 }
 
                 _primaryAssignments[index] = assignment;
@@ -1086,13 +1111,16 @@ namespace Volleyball.Shared.Contracts
                 var assignment = StrictJsonV4.AsObject(
                     values[index], "primaryAssignments[" + index + "]");
                 StrictJsonV4.RequireExactProperties(
-                    assignment, "rank", "playerId", "responsibility", "claim", "score");
+                    assignment, "rank", "playerId", "task", "condition", "spatialClaim",
+                    "declaredBranch", "value");
                 assignments[index] = new ReplayShadowAssignmentRecordV4(
                     StrictJsonV4.RequiredInt(assignment, "rank"),
                     StrictJsonV4.RequiredString(assignment, "playerId"),
-                    StrictJsonV4.RequiredString(assignment, "responsibility"),
-                    ParseVector(StrictJsonV4.RequiredObject(assignment, "claim")),
-                    StrictJsonV4.RequiredFloat(assignment, "score"));
+                    StrictJsonV4.RequiredString(assignment, "task"),
+                    StrictJsonV4.RequiredString(assignment, "condition"),
+                    StrictJsonV4.RequiredString(assignment, "spatialClaim"),
+                    StrictJsonV4.RequiredString(assignment, "declaredBranch"),
+                    StrictJsonV4.RequiredFloat(assignment, "value"));
             }
 
             return new ReplayTeamRallyPlanRecordV4(
@@ -1503,12 +1531,14 @@ namespace Volleyball.Shared.Contracts
                 var assignment = plan.PrimaryAssignments[index];
                 output.Append("{\"rank\":").Append(assignment.Rank);
                 output.Append(",\"playerId\":").Append(Quote(assignment.PlayerId));
-                output.Append(",\"responsibility\":")
-                    .Append(Quote(assignment.Responsibility));
-                output.Append(",\"claim\":");
-                Vector(output, assignment.Claim);
-                output.Append(",\"score\":");
-                Float(output, assignment.Score);
+                output.Append(",\"task\":").Append(Quote(assignment.Task));
+                output.Append(",\"condition\":").Append(Quote(assignment.Condition));
+                output.Append(",\"spatialClaim\":")
+                    .Append(Quote(assignment.SpatialClaim));
+                output.Append(",\"declaredBranch\":")
+                    .Append(Quote(assignment.DeclaredBranch));
+                output.Append(",\"value\":");
+                Float(output, assignment.Value);
                 output.Append('}');
             }
 
