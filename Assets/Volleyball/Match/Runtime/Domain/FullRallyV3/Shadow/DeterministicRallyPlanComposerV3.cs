@@ -17,9 +17,10 @@ namespace Volleyball.Match.Domain.FullRallyV3
             PlayerWorldSnapshotV3.RequireDefinedEnum(side, nameof(side));
             trajectoryIdentity = PlayerWorldSnapshotV3.RequireText(trajectoryIdentity, nameof(trajectoryIdentity));
 
-            var candidates = snapshot.Players
+            // Eligibility is the authoritative on-court roster; stale snapshot players never reach scoring.
+            var candidates = snapshot.Eligibility.Players
                 .Where(player => player.Side == side)
-                .SelectMany(player => CandidatesFor(snapshot.Eligibility.For(player.PlayerId), player))
+                .SelectMany(CandidatesFor)
                 .OrderByDescending(candidate => candidate.Value)
                 .ThenBy(candidate => candidate.PlayerId.Value, StringComparer.Ordinal)
                 .ThenBy(candidate => candidate.Task)
@@ -69,7 +70,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
             switch (acceptedEvent.CoverageReason)
             {
                 case PlanCoverageReason.WithinConditionalEnvelope:
-                    return PlanCoverageDecision.Covered(revision, acceptedEvent.CoverageReason);
+                    return CoveredBranchOrDiagnostic(plan, acceptedEvent, revision);
                 case PlanCoverageReason.ResponsibleActorChanged:
                     return Decision(PlanCoverageDecisionKind.LocalRevision, revision, acceptedEvent.CoverageReason, 1);
                 case PlanCoverageReason.BallEnvelopeExceeded:
@@ -88,24 +89,53 @@ namespace Volleyball.Match.Domain.FullRallyV3
             return new PlanCoverageDecision(kind, revision, reason, Array.Empty<string>(), depth);
         }
 
-        private static IEnumerable<Candidate> CandidatesFor(OnCourtPlayerEligibilityV3 eligibility, PlayerWorldSnapshotV3 player)
+        private static PlanCoverageDecision CoveredBranchOrDiagnostic(
+            RallyPlanV3 plan, AcceptedRuleEventV3 acceptedEvent, string revision)
+        {
+            var branch = plan.HomePlan.Assignments
+                .Concat(plan.AwayPlan.Assignments)
+                .Where(assignment => assignment.Condition == acceptedEvent.ActiveCondition)
+                .Select(assignment => (RallyPlanBranchV3?)assignment.Branch)
+                .Distinct()
+                .OrderBy(value => value)
+                .FirstOrDefault();
+            if (branch.HasValue)
+            {
+                return new PlanCoverageDecision(
+                    PlanCoverageDecisionKind.CoveredActivateBranch,
+                    revision,
+                    acceptedEvent.CoverageReason,
+                    Array.Empty<string>(),
+                    0,
+                    branch);
+            }
+
+            return new PlanCoverageDecision(
+                PlanCoverageDecisionKind.ScopedReplan,
+                revision,
+                acceptedEvent.CoverageReason,
+                new[] { "condition=" + acceptedEvent.ActiveCondition },
+                2);
+        }
+
+        private static IEnumerable<Candidate> CandidatesFor(OnCourtPlayerEligibilityV3 eligibility)
         {
             var claim = (RallyPlanSpatialClaimV3)eligibility.RotationPosition;
-            yield return new Candidate(player.PlayerId, RallyPlanTaskV3.Cover, claim, 100f);
-            yield return new Candidate(player.PlayerId, RallyPlanTaskV3.Defend, claim, 90f);
+            yield return new Candidate(eligibility.PlayerId, RallyPlanTaskV3.Cover, claim, 100f);
+            yield return new Candidate(eligibility.PlayerId, RallyPlanTaskV3.Defend, claim, 90f);
             if (eligibility.RegisteredPosition != PlayerPosition.Libero)
             {
-                yield return new Candidate(player.PlayerId, RallyPlanTaskV3.Set, claim, 80f);
+                yield return new Candidate(eligibility.PlayerId, RallyPlanTaskV3.Set, claim, 80f);
             }
 
             if (eligibility.CanAttackAboveNetFromFrontZone)
             {
-                yield return new Candidate(player.PlayerId, RallyPlanTaskV3.Attack, claim, 110f);
+                yield return new Candidate(eligibility.PlayerId, RallyPlanTaskV3.Attack, claim, 110f);
             }
 
             if (eligibility.CanBlock)
             {
-                yield return new Candidate(player.PlayerId, RallyPlanTaskV3.Block, claim, 105f);
+                yield return new Candidate(eligibility.PlayerId, RallyPlanTaskV3.Block, claim, 105f);
             }
         }
 
