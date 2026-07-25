@@ -106,7 +106,7 @@ namespace Volleyball.EditModeTests
             Assert.That(json, Does.Contain(
                 "\"ruleDecision\":{\"rulesVersion\":3,\"accepted\":true,\"reasonCode\":\"None\"},\"shadow\":{"));
             Assert.That(json, Does.Contain(
-                "\"rank\":1,\"playerId\":\"home-player-1\",\"task\":\"Receive\",\"condition\":\"Always\",\"spatialClaim\":\"CourtZone\",\"declaredBranch\":\"Primary\",\"value\":0.5"));
+                "\"rank\":1,\"playerId\":\"home-opposite\",\"task\":\"Receive\",\"condition\":\"Always\",\"spatialClaim\":\"CourtZone\",\"declaredBranch\":\"Primary\",\"value\":0.5"));
             Assert.That(restored.Events[0].Shadow.Revision, Is.Zero);
             Assert.That(restored.Events[0].Shadow.SourceSequenceNumber, Is.Zero);
             Assert.That(restored.Events[0].Shadow.ArtifactIdentity, Is.EqualTo(HashC));
@@ -179,6 +179,57 @@ namespace Volleyball.EditModeTests
             Assert.That(
                 () => new ReplayCoverageDecisionRecordV4(
                     "Covered", float.PositiveInfinity),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void Create_RejectsShadowAssignmentsSwappedAcrossTeamSides()
+        {
+            var swappedHome = new ReplayTeamRallyPlanRecordV4(
+                "Home",
+                TeamPlan("Away", "away").PrimaryAssignments);
+            var shadow = new ReplayShadowRecordV4(
+                7,
+                0,
+                HashC,
+                swappedHome,
+                TeamPlan("Away", "away"),
+                new ReplayCoverageDecisionRecordV4("Covered", 0.75f));
+
+            Assert.That(
+                () => CreateReplay(EventWithShadow(Event(0, "Attack"), shadow)),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void Create_RejectsShadowAssignmentsForNonexistentPlayer()
+        {
+            var shadow = new ReplayShadowRecordV4(
+                7,
+                0,
+                HashC,
+                TeamPlanWithPlayer("Home", "home", 0, "missing-player"),
+                TeamPlan("Away", "away"),
+                new ReplayCoverageDecisionRecordV4("Covered", 0.75f));
+
+            Assert.That(
+                () => CreateReplay(EventWithShadow(Event(0, "Attack"), shadow)),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void Create_RejectsShadowPlayerDuplicatedAcrossTeamPlans()
+        {
+            var shadow = new ReplayShadowRecordV4(
+                7,
+                0,
+                HashC,
+                TeamPlan("Home", "home"),
+                TeamPlanWithPlayer("Away", "away", 0, "home-opposite"),
+                new ReplayCoverageDecisionRecordV4("Covered", 0.75f));
+
+            Assert.That(
+                () => CreateReplay(EventWithShadow(Event(0, "Attack"), shadow)),
                 Throws.TypeOf<ContractValidationException>());
         }
 
@@ -583,6 +634,27 @@ namespace Volleyball.EditModeTests
                 Shadow(sequence, revision));
         }
 
+        private static MatchReplayEventV4 EventWithShadow(
+            MatchReplayEventV4 baseline,
+            ReplayShadowRecordV4 shadow)
+        {
+            return new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                shadow);
+        }
+
         private static ReplayShadowRecordV4 Shadow(
             int sourceSequenceNumber,
             int revision = 7)
@@ -605,7 +677,7 @@ namespace Volleyball.EditModeTests
             {
                 assignments[index] = new ReplayShadowAssignmentRecordV4(
                     index + 1,
-                    prefix + "-player-" + (index + 1),
+                    PlayerIdFor(teamSide, index),
                     "Receive",
                     "Always",
                     "CourtZone",
@@ -616,6 +688,47 @@ namespace Volleyball.EditModeTests
             return new ReplayTeamRallyPlanRecordV4(
                 teamSide,
                 assignments);
+        }
+
+        private static ReplayTeamRallyPlanRecordV4 TeamPlanWithPlayer(
+            string teamSide,
+            string prefix,
+            int assignmentIndex,
+            string playerId)
+        {
+            var assignments = TeamPlan(teamSide, prefix).PrimaryAssignments;
+            var replacement = new ReplayShadowAssignmentRecordV4(
+                assignments[assignmentIndex].Rank,
+                playerId,
+                assignments[assignmentIndex].Task,
+                assignments[assignmentIndex].Condition,
+                assignments[assignmentIndex].SpatialClaim,
+                assignments[assignmentIndex].DeclaredBranch,
+                assignments[assignmentIndex].Value);
+            var copy = new ReplayShadowAssignmentRecordV4[assignments.Count];
+            for (var index = 0; index < copy.Length; index++)
+            {
+                copy[index] = index == assignmentIndex
+                    ? replacement
+                    : assignments[index];
+            }
+
+            return new ReplayTeamRallyPlanRecordV4(teamSide, copy);
+        }
+
+        private static string PlayerIdFor(string teamSide, int index)
+        {
+            var prefix = teamSide == "Home" ? "home" : "away";
+            var role = new[]
+            {
+                "opposite",
+                "outside-a",
+                "middle-a",
+                "setter",
+                "outside-b",
+                "libero"
+            }[index];
+            return prefix + "-" + role;
         }
 
         private static ReplayShadowAssignmentRecordV4[] DuplicatePlayerAssignments()
@@ -649,7 +762,7 @@ namespace Volleyball.EditModeTests
 
             duplicate[5] = new ReplayShadowAssignmentRecordV4(
                 5,
-                "home-player-6",
+                "home-libero",
                 "Receive",
                 "Always",
                 "CourtZone",

@@ -753,7 +753,70 @@ namespace Volleyball.Shared.Contracts
                     throw new ContractValidationException(
                         "Replay trajectory provenance does not match the V4 context configuration.");
                 }
+
+                ValidateShadowAssignments(context, replayEvent.Shadow);
             }
+        }
+
+        private static void ValidateShadowAssignments(
+            MatchContextV4 context,
+            ReplayShadowRecordV4 shadow)
+        {
+            if (shadow == null)
+            {
+                return;
+            }
+
+            var assignedPlayerIds = new HashSet<string>(StringComparer.Ordinal);
+            ValidateShadowPlanAssignments(
+                shadow.Home,
+                context.Home.RotationOrder,
+                assignedPlayerIds);
+            ValidateShadowPlanAssignments(
+                shadow.Away,
+                context.Away.RotationOrder,
+                assignedPlayerIds);
+            if (assignedPlayerIds.Count != 12)
+            {
+                throw new ContractValidationException(
+                    "Shadow plans must assign twelve distinct context players.");
+            }
+        }
+
+        private static void ValidateShadowPlanAssignments(
+            ReplayTeamRallyPlanRecordV4 plan,
+            IReadOnlyList<PlayerSnapshotV4> roster,
+            ISet<string> assignedPlayerIds)
+        {
+            foreach (var assignment in plan.PrimaryAssignments)
+            {
+                if (!ContainsPlayer(roster, assignment.PlayerId))
+                {
+                    throw new ContractValidationException(
+                        "Shadow assignment player is absent from its context team roster.");
+                }
+
+                if (!assignedPlayerIds.Add(assignment.PlayerId))
+                {
+                    throw new ContractValidationException(
+                        "Shadow plans must assign twelve distinct context players.");
+                }
+            }
+        }
+
+        private static bool ContainsPlayer(
+            IReadOnlyList<PlayerSnapshotV4> roster,
+            string playerId)
+        {
+            foreach (var player in roster)
+            {
+                if (player.PlayerId.Value == playerId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static PlayerSnapshotV4 FindPlayer(
