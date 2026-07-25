@@ -487,6 +487,8 @@ namespace Volleyball.Presentation
 
         public event Action<ReplayContactEvent> ReplayContactAccepted;
 
+        public event Action<RallyPlanV3> ReplayShadowPlanRecorded;
+
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
 
         public event Action<ReplaySimpleEvent> ReplayNetCrossed;
@@ -2013,11 +2015,12 @@ namespace Volleyball.Presentation
                     break;
             }
 
-            ObserveAcceptedContactV3(
+            var acceptedV3Transition = ObserveAcceptedContactV3(
                 actorId,
                 contact.Candidate.Action,
                 contact.Hit.ContactGroupId,
                 authorityContact);
+            RecordShadowPlanV3(acceptedV3Transition, acceptedTrajectoryArtifact);
             NotifyReplay(
                 ReplayContactAccepted,
                 new ReplayContactEvent(
@@ -2033,7 +2036,7 @@ namespace Volleyball.Presentation
                     acceptedTrajectoryArtifact));
         }
 
-        private void ObserveAcceptedContactV3(
+        private RuleTransitionV3 ObserveAcceptedContactV3(
             PlayerId actor,
             TechniqueAction action,
             int contactGroup,
@@ -2041,7 +2044,7 @@ namespace Volleyball.Presentation
         {
             if (_v3RulesAdapter == null)
             {
-                return;
+                return null;
             }
 
             RuleTransitionV3 transition;
@@ -2115,6 +2118,97 @@ namespace Volleyball.Presentation
 
             _lastAcceptedV3Actor = StableId(actor);
             _lastAcceptedV3Classification = ToV3Classification(action);
+            return transition;
+        }
+
+        private void RecordShadowPlanV3(
+            RuleTransitionV3 acceptedTransition,
+            BallTrajectoryPredictionArtifactV4 acceptedTrajectoryArtifact)
+        {
+            if (_v3RulesAdapter == null)
+            {
+                return;
+            }
+
+            if (acceptedTransition == null || !acceptedTransition.Accepted)
+            {
+                throw new InvalidOperationException(
+                    "Shadow plan recording requires an accepted V3 transition.");
+            }
+
+            if (acceptedTrajectoryArtifact == null)
+            {
+                throw new InvalidOperationException(
+                    "Shadow plan recording requires the event-owned trajectory artifact.");
+            }
+
+            var eligibility = CreateV3Eligibility(_matchContext);
+            var playerFacts = new List<PlayerWorldSnapshotV3>(eligibility.Players.Count);
+            for (var index = 0; index < eligibility.Players.Count; index++)
+            {
+                var eligiblePlayer = eligibility.Players[index];
+                var player = PlayerForStableId(eligiblePlayer.PlayerId);
+                playerFacts.Add(new PlayerWorldSnapshotV3(
+                    eligiblePlayer.PlayerId,
+                    eligiblePlayer.Side,
+                    eligiblePlayer.RegisteredPosition,
+                    ToSimulation(player.transform.position),
+                    SimVector3.Zero,
+                    player.PreparedForward,
+                    player.ReplayScheduledAction,
+                    RallyCommitmentStateV3.Uncommitted,
+                    0f));
+            }
+
+            var ball = _ball.State;
+            var snapshot = new RallyWorldSnapshotV3(
+                new BallWorldSnapshotV3(
+                    ball.Position,
+                    ball.Velocity,
+                    SimVector3.Zero,
+                    ball.Radius,
+                    _ball.SimulationTime),
+                playerFacts,
+                acceptedTransition.After,
+                eligibility,
+                new CourtConfigurationV3(),
+                new AcceptedRuleEventV3(PlanCoverageReason.RulesStateChanged),
+                V3RuleTransitions);
+            var artifactIdentity = acceptedTrajectoryArtifact.ArtifactIdentity;
+            var revision = V3RuleTransitions;
+            var provisional = new RallyPlanV3(
+                snapshot,
+                DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, artifactIdentity),
+                DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Away, artifactIdentity),
+                artifactIdentity,
+                revision,
+                V3RuleTransitions,
+                PlanCoverageDecision.Covered(revision.ToString(), PlanCoverageReason.RulesStateChanged));
+            var coverage = DeterministicRallyPlanComposerV3.EvaluateCoverage(
+                provisional,
+                snapshot.LatestEvent);
+            ReplayShadowPlanRecorded?.Invoke(new RallyPlanV3(
+                snapshot,
+                provisional.HomePlan,
+                provisional.AwayPlan,
+                artifactIdentity,
+                revision,
+                V3RuleTransitions,
+                coverage));
+        }
+
+        private PrototypePlayerAgent PlayerForStableId(StablePlayerId stableId)
+        {
+            foreach (var player in _players.Values)
+            {
+                if (player.StableId.Equals(stableId))
+                {
+                    return player;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Shadow plan eligibility player is not registered in the formal match.");
         }
 
         private void SynchronizeLegacyCompatibility(PendingV3AuthorityContact authorityContact)

@@ -1,10 +1,13 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
 
@@ -147,6 +150,54 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
+        public IEnumerator AcceptedFormalContact_RecordsOneReadOnlyTwelvePlayerShadowPlan()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            RallyPlanV3 recordedPlan = null;
+            ContactObservation observation = default;
+            var verifiedObservation = false;
+
+            director.ReplayShadowPlanRecorded += plan =>
+            {
+                Assert.That(recordedPlan, Is.Null, "The first accepted contact records one revision.");
+                recordedPlan = plan;
+                observation = Observe(director, players);
+            };
+            director.ReplayContactAccepted += _ =>
+            {
+                if (recordedPlan == null || verifiedObservation)
+                {
+                    return;
+                }
+
+                Assert.That(Observe(director, players), Is.EqualTo(observation));
+                verifiedObservation = true;
+            };
+
+            var timeout = Time.realtimeSinceStartup + 30f;
+            while (!verifiedObservation && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(verifiedObservation, Is.True, "The formal fixture did not accept a contact.");
+            Assert.That(recordedPlan, Is.Not.Null);
+            Assert.That(recordedPlan.Revision, Is.EqualTo(recordedPlan.SourceSequence));
+            Assert.That(recordedPlan.WorldSnapshot.Players, Has.Count.EqualTo(12));
+            Assert.That(recordedPlan.HomePlan.Assignments, Has.Count.EqualTo(6));
+            Assert.That(recordedPlan.AwayPlan.Assignments, Has.Count.EqualTo(6));
+            Assert.That(
+                recordedPlan.HomePlan.CandidateEvidence.Single(),
+                Is.EqualTo("artifact=" + recordedPlan.ArtifactIdentity));
+            Assert.That(
+                recordedPlan.AwayPlan.CandidateEvidence.Single(),
+                Is.EqualTo("artifact=" + recordedPlan.ArtifactIdentity));
+        }
+
+        [UnityTest]
         public IEnumerator Capture_TwoIndependentFixedSeedFormalRunsAreByteStable()
         {
             var payloads = new byte[2][];
@@ -250,6 +301,54 @@ namespace Volleyball.PlayModeTests
         private static void AssertV4Identity(string value, string subject)
         {
             Assert.That(value, Is.Not.Null.And.Length.EqualTo(64), subject);
+        }
+
+        private static ContactObservation Observe(
+            FormalSixVsSixRallyDirector director,
+            IEnumerable<PrototypePlayerAgent> players)
+        {
+            return new ContactObservation(
+                director.HomeScore,
+                director.AwayScore,
+                director.SuccessfulContacts,
+                players.OrderBy(player => player.StableId.Value)
+                    .Select(player => player.ReplayScheduledAction + ":" +
+                                      player.ScheduledMovementTarget)
+                    .ToArray());
+        }
+
+        private readonly struct ContactObservation : IEquatable<ContactObservation>
+        {
+            private readonly int _homeScore;
+            private readonly int _awayScore;
+            private readonly int _contacts;
+            private readonly string[] _players;
+
+            public ContactObservation(int homeScore, int awayScore, int contacts, string[] players)
+            {
+                _homeScore = homeScore;
+                _awayScore = awayScore;
+                _contacts = contacts;
+                _players = players;
+            }
+
+            public bool Equals(ContactObservation other)
+            {
+                return _homeScore == other._homeScore &&
+                       _awayScore == other._awayScore &&
+                       _contacts == other._contacts &&
+                       _players.SequenceEqual(other._players);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is ContactObservation other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return _contacts;
+            }
         }
     }
 }

@@ -495,6 +495,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PhysicalDirector_ExposesShadowPlanReplayEvent()
+        {
+            var replayEvent = typeof(PhysicalMatchRallyDirector).GetEvent(
+                "ReplayShadowPlanRecorded");
+
+            Assert.That(replayEvent, Is.Not.Null);
+            Assert.That(
+                replayEvent.EventHandlerType,
+                Is.EqualTo(typeof(Action<RallyPlanV3>)));
+        }
+
+        [Test]
         public void ConfigureV3Rules_RejectsMidRallyConfiguration()
         {
             var gameObject = new GameObject("active-formal-director");
