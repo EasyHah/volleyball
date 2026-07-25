@@ -492,6 +492,20 @@ namespace Volleyball.Shared.Contracts
             return AsObject(result, name);
         }
 
+        public static StrictJsonObjectV4 OptionalNullableObject(
+            StrictJsonObjectV4 value,
+            string name)
+        {
+            if (value == null ||
+                !value.Properties.TryGetValue(name, out var result) ||
+                result.Kind == StrictJsonKindV4.Null)
+            {
+                return null;
+            }
+
+            return AsObject(result, name);
+        }
+
         public static string RequiredString(
             StrictJsonObjectV4 value,
             string name)

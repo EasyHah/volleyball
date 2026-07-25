@@ -190,6 +190,129 @@ namespace Volleyball.Shared.Contracts
         public string ReasonCode { get; }
     }
 
+    public sealed class ReplayShadowAssignmentRecordV4
+    {
+        public ReplayShadowAssignmentRecordV4(
+            int rank,
+            string playerId,
+            string responsibility,
+            ReplayVector3RecordV4 claim,
+            float score)
+        {
+            Rank = ReplayContractGuardV4.Positive(rank, nameof(rank));
+            PlayerId = ReplayContractGuardV4.Required(playerId, nameof(playerId));
+            Responsibility = ReplayContractGuardV4.OneOf(
+                responsibility,
+                nameof(responsibility),
+                "Primary");
+            Claim = claim ??
+                throw new ContractValidationException("claim is required.");
+            Score = ReplayContractGuardV4.Finite(score, nameof(score));
+        }
+
+        public int Rank { get; }
+        public string PlayerId { get; }
+        public string Responsibility { get; }
+        public ReplayVector3RecordV4 Claim { get; }
+        public float Score { get; }
+    }
+
+    public sealed class ReplayTeamRallyPlanRecordV4
+    {
+        private readonly ReplayShadowAssignmentRecordV4[] _primaryAssignments;
+
+        public ReplayTeamRallyPlanRecordV4(
+            string teamSide,
+            IReadOnlyList<ReplayShadowAssignmentRecordV4> primaryAssignments)
+        {
+            TeamSide = ReplayContractGuardV4.OneOf(
+                teamSide,
+                nameof(teamSide),
+                "Home",
+                "Away");
+            if (primaryAssignments == null || primaryAssignments.Count != 6)
+            {
+                throw new ContractValidationException(
+                    "primaryAssignments must contain exactly six records.");
+            }
+
+            _primaryAssignments = new ReplayShadowAssignmentRecordV4[6];
+            var playerIds = new HashSet<string>(StringComparer.Ordinal);
+            for (var index = 0; index < _primaryAssignments.Length; index++)
+            {
+                var assignment = primaryAssignments[index] ??
+                    throw new ContractValidationException(
+                        "primaryAssignments cannot contain null records.");
+                if (assignment.Responsibility != "Primary" ||
+                    assignment.Rank != index + 1 ||
+                    !playerIds.Add(assignment.PlayerId))
+                {
+                    throw new ContractValidationException(
+                        "primaryAssignments must be distinct rank-ordered primary assignments.");
+                }
+
+                _primaryAssignments[index] = assignment;
+            }
+        }
+
+        public string TeamSide { get; }
+        public IReadOnlyList<ReplayShadowAssignmentRecordV4> PrimaryAssignments =>
+            new ReadOnlyCollection<ReplayShadowAssignmentRecordV4>(
+                _primaryAssignments);
+    }
+
+    public sealed class ReplayCoverageDecisionRecordV4
+    {
+        public ReplayCoverageDecisionRecordV4(string decision, float score)
+        {
+            Decision = ReplayContractGuardV4.OneOf(
+                decision,
+                nameof(decision),
+                "Covered",
+                "Uncovered");
+            Score = ReplayContractGuardV4.Finite(score, nameof(score));
+        }
+
+        public string Decision { get; }
+        public float Score { get; }
+    }
+
+    public sealed class ReplayShadowRecordV4
+    {
+        public ReplayShadowRecordV4(
+            int revision,
+            int sourceSequenceNumber,
+            string artifactIdentity,
+            ReplayTeamRallyPlanRecordV4 home,
+            ReplayTeamRallyPlanRecordV4 away,
+            ReplayCoverageDecisionRecordV4 coverage)
+        {
+            Revision = ReplayContractGuardV4.Positive(revision, nameof(revision));
+            SourceSequenceNumber = ReplayContractGuardV4.NonNegative(
+                sourceSequenceNumber,
+                nameof(sourceSequenceNumber));
+            ArtifactIdentity = ReplayContractGuardV4.Hash(
+                artifactIdentity,
+                nameof(artifactIdentity));
+            Home = home ?? throw new ContractValidationException("home is required.");
+            Away = away ?? throw new ContractValidationException("away is required.");
+            Coverage = coverage ??
+                throw new ContractValidationException("coverage is required.");
+            if (Home.TeamSide != "Home" || Away.TeamSide != "Away")
+            {
+                throw new ContractValidationException(
+                    "Shadow records require exactly one Home and one Away plan.");
+            }
+        }
+
+        public int Revision { get; }
+        public int SourceSequenceNumber { get; }
+        public string ArtifactIdentity { get; }
+        public ReplayTeamRallyPlanRecordV4 Home { get; }
+        public ReplayTeamRallyPlanRecordV4 Away { get; }
+        public ReplayCoverageDecisionRecordV4 Coverage { get; }
+    }
+
     public sealed class MatchReplayEventV4
     {
         private readonly ReplayAbilityConsumptionRecordV4[] _abilityConsumptions;
@@ -208,6 +331,39 @@ namespace Volleyball.Shared.Contracts
             ReplaySampleClassificationRecordV4 classification,
             ReplayObservedP6GeometryRecordV4 observedP6Geometry,
             ReplayRuleDecisionRecordV4 ruleDecision)
+            : this(
+                sequenceNumber,
+                eventKind,
+                actorPlayerId,
+                simulationTimeSeconds,
+                homeScore,
+                awayScore,
+                testedEnvelope,
+                executableEnvelope,
+                trajectory,
+                abilityConsumptions,
+                classification,
+                observedP6Geometry,
+                ruleDecision,
+                null)
+        {
+        }
+
+        public MatchReplayEventV4(
+            int sequenceNumber,
+            string eventKind,
+            string actorPlayerId,
+            float simulationTimeSeconds,
+            int homeScore,
+            int awayScore,
+            ReplayExecutionEnvelopeRecordV4 testedEnvelope,
+            ReplayExecutionEnvelopeRecordV4 executableEnvelope,
+            ReplayTrajectoryArtifactRecordV4 trajectory,
+            IReadOnlyList<ReplayAbilityConsumptionRecordV4> abilityConsumptions,
+            ReplaySampleClassificationRecordV4 classification,
+            ReplayObservedP6GeometryRecordV4 observedP6Geometry,
+            ReplayRuleDecisionRecordV4 ruleDecision,
+            ReplayShadowRecordV4 shadow)
         {
             SequenceNumber = ReplayContractGuardV4.NonNegative(
                 sequenceNumber,
@@ -341,6 +497,20 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException(
                     "Observed P6 geometry must be null for a non-attack replay event.");
             }
+
+            Shadow = shadow;
+            if (Shadow != null &&
+                Shadow.ArtifactIdentity != Trajectory.ArtifactIdentity)
+            {
+                throw new ContractValidationException(
+                    "Shadow artifact identity must match the event trajectory.");
+            }
+
+            if (Shadow != null && Shadow.SourceSequenceNumber != SequenceNumber)
+            {
+                throw new ContractValidationException(
+                    "Shadow source sequence must match its replay event.");
+            }
         }
 
         public int SequenceNumber { get; }
@@ -358,6 +528,7 @@ namespace Volleyball.Shared.Contracts
         public ReplaySampleClassificationRecordV4 Classification { get; }
         public ReplayObservedP6GeometryRecordV4 ObservedP6Geometry { get; }
         public ReplayRuleDecisionRecordV4 RuleDecision { get; }
+        public ReplayShadowRecordV4 Shadow { get; }
 
         private static ReplayAbilityConsumptionRecordV4[] CopyAndSortConsumptions(
             IReadOnlyList<ReplayAbilityConsumptionRecordV4> source)
@@ -783,21 +954,7 @@ namespace Volleyball.Shared.Contracts
         private static MatchReplayEventV4 ParseEvent(
             StrictJsonObjectV4 value)
         {
-            StrictJsonV4.RequireExactProperties(
-                value,
-                "sequenceNumber",
-                "eventKind",
-                "actorPlayerId",
-                "simulationTimeSeconds",
-                "homeScore",
-                "awayScore",
-                "testedEnvelope",
-                "executableEnvelope",
-                "trajectory",
-                "abilityConsumptions",
-                "classification",
-                "observedP6Geometry",
-                "ruleDecision");
+            RequireEventProperties(value);
             var consumptionValues = StrictJsonV4.RequiredArray(
                 value,
                 "abilityConsumptions");
@@ -866,7 +1023,89 @@ namespace Volleyball.Shared.Contracts
                     ? null
                     : ParseGeometry(geometryValue),
                 ParseRuleDecision(
-                    StrictJsonV4.RequiredObject(value, "ruleDecision")));
+                    StrictJsonV4.RequiredObject(value, "ruleDecision")),
+                ParseShadow(
+                    StrictJsonV4.OptionalNullableObject(value, "shadow")));
+        }
+
+        private static void RequireEventProperties(StrictJsonObjectV4 value)
+        {
+            var hasShadow = value.Properties.ContainsKey("shadow");
+            if (value.Properties.Count != (hasShadow ? 14 : 13))
+            {
+                throw new ContractValidationException(
+                    "JSON object fields do not match the native V4 schema.");
+            }
+
+            var required = new[]
+            {
+                "sequenceNumber", "eventKind", "actorPlayerId",
+                "simulationTimeSeconds", "homeScore", "awayScore",
+                "testedEnvelope", "executableEnvelope", "trajectory",
+                "abilityConsumptions", "classification", "observedP6Geometry",
+                "ruleDecision"
+            };
+            for (var index = 0; index < required.Length; index++)
+            {
+                if (!value.Properties.ContainsKey(required[index]))
+                {
+                    throw new ContractValidationException(
+                        "Required native V4 JSON field is missing: " + required[index] + ".");
+                }
+            }
+        }
+
+        private static ReplayShadowRecordV4 ParseShadow(StrictJsonObjectV4 value)
+        {
+            if (value == null) return null;
+            StrictJsonV4.RequireExactProperties(
+                value,
+                "revision",
+                "sourceSequenceNumber",
+                "artifactIdentity",
+                "home",
+                "away",
+                "coverage");
+            return new ReplayShadowRecordV4(
+                StrictJsonV4.RequiredInt(value, "revision"),
+                StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"),
+                StrictJsonV4.RequiredString(value, "artifactIdentity"),
+                ParseTeamPlan(StrictJsonV4.RequiredObject(value, "home")),
+                ParseTeamPlan(StrictJsonV4.RequiredObject(value, "away")),
+                ParseCoverage(StrictJsonV4.RequiredObject(value, "coverage")));
+        }
+
+        private static ReplayTeamRallyPlanRecordV4 ParseTeamPlan(
+            StrictJsonObjectV4 value)
+        {
+            StrictJsonV4.RequireExactProperties(value, "teamSide", "primaryAssignments");
+            var values = StrictJsonV4.RequiredArray(value, "primaryAssignments");
+            var assignments = new ReplayShadowAssignmentRecordV4[values.Count];
+            for (var index = 0; index < assignments.Length; index++)
+            {
+                var assignment = StrictJsonV4.AsObject(
+                    values[index], "primaryAssignments[" + index + "]");
+                StrictJsonV4.RequireExactProperties(
+                    assignment, "rank", "playerId", "responsibility", "claim", "score");
+                assignments[index] = new ReplayShadowAssignmentRecordV4(
+                    StrictJsonV4.RequiredInt(assignment, "rank"),
+                    StrictJsonV4.RequiredString(assignment, "playerId"),
+                    StrictJsonV4.RequiredString(assignment, "responsibility"),
+                    ParseVector(StrictJsonV4.RequiredObject(assignment, "claim")),
+                    StrictJsonV4.RequiredFloat(assignment, "score"));
+            }
+
+            return new ReplayTeamRallyPlanRecordV4(
+                StrictJsonV4.RequiredString(value, "teamSide"), assignments);
+        }
+
+        private static ReplayCoverageDecisionRecordV4 ParseCoverage(
+            StrictJsonObjectV4 value)
+        {
+            StrictJsonV4.RequireExactProperties(value, "decision", "score");
+            return new ReplayCoverageDecisionRecordV4(
+                StrictJsonV4.RequiredString(value, "decision"),
+                StrictJsonV4.RequiredFloat(value, "score"));
         }
 
         private static ReplayExecutionEnvelopeRecordV4 ParseEnvelope(
@@ -1222,7 +1461,58 @@ namespace Volleyball.Shared.Contracts
                 .Append(replayEvent.RuleDecision.Accepted ? "true" : "false")
                 .Append(",\"reasonCode\":")
                 .Append(Quote(replayEvent.RuleDecision.ReasonCode))
-                .Append("}}");
+                .Append('}');
+            if (replayEvent.Shadow != null)
+            {
+                output.Append(",\"shadow\":");
+                AppendShadow(output, replayEvent.Shadow);
+            }
+
+            output.Append('}');
+        }
+
+        private static void AppendShadow(
+            StringBuilder output,
+            ReplayShadowRecordV4 shadow)
+        {
+            output.Append("{\"revision\":").Append(shadow.Revision);
+            output.Append(",\"sourceSequenceNumber\":")
+                .Append(shadow.SourceSequenceNumber);
+            output.Append(",\"artifactIdentity\":")
+                .Append(Quote(shadow.ArtifactIdentity));
+            output.Append(",\"home\":");
+            AppendTeamPlan(output, shadow.Home);
+            output.Append(",\"away\":");
+            AppendTeamPlan(output, shadow.Away);
+            output.Append(",\"coverage\":{\"decision\":")
+                .Append(Quote(shadow.Coverage.Decision))
+                .Append(",\"score\":");
+            Float(output, shadow.Coverage.Score);
+            output.Append("}}");
+        }
+
+        private static void AppendTeamPlan(
+            StringBuilder output,
+            ReplayTeamRallyPlanRecordV4 plan)
+        {
+            output.Append("{\"teamSide\":").Append(Quote(plan.TeamSide));
+            output.Append(",\"primaryAssignments\":[");
+            for (var index = 0; index < plan.PrimaryAssignments.Count; index++)
+            {
+                if (index > 0) output.Append(',');
+                var assignment = plan.PrimaryAssignments[index];
+                output.Append("{\"rank\":").Append(assignment.Rank);
+                output.Append(",\"playerId\":").Append(Quote(assignment.PlayerId));
+                output.Append(",\"responsibility\":")
+                    .Append(Quote(assignment.Responsibility));
+                output.Append(",\"claim\":");
+                Vector(output, assignment.Claim);
+                output.Append(",\"score\":");
+                Float(output, assignment.Score);
+                output.Append('}');
+            }
+
+            output.Append("]}");
         }
 
         private static void AppendEnvelope(

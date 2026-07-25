@@ -97,6 +97,66 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CanonicalJson_RoundTripsOptionalShadowPlansAfterRuleDecision()
+        {
+            var original = EventWithShadow(0, "Attack");
+            var json = ContractJson.SerializeV4(CreateReplay(original));
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+
+            Assert.That(json, Does.Contain(
+                "\"ruleDecision\":{\"rulesVersion\":3,\"accepted\":true,\"reasonCode\":\"None\"},\"shadow\":{"));
+            Assert.That(restored.Events[0].Shadow.Revision, Is.EqualTo(7));
+            Assert.That(restored.Events[0].Shadow.SourceSequenceNumber, Is.Zero);
+            Assert.That(restored.Events[0].Shadow.ArtifactIdentity, Is.EqualTo(HashC));
+            Assert.That(restored.Events[0].Shadow.Home.TeamSide, Is.EqualTo("Home"));
+            Assert.That(restored.Events[0].Shadow.Away.TeamSide, Is.EqualTo("Away"));
+            Assert.That(restored.Events[0].Shadow.Home.PrimaryAssignments[0].Rank, Is.EqualTo(1));
+            Assert.That(restored.Events[0].Shadow.Coverage.Decision, Is.EqualTo("Covered"));
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+        }
+
+        [Test]
+        public void Deserialize_LegacyV4EventWithoutShadowReturnsNull()
+        {
+            var json = ContractJson.SerializeV4(CreateReplay(Event(0, "Attack")));
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+
+            Assert.That(restored.Events[0].Shadow, Is.Null);
+        }
+
+        [Test]
+        public void Create_RejectsShadowWhoseArtifactDiffersFromTrajectory()
+        {
+            var baseline = Event(0, "Attack");
+            var shadow = new ReplayShadowRecordV4(
+                7,
+                0,
+                HashA,
+                TeamPlan("Home", "home"),
+                TeamPlan("Away", "away"),
+                new ReplayCoverageDecisionRecordV4("Covered", 0.75f));
+
+            Assert.That(
+                () => new MatchReplayEventV4(
+                    baseline.SequenceNumber,
+                    baseline.EventKind,
+                    baseline.ActorPlayerId,
+                    baseline.SimulationTimeSeconds,
+                    baseline.HomeScore,
+                    baseline.AwayScore,
+                    baseline.TestedEnvelope,
+                    baseline.ExecutableEnvelope,
+                    baseline.Trajectory,
+                    baseline.AbilityConsumptions,
+                    baseline.Classification,
+                    baseline.ObservedP6Geometry,
+                    baseline.RuleDecision,
+                    shadow),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("artifact"));
+        }
+
+        [Test]
         public void RecorderMapping_ExpandedContactPersistsTestedAndExecutableEnvelopes()
         {
             var derived = MatchV4TestFixture.CreateDerived();
@@ -431,6 +491,57 @@ namespace Volleyball.EditModeTests
                 Classification(kind),
                 attack ? Geometry() : null,
                 new ReplayRuleDecisionRecordV4(3, true, "None"));
+        }
+
+        private static MatchReplayEventV4 EventWithShadow(int sequence, string kind)
+        {
+            var baseline = Event(sequence, kind);
+            return new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                Shadow(sequence));
+        }
+
+        private static ReplayShadowRecordV4 Shadow(int sourceSequenceNumber)
+        {
+            return new ReplayShadowRecordV4(
+                7,
+                sourceSequenceNumber,
+                HashC,
+                TeamPlan("Home", "home"),
+                TeamPlan("Away", "away"),
+                new ReplayCoverageDecisionRecordV4("Covered", 0.75f));
+        }
+
+        private static ReplayTeamRallyPlanRecordV4 TeamPlan(
+            string teamSide,
+            string prefix)
+        {
+            var assignments = new ReplayShadowAssignmentRecordV4[6];
+            for (var index = 0; index < assignments.Length; index++)
+            {
+                assignments[index] = new ReplayShadowAssignmentRecordV4(
+                    index + 1,
+                    prefix + "-player-" + (index + 1),
+                    "Primary",
+                    new ReplayVector3RecordV4(index, 0f, index + 1),
+                    0.5f + (index * 0.01f));
+            }
+
+            return new ReplayTeamRallyPlanRecordV4(
+                teamSide,
+                assignments);
         }
 
         private static ReplayExecutionEnvelopeRecordV4 Envelope(
