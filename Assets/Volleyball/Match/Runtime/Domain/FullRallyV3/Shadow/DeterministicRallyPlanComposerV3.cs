@@ -92,14 +92,15 @@ namespace Volleyball.Match.Domain.FullRallyV3
         private static PlanCoverageDecision CoveredBranchOrDiagnostic(
             RallyPlanV3 plan, AcceptedRuleEventV3 acceptedEvent, string revision)
         {
-            var branch = plan.HomePlan.Assignments
+            var branches = plan.HomePlan.Assignments
                 .Concat(plan.AwayPlan.Assignments)
-                .Where(assignment => assignment.Condition == acceptedEvent.ActiveCondition)
+                .Where(assignment => assignment.Condition == RallyPlanConditionV3.Always
+                    || assignment.Condition == acceptedEvent.ActiveCondition)
                 .Select(assignment => (RallyPlanBranchV3?)assignment.Branch)
                 .Distinct()
                 .OrderBy(value => value)
-                .FirstOrDefault();
-            if (branch.HasValue)
+                .ToArray();
+            if (branches.Length == 1)
             {
                 return new PlanCoverageDecision(
                     PlanCoverageDecisionKind.CoveredActivateBranch,
@@ -107,7 +108,17 @@ namespace Volleyball.Match.Domain.FullRallyV3
                     acceptedEvent.CoverageReason,
                     Array.Empty<string>(),
                     0,
-                    branch);
+                    branches[0]);
+            }
+
+            if (branches.Length > 1)
+            {
+                return new PlanCoverageDecision(
+                    PlanCoverageDecisionKind.ScopedReplan,
+                    revision,
+                    acceptedEvent.CoverageReason,
+                    new[] { "condition=" + acceptedEvent.ActiveCondition, "branch=ambiguous" },
+                    2);
             }
 
             return new PlanCoverageDecision(

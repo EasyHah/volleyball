@@ -224,6 +224,51 @@ namespace Volleyball.EditModeTests
             Assert.That(coverage.ActivatedDeclaredBranch, Is.EqualTo(RallyPlanBranchV3.Contingency));
         }
 
+        [Test]
+        public void Composer_ActivatesAlwaysPrimaryBranchForAfterFirstContactOnComposedPlan()
+        {
+            var snapshot = CreateSnapshot();
+            var home = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, "artifact-1");
+            var away = DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Away, "artifact-1");
+            var plan = new RallyPlanV3(snapshot, home, away, "artifact-1", 4, 9,
+                PlanCoverageDecision.Covered("4", PlanCoverageReason.RallyOpen));
+
+            var coverage = DeterministicRallyPlanComposerV3.EvaluateCoverage(
+                plan, new AcceptedRuleEventV3(
+                    PlanCoverageReason.WithinConditionalEnvelope, RallyPlanConditionV3.AfterFirstContact));
+
+            Assert.That(coverage.Kind, Is.EqualTo(PlanCoverageDecisionKind.CoveredActivateBranch));
+            Assert.That(coverage.ActivatedDeclaredBranch, Is.EqualTo(RallyPlanBranchV3.Primary));
+        }
+
+        [Test]
+        public void Composer_ReturnsBoundedAmbiguityDiagnosticForMixedActiveBranches()
+        {
+            var snapshot = CreateSnapshot();
+            var home = new TeamRallyPlanV3(
+                TeamSide.Home,
+                ConditionalAssignments("home", RallyPlanConditionV3.AfterFirstContact, RallyPlanBranchV3.Primary),
+                Array.Empty<string>(), snapshot.Eligibility);
+            var away = new TeamRallyPlanV3(
+                TeamSide.Away,
+                ConditionalAssignments("away", RallyPlanConditionV3.AfterFirstContact, RallyPlanBranchV3.Contingency),
+                Array.Empty<string>(), snapshot.Eligibility);
+            var plan = new RallyPlanV3(snapshot, home, away, "artifact-1", 4, 9,
+                PlanCoverageDecision.Covered("4", PlanCoverageReason.RallyOpen));
+
+            var coverage = DeterministicRallyPlanComposerV3.EvaluateCoverage(
+                plan, new AcceptedRuleEventV3(
+                    PlanCoverageReason.WithinConditionalEnvelope, RallyPlanConditionV3.AfterFirstContact));
+
+            Assert.That(coverage.Kind, Is.EqualTo(PlanCoverageDecisionKind.ScopedReplan));
+            Assert.That(coverage.ActivatedDeclaredBranch, Is.Null);
+            Assert.That(coverage.ExpansionDepth, Is.LessThanOrEqualTo(2));
+            Assert.That(coverage.InvalidationSet, Is.EqualTo(new[]
+            {
+                "condition=AfterFirstContact", "branch=ambiguous"
+            }));
+        }
+
         [TestCase(PlanCoverageReason.WithinConditionalEnvelope, PlanCoverageDecisionKind.CoveredActivateBranch)]
         [TestCase(PlanCoverageReason.ResponsibleActorChanged, PlanCoverageDecisionKind.LocalRevision)]
         [TestCase(PlanCoverageReason.BallEnvelopeExceeded, PlanCoverageDecisionKind.ScopedReplan)]
