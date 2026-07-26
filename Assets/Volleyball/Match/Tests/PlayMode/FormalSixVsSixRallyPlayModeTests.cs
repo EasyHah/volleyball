@@ -53,10 +53,6 @@ namespace Volleyball.PlayModeTests
             var organization = traces.First(trace =>
                 trace.Kind ==
                 ReceiveOrganizationCommandKind.OrganizationContact);
-            var attackPreparation = traces.First(trace =>
-                trace.Kind ==
-                ReceiveOrganizationCommandKind.AttackPreparation &&
-                trace.SourceSequence == organization.SourceSequence);
             Assert.That(director.GateHAuthorityEnabled, Is.True);
             Assert.That(primary.Actor, Is.EqualTo(primary.Evidence.Plan.PrimaryReceiver));
             Assert.That(
@@ -73,9 +69,9 @@ namespace Volleyball.PlayModeTests
                 organization.Evidence.Phase,
                 Is.EqualTo(
                     ReceiveOrganizationAuthorityPhaseV3.OrganizationPlanned));
-            Assert.That(
-                attackPreparation.Actor,
-                Is.Not.EqualTo(organization.Actor));
+            Assert.That(traces.Any(trace => trace.Kind ==
+                ReceiveOrganizationCommandKind.AttackPreparation &&
+                trace.SourceSequence == organization.SourceSequence), Is.False);
             Assert.That(
                 traces.Select(trace => trace.PlanRevision),
                 Is.Ordered.Ascending);
@@ -99,6 +95,28 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.SuccessfulContacts, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.V3RuleTransitions, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.GateHLegacyWriterInvocations, Is.Zero);
+        }
+
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator FormalAttackDefense_UsesOneAuthorityWriter()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var traces = new List<AttackDefenseAuthorityReceipt>();
+            var intents = new List<GateISetIntentReceiptV3>();
+            director.AttackDefenseAuthorityCommitted += traces.Add;
+            director.GateISetIntentCommitted += intents.Add;
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while (!traces.Any(trace => trace.Kind == AttackDefenseCommandKind.AttackContact) &&
+                   Time.realtimeSinceStartup < timeout)
+                yield return null;
+            Assert.That(director.GateIAuthorityEnabled, Is.True);
+            Assert.That(director.GateILegacyWriterInvocations, Is.Zero);
+            Assert.That(intents, Has.Count.EqualTo(1));
+            Assert.That(director.AcceptedSetContactWriterCount, Is.EqualTo(1));
+            Assert.That(traces, Has.Some.Property("Kind").EqualTo(AttackDefenseCommandKind.AttackContact));
+            Assert.That(traces.Select(trace => trace.PlanRevision), Is.Ordered.Ascending);
         }
 
         [UnityTest]

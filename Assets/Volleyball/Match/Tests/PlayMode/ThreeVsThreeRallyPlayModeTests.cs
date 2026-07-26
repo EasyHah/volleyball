@@ -23,6 +23,15 @@ namespace Volleyball.PlayModeTests
     public sealed class ThreeVsThreeRallyPlayModeTests
     {
         [UnityTest]
+        public IEnumerator ThreeVsThree_RemainsOutsideGateI()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            Assert.That(director, Is.Not.Null);
+            Assert.That(director.GateIAuthorityEnabled, Is.False);
+        }
+
+        [UnityTest]
         public IEnumerator PhysicalLoop_UsesSixPlayersOneBallAndSwitchableCameras()
         {
             yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
