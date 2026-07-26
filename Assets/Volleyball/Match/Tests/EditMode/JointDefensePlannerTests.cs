@@ -42,6 +42,20 @@ namespace Volleyball.EditModeTests
             Assert.That(second, Is.EqualTo(first));
         }
 
+        [Test]
+        public void Plan_UsesStableContractPlayerIdentityWhenEquivalentPlayersArePermuted()
+        {
+            var original = Fixture.TiedDefenseRequest();
+            var permuted = Fixture.Permute(original);
+
+            var first = new JointDefensePlanner().Plan(original);
+            var second = new JointDefensePlanner().Plan(permuted);
+
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(first.Responsibilities.Single(value => value.Kind == DefenseResponsibilityKindV3.PrimaryBlock).Actor,
+                Is.EqualTo(new ContractPlayerId("orange-defense-0")));
+        }
+
         private static class Fixture
         {
             public static JointDefensePlanningRequestV3 DefenseRequest(PublicAttackThreatV3 threat)
@@ -70,6 +84,19 @@ namespace Volleyball.EditModeTests
             // The hidden route lives outside the request; this mirrors an unavailable future outcome.
             public static JointDefensePlanningRequestV3 RequestWithHiddenFinal(string hiddenFinalRoute) =>
                 DefenseRequest(LineHeavyThreat());
+
+            public static JointDefensePlanningRequestV3 TiedDefenseRequest()
+            {
+                var request = DefenseRequest(LineHeavyThreat());
+                var tiedPlayers = request.Players.Select(value => new DefensePlayerSnapshotV3(
+                    value.Id, new SimVector3(0f, 0f, .25f), 5f, .8f, value.IsFrontRow)).ToArray();
+                return new JointDefensePlanningRequestV3(request.Revision, request.DefendingSide, request.PublicThreat,
+                    tiedPlayers, request.Assignments, request.Exits);
+            }
+
+            public static JointDefensePlanningRequestV3 Permute(JointDefensePlanningRequestV3 request) =>
+                new JointDefensePlanningRequestV3(request.Revision, request.DefendingSide, request.PublicThreat,
+                    request.Players.Reverse().ToArray(), request.Assignments.Reverse().ToArray(), request.Exits);
         }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using Volleyball.AI;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
@@ -64,6 +65,22 @@ namespace Volleyball.EditModeTests
 
             Assert.That(() => new TeamRallyPlanV3(TeamSide.Home, duplicateRank, Array.Empty<string>(), snapshot.Eligibility), Throws.ArgumentException);
             Assert.That(() => new TeamRallyPlanV3(TeamSide.Home, duplicateClaim, Array.Empty<string>(), snapshot.Eligibility), Throws.ArgumentException);
+        }
+
+        [TestCase("off-court-defense", "responsibility")]
+        [TestCase("home-1", "responsibility")]
+        [TestCase("off-court-exit", "defense-exit")]
+        [TestCase("home-1", "defense-exit")]
+        [TestCase("off-court-plan-exit", "plan-exit")]
+        [TestCase("home-1", "plan-exit")]
+        public void TeamRallyPlan_RejectsDefenseResponsibilitiesAndExitsOutsideEligibleDefendingSide(
+            string invalidActor, string invalidLocation)
+        {
+            var snapshot = CreateSnapshot();
+            var attackDefense = CreateAttackDefensePlan(new PlayerId(invalidActor), invalidLocation);
+
+            Assert.That(() => new TeamRallyPlanV3(TeamSide.Home, Assignments("home", 6),
+                Array.Empty<string>(), snapshot.Eligibility, attackDefense: attackDefense), Throws.ArgumentException);
         }
 
         [Test]
@@ -299,6 +316,44 @@ namespace Volleyball.EditModeTests
             }
 
             return assignments;
+        }
+
+        private static AttackDefensePlanV3 CreateAttackDefensePlan(PlayerId invalidActor, string invalidLocation)
+        {
+            var derived = MatchV4TestFixture.CreateDerived();
+            var context = MatchV4TestFixture.CreateContext();
+            var envelope = ExecutionEnvelopeFactoryV4.Create(derived,
+                new ExecutionIntentV4("team-plan-defense", ExecutionCandidateCategoryV4.Set,
+                    new SimVector3(0f, 2f, 1f), new SimVector3(0f, 3f, 2f), .5f),
+                "team-plan-defense", ExecutionEnvelopePolicyV4.GateI);
+            var artifact = Volleyball.Presentation.PhysicalMatchRallyDirector.CreateTrajectoryPredictionProviderV4(context).Predict(
+                new BallTrajectoryPredictionRequestV4(TeamSide.Home, 1,
+                    new BallState(new SimVector3(0f, 3f, -2f), new SimVector3(0f, 4f, 1f), .12f),
+                    new BallSimulationParameters(-9.8f, .9995f), context.PhysicsConfigurationHash,
+                    "team-plan-defense", context.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                    context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                    envelope.Identity, ExecutionDegradationStepV4.FullSampling));
+            var intent = new AttackDefensePlanner().PlanSetIntent(new SetIntentPlanningRequestV3(1, 1,
+                TeamSide.Home, new PlayerId("home-1"), 1f,
+                new BallState(new SimVector3(0f, 3f, -2f), new SimVector3(0f, 4f, 1f), .12f),
+                new[] { new GateITacticalPlayerV3(new PlayerId("home-2"), TeamSide.Home,
+                    new SimVector3(0f, 2f, 1f), true, derived) }, derived, artifact));
+            var candidate = new AttackCandidateV3("attack", new PlayerId("home-2"), AttackActionClassV3.Tip,
+                new SimVector3(0f, 3f, 1f), new SimVector3(0f, 1f, 3f), 1f, 1f, false,
+                string.Empty, intent.ExecutionClassification.ExecutableEnvelope.Identity, artifact.ArtifactIdentity);
+            var responsibilities = Enumerable.Range(1, 6).Select(index => new DefenseResponsibilityV3(
+                invalidLocation == "responsibility" && index == 1 ? invalidActor : new PlayerId("away-" + index),
+                index == 1 ? DefenseResponsibilityKindV3.PrimaryBlock : DefenseResponsibilityKindV3.LineDefense,
+                "zone-" + index, RallyPlanBranchV3.Primary)).ToArray();
+            var defenseExits = new[] { new ReorganizationExitV3("defense-exit",
+                invalidLocation == "defense-exit" ? invalidActor : new PlayerId("away-1"), "cover") };
+            var planExits = new[] { new ReorganizationExitV3("plan-exit",
+                invalidLocation == "plan-exit" ? invalidActor : new PlayerId("away-1"), "cover") };
+            return new AttackDefensePlanV3(TeamSide.Home, 1, "team-plan-defense", intent,
+                new[] { candidate }, new PublicAttackThreatV3("threat", new[] {
+                    new PublicAttackThreatEntryV3(AttackActionClassV3.Tip, "zone-1", 1f, 1f) }),
+                new JointDefensePlanV3("threat", responsibilities, defenseExits, new[] { "zone-1" }, Array.Empty<string>()),
+                candidate, planExits);
         }
 
         private static PlayerResponsibilityAssignmentV3 Assignment(string playerId, int rank)

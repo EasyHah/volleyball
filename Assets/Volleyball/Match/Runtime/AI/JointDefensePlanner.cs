@@ -57,12 +57,22 @@ namespace Volleyball.AI
             var orderedThreat = request.PublicThreat.Entries.OrderByDescending(value => value.Probability)
                 .ThenBy(value => value.Zone, StringComparer.Ordinal).ThenBy(value => (int)value.ActionClass).ToArray();
             var blockZone = orderedThreat[0].Zone;
-            var blockCandidates = request.Players.Select((value, index) => new BlockCandidateSnapshot(
-                new PlayerId(request.DefendingSide == TeamSide.Home ? TeamId.Blue : TeamId.Orange, (PlayerRole)index, index),
-                value.Position, value.MovementSpeed, value.Jump, value.IsFrontRow)).ToArray();
+            // BlockUnitPlanner's legacy candidate identifier has only a numeric tie-breaker.
+            // Derive it from the real contract player identity, never request enumeration,
+            // then map the selected legacy candidates back to those stable identities.
+            var stablePlayers = request.Players.OrderBy(value => value.Id.Value, StringComparer.Ordinal).ToArray();
+            var identitiesByBlockCandidate = new Dictionary<PlayerId, ContractPlayerId>();
+            var blockCandidates = stablePlayers.Select((value, index) =>
+            {
+                var candidateId = new PlayerId(
+                    request.DefendingSide == TeamSide.Home ? TeamId.Blue : TeamId.Orange,
+                    (PlayerRole)index, index);
+                identitiesByBlockCandidate.Add(candidateId, value.Id);
+                return new BlockCandidateSnapshot(candidateId, value.Position, value.MovementSpeed, value.Jump, value.IsFrontRow);
+            }).ToArray();
             var units = BlockUnitPlanner.EvaluateUnits(blockCandidates, Intercept(blockZone), orderedThreat[0].ArrivalTime, true);
             var blockers = units.Count == 0 ? Array.Empty<BlockCandidateSnapshot>() : units[units.Count - 1].Blockers;
-            var blockerIndexes = new HashSet<int>(blockers.Select(value => value.Id.RosterSlot));
+            var blockerIds = new HashSet<ContractPlayerId>(blockers.Select(value => identitiesByBlockCandidate[value.Id]));
             var residualZones = orderedThreat.Where(value => value.Zone != blockZone).Select(value => value.Zone).Distinct(StringComparer.Ordinal).ToArray();
             var assignments = request.Assignments.OrderBy(value => value.Rank).ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal).ToArray();
             var responsibilities = new List<DefenseResponsibilityV3>(6);
@@ -71,8 +81,7 @@ namespace Volleyball.AI
             {
                 DefenseResponsibilityKindV3 kind;
                 string zone;
-                var playerIndex = request.Players.Select(value => value.Id).ToList().IndexOf(assignment.PlayerId);
-                if (blockerIndexes.Contains(playerIndex)) { kind = responsibilities.Any(value => value.Kind == DefenseResponsibilityKindV3.PrimaryBlock) ? DefenseResponsibilityKindV3.SupportingBlock : DefenseResponsibilityKindV3.PrimaryBlock; zone = blockZone; }
+                if (blockerIds.Contains(assignment.PlayerId)) { kind = responsibilities.Any(value => value.Kind == DefenseResponsibilityKindV3.PrimaryBlock) ? DefenseResponsibilityKindV3.SupportingBlock : DefenseResponsibilityKindV3.PrimaryBlock; zone = blockZone; }
                 else if (residualZones.Length > 0) { kind = residualIndex++ == 0 ? DefenseResponsibilityKindV3.CrossDefense : DefenseResponsibilityKindV3.DeepDefense; zone = residualZones[(residualIndex - 1) % residualZones.Length]; }
                 else { kind = DefenseResponsibilityKindV3.ReboundCoverage; zone = blockZone; }
                 responsibilities.Add(new DefenseResponsibilityV3(assignment.PlayerId, kind, zone, RallyPlanBranchV3.Primary));

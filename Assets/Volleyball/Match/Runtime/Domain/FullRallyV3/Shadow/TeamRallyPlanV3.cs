@@ -60,6 +60,22 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 ValidatePlanPlayer(side, candidate.Actor, eligibility);
             }
 
+            var defendingSide = side == TeamSide.Home ? TeamSide.Away : TeamSide.Home;
+            foreach (var responsibility in plan.Defense.Responsibilities)
+            {
+                ValidatePlanPlayer(defendingSide, responsibility.Actor, eligibility);
+            }
+
+            foreach (var exit in plan.Defense.ReorganizationExits)
+            {
+                ValidatePlanPlayer(defendingSide, exit.Actor, eligibility);
+            }
+
+            foreach (var exit in plan.ReorganizationExits)
+            {
+                ValidatePlanPlayer(defendingSide, exit.Actor, eligibility);
+            }
+
             return plan;
         }
 
