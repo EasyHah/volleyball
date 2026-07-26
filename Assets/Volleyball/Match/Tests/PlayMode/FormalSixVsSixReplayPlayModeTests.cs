@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using NUnit.Framework;
 using UnityEngine;
@@ -343,6 +344,55 @@ namespace Volleyball.PlayModeTests
                     replay.Events[index].Shadow.SourceSequenceNumber,
                     Is.EqualTo(captureBase + index + 1));
             }
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_UnresolvedShadowInvalidatesReplayWithoutInterruptingRally()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            var recorder = MatchReplayRecorder.Attach(director, ball, players);
+            var recordShadowPlan = typeof(MatchReplayRecorder).GetMethod(
+                "RecordShadowPlan",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var injected = false;
+            var resolvedRallies = 0;
+
+            director.ReplayShadowPlanRecorded += plan =>
+            {
+                if (injected)
+                {
+                    return;
+                }
+
+                injected = true;
+                var unresolvedPlan = new RallyPlanV3(
+                    plan.WorldSnapshot,
+                    plan.HomePlan,
+                    plan.AwayPlan,
+                    plan.ArtifactIdentity,
+                    plan.Revision,
+                    plan.SourceSequence + 100,
+                    plan.CoverageDecision);
+                recordShadowPlan.Invoke(recorder, new object[] { unresolvedPlan });
+            };
+            director.ReplayRallyResolved += _ => resolvedRallies++;
+            recorder.StartCapture();
+
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while (resolvedRallies == 0 && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(injected, Is.True, "The formal fixture did not record a shadow plan.");
+            Assert.That(resolvedRallies, Is.EqualTo(1), "Invalid capture interrupted the live rally.");
+            Assert.That(recorder.IsComplete, Is.False);
+            Assert.That(recorder.CaptureFailureReason, Does.Contain("Unmatched shadow revisions"));
+            Assert.That(() => recorder.Complete(), Throws.TypeOf<InvalidOperationException>());
         }
 
         [UnityTest]

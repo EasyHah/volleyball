@@ -24,6 +24,7 @@ namespace Volleyball.Presentation
         private bool _capturing;
 
         public bool IsComplete { get; private set; }
+        public string CaptureFailureReason { get; private set; }
 
         public static MatchReplayRecorder Attach(
             FormalSixVsSixRallyDirector director,
@@ -73,10 +74,17 @@ namespace Volleyball.Presentation
                 nameof(_director.V3RuleTransitions));
             _capturing = true;
             IsComplete = false;
+            CaptureFailureReason = null;
         }
 
         public MatchReplayV4 Complete()
         {
+            if (!string.IsNullOrEmpty(CaptureFailureReason))
+            {
+                throw new InvalidOperationException(
+                    "Replay capture is unavailable: " + CaptureFailureReason);
+            }
+
             if (!IsComplete)
             {
                 throw new InvalidOperationException(
@@ -158,9 +166,10 @@ namespace Volleyball.Presentation
                 }
                 catch (Exception exception)
                 {
-                    Debug.LogWarning(
-                        "Ignoring shadow plan that could not be converted: " +
+                    InvalidateCapture(
+                        "Shadow plan conversion failed: " +
                         exception.GetType().FullName);
+                    return;
                 }
             }
             _events.Add(CreateContactRecordV4(
@@ -250,11 +259,23 @@ namespace Volleyball.Presentation
             var unresolvedPlans = _pendingShadowPlans.Clear();
             if (unresolvedPlans > 0)
             {
-                Debug.LogWarning("Discarding unmatched shadow revisions at rally resolution.");
+                InvalidateCapture(
+                    "Unmatched shadow revisions at rally resolution: " +
+                    unresolvedPlans);
+                return;
             }
 
             _capturing = false;
             IsComplete = true;
+        }
+
+        private void InvalidateCapture(string reason)
+        {
+            _pendingShadowPlans?.Clear();
+            _capturing = false;
+            IsComplete = false;
+            CaptureFailureReason = reason;
+            Debug.LogWarning("Replay capture invalidated: " + reason);
         }
 
         private static ReplayShadowRecordV4 ToReplayShadow(

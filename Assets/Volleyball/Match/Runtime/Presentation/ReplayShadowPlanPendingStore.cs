@@ -14,6 +14,8 @@ namespace Volleyball.Presentation
         private long _lastAcceptedSourceSequence;
         private long _lastReplaySourceSequence;
 
+        public int Count => _plansBySourceSequence.Count;
+
         public ReplayShadowPlanPendingStore(long captureBaseSourceSequence = 0)
         {
             if (captureBaseSourceSequence < 0)

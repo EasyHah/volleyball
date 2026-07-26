@@ -72,14 +72,15 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void PendingStore_DiscardsUnresolvedPlansOnlyAtResolution()
+        public void PendingStore_ReportsUnresolvedPlansWithoutDiscardingThem()
         {
             var store = new ReplayShadowPlanPendingStore<string>();
             Assert.That(store.TryAdd(4, "unresolved"), Is.True);
 
-            Assert.That(store.Clear(), Is.EqualTo(1));
-            Assert.That(store.TryTakeForReplaySequence(3, out var discarded), Is.False);
-            Assert.That(discarded, Is.Null);
+            Assert.That(store.Count, Is.EqualTo(1));
+            Assert.That(store.TryTakeForReplaySequence(3, out var unresolved), Is.True);
+            Assert.That(unresolved, Is.EqualTo("unresolved"));
+            Assert.That(store.Count, Is.Zero);
         }
     }
 }
