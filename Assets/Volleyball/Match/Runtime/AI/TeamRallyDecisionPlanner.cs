@@ -692,13 +692,15 @@ namespace Volleyball.AI
             var reachability = (speed * effectiveSeconds) - distance;
             var nominalRole = NominalRole(input.Stage, player.Id.Role) * input.Weights.RolePreference;
             var approachScore = approach.HasValue
-                ? approach.Value.JumpQuality * (player.Ability.Jump + player.Ability.AttackTechnique) * input.Weights.ApproachDistance
+                ? approach.Value.JumpQuality *
+                  player.Ability.Jump *
+                  input.Weights.ApproachDistance
                 : 0f;
             var angleScore = approach.HasValue
                 ? -approach.Value.AnglePenalty * (1f - (0.5f * input.Weights.DirectionTolerance))
                 : 0f;
             var techniqueScore = input.Stage == RallyDecisionStage.Attack
-                ? player.Ability.AttackPower * player.Ability.AttackTechnique
+                ? 0f
                 : player.Ability.TechniqueFor(ToTechniqueAction(input.Stage));
             // Feasibility is selected separately, so role preference cannot rescue a negative margin.
             var total = (reachability * input.Weights.Reachability) + nominalRole + approachScore + angleScore + techniqueScore;
@@ -833,7 +835,9 @@ namespace Volleyball.AI
 
                 var role = NominalRole(RallyDecisionStage.Attack, player.Id.Role);
                 if (!provisional.HasValue || role > bestRole ||
-                    role.Equals(bestRole) && player.Ability.MaxAttackReach > provisional.Value.Ability.MaxAttackReach)
+                    role.Equals(bestRole) &&
+                    player.Ability.PlannedAttackContactHeightMeters >
+                    provisional.Value.Ability.PlannedAttackContactHeightMeters)
                 {
                     provisional = player;
                     bestRole = role;
@@ -861,7 +865,7 @@ namespace Volleyball.AI
                                   (movementSpeed <= 0f ? 0f : approach.Distance / movementSpeed);
             var jumpTiming = Clamp(availableSeconds / FullJumpPreparationSeconds, 0f, 1f);
             return AttackContactPlanner.Plan(new AttackContactInput(
-                player.Ability.MaxAttackReach,
+                player.Ability.PlannedAttackContactHeightMeters,
                 approach.JumpQuality,
                 jumpTiming,
                 SetQualityGrade.A,

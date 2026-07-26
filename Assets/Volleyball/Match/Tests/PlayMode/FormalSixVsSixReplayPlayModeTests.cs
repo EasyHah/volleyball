@@ -1,188 +1,628 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Text;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
-using Volleyball.Domain.Replay;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
+using Volleyball.Shared.Contracts;
+using Volleyball.Domain;
 
 namespace Volleyball.PlayModeTests
 {
     public sealed class FormalSixVsSixReplayPlayModeTests
     {
         [UnityTest]
-        public IEnumerator Recorder_CapturesOneFormalRally()
+        public IEnumerator Attach_BeforeInitializeV4RequiresNativeContext()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            var host = new GameObject("UninitializedFormalDirector");
+            try
+            {
+                var director = host.AddComponent<FormalSixVsSixRallyDirector>();
+
+                Assert.That(director.MatchContext, Is.Null);
+                Assert.That(
+                    () => MatchReplayRecorder.Attach(director, ball, players),
+                    Throws.TypeOf<InvalidOperationException>()
+                        .With.Message.Contains("initialized"));
+                Assert.That(host.GetComponent<MatchReplayRecorder>(), Is.Null);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(host);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Attach_AfterInitializeV4CreatesFormalOnlyRecorder()
         {
             yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
             var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
             var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
-            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+
             Assert.That(director, Is.Not.Null);
             Assert.That(ball, Is.Not.Null);
             Assert.That(players, Has.Length.EqualTo(12));
-
             var recorder = MatchReplayRecorder.Attach(director, ball, players);
+
+            Assert.That(recorder, Is.Not.Null);
+            Assert.That(recorder.IsComplete, Is.False);
+            Assert.That(
+                UnityEngine.Object.FindFirstObjectByType<MatchReplayRecorder>(),
+                Is.SameAs(recorder));
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_FirstFormalRallyProducesStrictNativeV4Replay()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "FormalIndoor6v6",
+                LoadSceneMode.Single);
+            var director =
+                UnityEngine.Object.FindFirstObjectByType<
+                    FormalSixVsSixRallyDirector>();
+            var ball =
+                UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players =
+                UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                    FindObjectsSortMode.None);
+            var recorder = MatchReplayRecorder.Attach(
+                director,
+                ball,
+                players);
             recorder.StartCapture();
 
-            var timeout = Time.realtimeSinceStartup + 30f;
-            while (!recorder.IsComplete && Time.realtimeSinceStartup < timeout)
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while (!recorder.IsComplete &&
+                   Time.realtimeSinceStartup < timeout)
             {
                 yield return null;
             }
 
-            Assert.That(recorder.IsComplete, Is.True, "The first formal rally did not resolve in real time.");
+            Assert.That(
+                recorder.IsComplete,
+                Is.True,
+                "The first formal rally did not complete.");
             var replay = recorder.Complete();
-            Assert.That(replay.Players, Has.Count.EqualTo(12));
-            Assert.That(replay.Players.Select(player => player.PlayerId).Distinct().Count(), Is.EqualTo(12));
-            Assert.That(replay.Snapshots, Has.Count.GreaterThanOrEqualTo(2));
-            Assert.That(replay.Events.First().Kind, Is.EqualTo("Serve"));
-            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Serve"));
-            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent => replayEvent.Kind == "Contact"));
-            Assert.That(replay.Events, Has.Some.Matches<MatchReplayEventV1>(replayEvent =>
-                replayEvent.SetChain != null &&
-                !string.IsNullOrWhiteSpace(replayEvent.SetChain.QualityGrade) &&
-                replayEvent.SetChain.ActualAttackContactCenter != null));
-            Assert.That(director.AttackableSetRate, Is.InRange(0f, 1f));
-            var decisions = replay.Events.Where(replayEvent => replayEvent.Kind == "Decision").ToList();
-            Assert.That(decisions, Is.Not.Empty);
-            Assert.That(decisions, Has.All.Matches<MatchReplayEventV1>(replayEvent =>
-                replayEvent.Decision.Candidates.Count == 6));
-            AssertCandidateScores(replay, decisions);
-            AssertOrganizationDiagnostics(replay, decisions);
-            AssertReplayOrdering(replay);
-            AssertRegularCadence(replay);
+            var json = ContractJson.SerializeV4(replay);
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
 
-            var resolved = replay.Events.Last(replayEvent => replayEvent.Kind == "RallyResolved");
-            var resolvedSnapshot = replay.Snapshots[resolved.SnapshotIndex];
-            Assert.That(resolved, Is.SameAs(replay.Events.Last()));
-            Assert.That(resolvedSnapshot.HomeScore + resolvedSnapshot.AwayScore,
-                Is.EqualTo(replay.InitialState.HomeScore + replay.InitialState.AwayScore + 1));
-            Assert.That(resolvedSnapshot.ServingTeam, Is.EqualTo(resolved.Team));
-            Assert.DoesNotThrow(() => replay.Validate());
-
-            var outputDirectory = Path.Combine(
-                Path.GetDirectoryName(Application.dataPath),
-                "TestResults",
-                "decision-replay",
-                Guid.NewGuid().ToString("N"));
-            MatchReplayArtifactWriter.Write(outputDirectory, replay);
-            var jsonPath = Path.Combine(outputDirectory, "replay.json");
-            var htmlPath = Path.Combine(outputDirectory, "index.html");
-            Assert.That(File.Exists(jsonPath), Is.True);
-            Assert.That(File.Exists(htmlPath), Is.True);
-            Assert.DoesNotThrow(() => MatchReplayJson.Deserialize(File.ReadAllText(jsonPath)).Validate());
-            var html = File.ReadAllText(htmlPath);
-            Assert.That(html, Does.Contain("MatchReplayV1"));
-            Assert.That(html, Does.Contain("timeline"));
-            Assert.That(html, Does.Contain("score-panel"));
-            Assert.That(html, Does.Contain("event-marker"));
-            Assert.That(html, Does.Contain("replay.json"));
-            Assert.That(html, Does.Contain("set-quality"));
+            Assert.That(
+                restored.FormatVersion,
+                Is.EqualTo(ContractVersions.ReplayV4));
+            Assert.That(
+                restored.Context.ContractVersion,
+                Is.EqualTo(ContractVersions.MatchV4));
+            Assert.That(
+                restored.Context.RulesVersion,
+                Is.EqualTo(RulesVersions.FullRallyV3));
+            AssertV4Identity(restored.Context.ContextHash, "formal context");
+            AssertV4Identity(restored.ReplayHash, "formal replay");
+            Assert.That(restored.Events, Is.Not.Empty);
+            foreach (var replayEvent in restored.Events)
+            {
+                Assert.That(replayEvent.TestedEnvelope, Is.Not.Null);
+                Assert.That(
+                    replayEvent.ExecutableEnvelope,
+                    Is.Not.Null);
+                Assert.That(replayEvent.Trajectory, Is.Not.Null);
+                Assert.That(replayEvent.AbilityConsumptions, Is.Not.Empty);
+                Assert.That(replayEvent.Classification, Is.Not.Null);
+                Assert.That(
+                    replayEvent.TestedEnvelope.Version,
+                    Is.EqualTo(ContractVersions.ReplayV4));
+                Assert.That(
+                    replayEvent.ExecutableEnvelope.Version,
+                    Is.EqualTo(ContractVersions.ReplayV4));
+                AssertV4Identity(
+                    replayEvent.TestedEnvelope.Identity,
+                    "tested execution envelope");
+                AssertV4Identity(
+                    replayEvent.ExecutableEnvelope.Identity,
+                    "executable execution envelope");
+                AssertV4Identity(
+                    replayEvent.TestedEnvelope.DerivedAttributesFingerprint,
+                    "derived V4 attributes");
+                AssertV4Identity(
+                    replayEvent.Trajectory.ArtifactIdentity,
+                    "trajectory artifact");
+                AssertV4Identity(
+                    replayEvent.Trajectory.CacheKey.Identity,
+                    "trajectory cache key");
+                Assert.That(
+                    replayEvent.Trajectory.CacheKey.BallStateVersion,
+                    Is.GreaterThanOrEqualTo(0));
+                Assert.That(replayEvent.RuleDecision.RulesVersion, Is.EqualTo(3));
+                Assert.That(replayEvent.RuleDecision.Accepted, Is.True);
+                Assert.That(replayEvent.Shadow, Is.Not.Null);
+                Assert.That(
+                    replayEvent.Shadow.SourceSequenceNumber,
+                    Is.EqualTo(replayEvent.SequenceNumber + 1));
+                Assert.That(
+                    replayEvent.Shadow.ArtifactIdentity,
+                    Is.EqualTo(replayEvent.Trajectory.ArtifactIdentity));
+                Assert.That(replayEvent.Shadow.Home.TeamSide, Is.EqualTo("Home"));
+                Assert.That(replayEvent.Shadow.Away.TeamSide, Is.EqualTo("Away"));
+                Assert.That(replayEvent.Shadow.Home.PrimaryAssignments, Has.Count.EqualTo(6));
+                Assert.That(replayEvent.Shadow.Away.PrimaryAssignments, Has.Count.EqualTo(6));
+                Assert.That(replayEvent.Shadow.Coverage.Decision, Is.EqualTo("Covered"));
+                foreach (var assignment in replayEvent.Shadow.Home.PrimaryAssignments
+                    .Concat(replayEvent.Shadow.Away.PrimaryAssignments))
+                {
+                    Assert.That(assignment.PlayerId, Is.Not.Empty);
+                    Assert.That(assignment.Task, Is.Not.Empty);
+                    Assert.That(assignment.Condition, Is.Not.Empty);
+                    Assert.That(assignment.SpatialClaim, Is.Not.Empty);
+                    Assert.That(assignment.DeclaredBranch, Is.EqualTo("Primary"));
+                    Assert.That(assignment.Value, Is.Not.NaN);
+                    Assert.That(assignment.Rank, Is.GreaterThan(0));
+                }
+                Assert.That(
+                    replayEvent.EventKind == "Attack",
+                    Is.EqualTo(replayEvent.ObservedP6Geometry != null));
+            }
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restored.ReplayHash, Is.EqualTo(replay.ReplayHash));
         }
 
-        private static void AssertCandidateScores(
-            MatchReplayV1 replay,
-            IEnumerable<MatchReplayEventV1> decisions)
+        [UnityTest]
+        public IEnumerator AcceptedFormalContact_RecordsOneReadOnlyTwelvePlayerShadowPlan()
         {
-            var abilities = replay.Players.ToDictionary(player => player.PlayerId, player => player.Ability);
-            var sawExcludedCandidate = false;
-            foreach (var decisionEvent in decisions)
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            RallyPlanV3 recordedPlan = null;
+            ContactObservation observation = default;
+            var verifiedObservation = false;
+
+            director.ReplayShadowPlanRecorded += plan =>
             {
-                Assert.That(decisionEvent.Decision.SelectedPlayerId, Is.EqualTo(decisionEvent.PlayerId));
-                Assert.That(decisionEvent.Decision.Candidates,
-                    Has.Some.Matches<MatchReplayCandidateScoreV1>(candidate =>
-                        candidate.PlayerId == decisionEvent.Decision.SelectedPlayerId && candidate.IsFeasible));
-                foreach (var candidate in decisionEvent.Decision.Candidates)
+                Assert.That(recordedPlan, Is.Null, "The first accepted contact records one revision.");
+                recordedPlan = plan;
+                observation = Observe(director, players);
+            };
+            director.ReplayContactAccepted += _ =>
+            {
+                if (recordedPlan == null || verifiedObservation)
                 {
-                    var ability = abilities[candidate.PlayerId];
-                    var expectedTechnique = decisionEvent.Decision.Action == "Attack"
-                        ? ability.Serve * ability.Attack
-                        : decisionEvent.Decision.Action == "Receive"
-                            ? ability.Receive
-                            : ability.Set;
-                    Assert.That(candidate.Technique, Is.EqualTo(expectedTechnique).Within(0.0001f));
-                    if (!candidate.IsFeasible)
-                    {
-                        sawExcludedCandidate = true;
-                        Assert.That(candidate.ExclusionReason,
-                            Is.EqualTo(candidate.Reachability >= 0f ? "ConsecutiveTouch" : "Unreachable"));
-                    }
+                    return;
+                }
+
+                Assert.That(Observe(director, players), Is.EqualTo(observation));
+                verifiedObservation = true;
+            };
+
+            var timeout = Time.realtimeSinceStartup + 30f;
+            while (!verifiedObservation && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(verifiedObservation, Is.True, "The formal fixture did not accept a contact.");
+            Assert.That(recordedPlan, Is.Not.Null);
+            Assert.That(recordedPlan.Revision, Is.EqualTo(recordedPlan.SourceSequence));
+            Assert.That(recordedPlan.WorldSnapshot.Players, Has.Count.EqualTo(12));
+            Assert.That(recordedPlan.HomePlan.Assignments, Has.Count.EqualTo(6));
+            Assert.That(recordedPlan.AwayPlan.Assignments, Has.Count.EqualTo(6));
+            Assert.That(
+                recordedPlan.HomePlan.CandidateEvidence.Single(),
+                Is.EqualTo("artifact=" + recordedPlan.ArtifactIdentity));
+            Assert.That(
+                recordedPlan.AwayPlan.CandidateEvidence.Single(),
+                Is.EqualTo("artifact=" + recordedPlan.ArtifactIdentity));
+            Assert.That(
+                recordedPlan.WorldSnapshot.LatestEvent.CoverageReason,
+                Is.EqualTo(PlanCoverageReason.WithinConditionalEnvelope));
+            Assert.That(
+                recordedPlan.CoverageDecision.ActivatedDeclaredBranch,
+                Is.EqualTo(RallyPlanBranchV3.Primary));
+            Assert.That(
+                recordedPlan.WorldSnapshot.LatestEvent.ContactGroup,
+                Is.GreaterThanOrEqualTo(0));
+            Assert.That(
+                recordedPlan.WorldSnapshot.Court.HalfLength,
+                Is.EqualTo(director.CourtHalfLength));
+        }
+
+        [UnityTest]
+        public IEnumerator ThrowingShadowObserver_DoesNotAbortAcceptedFormalContact()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var acceptedContacts = 0;
+            director.ReplayShadowPlanRecorded += _ =>
+                throw new InvalidOperationException("shadow observer failure");
+            director.ReplayContactAccepted += _ => acceptedContacts++;
+
+            var timeout = Time.realtimeSinceStartup + 30f;
+            while (acceptedContacts == 0 && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(acceptedContacts, Is.GreaterThan(0));
+            Assert.That(director.SuccessfulContacts, Is.EqualTo(acceptedContacts));
+        }
+
+        [UnityTest]
+        public IEnumerator ShadowListener_DoesNotChangeFixedSeedAcceptedContactSequence()
+        {
+            ContactSequence withoutShadow = default;
+            ContactSequence withShadow = default;
+            for (var run = 0; run < 2; run++)
+            {
+                yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+                var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+                var transitions = new List<string>();
+                if (run == 1)
+                {
+                    director.ReplayShadowPlanRecorded += _ => { };
+                }
+
+                director.ReplayContactAccepted += replayEvent =>
+                    transitions.Add(
+                        replayEvent.RuleTransition.Accepted + ":" +
+                        replayEvent.RuleTransition.RejectionReason + ":" +
+                        replayEvent.RuleTransition.After.CountedHits);
+                var timeout = Time.realtimeSinceStartup + 30f;
+                while (transitions.Count < 3 && Time.realtimeSinceStartup < timeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(transitions, Has.Count.EqualTo(3));
+                var observation = new ContactSequence(
+                    director.HomeScore,
+                    director.AwayScore,
+                    director.SuccessfulContacts,
+                    director.V3RuleTransitions,
+                    transitions.ToArray());
+                if (run == 0)
+                {
+                    withoutShadow = observation;
+                }
+                else
+                {
+                    withShadow = observation;
                 }
             }
 
-            Assert.That(sawExcludedCandidate, Is.True);
+            Assert.That(withShadow, Is.EqualTo(withoutShadow));
         }
 
-        private static void AssertOrganizationDiagnostics(
-            MatchReplayV1 replay,
-            IEnumerable<MatchReplayEventV1> decisions)
+        [UnityTest]
+        public IEnumerator Capture_StartedAfterV3TransitionBindsNextShadowWithoutInterruptingRally()
         {
-            var playerIds = replay.Players.Select(player => player.PlayerId).ToHashSet();
-            var organizationDecisions = decisions
-                .Where(replayEvent => replayEvent.Decision.Stage == "Organize")
-                .ToList();
-            Assert.That(organizationDecisions, Is.Not.Empty);
-            foreach (var decisionEvent in organizationDecisions)
-            {
-                var organization = decisionEvent.Decision.Diagnostics?.Organization;
-                Assert.That(organization, Is.Not.Null);
-                Assert.That(organization.Target, Is.Not.Null);
-                Assert.That(organization.FirstPassLanding, Is.Not.Null);
-                Assert.That(
-                    new[] { "Best", "Secondary", "Poor" },
-                    Does.Contain(organization.ZoneGrade));
-                Assert.That(playerIds.Contains(organization.SetterPlayerId), Is.True);
-                Assert.That(playerIds.Contains(organization.OrganizerPlayerId), Is.True);
-                Assert.That(
-                    new[] { "Reachable", "Unreachable", "PreviousTouch" },
-                    Does.Contain(organization.SetterArrival));
-                Assert.That(organization.SetterMovementMeters, Is.GreaterThanOrEqualTo(0f));
-            }
-        }
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            MatchReplayRecorder recorder = null;
+            var captureBase = -1;
 
-        private static void AssertReplayOrdering(MatchReplayV1 replay)
-        {
-            for (var index = 1; index < replay.Snapshots.Count; index++)
+            director.ReplayContactAccepted += _ =>
             {
-                var previous = replay.Snapshots[index - 1];
-                var current = replay.Snapshots[index];
-                Assert.That(current.SimulationTimeSeconds, Is.GreaterThanOrEqualTo(previous.SimulationTimeSeconds));
-                if (Mathf.Approximately(current.SimulationTimeSeconds, previous.SimulationTimeSeconds))
+                if (recorder != null || director.V3RuleTransitions < 1)
                 {
-                    Assert.That(current.EventSequence, Is.GreaterThan(previous.EventSequence));
+                    return;
                 }
+
+                captureBase = director.V3RuleTransitions;
+                recorder = MatchReplayRecorder.Attach(director, ball, players);
+                recorder.StartCapture();
+            };
+
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while ((recorder == null || !recorder.IsComplete) &&
+                   Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
             }
 
+            Assert.That(captureBase, Is.GreaterThanOrEqualTo(1));
+            Assert.That(recorder, Is.Not.Null);
+            Assert.That(recorder.IsComplete, Is.True, "Mid-rally capture interrupted the live rally.");
+            var replay = recorder.Complete();
+            Assert.That(replay.Events, Is.Not.Empty);
+            Assert.That(director.V3RuleTransitions, Is.GreaterThan(captureBase));
             for (var index = 0; index < replay.Events.Count; index++)
             {
-                var replayEvent = replay.Events[index];
-                Assert.That(replayEvent.SnapshotIndex, Is.InRange(0, replay.Snapshots.Count - 1));
-                Assert.That(replay.Snapshots[replayEvent.SnapshotIndex].SimulationTimeSeconds,
-                    Is.EqualTo(replayEvent.SimulationTimeSeconds).Within(0.00001f));
-                if (index > 0)
+                Assert.That(replay.Events[index].Shadow, Is.Not.Null);
+                Assert.That(
+                    replay.Events[index].Shadow.SourceSequenceNumber,
+                    Is.EqualTo(captureBase + index + 1));
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_StartedMidRallyWithoutContactInvalidatesWithoutInterruptingResolution()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            var recorder = MatchReplayRecorder.Attach(director, ball, players);
+            var resolved = 0;
+            director.ReplayRallyResolved += _ => resolved++;
+            recorder.StartCapture();
+
+            var resolveRally = typeof(PhysicalMatchRallyDirector).GetMethod(
+                "ResolveRally",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(resolveRally, Is.Not.Null);
+            Assert.DoesNotThrow(() => resolveRally.Invoke(
+                director,
+                new object[]
                 {
-                    Assert.That(replayEvent.SimulationTimeSeconds,
-                        Is.GreaterThanOrEqualTo(replay.Events[index - 1].SimulationTimeSeconds));
+                    new RallyOutcome(TeamSide.Home, true, "test zero-contact capture"),
+                    null,
+                    null,
+                    "test zero-contact capture"
+                }));
+
+            Assert.That(resolved, Is.EqualTo(1));
+            Assert.That(director.HomeScore, Is.EqualTo(1));
+            Assert.That(recorder.IsComplete, Is.False);
+            Assert.That(recorder.CaptureFailureReason, Does.Contain("at least one contact"));
+            Assert.That(() => recorder.Complete(), Throws.TypeOf<InvalidOperationException>());
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_UnresolvedShadowInvalidatesReplayWithoutInterruptingRally()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            var recorder = MatchReplayRecorder.Attach(director, ball, players);
+            var recordShadowPlan = typeof(MatchReplayRecorder).GetMethod(
+                "RecordShadowPlan",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            var injected = false;
+            var resolvedRallies = 0;
+
+            director.ReplayShadowPlanRecorded += plan =>
+            {
+                if (injected)
+                {
+                    return;
+                }
+
+                injected = true;
+                var unresolvedPlan = new RallyPlanV3(
+                    plan.WorldSnapshot,
+                    plan.HomePlan,
+                    plan.AwayPlan,
+                    plan.ArtifactIdentity,
+                    plan.Revision,
+                    plan.SourceSequence + 100,
+                    plan.CoverageDecision);
+                recordShadowPlan.Invoke(recorder, new object[] { unresolvedPlan });
+            };
+            director.ReplayRallyResolved += _ => resolvedRallies++;
+            recorder.StartCapture();
+
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while (resolvedRallies == 0 && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(injected, Is.True, "The formal fixture did not record a shadow plan.");
+            Assert.That(resolvedRallies, Is.EqualTo(1), "Invalid capture interrupted the live rally.");
+            Assert.That(recorder.IsComplete, Is.False);
+            Assert.That(recorder.CaptureFailureReason, Does.Contain("Unmatched shadow revisions"));
+            Assert.That(() => recorder.Complete(), Throws.TypeOf<InvalidOperationException>());
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_TwoIndependentFixedSeedFormalRunsAreByteStable()
+        {
+            var payloads = new byte[2][];
+            MatchReplayV4 first = null;
+            MatchReplayV4 second = null;
+            for (var run = 0; run < 2; run++)
+            {
+                yield return SceneManager.LoadSceneAsync(
+                    "FormalIndoor6v6",
+                    LoadSceneMode.Single);
+                var director =
+                    UnityEngine.Object.FindFirstObjectByType<
+                        FormalSixVsSixRallyDirector>();
+                var ball =
+                    UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+                var players =
+                    UnityEngine.Object.FindObjectsByType<
+                        PrototypePlayerAgent>(
+                        FindObjectsSortMode.None);
+                var recorder = MatchReplayRecorder.Attach(
+                    director,
+                    ball,
+                    players);
+                recorder.StartCapture();
+
+                var timeout = Time.realtimeSinceStartup + 90f;
+                while (!recorder.IsComplete &&
+                       Time.realtimeSinceStartup < timeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(
+                    recorder.IsComplete,
+                    Is.True,
+                    "Independent formal run " + run +
+                    " did not complete its first rally.");
+                var replay = recorder.Complete();
+                payloads[run] = Encoding.UTF8.GetBytes(
+                    ContractJson.SerializeV4(replay));
+                if (run == 0)
+                {
+                    first = replay;
+                }
+                else
+                {
+                    second = replay;
+                }
+            }
+
+            CollectionAssert.AreEqual(payloads[0], payloads[1]);
+            Assert.That(second.Events.Count, Is.EqualTo(first.Events.Count));
+            for (var eventIndex = 0;
+                 eventIndex < first.Events.Count;
+                 eventIndex++)
+            {
+                var left = first.Events[eventIndex];
+                var right = second.Events[eventIndex];
+                Assert.That(left.SequenceNumber, Is.EqualTo(eventIndex));
+                Assert.That(right.SequenceNumber, Is.EqualTo(eventIndex));
+                Assert.That(
+                    right.TestedEnvelope.Identity,
+                    Is.EqualTo(left.TestedEnvelope.Identity));
+                Assert.That(
+                    right.ExecutableEnvelope.Identity,
+                    Is.EqualTo(left.ExecutableEnvelope.Identity));
+                Assert.That(
+                    right.Trajectory.ArtifactIdentity,
+                    Is.EqualTo(left.Trajectory.ArtifactIdentity));
+                Assert.That(
+                    right.Trajectory.CacheKey.Identity,
+                    Is.EqualTo(left.Trajectory.CacheKey.Identity));
+                Assert.That(
+                    right.Classification.Kind,
+                    Is.EqualTo(left.Classification.Kind));
+                Assert.That(
+                    right.AbilityConsumptions.Count,
+                    Is.EqualTo(left.AbilityConsumptions.Count));
+                for (var consumptionIndex = 0;
+                     consumptionIndex <
+                     left.AbilityConsumptions.Count;
+                     consumptionIndex++)
+                {
+                    var leftConsumption =
+                        left.AbilityConsumptions[consumptionIndex];
+                    var rightConsumption =
+                        right.AbilityConsumptions[consumptionIndex];
+                    Assert.That(
+                        rightConsumption.AttributeName,
+                        Is.EqualTo(leftConsumption.AttributeName));
+                    Assert.That(
+                        rightConsumption.Value,
+                        Is.EqualTo(leftConsumption.Value));
+                    Assert.That(
+                        rightConsumption.EvidenceKind,
+                        Is.EqualTo("ExecutionEnvelopeFactoryRead"));
                 }
             }
         }
 
-        private static void AssertRegularCadence(MatchReplayV1 replay)
+        private static void AssertV4Identity(string value, string subject)
         {
-            var eventSnapshots = new HashSet<int>(replay.Events.Select(replayEvent => replayEvent.SnapshotIndex));
-            var regularSnapshots = replay.Snapshots
-                .Where((snapshot, index) => !eventSnapshots.Contains(index))
-                .ToList();
-            Assert.That(regularSnapshots, Has.Count.GreaterThanOrEqualTo(2));
-            for (var index = 1; index < regularSnapshots.Count; index++)
+            Assert.That(value, Is.Not.Null.And.Length.EqualTo(64), subject);
+        }
+
+        private static ContactObservation Observe(
+            FormalSixVsSixRallyDirector director,
+            IEnumerable<PrototypePlayerAgent> players)
+        {
+            return new ContactObservation(
+                director.HomeScore,
+                director.AwayScore,
+                director.SuccessfulContacts,
+                players.OrderBy(player => player.StableId.Value)
+                    .Select(player => player.ReplayScheduledAction + ":" +
+                                      player.ScheduledMovementTarget)
+                    .ToArray());
+        }
+
+        private readonly struct ContactObservation : IEquatable<ContactObservation>
+        {
+            private readonly int _homeScore;
+            private readonly int _awayScore;
+            private readonly int _contacts;
+            private readonly string[] _players;
+
+            public ContactObservation(int homeScore, int awayScore, int contacts, string[] players)
             {
-                Assert.That(
-                    regularSnapshots[index].SimulationTimeSeconds - regularSnapshots[index - 1].SimulationTimeSeconds,
-                    Is.EqualTo(MatchReplayV1.SampleIntervalSeconds).Within(0.00001f));
+                _homeScore = homeScore;
+                _awayScore = awayScore;
+                _contacts = contacts;
+                _players = players;
+            }
+
+            public bool Equals(ContactObservation other)
+            {
+                return _homeScore == other._homeScore &&
+                       _awayScore == other._awayScore &&
+                       _contacts == other._contacts &&
+                       _players.SequenceEqual(other._players);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is ContactObservation other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return _contacts;
+            }
+        }
+
+        private readonly struct ContactSequence : IEquatable<ContactSequence>
+        {
+            private readonly int _homeScore;
+            private readonly int _awayScore;
+            private readonly int _contacts;
+            private readonly int _transitions;
+            private readonly string[] _acceptedSequence;
+
+            public ContactSequence(
+                int homeScore,
+                int awayScore,
+                int contacts,
+                int transitions,
+                string[] acceptedSequence)
+            {
+                _homeScore = homeScore;
+                _awayScore = awayScore;
+                _contacts = contacts;
+                _transitions = transitions;
+                _acceptedSequence = acceptedSequence;
+            }
+
+            public bool Equals(ContactSequence other)
+            {
+                return _homeScore == other._homeScore &&
+                       _awayScore == other._awayScore &&
+                       _contacts == other._contacts &&
+                       _transitions == other._transitions &&
+                       _acceptedSequence.SequenceEqual(other._acceptedSequence);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is ContactSequence other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                return _contacts;
             }
         }
     }

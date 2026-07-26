@@ -36,7 +36,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             string planRevision,
             PlanCoverageReason reason,
             IReadOnlyList<string> invalidationSet,
-            int expansionDepth)
+            int expansionDepth,
+            RallyPlanBranchV3? activatedDeclaredBranch = null)
         {
             if (expansionDepth < 0)
             {
@@ -48,6 +49,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
             Reason = reason;
             InvalidationSet = new ReadOnlyCollection<string>(CopyInvalidationSet(invalidationSet));
             ExpansionDepth = expansionDepth;
+            ActivatedDeclaredBranch = activatedDeclaredBranch;
         }
 
         public PlanCoverageDecisionKind Kind { get; }
@@ -60,6 +62,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
 
         public int ExpansionDepth { get; }
 
+        public RallyPlanBranchV3? ActivatedDeclaredBranch { get; }
+
         public static PlanCoverageDecision Covered(string planRevision, PlanCoverageReason reason)
         {
             return new PlanCoverageDecision(
@@ -67,7 +71,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 planRevision,
                 reason,
                 Array.Empty<string>(),
-                0);
+                0,
+                null);
         }
 
         public bool Equals(PlanCoverageDecision other)
@@ -77,6 +82,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 || PlanRevision != other.PlanRevision
                 || Reason != other.Reason
                 || ExpansionDepth != other.ExpansionDepth
+                || ActivatedDeclaredBranch != other.ActivatedDeclaredBranch
                 || InvalidationSet.Count != other.InvalidationSet.Count)
             {
                 return false;
@@ -111,6 +117,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 }
 
                 hashCode = (hashCode * 397) ^ ExpansionDepth;
+                hashCode = (hashCode * 397) ^ (ActivatedDeclaredBranch.HasValue ? (int)ActivatedDeclaredBranch.Value + 1 : 0);
                 return hashCode;
             }
         }

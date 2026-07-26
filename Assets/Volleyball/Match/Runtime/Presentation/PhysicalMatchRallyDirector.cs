@@ -8,11 +8,9 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
-using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
-using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
-using MatchContextV3 = Volleyball.Shared.Contracts.MatchContextV3;
-using MatchResultV1 = Volleyball.Shared.Contracts.MatchResultV1;
-using MatchResultV2 = Volleyball.Shared.Contracts.MatchResultV2;
+using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
+using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
@@ -131,29 +129,41 @@ namespace Volleyball.Presentation
             TeamId team,
             StablePlayerId? playerId,
             TechniqueAction action,
-            ReplaySetChainEvent setChain = null)
+            ReplaySetChainEvent setChain = null,
+            AttackGeometryFactV3 observedAttackGeometry = null,
+            RuleTransitionV3 ruleTransition = null,
+            ExecutionSampleClassificationV4 executionClassification = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
             Action = action;
             SetChain = setChain;
+            ObservedAttackGeometry = observedAttackGeometry;
+            RuleTransition = ruleTransition;
+            ExecutionClassification = executionClassification;
+            TrajectoryArtifact = trajectoryArtifact;
         }
 
         public TechniqueAction Action { get; }
         public ReplaySetChainEvent SetChain { get; }
+        public AttackGeometryFactV3 ObservedAttackGeometry { get; }
+        public RuleTransitionV3 RuleTransition { get; }
+        public ExecutionSampleClassificationV4 ExecutionClassification { get; }
+        public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
     }
 
     public sealed class ReplaySetChainEvent
     {
         public ReplaySetChainEvent(
             SimVector3 plannedAttackContactCenter,
-            SimVector3 actualAttackContactCenter,
+            SimVector3 replannedAttackContactCenter,
             SetQualityGrade qualityGrade,
             AttackContactOutcome replanOutcome,
             AttackResponsibility primaryResponsibility,
             string reason)
         {
             PlannedAttackContactCenter = plannedAttackContactCenter;
-            ActualAttackContactCenter = actualAttackContactCenter;
+            ReplannedAttackContactCenter = replannedAttackContactCenter;
             QualityGrade = qualityGrade;
             ReplanOutcome = replanOutcome;
             PrimaryResponsibility = primaryResponsibility;
@@ -161,7 +171,7 @@ namespace Volleyball.Presentation
         }
 
         public SimVector3 PlannedAttackContactCenter { get; }
-        public SimVector3 ActualAttackContactCenter { get; }
+        public SimVector3 ReplannedAttackContactCenter { get; }
         public SetQualityGrade QualityGrade { get; }
         public AttackContactOutcome ReplanOutcome { get; }
         public AttackResponsibility PrimaryResponsibility { get; }
@@ -212,7 +222,7 @@ namespace Volleyball.Presentation
         private BlockImpactFeedback _blockImpactFeedback;
         private AiDecisionTimeController _aiDecisionTimeController;
         private PhysicalRallyTactics _currentTactics;
-        private MatchSet _set;
+        private IMatchSetRuntime _set;
         private RallyTouchState _touchState;
         private TeamRallyDecision _scheduledDecision;
         private TeamRallyDecision _plannedAttackDecision;
@@ -232,7 +242,7 @@ namespace Volleyball.Presentation
         private SetQualityAssessment? _lastSetQualityAssessment;
         private SimVector3? _scheduledGeometricSetTarget;
         private SimVector3? _lastPlannedAttackContactCenter;
-        private SimVector3? _lastActualAttackContactCenter;
+        private SimVector3? _lastReplannedAttackContactCenter;
         private AttackOutcome _lastSetReplanOutcome;
         private AttackResponsibility _lastAttackResponsibility;
         private PlayerId? _lastSetAttackActor;
@@ -249,7 +259,14 @@ namespace Volleyball.Presentation
         private int _aiRequestSequence;
         private int _contactGroupSequence = 3000;
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
-        private MatchContextV3 _v3Context;
+        private MatchContextV4 _matchContext;
+        private MatchSet _formalSet;
+        private ExecutionEnvelopeV4 _lastPlannedExecutionEnvelopeV4;
+        private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
+        private BallTrajectoryPredictionProviderV4 _trajectoryPredictionProviderV4;
+        private BallTrajectoryPredictionArtifactV4 _lastTrajectoryPredictionArtifactV4;
+        private BallTrajectoryPredictionArtifactV4
+            _plannedAttackTrajectoryArtifactV4;
         private PendingV3AuthorityContact _pendingV3AuthorityContact;
         private StablePlayerId? _lastAcceptedV3Actor;
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
@@ -272,6 +289,10 @@ namespace Volleyball.Presentation
         public int V3RuleUnexpectedMismatches { get; private set; }
 
         public string LastV3RuleDiagnostic { get; private set; } = string.Empty;
+
+        public int ShadowPlanRecordingFailures { get; private set; }
+
+        public string LastShadowPlanRecordingDiagnostic { get; private set; } = string.Empty;
 
         public int MissedRallies { get; private set; }
 
@@ -393,7 +414,7 @@ namespace Volleyball.Presentation
 
         public SimVector3? LastPlannedAttackContactCenter => _lastPlannedAttackContactCenter;
 
-        public SimVector3? LastActualAttackContactCenter => _lastActualAttackContactCenter;
+        public SimVector3? LastReplannedAttackContactCenter => _lastReplannedAttackContactCenter;
 
         public AttackOutcome LastSetReplanOutcome => _lastSetReplanOutcome;
 
@@ -428,11 +449,17 @@ namespace Volleyball.Presentation
 
         public bool IsLoopRunning => _rallyActive && !_restartScheduled;
 
-        public MatchResultV1 Result { get; private set; }
+        public MatchResultV4 Result { get; private set; }
 
-        public MatchResultV2 ResultV2 { get; private set; }
+        private bool HasResult => Result != null || HasPrototypeResult;
 
-        private bool HasResult => Result != null || ResultV2 != null;
+        protected virtual bool HasPrototypeResult => false;
+
+        protected virtual void CompletePrototypeMatch()
+        {
+            throw new InvalidOperationException(
+                "Only an explicitly isolated prototype director may complete a prototype match.");
+        }
 
         public int PlayerCount => _players.Count;
 
@@ -464,6 +491,8 @@ namespace Volleyball.Presentation
 
         public event Action<ReplayContactEvent> ReplayContactAccepted;
 
+        public event Action<RallyPlanV3> ReplayShadowPlanRecorded;
+
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
 
         public event Action<ReplaySimpleEvent> ReplayNetCrossed;
@@ -476,9 +505,92 @@ namespace Volleyball.Presentation
 
         public int AwayRotationOffset => _set == null ? 0 : _set.RotationOffsetFor(TeamSide.Away);
 
-        public MatchContextV1 MatchContext => _set?.Context;
+        public MatchContextV4 MatchContext => _matchContext;
 
-        public MatchContextV2 MatchContextV2 => _set?.ContextV2;
+        public ExecutionEnvelopeV4 LastPlannedExecutionEnvelopeV4 =>
+            _lastPlannedExecutionEnvelopeV4;
+
+        public ExecutionSampleClassificationV4 LastExecutionSampleClassificationV4 =>
+            _lastExecutionSampleClassificationV4;
+
+        public BallTrajectoryPredictionArtifactV4 LastTrajectoryPredictionArtifactV4 =>
+            _lastTrajectoryPredictionArtifactV4;
+
+        public static BallTrajectoryPredictionProviderV4
+            CreateTrajectoryPredictionProviderV4(MatchContextV4 context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            var runtimePhysicsHash =
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                    SimulationParameters);
+            if (!string.Equals(
+                    context.PhysicsConfigurationHash,
+                    runtimePhysicsHash,
+                    StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "MatchContextV4 PhysicsConfigurationHash does not match the formal runtime physics.",
+                    nameof(context));
+            }
+
+            return new BallTrajectoryPredictionProviderV4(
+                context.TrajectoryPredictionProviderConfiguration);
+        }
+
+        public static BallTrajectoryPredictionArtifactV4
+            PredictSharedGate5TrajectoryV4(
+                BallTrajectoryPredictionProviderV4 provider,
+                BallTrajectoryPredictionRequestV4 request,
+                ExecutionEnvelopePolicyV4 policy)
+        {
+            if (provider == null)
+            {
+                throw new ArgumentNullException(nameof(provider));
+            }
+
+            if (request == null)
+            {
+                throw new ArgumentNullException(nameof(request));
+            }
+
+            if (policy == null)
+            {
+                throw new ArgumentNullException(nameof(policy));
+            }
+
+            return provider.PredictWithDegradation(
+                request,
+                policy.DegradationLadder);
+        }
+
+        public static ExecutionEnvelopeV4 PlanExecutionEnvelopeV4(
+            Volleyball.Shared.Contracts.DerivedMatchAttributesV4 derivedAttributes,
+            ExecutionIntentV4 selectedIntent,
+            string samplingKey,
+            ExecutionEnvelopePolicyV4 policy)
+        {
+            return ExecutionEnvelopeFactoryV4.Create(
+                derivedAttributes,
+                selectedIntent,
+                samplingKey,
+                policy);
+        }
+
+        public static ExecutionSampleClassificationV4 ExecuteExecutionSampleV4(
+            ExecutionEnvelopeV4 plannedEnvelope,
+            ExecutionSampleV4 sample)
+        {
+            if (plannedEnvelope == null)
+            {
+                throw new ArgumentNullException(nameof(plannedEnvelope));
+            }
+
+            return plannedEnvelope.Classify(sample);
+        }
 
         public bool IsFrontRow(PlayerId player)
         {
@@ -490,49 +602,43 @@ namespace Volleyball.Presentation
             return _set == null ? 0 : _set.RotationPositionFor(StableId(player));
         }
 
-        public void Initialize(
+        public void InitializeV4(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
-            MatchContextV1 context,
+            MatchContextV4 context,
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
             PhysicalMatchConfiguration configuration = null,
             TeamSide firstServingSide = TeamSide.Home)
         {
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
+            if (matchContext.RulesVersion != RulesVersions.FullRallyV3)
+            {
+                throw new ArgumentException(
+                    "Formal match runtime requires the independently versioned V3 rules.",
+                    nameof(context));
+            }
+
+            _matchContext = matchContext;
             InitializeCore(
                 ball,
                 agents,
                 scoreDisplay,
                 tacticalWeightSource,
-                configuration,
+                configuration ?? PhysicalMatchConfiguration.FormalIndoorSixVsSix,
                 matchContext.Home.Players.Count,
                 matchContext.Away.Players.Count,
-                () => new MatchSet(matchContext, firstServingSide, _configuration.SetRules));
+                () =>
+                {
+                    _formalSet = new MatchSet(
+                        matchContext,
+                        firstServingSide,
+                        _configuration.SetRules);
+                    return _formalSet;
+                });
         }
 
-        public void InitializeV2(
-            SimulatedBall ball,
-            IEnumerable<PrototypePlayerAgent> agents,
-            MatchContextV2 context,
-            ScoreDisplay scoreDisplay,
-            IRallyTacticalWeightSource tacticalWeightSource = null,
-            PhysicalMatchConfiguration configuration = null,
-            TeamSide firstServingSide = TeamSide.Home)
-        {
-            var matchContext = context ?? throw new ArgumentNullException(nameof(context));
-            InitializeCore(
-                ball,
-                agents,
-                scoreDisplay,
-                tacticalWeightSource,
-                configuration,
-                matchContext.Home.Players.Count,
-                matchContext.Away.Players.Count,
-                () => new MatchSet(matchContext, firstServingSide, _configuration.SetRules));
-        }
-
-        private void InitializeCore(
+        protected void InitializeCore(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
             ScoreDisplay scoreDisplay,
@@ -540,7 +646,7 @@ namespace Volleyball.Presentation
             PhysicalMatchConfiguration configuration,
             int homeRosterSize,
             int awayRosterSize,
-            Func<MatchSet> createSet)
+            Func<IMatchSetRuntime> createSet)
         {
             _configuration = configuration ?? PhysicalMatchConfiguration.ThreeVsThree;
             _ball = ball != null ? ball : throw new ArgumentNullException(nameof(ball));
@@ -623,7 +729,7 @@ namespace Volleyball.Presentation
                 minimumSimulationWindowSeconds);
         }
 
-        public void ConfigureV3Rules(MatchContextV3 context, V3RulesMode mode)
+        public void ConfigureV3Rules(V3RulesMode mode)
         {
             if (_set == null)
             {
@@ -644,7 +750,6 @@ namespace Volleyball.Presentation
             if (mode == V3RulesMode.Disabled)
             {
                 _v3RulesAdapter = null;
-                _v3Context = null;
                 _pendingV3AuthorityContact = null;
                 if (_ball != null)
                 {
@@ -655,32 +760,25 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            if (_configuration.RosterSize != 6 || _set.ContextV2 == null)
+            if (_configuration.RosterSize != 6 || _matchContext == null)
             {
                 throw new InvalidOperationException(
-                    "V3 rules can only be configured for a V2 formal six-player match.");
+                    "V3 rules can only be configured for a V4 formal six-player match.");
             }
 
-            var upgradedContext = context ?? throw new ArgumentNullException(nameof(context));
-            var expectedContext = MatchContextV3.UpgradeFromV2(_set.ContextV2);
-            if (!string.Equals(
-                    upgradedContext.ContextHash,
-                    expectedContext.ContextHash,
-                    StringComparison.Ordinal))
+            if (_matchContext.RulesVersion != RulesVersions.FullRallyV3)
             {
-                throw new ArgumentException(
-                    "The V3 context must be the explicit upgrade of the initialized V2 match.",
-                    nameof(context));
+                throw new InvalidOperationException(
+                    "The formal V4 context must select V3 rules.");
             }
 
-            var eligibility = CreateV3Eligibility(upgradedContext);
+            var eligibility = CreateV3Eligibility(_matchContext);
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                upgradedContext,
+                _matchContext.RulesVersion,
                 eligibility,
                 _set.ServingSide,
                 mode);
             _v3RulesAdapter = adapter;
-            _v3Context = upgradedContext;
             V3RulesMode = mode;
             _pendingV3AuthorityContact = null;
             if (_ball != null)
@@ -699,6 +797,8 @@ namespace Volleyball.Presentation
             V3RuleIntentionalCorrections = 0;
             V3RuleUnexpectedMismatches = 0;
             LastV3RuleDiagnostic = string.Empty;
+            ShadowPlanRecordingFailures = 0;
+            LastShadowPlanRecordingDiagnostic = string.Empty;
             _lastAcceptedV3Actor = null;
             _lastAcceptedV3Classification = null;
         }
@@ -817,6 +917,13 @@ namespace Volleyball.Presentation
             _rallyActive = false;
             yield return new WaitForSeconds(delay);
 
+            if (_matchContext != null)
+            {
+                _trajectoryPredictionProviderV4 =
+                    CreateTrajectoryPredictionProviderV4(_matchContext);
+                _lastTrajectoryPredictionArtifactV4 = null;
+            }
+
             foreach (var pair in _players)
             {
                 pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
@@ -827,7 +934,7 @@ namespace Volleyball.Presentation
             if (_v3RulesAdapter != null)
             {
                 _v3RulesAdapter.BeginRally(
-                    CreateV3Eligibility(_v3Context),
+                    CreateV3Eligibility(_matchContext),
                     _set.ServingSide);
                 _pendingV3AuthorityContact = null;
                 _lastAcceptedV3Actor = null;
@@ -835,6 +942,7 @@ namespace Volleyball.Presentation
             }
             _scheduledDecision = null;
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
             _scheduledBlockPrimary = null;
@@ -898,6 +1006,7 @@ namespace Volleyball.Presentation
             DisablePhysicalBlockWindows();
             _touchState.BeginPossession(team);
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _controlledHandlingActive = false;
             _activeSetChain = false;
             BeginPossessionDecision(team, availableSeconds);
@@ -1021,7 +1130,10 @@ namespace Volleyball.Presentation
                 team,
                 stage,
                 Mathf.Max(0.10f, availableSeconds),
-                PredictBallCenter(Mathf.Max(0.10f, availableSeconds)));
+                PredictGate5BallCenterV4(
+                    team,
+                    stage,
+                    Mathf.Max(0.10f, availableSeconds)));
         }
 
         private TeamRallyDecision PlanDecisionAt(
@@ -1171,8 +1283,12 @@ namespace Volleyball.Presentation
                 : SetterOrganizationZoneGrade.Secondary;
         }
 
-        private void ScheduleDecision(TeamRallyDecision decision, float flightSeconds)
+        private void ScheduleDecision(
+            TeamRallyDecision decision,
+            float flightSeconds,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
+            trajectoryArtifact ??= _lastTrajectoryPredictionArtifactV4;
             _scheduledDecision = decision;
             _scheduledPrimaryActor = null;
             _contactDeadlineActive = false;
@@ -1200,6 +1316,7 @@ namespace Volleyball.Presentation
                     decision.BallTarget,
                     _touchState.CountedTeamTouches + 1,
                     decision.Actor);
+                _plannedAttackTrajectoryArtifactV4 = trajectoryArtifact;
                 if (_plannedAttackDecision.HasDecision)
                 {
                     Debug.Log(
@@ -1292,6 +1409,23 @@ namespace Volleyball.Presentation
                     SimulatedBall.DefaultFixedStep,
                     SimulationParameters).InitialVelocity;
             }
+            var executionCandidateCategory = ToExecutionCandidateCategoryV4(decision.Action);
+            var executionIntentIdentity =
+                $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
+                $"{_tacticRevision}:{_decisionIndex}:{SuccessfulContacts}:{(int)decision.Actor.Team}:" +
+                $"{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}:{(int)decision.Action}";
+            var executionSamplingKey = executionIntentIdentity + ":sample";
+            var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
+                actor.Ability.Derived,
+                new ExecutionIntentV4(
+                    executionIntentIdentity,
+                    executionCandidateCategory,
+                    outgoingTarget,
+                    outgoing,
+                    requestedEffort: 0.6f),
+                executionSamplingKey,
+                ExecutionEnvelopePolicyV4.Default);
+            _lastPlannedExecutionEnvelopeV4 = plannedExecutionEnvelope;
             var execution = _forceInSystemReceiveExecution &&
                             decision.Action == TechniqueAction.Receive
                 ? InSystemReceiveExecution()
@@ -1304,6 +1438,23 @@ namespace Volleyball.Presentation
                     7351,
                     0.72f);
             ExecutionErrorApplications++;
+            var executionSample = new ExecutionSampleV4(
+                plannedExecutionEnvelope.Identity,
+                executionSamplingKey,
+                executionCandidateCategory,
+                outgoingTarget + execution.ContactPositionError,
+                (outgoing * execution.SurfaceSpeedScale) + execution.TargetVelocityError,
+                effort: plannedExecutionEnvelope.RequestedEffort);
+            _lastExecutionSampleClassificationV4 = ExecuteExecutionSampleV4(
+                plannedExecutionEnvelope,
+                executionSample);
+            if (_lastExecutionSampleClassificationV4.Kind ==
+                    ExecutionSampleClassificationKindV4.UnexpectedExecutionSample ||
+                _lastExecutionSampleClassificationV4.Kind ==
+                    ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                return;
+            }
 
             _expectedContactTime = _ball.SimulationTime + flightSeconds;
             if (decision.Action == TechniqueAction.Receive)
@@ -1352,7 +1503,7 @@ namespace Volleyball.Presentation
             actor.ScheduleContact(
                 decision.Action,
                 _expectedContactTime,
-                outgoing,
+                _lastExecutionSampleClassificationV4,
                 execution,
                 NextContactGroup(),
                 authoritativeContactCenter,
@@ -1362,7 +1513,8 @@ namespace Volleyball.Presentation
                 attackContactPlan: decision.AttackContactPlan,
                 normalSetRoute: decision.Action == TechniqueAction.Set
                     ? TacticFor(decision.Actor.Team).SetRoute
-                    : (SetRoute?)null);
+                    : (SetRoute?)null,
+                trajectoryArtifact: trajectoryArtifact);
             _scheduledPrimaryActor = decision.Actor;
             MovementAssignments++;
             TotalMovementShortfall += actor.MovementShortfall;
@@ -1444,6 +1596,26 @@ namespace Volleyball.Presentation
                 TechniqueControlPolicy.MaximumControlFor(TechniqueAction.Receive));
         }
 
+        private static ExecutionCandidateCategoryV4 ToExecutionCandidateCategoryV4(
+            TechniqueAction action)
+        {
+            switch (action)
+            {
+                case TechniqueAction.Receive:
+                    return ExecutionCandidateCategoryV4.Receive;
+                case TechniqueAction.Set:
+                    return ExecutionCandidateCategoryV4.Set;
+                case TechniqueAction.Attack:
+                    return ExecutionCandidateCategoryV4.Attack;
+                case TechniqueAction.Block:
+                    return ExecutionCandidateCategoryV4.Block;
+                case TechniqueAction.Serve:
+                    return ExecutionCandidateCategoryV4.Serve;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(action), action, null);
+            }
+        }
+
         private void PrepareAttackerForReceive(
             TeamRallyDecision receiveDecision,
             float receiveArrivalSeconds)
@@ -1492,11 +1664,25 @@ namespace Volleyball.Presentation
 
             if (V3RulesMode == V3RulesMode.Authority)
             {
-                return ToBallContactResolution(_v3RulesAdapter.EvaluateContact(
-                    StableId(candidate.Actor.Value),
-                    ToSide(candidate.Actor.Value.Team),
-                    ToV3Classification(candidate.Action),
-                    hit.ContactGroupId));
+                var stableActor = StableId(candidate.Actor.Value);
+                var side = ToSide(candidate.Actor.Value.Team);
+                var classification = ToV3Classification(candidate.Action);
+                var transition = candidate.Action == TechniqueAction.Attack
+                    ? _v3RulesAdapter.EvaluateContact(
+                        stableActor,
+                        side,
+                        classification,
+                        hit.ContactGroupId,
+                        CreateObservedAttackGeometry(
+                            candidate,
+                            hit,
+                            contactSimulationTime))
+                    : _v3RulesAdapter.EvaluateContact(
+                        stableActor,
+                        side,
+                        classification,
+                        hit.ContactGroupId);
+                return ToBallContactResolution(transition);
             }
 
             var evaluation = _touchState.Evaluate(
@@ -1529,11 +1715,25 @@ namespace Volleyball.Presentation
             var actor = candidate.Actor.Value;
             var stableActor = StableId(actor);
             var classification = ToV3Classification(candidate.Action);
-            var transition = _v3RulesAdapter.CommitContact(
-                stableActor,
-                ToSide(actor.Team),
-                classification,
-                hit.ContactGroupId);
+            var side = ToSide(actor.Team);
+            var observedAttackGeometry = candidate.Action == TechniqueAction.Attack
+                ? CreateObservedAttackGeometry(
+                    candidate,
+                    hit,
+                    contactSimulationTime)
+                : null;
+            var transition = observedAttackGeometry != null
+                ? _v3RulesAdapter.CommitContact(
+                    stableActor,
+                    side,
+                    classification,
+                    hit.ContactGroupId,
+                    observedAttackGeometry)
+                : _v3RulesAdapter.CommitContact(
+                    stableActor,
+                    side,
+                    classification,
+                    hit.ContactGroupId);
             var resolution = ToBallContactResolution(transition);
             if (!transition.Accepted)
             {
@@ -1568,11 +1768,75 @@ namespace Volleyball.Presentation
                 hit.ContactGroupId,
                 contactSimulationTime,
                 transition,
+                observedAttackGeometry,
                 legacyEvaluation,
                 legacyOutcome,
                 scenario,
                 diagnosticExceptionType);
             return resolution;
+        }
+
+        private AttackGeometryFactV3 CreateObservedAttackGeometry(
+            BallContactCandidate candidate,
+            SweptBallHit hit,
+            float contactSimulationTime)
+        {
+            if (candidate.Action != TechniqueAction.Attack || !candidate.Actor.HasValue)
+            {
+                throw new ArgumentException(
+                    "Observed attack geometry requires an attack candidate with an actor.",
+                    nameof(candidate));
+            }
+
+            var actor = candidate.Actor.Value;
+            if (!_players[actor].TryGetObservedAttackTakeoff(out var takeoff))
+            {
+                throw new InvalidOperationException(
+                    "The attack contact source did not capture an observed takeoff.");
+            }
+
+            return CreateObservedAttackGeometryFact(
+                StableId(actor),
+                ToSide(actor.Team),
+                takeoff,
+                hit,
+                contactSimulationTime);
+        }
+
+        private static AttackGeometryFactV3 CreateObservedAttackGeometryFact(
+            Volleyball.Shared.Contracts.PlayerId actor,
+            TeamSide side,
+            ObservedAttackTakeoff takeoff,
+            SweptBallHit hit,
+            float contactSimulationTime)
+        {
+            if (!hit.ContactPoint.IsFinite || !hit.ImpactCenter.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(hit),
+                    "Observed player and ball contact points must be finite.");
+            }
+            if (float.IsNaN(contactSimulationTime) ||
+                float.IsInfinity(contactSimulationTime))
+            {
+                throw new ArgumentOutOfRangeException(nameof(contactSimulationTime));
+            }
+            if (takeoff.SimulationTime >= contactSimulationTime)
+            {
+                throw new InvalidOperationException(
+                    "Observed attack takeoff must occur before physical contact.");
+            }
+
+            // ContactPoint is the actual shared player/ball collision point.
+            // ImpactCenter is also validated so malformed ball geometry cannot
+            // enter the observed authority boundary.
+            return new AttackGeometryFactV3(
+                actor,
+                side,
+                takeoff.Point,
+                hit.ContactPoint,
+                attackLineDistanceFromCenter: 3f,
+                netHeight: CourtBuilder.NetHeight);
         }
 
         private static BallContactResolution ToBallContactResolution(RuleTransitionV3 transition)
@@ -1695,6 +1959,10 @@ namespace Volleyball.Presentation
                 $"touches={_touchState.CountedTeamTouches} quality={contact.Hit.Centeredness:0.00} " +
                 $"speed={contact.TechniqueResponse.FinalOutgoing.Magnitude:0.0}");
             _pendingReplaySetChain = null;
+            var acceptedExecutionClassification =
+                actor.ScheduledExecutionClassificationV4;
+            var acceptedTrajectoryArtifact =
+                actor.ScheduledTrajectoryPredictionArtifactV4;
 
             switch (contact.Candidate.Action)
             {
@@ -1719,15 +1987,24 @@ namespace Volleyball.Presentation
                         ? _scheduledSetFlightSeconds
                         : SetFlightSolver.PreferredFlightSeconds(TacticFor(actorId.Team).SetRhythm);
                     var attackDecision = _plannedAttackDecision;
+                    var attackTrajectoryArtifact =
+                        _plannedAttackTrajectoryArtifactV4;
                     _plannedAttackDecision = null;
+                    _plannedAttackTrajectoryArtifactV4 = null;
                     if (attackDecision == null || !attackDecision.HasDecision)
                     {
                         attackDecision = PlanDecision(
                             actorId.Team,
                             RallyDecisionStage.Attack,
                             setFlight);
+                        attackTrajectoryArtifact =
+                            _lastTrajectoryPredictionArtifactV4;
                     }
-                    ScheduleAttackFromActualSet(attackDecision, setFlight, actorId);
+                    ScheduleAttackFromActualSet(
+                        attackDecision,
+                        setFlight,
+                        actorId,
+                        attackTrajectoryArtifact);
                     RecordSetCalibration(actorId, actor.CurrentSetStyle, contact.Hit.Centeredness);
                     break;
                 case TechniqueAction.Attack:
@@ -1744,11 +2021,18 @@ namespace Volleyball.Presentation
                     break;
             }
 
-            ObserveAcceptedContactV3(
+            var acceptedV3Transition = ObserveAcceptedContactV3(
                 actorId,
                 contact.Candidate.Action,
                 contact.Hit.ContactGroupId,
                 authorityContact);
+            RecordShadowPlanV3(
+                acceptedV3Transition,
+                acceptedTrajectoryArtifact,
+                StableId(actorId),
+                ToSide(actorId.Team),
+                ToV3Classification(contact.Candidate.Action),
+                contact.Hit.ContactGroupId);
             NotifyReplay(
                 ReplayContactAccepted,
                 new ReplayContactEvent(
@@ -1757,10 +2041,14 @@ namespace Volleyball.Presentation
                     actorId.Team,
                     StableId(actorId),
                     contact.Candidate.Action,
-                    _pendingReplaySetChain));
+                    _pendingReplaySetChain,
+                    authorityContact?.ObservedAttackGeometry,
+                    authorityContact?.Transition,
+                    acceptedExecutionClassification,
+                    acceptedTrajectoryArtifact));
         }
 
-        private void ObserveAcceptedContactV3(
+        private RuleTransitionV3 ObserveAcceptedContactV3(
             PlayerId actor,
             TechniqueAction action,
             int contactGroup,
@@ -1768,7 +2056,7 @@ namespace Volleyball.Presentation
         {
             if (_v3RulesAdapter == null)
             {
-                return;
+                return null;
             }
 
             RuleTransitionV3 transition;
@@ -1842,6 +2130,165 @@ namespace Volleyball.Presentation
 
             _lastAcceptedV3Actor = StableId(actor);
             _lastAcceptedV3Classification = ToV3Classification(action);
+            return transition;
+        }
+
+        private void RecordShadowPlanV3(
+            RuleTransitionV3 acceptedTransition,
+            BallTrajectoryPredictionArtifactV4 acceptedTrajectoryArtifact,
+            StablePlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            int contactGroup)
+        {
+            if (_v3RulesAdapter == null)
+            {
+                return;
+            }
+
+            if (acceptedTransition == null || !acceptedTransition.Accepted)
+            {
+                RecordShadowPlanDiagnostic("v3TransitionNotAccepted");
+                return;
+            }
+
+            if (acceptedTrajectoryArtifact == null)
+            {
+                RecordShadowPlanDiagnostic("missingTrajectoryArtifact");
+                return;
+            }
+
+            try
+            {
+                RecordAcceptedShadowPlanV3(
+                    acceptedTransition,
+                    acceptedTrajectoryArtifact,
+                    actor,
+                    side,
+                    classification,
+                    contactGroup);
+            }
+            catch (Exception exception)
+            {
+                // Shadow output is diagnostic-only; never let it change a live rally.
+                RecordShadowPlanDiagnostic(exception.GetType().FullName);
+            }
+        }
+
+        private void RecordAcceptedShadowPlanV3(
+            RuleTransitionV3 acceptedTransition,
+            BallTrajectoryPredictionArtifactV4 acceptedTrajectoryArtifact,
+            StablePlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            int contactGroup)
+        {
+
+            var eligibility = CreateV3Eligibility(_matchContext);
+            var playerFacts = new List<PlayerWorldSnapshotV3>(eligibility.Players.Count);
+            for (var index = 0; index < eligibility.Players.Count; index++)
+            {
+                var eligiblePlayer = eligibility.Players[index];
+                var player = PlayerForStableId(eligiblePlayer.PlayerId);
+                playerFacts.Add(new PlayerWorldSnapshotV3(
+                    eligiblePlayer.PlayerId,
+                    eligiblePlayer.Side,
+                    eligiblePlayer.RegisteredPosition,
+                    ToSimulation(player.transform.position),
+                    SimVector3.Zero,
+                    player.PreparedForward,
+                    player.ReplayScheduledAction,
+                    RallyCommitmentStateV3.Uncommitted,
+                    0f));
+            }
+
+            var ball = _ball.State;
+            var snapshot = new RallyWorldSnapshotV3(
+                new BallWorldSnapshotV3(
+                    ball.Position,
+                    ball.Velocity,
+                    SimVector3.Zero,
+                    ball.Radius,
+                    _ball.SimulationTime),
+                playerFacts,
+                acceptedTransition.After,
+                eligibility,
+                new CourtConfigurationV3(
+                    CourtBuilder.HalfWidth,
+                    CourtHalfLength,
+                    CourtBuilder.NetHeight),
+                new AcceptedRuleEventV3(
+                    PlanCoverageReason.WithinConditionalEnvelope,
+                    RallyPlanConditionV3.Always,
+                    actor,
+                    side,
+                    classification,
+                    contactGroup),
+                V3RuleTransitions);
+            var artifactIdentity = acceptedTrajectoryArtifact.ArtifactIdentity;
+            var revision = V3RuleTransitions;
+            var provisional = new RallyPlanV3(
+                snapshot,
+                DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Home, artifactIdentity),
+                DeterministicRallyPlanComposerV3.Compose(snapshot, TeamSide.Away, artifactIdentity),
+                artifactIdentity,
+                revision,
+                V3RuleTransitions,
+                PlanCoverageDecision.Covered(
+                    revision.ToString(),
+                    PlanCoverageReason.WithinConditionalEnvelope));
+            var coverage = DeterministicRallyPlanComposerV3.EvaluateCoverage(
+                provisional,
+                snapshot.LatestEvent);
+            NotifyShadowPlanRecorded(new RallyPlanV3(
+                snapshot,
+                provisional.HomePlan,
+                provisional.AwayPlan,
+                artifactIdentity,
+                revision,
+                V3RuleTransitions,
+                coverage));
+        }
+
+        private void NotifyShadowPlanRecorded(RallyPlanV3 plan)
+        {
+            var handlers = ReplayShadowPlanRecorded;
+            if (handlers == null)
+            {
+                return;
+            }
+
+            foreach (Action<RallyPlanV3> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(plan);
+                }
+                catch (Exception exception)
+                {
+                    RecordShadowPlanDiagnostic(exception.GetType().FullName);
+                }
+            }
+        }
+
+        private void RecordShadowPlanDiagnostic(string reason)
+        {
+            ShadowPlanRecordingFailures++;
+            LastShadowPlanRecordingDiagnostic = reason;
+        }
+
+        private PrototypePlayerAgent PlayerForStableId(StablePlayerId stableId)
+        {
+            foreach (var player in _players.Values)
+            {
+                if (player.StableId.Equals(stableId))
+                {
+                    return player;
+                }
+            }
+
+            throw new InvalidOperationException(
+                "Shadow plan eligibility player is not registered in the formal match.");
         }
 
         private void SynchronizeLegacyCompatibility(PendingV3AuthorityContact authorityContact)
@@ -1917,6 +2364,7 @@ namespace Volleyball.Presentation
                 int contactGroup,
                 float contactSimulationTime,
                 RuleTransitionV3 transition,
+                AttackGeometryFactV3 observedAttackGeometry,
                 RallyContactEvaluation? legacyEvaluation,
                 LegacyRuleOutcomeV3 legacyOutcome,
                 ShadowScenarioV3 scenario,
@@ -1927,6 +2375,7 @@ namespace Volleyball.Presentation
                 ContactGroup = contactGroup;
                 ContactSimulationTime = contactSimulationTime;
                 Transition = transition;
+                ObservedAttackGeometry = observedAttackGeometry;
                 LegacyEvaluation = legacyEvaluation;
                 LegacyOutcome = legacyOutcome;
                 Scenario = scenario;
@@ -1942,6 +2391,8 @@ namespace Volleyball.Presentation
             public float ContactSimulationTime { get; }
 
             public RuleTransitionV3 Transition { get; }
+
+            public AttackGeometryFactV3 ObservedAttackGeometry { get; }
 
             public RallyContactEvaluation? LegacyEvaluation { get; }
 
@@ -1976,13 +2427,17 @@ namespace Volleyball.Presentation
         private void ScheduleAttackFromActualSet(
             TeamRallyDecision provisionalDecision,
             float plannedFlightSeconds,
-            PlayerId setterActor)
+            PlayerId setterActor,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
         {
             if (provisionalDecision == null || !provisionalDecision.HasDecision ||
                 !provisionalDecision.AttackApproach.HasValue ||
                 !provisionalDecision.AttackContactPlan.HasValue)
             {
-                ScheduleDecision(provisionalDecision, plannedFlightSeconds);
+                ScheduleDecision(
+                    provisionalDecision,
+                    plannedFlightSeconds,
+                    trajectoryArtifact);
                 return;
             }
 
@@ -2022,7 +2477,7 @@ namespace Volleyball.Presentation
                 plannedContact,
                 actualArrival.Position,
                 actualArrival.TimeSeconds,
-                attacker.Ability.MaxAttackReach,
+                attacker.Ability.PlannedAttackContactHeightMeters,
                 provisionalDecision.Actor.Role,
                 provisionalDecision.Actor.Team,
                 setterDepthFromNet,
@@ -2050,7 +2505,7 @@ namespace Volleyball.Presentation
 
             _lastSetQualityAssessment = quality;
             _lastPlannedAttackContactCenter = intendedContactCenter;
-            _lastActualAttackContactCenter = replan.ContactPlan.ContactCenter;
+            _lastReplannedAttackContactCenter = replan.ContactPlan.ContactCenter;
             _lastSetReplanOutcome = replan.Outcome;
             _lastSetAttackActor = provisionalDecision.Actor;
             _lastSetSetterActor = setterActor;
@@ -2085,7 +2540,7 @@ namespace Volleyball.Presentation
             Debug.Log(
                 $"[{_configuration.LogTag}] set-quality team={provisionalDecision.Actor.Team} " +
                 $"grade={quality.Grade} replan={replan.ContactPlan.Outcome} " +
-                $"actual=({replan.ContactPlan.ContactCenter.X:0.00}," +
+                $"replanned=({replan.ContactPlan.ContactCenter.X:0.00}," +
                 $"{replan.ContactPlan.ContactCenter.Y:0.00}," +
                 $"{replan.ContactPlan.ContactCenter.Z:0.00}) {quality.Reason}");
 
@@ -2100,7 +2555,10 @@ namespace Volleyball.Presentation
                     resumedApproach,
                     replan.ContactPlan,
                     _ball.SimulationTime + Mathf.Max(0.1f, actualArrival.TimeSeconds));
-                ScheduleDecision(replacement, Mathf.Max(0.1f, actualArrival.TimeSeconds));
+                ScheduleDecision(
+                    replacement,
+                    Mathf.Max(0.1f, actualArrival.TimeSeconds),
+                    trajectoryArtifact);
                 return;
             }
 
@@ -2317,7 +2775,7 @@ namespace Volleyball.Presentation
             return rotation;
         }
 
-        private OnCourtEligibilitySnapshot CreateV3Eligibility(MatchContextV3 context)
+        private OnCourtEligibilitySnapshot CreateV3Eligibility(MatchContextV4 context)
         {
             return OnCourtLineupRulesV3.Create(
                 context,
@@ -2477,6 +2935,7 @@ namespace Volleyball.Presentation
             _scheduledPrimaryActor = null;
             _scheduledDecision = null;
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _pendingCrossingTeam = null;
             PhysicalBlockContacts++;
             BlockSupportActivations++;
@@ -2643,8 +3102,8 @@ namespace Volleyball.Presentation
                     $"surfacePlanError={scheduledActor?.MinimumActiveSurfacePlanError ?? -1f:0.000}; " +
                     $"root={scheduledActor?.transform.position}; surface=" +
                     $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceCenter)}; normal=" +
-                    $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceNormal)}; actualPlan=" +
-                    $"{FormatDiagnosticVector(_lastActualAttackContactCenter)}; " +
+                    $"{FormatDiagnosticVector(scheduledActor?.LastScheduledSurfaceNormal)}; replannedContact=" +
+                    $"{FormatDiagnosticVector(_lastReplannedAttackContactCenter)}; " +
                     $"ball=({_ball.State.Position.X:0.000},{_ball.State.Position.Y:0.000}," +
                     $"{_ball.State.Position.Z:0.000}); expected={_expectedContactTime:0.000}; " +
                     $"now={_ball.SimulationTime:0.000}";
@@ -2696,6 +3155,7 @@ namespace Volleyball.Presentation
             _pendingCrossingTeam = null;
             _scheduledDecision = null;
             _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
             _scheduledBlockPrimary = null;
@@ -2727,13 +3187,15 @@ namespace Volleyball.Presentation
                 $"score={_set.HomeScore}:{_set.AwayScore}");
             if (_set.IsComplete)
             {
-                if (_set.ContextV2 != null)
+                if (_formalSet != null)
                 {
-                    ResultV2 = _set.CreateResultV2();
+                    Result = _formalSet.CreateResult(
+                        SuccessfulContacts,
+                        V3RuleTransitions);
                 }
                 else
                 {
-                    Result = _set.CreateResult();
+                    CompletePrototypeMatch();
                 }
                 _ball.Stop();
                 _status = $"RESULT READY  {_set.HomeScore}:{_set.AwayScore}";
@@ -3201,6 +3663,124 @@ namespace Volleyball.Presentation
                 BallIntegrator.Step(prediction, SimulatedBall.DefaultFixedStep, SimulationParameters);
             }
             return prediction.Position;
+        }
+
+        private SimVector3 PredictGate5BallCenterV4(
+            TeamId requestingTeam,
+            RallyDecisionStage stage,
+            float flightSeconds)
+        {
+            if (_matchContext == null)
+            {
+                return PredictBallCenter(flightSeconds);
+            }
+
+            if (_trajectoryPredictionProviderV4 == null)
+            {
+                throw new InvalidOperationException(
+                    "The per-rally V4 trajectory provider is not initialized.");
+            }
+
+            var stateVersion =
+                (long)(uint)BitConverter.ToInt32(
+                    BitConverter.GetBytes(_ball.SimulationTime),
+                    0);
+            var samplingKey =
+                "gate-5:" + ((int)stage).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                stateVersion.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) + ":" +
+                BitConverter.ToInt32(
+                    BitConverter.GetBytes(flightSeconds),
+                    0).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture);
+            var envelopeIdentity = BuildGate5EnvelopeIdentityV4(
+                stage,
+                flightSeconds);
+            var request = new BallTrajectoryPredictionRequestV4(
+                requestingTeam == TeamId.Blue
+                    ? TeamSide.Home
+                    : TeamSide.Away,
+                stateVersion,
+                _ball.State,
+                SimulationParameters,
+                _matchContext.PhysicsConfigurationHash,
+                samplingKey,
+                _matchContext.TrajectoryPredictionProviderConfiguration
+                    .PredictorVersion,
+                _matchContext.TrajectoryPredictionProviderConfiguration
+                    .PredictorConfigurationHash,
+                envelopeIdentity,
+                ExecutionDegradationStepV4.FullSampling);
+            _lastTrajectoryPredictionArtifactV4 =
+                PredictSharedGate5TrajectoryV4(
+                    _trajectoryPredictionProviderV4,
+                    request,
+                    ExecutionEnvelopePolicyV4.Default);
+            return ClosestTrajectoryPosition(
+                _lastTrajectoryPredictionArtifactV4.PredictionSnapshot,
+                flightSeconds);
+        }
+
+        private static string BuildGate5EnvelopeIdentityV4(
+            RallyDecisionStage stage,
+            float flightSeconds)
+        {
+            var canonical =
+                "volleyball.gate-5-sampling-envelope.v4\nstage=" +
+                ((int)stage).ToString(
+                    System.Globalization.CultureInfo.InvariantCulture) +
+                "\nflightSeconds=" +
+                BitConverter.ToInt32(
+                    BitConverter.GetBytes(flightSeconds),
+                    0).ToString(
+                    "x8",
+                    System.Globalization.CultureInfo.InvariantCulture) +
+                "\nexecutionEnvelopePolicy=" +
+                Convert.ToBase64String(
+                    ExecutionEnvelopePolicyV4.Default.ToCanonicalBytes()) +
+                "\n";
+            using var sha256 =
+                System.Security.Cryptography.SHA256.Create();
+            var hash = sha256.ComputeHash(
+                System.Text.Encoding.UTF8.GetBytes(canonical));
+            var output = new System.Text.StringBuilder(hash.Length * 2);
+            for (var index = 0; index < hash.Length; index++)
+            {
+                output.Append(
+                    hash[index].ToString(
+                        "x2",
+                        System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            return output.ToString();
+        }
+
+        private static SimVector3 ClosestTrajectoryPosition(
+            TrajectoryPrediction prediction,
+            float flightSeconds)
+        {
+            if (prediction == null || prediction.Samples.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "V4 trajectory prediction returned no samples.");
+            }
+
+            var best = prediction.Samples[0];
+            var bestTimeError = Mathf.Abs(best.TimeSeconds - flightSeconds);
+            for (var index = 1; index < prediction.Samples.Count; index++)
+            {
+                var candidate = prediction.Samples[index];
+                var timeError = Mathf.Abs(
+                    candidate.TimeSeconds - flightSeconds);
+                if (timeError < bestTimeError)
+                {
+                    best = candidate;
+                    bestTimeError = timeError;
+                }
+            }
+
+            return best.Position;
         }
 
         private static SimVector3 ContactCenter(

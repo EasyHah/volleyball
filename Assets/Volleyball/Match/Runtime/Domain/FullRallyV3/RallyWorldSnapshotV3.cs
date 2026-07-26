@@ -259,14 +259,95 @@ namespace Volleyball.Match.Domain.FullRallyV3
     public sealed class CourtConfigurationV3
     {
         public CourtConfigurationV3()
+            : this(4.5f, 9f, 2.43f)
         {
         }
+
+        public CourtConfigurationV3(float halfWidth, float halfLength, float netHeight)
+        {
+            HalfWidth = BallWorldSnapshotV3.RequireNonNegativeFinite(halfWidth, nameof(halfWidth));
+            HalfLength = BallWorldSnapshotV3.RequireNonNegativeFinite(halfLength, nameof(halfLength));
+            NetHeight = BallWorldSnapshotV3.RequireNonNegativeFinite(netHeight, nameof(netHeight));
+        }
+
+        public float HalfWidth { get; }
+
+        public float HalfLength { get; }
+
+        public float NetHeight { get; }
     }
 
     public sealed class AcceptedRuleEventV3
     {
         public AcceptedRuleEventV3()
+            : this(PlanCoverageReason.WithinConditionalEnvelope)
         {
         }
+
+        public AcceptedRuleEventV3(PlanCoverageReason coverageReason)
+            : this(
+                coverageReason,
+                RallyPlanConditionV3.Always,
+                new PlayerId("unobserved"),
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                0)
+        {
+        }
+
+        public AcceptedRuleEventV3(
+            PlanCoverageReason coverageReason,
+            RallyPlanConditionV3 activeCondition)
+            : this(
+                coverageReason,
+                activeCondition,
+                new PlayerId("unobserved"),
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                0)
+        {
+        }
+
+        public AcceptedRuleEventV3(
+            PlanCoverageReason coverageReason,
+            RallyPlanConditionV3 activeCondition,
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            int contactGroup)
+        {
+            if (!Enum.IsDefined(typeof(PlanCoverageReason), coverageReason))
+            {
+                throw new ArgumentOutOfRangeException(nameof(coverageReason));
+            }
+
+            PlayerWorldSnapshotV3.RequireDefinedEnum(activeCondition, nameof(activeCondition));
+            PlayerWorldSnapshotV3.RequirePlayerId(actor, nameof(actor));
+            PlayerWorldSnapshotV3.RequireDefinedEnum(side, nameof(side));
+            PlayerWorldSnapshotV3.RequireDefinedEnum(classification, nameof(classification));
+            if (contactGroup < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(contactGroup));
+            }
+
+            CoverageReason = coverageReason;
+            ActiveCondition = activeCondition;
+            Actor = actor;
+            Side = side;
+            Classification = classification;
+            ContactGroup = contactGroup;
+        }
+
+        public PlanCoverageReason CoverageReason { get; }
+
+        public RallyPlanConditionV3 ActiveCondition { get; }
+
+        public PlayerId Actor { get; }
+
+        public TeamSide Side { get; }
+
+        public RallyContactClassificationV3 Classification { get; }
+
+        public int ContactGroup { get; }
     }
 }

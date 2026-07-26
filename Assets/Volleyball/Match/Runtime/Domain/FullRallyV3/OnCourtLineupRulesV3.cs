@@ -7,7 +7,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
     public static class OnCourtLineupRulesV3
     {
         public static OnCourtEligibilitySnapshot Create(
-            MatchContextV3 context,
+            MatchContextV4 context,
             IReadOnlyList<PlayerId> homeRotationOrder,
             IReadOnlyList<PlayerId> awayRotationOrder,
             PlayerId homeServer,
@@ -36,7 +36,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
         }
 
         private static Dictionary<PlayerId, PlayerId> ValidateReplacements(
-            MatchContextV3 context,
+            MatchContextV4 context,
             IReadOnlyList<LiberoReplacementV3> replacements)
         {
             var playersById = BuildPlayerLookup(context.Home, context.Away);
@@ -78,7 +78,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
         }
 
         private static void AddSidePlayers(
-            TeamSnapshotV3 team,
+            TeamSnapshotV4 team,
             TeamSide side,
             IReadOnlyList<PlayerId> rotationOrder,
             PlayerId server,
@@ -137,9 +137,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
             }
         }
 
-        private static Dictionary<PlayerId, PlayerSnapshotV3> BuildPlayerLookup(TeamSnapshotV3 team)
+        private static Dictionary<PlayerId, PlayerSnapshotV4> BuildPlayerLookup(TeamSnapshotV4 team)
         {
-            var playersById = new Dictionary<PlayerId, PlayerSnapshotV3>();
+            var playersById = new Dictionary<PlayerId, PlayerSnapshotV4>();
             for (var index = 0; index < team.Players.Count; index++)
             {
                 var player = team.Players[index];
@@ -149,7 +149,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
             return playersById;
         }
 
-        private static Dictionary<PlayerId, PlayerSnapshotV3> BuildPlayerLookup(TeamSnapshotV3 home, TeamSnapshotV3 away)
+        private static Dictionary<PlayerId, PlayerSnapshotV4> BuildPlayerLookup(TeamSnapshotV4 home, TeamSnapshotV4 away)
         {
             var playersById = BuildPlayerLookup(home);
             for (var index = 0; index < away.Players.Count; index++)
@@ -161,9 +161,10 @@ namespace Volleyball.Match.Domain.FullRallyV3
             return playersById;
         }
 
-        private static TeamSide SideFor(MatchContextV3 context, PlayerId playerId)
+        private static TeamSide SideFor(MatchContextV4 context, PlayerId playerId)
         {
             return BuildPlayerLookup(context.Home).ContainsKey(playerId) ? TeamSide.Home : TeamSide.Away;
         }
+
     }
 }

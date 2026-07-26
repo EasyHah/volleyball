@@ -30,7 +30,7 @@ namespace Volleyball.AI
             float requiredApproachSeconds,
             float availableApproachSeconds)
         {
-            MaxAttackReach = ValidateRange(maxAttackReach, 3.20f, 3.55f, nameof(maxAttackReach));
+            MaxAttackReach = ValidateRange(maxAttackReach, 1.95f, 3.95f, nameof(maxAttackReach));
             ApproachCompletion = ValidateRange(approachCompletion, 0f, 1f, nameof(approachCompletion));
             JumpTiming = ValidateRange(jumpTiming, 0f, 1f, nameof(jumpTiming));
             if (!Enum.IsDefined(typeof(SetQualityGrade), setQuality))
@@ -70,7 +70,7 @@ namespace Volleyball.AI
 
         internal void Validate()
         {
-            ValidateRange(MaxAttackReach, 3.20f, 3.55f, nameof(MaxAttackReach));
+            ValidateRange(MaxAttackReach, 1.95f, 3.95f, nameof(MaxAttackReach));
             ValidateRange(ApproachCompletion, 0f, 1f, nameof(ApproachCompletion));
             ValidateRange(JumpTiming, 0f, 1f, nameof(JumpTiming));
             if (!Enum.IsDefined(typeof(SetQualityGrade), SetQuality))
@@ -166,10 +166,10 @@ namespace Volleyball.AI
         {
             var minimumHeight = Outcome == AttackContactOutcome.Handling
                 ? 0f
-                : AttackContactPlanner.MinimumAttackReach;
+                : 1.95f;
             if (!Takeoff.IsFinite || !ContactCenter.IsFinite ||
                 ContactCenter.Y < minimumHeight ||
-                ContactCenter.Y > 3.55f)
+                ContactCenter.Y > 3.95f)
             {
                 throw new ArgumentOutOfRangeException(nameof(ContactCenter));
             }
@@ -253,11 +253,18 @@ namespace Volleyball.AI
             var handling = input.SetQuality >= SetQualityGrade.D ||
                            timeCompletion < MinimumNormalAttackReadiness ||
                            readiness < MinimumNormalAttackReadiness;
+            var plannedMinimumHeight =
+                Math.Min(MinimumAttackReach, input.MaxAttackReach);
             var height = handling
-                ? MinimumAttackReach
-                : MinimumAttackReach +
-                  ((input.MaxAttackReach - MinimumAttackReach) * readiness * QualityFactor(input.SetQuality));
-            height = Clamp(height, MinimumAttackReach, input.MaxAttackReach);
+                ? plannedMinimumHeight
+                : plannedMinimumHeight +
+                  ((input.MaxAttackReach - plannedMinimumHeight) *
+                   readiness *
+                   QualityFactor(input.SetQuality));
+            height = Clamp(
+                height,
+                plannedMinimumHeight,
+                input.MaxAttackReach);
             var outcome = handling
                 ? AttackContactOutcome.Handling
                 : input.SetQuality == SetQualityGrade.A && readiness >= 0.95f

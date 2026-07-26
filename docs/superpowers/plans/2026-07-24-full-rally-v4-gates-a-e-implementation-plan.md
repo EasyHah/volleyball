@@ -206,12 +206,22 @@ Tests must prove:
 
 - identical base input and config produce byte-identical canonical result and fingerprints;
 - each base attribute changes at least one documented derived output;
+- `HeightMeters` is the sole structural exception: it constrains valid player input and participates in the canonical input fingerprint, while `StandingReachMeters` carries the direct reach contribution to numeric match attributes so height is not double-counted;
 - `AttackPower` changes attack speed/power capacity but not attack direction error;
 - `AttackTechnique` changes attack direction/speed error but not power capacity;
 - `SoftTouch`, `BlockTechnique`, and `CourtAwareness` are present in V4 and affect their declared V4 groups;
 - left/right hand changes the handedness value and derived fingerprint;
 - formula/coefficient version changes alter the result fingerprint even when numeric outputs happen to match;
 - invalid outputs throw and are never clamped.
+
+`HeightMeters` is a structural input rather than a direct V1 formula term. It
+constrains and influences authored physical attributes, especially
+`StandingReachMeters`, and participates in input validation and the canonical
+input fingerprint. The frozen V1 formulas use `StandingReachMeters` directly
+for contact geometry and must not add `HeightMeters` again, which would
+double-count that geometry. Tests therefore prove that height changes input
+identity and remains validated, while every formula-participating base field
+changes at least one declared numeric output.
 
 - [ ] **Step 2: Define the frozen six-group output**
 
@@ -276,6 +286,8 @@ Serve.Consistency     = .60 ServeTechnique + .25 Coordination + .15 Reaction
 ```
 
 `MatchAttributeDerivationConfigV4` exposes `FormulaVersion = 1`, `CoefficientVersion = 1`, and the immutable coefficient set. A config with missing/duplicate coefficients, non-finite values, or non-unit formula weights fails construction.
+
+`HeightMeters` is intentionally absent from the frozen numeric formulas. It is a structural characteristic that validates and informs base data, especially `StandingReachMeters`; direct reach outputs use `StandingReachMeters` once. `HeightMeters` remains in the canonical input fingerprint and must change it. Adding a direct numeric contribution later requires a new formula version, not a silent coefficient change.
 
 - [ ] **Step 4: Produce explanations and fingerprints**
 

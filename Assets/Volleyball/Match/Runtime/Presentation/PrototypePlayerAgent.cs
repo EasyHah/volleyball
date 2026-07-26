@@ -6,10 +6,33 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
+    public readonly struct ObservedAttackTakeoff
+    {
+        public ObservedAttackTakeoff(SimVector3 point, float simulationTime)
+        {
+            if (!point.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(nameof(point));
+            }
+            if (float.IsNaN(simulationTime) || float.IsInfinity(simulationTime))
+            {
+                throw new ArgumentOutOfRangeException(nameof(simulationTime));
+            }
+
+            Point = point;
+            SimulationTime = simulationTime;
+        }
+
+        public SimVector3 Point { get; }
+
+        public float SimulationTime { get; }
+    }
+
     public sealed class PrototypePlayerAgent : MonoBehaviour, IBallContactSource
     {
         public const float NetClearance = 0.18f;
@@ -64,6 +87,19 @@ namespace Volleyball.Presentation
 
         public SimVector3 LastScheduledSurfaceNormal { get; private set; }
 
+        public ExecutionEnvelopeV4 ScheduledExecutionEnvelopeV4 { get; private set; }
+
+        public ExecutionSampleV4 ScheduledExecutionSampleV4 { get; private set; }
+
+        public ExecutionSampleClassificationV4 ScheduledExecutionClassificationV4
+        {
+            get;
+            private set;
+        }
+
+        public BallTrajectoryPredictionArtifactV4
+            ScheduledTrajectoryPredictionArtifactV4 { get; private set; }
+
         internal float MinimumActiveSurfacePlanError { get; private set; }
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
@@ -71,6 +107,12 @@ namespace Volleyball.Presentation
         public bool EmergencyReceiveWindowEnabled => _hasEmergencyReceiveWindow;
 
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
+
+        public bool TryGetObservedAttackTakeoff(out ObservedAttackTakeoff takeoff)
+        {
+            takeoff = _observedAttackTakeoff;
+            return _hasObservedAttackTakeoff;
+        }
 
         private ActionTimeline _actionTimeline;
         private TechniqueAction _scheduledAction;
@@ -112,6 +154,8 @@ namespace Volleyball.Presentation
         private AttackContactPlan _attackContactPlan;
         private Vector3 _attackTakeoffPosition;
         private Vector3 _attackContactRootPosition;
+        private ObservedAttackTakeoff _observedAttackTakeoff;
+        private bool _hasObservedAttackTakeoff;
         private bool _continueAttackPreparation;
         private bool _physicalBlockActivationLogged;
         private BlockArmContactVolumes _blockArmContactVolumes;
@@ -160,6 +204,122 @@ namespace Volleyball.Presentation
         public void ScheduleContact(
             TechniqueAction action,
             float scheduledSimulationTime,
+            ExecutionEnvelopeV4 plannedEnvelope,
+            ExecutionSampleV4 executionSample,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
+        {
+            if (plannedEnvelope == null)
+            {
+                throw new ArgumentNullException(nameof(plannedEnvelope));
+            }
+
+            if (executionSample == null)
+            {
+                throw new ArgumentNullException(nameof(executionSample));
+            }
+
+            ScheduleContact(
+                action,
+                scheduledSimulationTime,
+                plannedEnvelope.Classify(executionSample),
+                executionError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute,
+                trajectoryArtifact);
+        }
+
+        public void ScheduleContact(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            ExecutionSampleClassificationV4 executionClassification,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
+        {
+            if (executionClassification == null)
+            {
+                throw new ArgumentNullException(nameof(executionClassification));
+            }
+
+            if (executionClassification.Kind ==
+                    ExecutionSampleClassificationKindV4.UnexpectedExecutionSample ||
+                executionClassification.Kind ==
+                    ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                throw new InvalidOperationException(
+                    "Only accepted or explicitly expanded V4 execution samples may be scheduled.");
+            }
+
+            var executableEnvelope = executionClassification.ExecutableEnvelope ??
+                throw new InvalidOperationException(
+                    "Executable V4 envelope is required.");
+            var executableSample = executionClassification.ExecutableSample ??
+                throw new InvalidOperationException(
+                    "Executable V4 sample is required.");
+            if (executableEnvelope.Classify(executableSample).Kind !=
+                ExecutionSampleClassificationKindV4.Accepted)
+            {
+                throw new InvalidOperationException(
+                    "Expanded V4 execution must be accepted by its new envelope identity.");
+            }
+
+            var consumedVelocityError = new SkillExecutionError(
+                executionError.ReactionDelay,
+                executionError.ContactPositionError,
+                executionError.ContactNormalErrorDegrees,
+                executionError.ContactTimingError,
+                executionError.SurfaceSpeedScale,
+                SimVector3.Zero,
+                executionError.MaximumTechniqueControl);
+            ScheduleContact(
+                action,
+                scheduledSimulationTime,
+                executableSample.Velocity,
+                consumedVelocityError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute);
+
+            // The V4 sample is already the fully resolved command. The legacy
+            // overload applies an attack multiplier, so overwrite that
+            // compatibility transform instead of mutating the sample.
+            _targetVelocity = executableSample.Velocity;
+            ScheduledExecutionEnvelopeV4 = executableEnvelope;
+            ScheduledExecutionSampleV4 = executableSample;
+            ScheduledExecutionClassificationV4 = executionClassification;
+            ScheduledTrajectoryPredictionArtifactV4 = trajectoryArtifact;
+        }
+
+        public void ScheduleContact(
+            TechniqueAction action,
+            float scheduledSimulationTime,
             SimVector3 targetVelocity,
             SkillExecutionError executionError,
             int contactGroupId,
@@ -171,6 +331,10 @@ namespace Volleyball.Presentation
             AttackContactPlan? attackContactPlan = null,
             SetRoute? normalSetRoute = null)
         {
+            ScheduledExecutionEnvelopeV4 = null;
+            ScheduledExecutionSampleV4 = null;
+            ScheduledExecutionClassificationV4 = null;
+            ScheduledTrajectoryPredictionArtifactV4 = null;
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
                 throw new ArgumentException("Only attack contacts may include an approach plan.", nameof(attackApproach));
@@ -199,8 +363,10 @@ namespace Volleyball.Presentation
 
             DisableBlockContactWindow();
             _scheduledAction = action;
+            _observedAttackTakeoff = default;
+            _hasObservedAttackTakeoff = false;
             var powerScale = action == TechniqueAction.Attack
-                ? 0.90f + (Ability.AttackPower * 0.10f)
+                ? 0.90f + (Ability.AttackPowerCapacity * 0.10f)
                 : 1f;
             _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
             if (action == TechniqueAction.Set)
@@ -723,6 +889,7 @@ namespace Volleyball.Presentation
 
             var sample = _actionTimeline.Sample(simulationTime);
             ApplyScheduledRootMotion(sample, simulationTime);
+            CaptureObservedAttackTakeoff(simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample);
             transform.position = ConstrainToOwnCourt(transform.position);
@@ -1194,13 +1361,39 @@ namespace Volleyball.Presentation
             return position;
         }
 
+        private void CaptureObservedAttackTakeoff(float simulationTime)
+        {
+            if (_hasObservedAttackTakeoff ||
+                _scheduledAction != TechniqueAction.Attack ||
+                _actionTimeline == null)
+            {
+                return;
+            }
+
+            var takeoffTime = AttackTakeoffTime();
+            if (simulationTime < takeoffTime)
+            {
+                return;
+            }
+
+            // Snapshot the authoritative physical trajectory at its actual takeoff
+            // time. The requested plan point is never copied into this observation.
+            var movementPosition = EvaluateScheduledMovement(takeoffTime, out _);
+            var takeoffPosition = EvaluateAttackPosition(takeoffTime, movementPosition);
+
+            _observedAttackTakeoff = new ObservedAttackTakeoff(
+                new SimVector3(
+                    takeoffPosition.x,
+                    takeoffPosition.y,
+                    takeoffPosition.z),
+                takeoffTime);
+            _hasObservedAttackTakeoff = true;
+        }
+
         private Vector3 EvaluatePlannedAttackPosition(float simulationTime, Vector3 movementPosition)
         {
             var approachStartTime = _movementEndSimulationTime;
-            var jumpLead = AttackJumpLead();
-            var takeoffTime = Mathf.Max(
-                approachStartTime + 0.01f,
-                _actionTimeline.ActualContactTime - jumpLead);
+            var takeoffTime = AttackTakeoffTime();
             var approachProgress = Mathf.InverseLerp(approachStartTime, takeoffTime, simulationTime);
             approachProgress = approachProgress * approachProgress * (3f - (2f * approachProgress));
             var position = Vector3.Lerp(movementPosition, _attackTakeoffPosition, approachProgress);
@@ -1274,6 +1467,15 @@ namespace Volleyball.Presentation
             return _hasAttackContactPlan
                 ? Mathf.Lerp(0.24f, 0.38f, _attackContactPlan.JumpTiming)
                 : 0.38f;
+        }
+
+        private float AttackTakeoffTime()
+        {
+            var requestedTakeoffTime =
+                _actionTimeline.ActualContactTime - AttackJumpLead();
+            return _hasAttackApproach
+                ? Mathf.Max(_movementEndSimulationTime + 0.01f, requestedTakeoffTime)
+                : requestedTakeoffTime;
         }
 
         private void ConfigureAttackContactRootPosition()

@@ -5,7 +5,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using Volleyball.AI;
+using Volleyball.Domain.Players;
 using Volleyball.Presentation;
+using Volleyball.Shared.Contracts;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 
 namespace Volleyball.PlayModeTests
@@ -71,14 +73,14 @@ namespace Volleyball.PlayModeTests
                         firstServer: setIndex % 2 == 0 ? TeamSide.Home : TeamSide.Away,
                         value => director = value);
                     var timeout = Time.realtimeSinceStartup + 30f;
-                    while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
+                    while (director.Result == null && Time.realtimeSinceStartup < timeout)
                     {
                         Time.timeScale = 8f;
                         yield return null;
                     }
 
-                    Assert.That(director.ResultV2, Is.Not.Null, $"Calibration set {setIndex + 1} timed out.");
-                    if (director.ResultV2.HomeScore > director.ResultV2.AwayScore)
+                    Assert.That(director.Result, Is.Not.Null, $"Calibration set {setIndex + 1} timed out.");
+                    if (director.Result.HomeScore > director.Result.AwayScore)
                     {
                         blueWins++;
                     }
@@ -127,22 +129,12 @@ namespace Volleyball.PlayModeTests
                         targetScore: 50,
                         firstServer: completedMatches % 2 == 0 ? TeamSide.Home : TeamSide.Away,
                         value => director = value);
-                    Assert.That(director.MatchContextV2.Seed, Is.EqualTo(seed));
+                    Assert.That(SeedFor(director), Is.EqualTo(seed));
                     director.ConfigureInSystemFirstPassCalibration(true);
-                    MatchReplayRecorder replayRecorder = null;
-                    if (director.RosterSize == 6)
-                    {
-                        replayRecorder = MatchReplayRecorder.Attach(
-                            director,
-                            UnityEngine.Object.FindFirstObjectByType<SimulatedBall>(),
-                            UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
-                                FindObjectsSortMode.None));
-                        replayRecorder.StartCapture();
-                    }
 
                     var observedSets = 0;
                     while (inSystemSets + director.InSystemSetterSets < targetInSystemSets &&
-                           director.ResultV2 == null &&
+                           !HasCompletedResult(director) &&
                            Time.realtimeSinceStartup < timeout)
                     {
                         Time.timeScale = 20f;
@@ -174,11 +166,6 @@ namespace Volleyball.PlayModeTests
                     {
                         lastNoContactDiagnostic = director.LastAGradeNoContactDiagnostic;
                     }
-                    if (replayRecorder != null && replayRecorder.IsComplete)
-                    {
-                        Assert.DoesNotThrow(() => replayRecorder.Complete().Validate());
-                    }
-
                     completedMatches++;
                 }
             }
@@ -226,7 +213,13 @@ namespace Volleyball.PlayModeTests
             var score = UnityEngine.Object.FindFirstObjectByType<ScoreDisplay>();
             var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
             Assert.That(previous, Is.Not.Null);
-            var context = previous.MatchContextV2;
+            var formalContext = previous.MatchContext;
+            if (formalContext != null)
+            {
+                AssertFormalV4InitializationAndBindings(formalContext, players);
+            }
+            var prototypeContext =
+                (previous as ThreeVsThreeRallyDirector)?.PrototypeContext;
             var rosterSize = previous.RosterSize;
             var host = previous.gameObject;
             UnityEngine.Object.Destroy(previous);
@@ -243,17 +236,89 @@ namespace Volleyball.PlayModeTests
                 baseConfiguration,
                 targetScore,
                 1);
-            PhysicalMatchRallyDirector director = rosterSize == 6
-                ? host.AddComponent<FormalSixVsSixRallyDirector>()
-                : host.AddComponent<ThreeVsThreeRallyDirector>();
-            director.InitializeV2(
-                ball,
-                players,
-                context,
-                score,
-                configuration: configuration,
-                firstServingSide: firstServer);
+            PhysicalMatchRallyDirector director;
+            if (rosterSize == 6)
+            {
+                var formal = host.AddComponent<FormalSixVsSixRallyDirector>();
+                formal.InitializeV4(
+                    ball,
+                    players,
+                    formalContext,
+                    score,
+                    configuration: configuration,
+                    firstServingSide: firstServer);
+                formal.ConfigureV3Rules(V3RulesMode.Authority);
+                director = formal;
+            }
+            else
+            {
+                var prototype = host.AddComponent<ThreeVsThreeRallyDirector>();
+                prototype.InitializePrototypeV4(
+                    ball,
+                    players,
+                    prototypeContext,
+                    score,
+                    configuration: configuration,
+                    firstServingSide: firstServer);
+                director = prototype;
+            }
             completed(director);
+        }
+
+        private static bool HasCompletedResult(PhysicalMatchRallyDirector director)
+        {
+            return director.Result != null ||
+                   (director as ThreeVsThreeRallyDirector)?.PrototypeResult != null;
+        }
+
+        private static int SeedFor(PhysicalMatchRallyDirector director)
+        {
+            return director.MatchContext?.Seed ??
+                   ((ThreeVsThreeRallyDirector)director).PrototypeContext.Seed;
+        }
+
+        private static void AssertFormalV4InitializationAndBindings(
+            MatchContextV4 context,
+            PrototypePlayerAgent[] players)
+        {
+            Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV4));
+            Assert.That(context.RulesVersion, Is.EqualTo(RulesVersions.FullRallyV3));
+            Assert.That(context.ContextHash, Is.Not.Null.And.Length.EqualTo(64));
+            Assert.That(players, Has.Length.EqualTo(12));
+
+            foreach (var player in players)
+            {
+                var side = player.Id.Team == Volleyball.Domain.Prototype.TeamId.Blue
+                    ? TeamSide.Home
+                    : TeamSide.Away;
+                var team = side == TeamSide.Home ? context.Home : context.Away;
+                var rotationPosition = player.Id.RosterSlot + 1;
+                var snapshot = team.RotationOrder[player.Id.RosterSlot];
+                var binding = new MatchPlayerBinding(
+                    snapshot,
+                    player.Id,
+                    side,
+                    rotationPosition);
+
+                Assert.That(binding.StablePlayerId, Is.EqualTo(player.StableId));
+                Assert.That(binding.Side, Is.EqualTo(side));
+                Assert.That(binding.RotationPosition, Is.EqualTo(rotationPosition));
+                Assert.That(
+                    binding.Derived.InputFingerprint,
+                    Is.EqualTo(snapshot.Derived.InputFingerprint));
+                Assert.That(
+                    binding.Derived.ResultFingerprint,
+                    Is.EqualTo(snapshot.Derived.ResultFingerprint));
+                Assert.That(
+                    player.Ability.Derived.ResultFingerprint,
+                    Is.EqualTo(binding.Derived.ResultFingerprint));
+                Assert.That(
+                    binding.Derived.FormulaVersion,
+                    Is.EqualTo(context.FormulaVersion));
+                Assert.That(
+                    binding.Derived.CoefficientVersion,
+                    Is.EqualTo(context.CoefficientVersion));
+            }
         }
 
         private sealed class AttackChainCalibrationReport

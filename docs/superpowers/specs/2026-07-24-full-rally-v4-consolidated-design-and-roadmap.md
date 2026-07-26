@@ -2,7 +2,7 @@
 
 **日期：** 2026-07-24
 
-**状态：** 待用户复核
+**状态：** Gate A–E 已完成；Gate F–K 待规划
 
 **范围：** 当前完成度审计、V4 双端权威属性、Career/Match 硬切、共享执行与预测、V3 规则复用、Full Rally 后续交付顺序
 
@@ -43,9 +43,9 @@ Career V4 authored player
 正式 6v6 只接受原生 `MatchContextV4`。Career gateway 使用具体的 V4 context/result
 类型，不再使用可以承载旧版本的通用 `IMatchContext` / `IMatchResult` 运行时入口。
 
-V1/V2/V3 DTO 可以在迁移期间暂留源码，以便分步解除编译依赖，但最终不得被正式
-Bootstrap、Career、MatchSet、回放或测试夹具调用。不存在 V1/V2/V3 到 V4 的 loader、
-adapter、fallback 或自动迁移。
+V1/V2/V3 属性、context、result 和 replay DTO 已从生产源码删除。Bootstrap、Career、
+MatchSet、3v3 prototype、正式 6v6 和 replay 只使用 V4；不存在 V1/V2/V3 到 V4 的
+loader、adapter、fallback 或自动迁移。
 
 ### 2.2 规则版本与属性版本分离
 
@@ -74,48 +74,54 @@ V4 context 负责向规则层提供球员身份、阵容、轮转和实际几何
 - 不使用 `Dictionary<string, float>` 或其他字符串扩展袋承载正式属性。
 - 不提前序列化 `Reserved` 属性；实验指标先留在 benchmark/解释层。
 
-## 3. 当前完成度审计
+## 3. Gate A–E 完成审计
 
-审计基于提交 `30b22ff`、当前源码引用、现有变更记录以及 Unity `6000.0.43f1`
-测试证据。
+审计基于当前 `codex/full-rally-v4-gates-a-e` 源码、变更记录以及 Unity
+`6000.0.43f1` 的完整 EditMode/PlayMode 证据。
 
-| 范围 | 当前状态 | 可保留资产 | 仍缺失或有缺陷 | 新路线处置 |
-| --- | --- | --- | --- | --- |
-| Phase 0 V3 Shared 接口 | 已完成历史接口 | 显式版本、canonical hash 分族、确定性合同思想 | 正式运行仍非 V4；旧迁移边界与新决策冲突 | 以同样原则建立 V4 合同，不迁移旧数据 |
-| Phase 1 V3 规则权威 | 已完成并进入正式 6v6 | 触球规则、资格、边界、shadow 比较、稳定原因码 | P6 攻击实际几何尚未接入 adapter | 原样复用规则引擎，补实际几何查询 |
-| Stage 1.5 组织与动作连续性 | 已完成 | `SetterOrganizationZone`、二传优先、攻击连续根运动、`0.18m` 对齐上限 | 能力基准和回放仍是 V2-shaped | 保留运动/组织策略；用 V4 属性与 Replay V4 重写诊断 |
-| Stage 2 能力投射 | 仅域类型和孤立测试 | 字段消费状态的审计思想 | 没有生产调用者；正式 runtime 仍消费 `PlayerAbilityProfile` | 删除 V2/V3 投射路径，由 V4 派生属性直接成为比赛输入 |
-| Stage 2 execution envelope | 部分数据结构 | baseline/bounds/sample/provenance 概念 | equality 忽略扩展内容；effort 未参与边界；没有工厂或 planner/executor 共享链 | 以 `ExecutionEnvelopeV4` 重建并接入 |
-| Stage 2 trajectory provider | 孤立 provider/cache | SHA-256、共享工件实例概念 | 键缺 predictor/config/degradation；门 5 没有生产调用者 | 以完整键和 per-rally shared provider 重建 |
-| P6 攻击几何 | 只有 value object 测试 | `AttackGeometryFactV3` 的事实字段 | 物理接触转换未调用 `AttackEligibilityRulesV3` | 把实际起跳/触球点接入现有 V3 rule adapter |
-| Stage 2 PlayMode shadow | 未完成 | 无 | 没有 envelope/cache 不变性对照 | 纳入 V4 execution gate |
-| Replay | V1 正式实现；V2 只有 shell | V1 recorder/HTML 的展示经验 | 无 V4 属性解释、envelope、predictor、实际样本分类；无规范字节稳定段 | 新建 `MatchReplayV4` |
-| Career | 仍为 V1 | `CareerPlayerRecord` 与 gateway 的基本边界 | 属性只有 `PlayerAbilitySnapshotV1`；gateway 使用宽泛接口 | 直接硬切 V4 双端属性与具体 V4 gateway |
-| Stage 3–9 | 尚未开始 | 已批准的责任计划、感知、executor、director 瘦身思想 | 依赖旧 V3 属性与 Replay V2 路线 | 在 V4 authority gate 后继续实施 |
+| 范围 | Gate A–E 冻结状态 | 证据 |
+| --- | --- | --- |
+| Shared / Career / Bootstrap | 只暴露具体 V4 player/team/context/result/replay；无兼容 reader 或 upgrade | 边界反射测试与零结果 legacy production `rg` |
+| V4 derivation | 基础字段、六组派生字段、公式 V1、系数 V1 和 fingerprint 已冻结 | 边界、单变量、确定性、解释顺序与 strict JSON EditMode |
+| V3 rules authority | `RulesVersions.FullRallyV3 = 3` 独立于 Match/Replay V4 | V4 context 向 V3 lineup/touch/eligibility/boundary rules 提供身份与事实 |
+| Execution | planner 与 executor 使用同一 `ExecutionEnvelopeV4` 实例/identity；非法或越界样本显式分类且不修复 | envelope identity、分类、expanded/exceeded EditMode |
+| Prediction | 两队对相同完整 key 获得相同 trajectory artifact；key 覆盖全部行为输入 | cache key、provider config、same-key artifact EditMode |
+| P6 | attack eligibility 使用 observed takeoff/contact geometry | adapter EditMode 与正式 fixed-seed PlayMode |
+| Replay | 仅 `MatchReplayV4`，记录派生解释、envelope、trajectory、sample classification、P6 和 V3 reason | canonical segment/hash EditMode 与两次 fixed-seed PlayMode |
+| Shadow diagnostics | 不改变比分、accepted contacts 或 V3 transitions | diagnostics on/off PlayMode |
 
-### 3.1 当前测试证据的准确含义
+完整验证使用 Unity `6000.0.43f1`，从被验证 checkout 执行无 `-quit` 的
+batch test 命令。删除三条仅覆盖旧 V3 Stage2 合同的测试并新增 one-shot
+active-roster 枚举回归后，EditMode 为 `505/505` 通过；PlayMode 为 `24/24`
+通过。两者均为 `0` failed、`0` skipped、`0` inconclusive。以下两个 production
+搜索均无结果，且 `git diff --check` clean：
 
-- 最新提交声明的 Stage 2 专项测试为 24 个，覆盖新 value objects 和孤立 provider。
-- 当前全量 EditMode 为 491 个测试；通过并不证明 Stage 2 正式执行链完成。
-- Stage 2 专项测试没有证明：
-  - V4 或原生 V3 `AttackControl` 改变正式攻击误差；
-  - planner 与 executor 消费同一 envelope；
-  - 两队在门 5 使用同一物理工件；
-  - P6 通过实际几何查询攻击资格；
-  - PlayMode shadow 不改变比赛；
-  - replay 规范段字节稳定。
-- `docs/changes/2026-07-24-001-stage2-ability-envelope-and-prediction.md`
-  已明确记录 PlayMode、回放和正式接线尚未完成。因此 Stage 2 不能标记为已验收。
+```bash
+rg -n "PlayerAbilitySnapshotV[123]|MatchContextV[123]|MatchResultV[123]|MatchReplayV[12]|InitializeV2|UpgradeFromV2" \
+  Assets/Volleyball --glob '!**/Tests/**'
+rg -n "PlayerAbilitySnapshotV[123]|MatchContextV[12]|MatchResultV[12]|MatchReplayV[12]|InitializeV2|UpgradeFromV2" \
+  Assets/Volleyball --glob '!**/Tests/**'
+```
 
-### 3.2 当前实现中必须避免继承的问题
+### 3.1 字段冻结与消费边界
 
-1. 正式 Bootstrap 仍执行 `InitializeV2` 后 `UpgradeFromV2`。
-2. `MatchSet` 只原生持有 V1/V2 context，并只生成 V1/V2 result。
-3. `PhysicalMatchRallyDirector` 同时包含 V1/V2 context/result 和 V3 rules adapter。
-4. Career player record 仍持有 `PlayerAbilitySnapshotV1`。
-5. Stage 2 新类型只在自身文件和 EditMode 测试中被引用。
-6. `MatchReplayV2` 只有 replay ID、context hash 和 reserved section 名称。
-7. `PhysicalMatchRallyDirector` 超过 3300 行，继续承担战术选择、执行、规则适配和回放协调。
+V4 序列化冻结所有 physical/technical base 字段、`DominantHandV4` 和 Attack、Block、
+Defense、Receive、Set、Serve 六组派生字段。每个 base 字段均有解释链和单变量派生
+测试；`HeightMeters` 是结构性输入，只影响校验和 input fingerprint，数值触高只读取
+`StandingReachMeters`，避免双重计数。
+
+“已序列化/已派生”和“已由正式动作消费”分别记录。Gate A–E 已冻结当前
+execution-envelope consumption evidence；soft action、完整攻防和 CourtAwareness 的
+新增正式消费者仍属于 Gate I/J，不能因为字段已进入 V4 DTO 就宣称后续 gameplay
+authority 已完成。
+
+### 3.2 版本规则
+
+- `ContractVersions.MatchV4 = 4` 与 `ContractVersions.ReplayV4 = 4` 只表示合同版本。
+- `RulesVersions.FullRallyV3 = 3` 只表示排球规则 authority。
+- 修改公式必须升级 formula version；修改系数表必须升级 coefficient version。
+- 两类版本变化都必须进入 derived result fingerprint，即使数值结果偶然相同。
+- 新增或改变权威 base 字段必须创建 V5，不得用 optional field、default 或扩展袋绕过。
 
 ## 4. V4 权威球员合同
 
@@ -150,15 +156,15 @@ Right
 
 | 字段 | 单位/范围 | 权威含义 |
 | --- | --- | --- |
-| `HeightMeters` | `1.50–2.30m` | 身体高度输入 |
-| `StandingReachMeters` | `1.80–3.10m` | 静止伸臂触及高度 |
+| `HeightMeters` | `1.40–2.30m` | 身体高度输入 |
+| `StandingReachMeters` | `1.70–3.10m` | 静止伸臂触及高度 |
 | `Jump` | `[0,1]` | 垂直冲量与空中窗口 |
 | `Mobility` | `[0,1]` | 加速、转移速度与覆盖 |
 | `Reaction` | `[0,1]` | 识别和响应速度 |
 | `Coordination` | `[0,1]` | 移动中身体控制和稳定性 |
 
-`StandingReachMeters` 必须大于 `HeightMeters`，二者差值必须在 `0.25–0.90m`
-之间。任何非有限或越界输入都拒绝构造，不做 clamp。
+`StandingReachMeters` 必须大于或等于 `HeightMeters`。任何非有限或越界输入都拒绝
+构造，不做 clamp。
 
 `Endurance`、体重、臂展和单独的助跑/拦网弹跳不进入 V4。它们只有在独立的权威消费
 系统存在后才能进入 V5。
@@ -408,8 +414,10 @@ Career 创建比赛时调用 V4 derivation，并生成 `MatchContextV4`。Career
 - `MatchSet` 原生持有 `MatchContextV4` 并生成 `MatchResultV4`。
 - 正式 director 不暴露 V1/V2 result/context。
 - V3 rules adapter 直接从 V4 context 创建 eligibility，不要求 `UpgradeFromV2` hash parity。
-- `PlayerAbilityProfile` 从正式路径移除；Player runtime 持有 `DerivedMatchAttributesV4`。
-- 3v3 若继续保留，必须另行决定是否同步硬切 V4；它不能迫使正式 6v6 保留旧属性入口。
+- `PlayerAbilityProfile` 保留为 `DerivedMatchAttributesV4` 的 runtime wrapper；它不持有
+  V1/V2/V3 属性合同，也不绕过 V4 derivation。
+- 3v3 已同步硬切 V4：每队创建六人 V4 roster，并向 `MatchSet` 显式传入三名
+  active player ID，不保留旧属性或 context 入口。
 
 ## 12. Replay V4
 
@@ -450,28 +458,29 @@ base attributes + DominantHand
 
 ## 14. 新交付路线
 
-### Gate A：冻结历史基线
+### Gate A：冻结历史基线（已完成）
 
 - 固定当前 Phase 1 规则、Stage 1.5 组织、连续攻击动作和正式 6v6 回归。
 - 为当前 Stage 2 缺陷添加失败测试，证明新 V4 实现必须解决的问题。
 - 记录当前 EditMode/PlayMode XML 作为硬切前证据。
 
-### Gate B：V4 Shared + Derivation
+### Gate B：V4 Shared + Derivation（已完成）
 
 - 新增全部 V4 DTO、版本显式 JSON 和独立 canonical hash family。
 - 实现 DominantHand、基础范围和严格验证。
 - 实现版本化纯 derivation、解释项和六组派生属性。
 - 建立边界、单调性、C-policy 和 archetype EditMode tests。
 
-### Gate C：Career/Match 原生 V4 硬切
+### Gate C：Career/Match 原生 V4 硬切（已完成）
 
 - Career record/gateway、正式 Bootstrap、MatchSet、player binding 和 result 全部切 V4。
-- 删除正式 V1/V2/V3 context/result 和 `PlayerAbilityProfile` 路径。
+- 删除正式 V1/V2/V3 context/result 路径；`PlayerAbilityProfile` 仅保留为
+  `DerivedMatchAttributesV4` 的 runtime wrapper。
 - 正式 6v6 在原有 V3 rules authority 下完成比赛并生成 V4 result。
 - 当前已有动作全部改为消费对应的 V4 派生属性，且 runtime 不得直接读取基础属性。
 - V4 全属性权威在 Gate I/J 激活 soft action、完整攻防和 CourtAwareness 前不得宣告完成。
 
-### Gate D：共享执行、预测与 P6
+### Gate D：共享执行、预测与 P6（已完成）
 
 - 以 TDD 重建 `ExecutionEnvelopeV4`、policy hash、分类和 planner/executor identity。
 - 建立 per-rally shared trajectory provider 和完整 cache key。
@@ -479,7 +488,7 @@ base attributes + DominantHand
 - EditMode 验证 AttackControl 与 AttackPower 独立、两队同工件、非法样本不修复。
 - PlayMode 验证 diagnostics on/off 不改变比分、accepted contacts 或 V3 transitions。
 
-### Gate E：Replay V4
+### Gate E：Replay V4（已完成）
 
 - 建立规范事件/段 schema、canonical replay/frame hashes 和 recorder。
 - 写入 V4 派生解释、envelope、predictor、sample classification、实际几何和规则原因码。

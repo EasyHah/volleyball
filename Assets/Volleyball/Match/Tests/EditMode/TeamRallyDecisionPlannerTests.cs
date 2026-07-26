@@ -187,6 +187,31 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Plan_AttackSelectionIsIndependentOfExecutionControlAndPowerCapacity()
+        {
+            var lowExecutionRatings = AbilityWithAttack(attackTechnique: 0.2f, attackPower: 0.2f);
+            var highExecutionRatings = AbilityWithAttack(attackTechnique: 0.95f, attackPower: 0.95f);
+            var firstLow = new TeamRallyDecisionPlanner(17).Plan(
+                CreateAttackSelectionInput(lowExecutionRatings, highExecutionRatings));
+            var firstHigh = new TeamRallyDecisionPlanner(17).Plan(
+                CreateAttackSelectionInput(highExecutionRatings, lowExecutionRatings));
+
+            Assert.That(
+                highExecutionRatings.AttackDirectionControl,
+                Is.GreaterThan(lowExecutionRatings.AttackDirectionControl));
+            Assert.That(
+                highExecutionRatings.AttackSpeedControl,
+                Is.GreaterThan(lowExecutionRatings.AttackSpeedControl));
+            Assert.That(
+                highExecutionRatings.AttackPowerCapacity,
+                Is.GreaterThan(lowExecutionRatings.AttackPowerCapacity));
+            Assert.That(firstHigh.Actor, Is.EqualTo(firstLow.Actor));
+            Assert.That(firstLow.Candidates[0].Score, Is.EqualTo(firstHigh.Candidates[0].Score));
+            Assert.That(firstLow.Candidates[1].Score, Is.EqualTo(firstHigh.Candidates[1].Score));
+            Assert.That(firstLow.Candidates[0].Score, Is.EqualTo(firstLow.Candidates[1].Score));
+        }
+
+        [Test]
         public void Plan_ExcludesTheLastCountedActor()
         {
             var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
@@ -707,6 +732,41 @@ namespace Volleyball.EditModeTests
                 attackerAbility: Ability(attackerMobility));
         }
 
+        private static TeamRallyDecisionInput CreateAttackSelectionInput(
+            PlayerAbilityProfile first,
+            PlayerAbilityProfile second)
+        {
+            var tactic = CreateTactic(SpikeRoute.Line);
+            var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            return new TeamRallyDecisionInput(
+                TeamId.Blue,
+                tactic,
+                new[]
+                {
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter, 0),
+                        takeoff,
+                        first),
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter, 1),
+                        takeoff,
+                        second),
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.Defender, 2),
+                        new SimVector3(20f, 0f, -6f),
+                        Ability(0.8f))
+                },
+                new SimVector3(0f, 3f, -1f),
+                2f,
+                5f,
+                0,
+                null,
+                0,
+                0,
+                RallyDecisionStage.Attack,
+                RallyTacticalWeights.Default);
+        }
+
         private static TeamRallyDecisionInput CreateInput(
             TeamId team,
             RallyDecisionStage stage,
@@ -853,7 +913,21 @@ namespace Volleyball.EditModeTests
 
         private static PlayerAbilityProfile Ability(float mobility)
         {
-            return new PlayerAbilityProfile(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+            return MatchV4TestFixture.CreateAbility(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+        }
+
+        private static PlayerAbilityProfile AbilityWithAttack(
+            float attackTechnique,
+            float attackPower)
+        {
+            return MatchV4TestFixture.CreateAbility(
+                0.8f,
+                0.8f,
+                0.8f,
+                0.8f,
+                0.8f,
+                attackTechnique,
+                attackPower);
         }
 
         private static RallyPlayerSnapshot Snapshot(PlayerRole role, int slot, float x)

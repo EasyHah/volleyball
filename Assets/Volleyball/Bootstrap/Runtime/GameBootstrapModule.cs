@@ -11,10 +11,9 @@ namespace Volleyball.Bootstrap
     {
         public static Type[] RuntimeBoundaries => new[]
         {
-            typeof(IMatchContext),
-            typeof(MatchContextV1),
-            typeof(MatchContextV2),
-            typeof(IMatchResult),
+            typeof(MatchContextV4),
+            typeof(MatchResultV4),
+            typeof(MatchReplayV4),
             typeof(ThreeVsThreeRallyBootstrap),
             typeof(CareerMatchRequest),
             typeof(CareerPresentationModule)
