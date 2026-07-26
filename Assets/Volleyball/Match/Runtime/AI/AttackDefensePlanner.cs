@@ -125,6 +125,25 @@ namespace Volleyball.AI
             return new FinalAttackChoiceV3(chosen, result.FallbackCandidates);
         }
 
+        // Tool recovery is comparable to the existing soft-action fallbacks only
+        // after its five-link continuation has been qualified by the pure planner.
+        public static IReadOnlyList<AttackCandidateV3> AddQualifiedToolRecoveryFallback(
+            IReadOnlyList<AttackCandidateV3> fallbackCandidates, BlockToolRecoveryResultV3 recovery,
+            AttackCandidateV3 toolRecoveryCandidate)
+        {
+            if (fallbackCandidates == null) throw new ArgumentNullException(nameof(fallbackCandidates));
+            if (recovery == null) throw new ArgumentNullException(nameof(recovery));
+            if (toolRecoveryCandidate == null) throw new ArgumentNullException(nameof(toolRecoveryCandidate));
+            var values = fallbackCandidates.Select(value => value ?? throw new ArgumentException("Fallback candidates cannot contain null.", nameof(fallbackCandidates))).ToList();
+            if (recovery.IsQualified)
+            {
+                if (toolRecoveryCandidate.ActionClass != AttackActionClassV3.BlockToolRecovery || !toolRecoveryCandidate.Actor.Equals(recovery.Attacker))
+                    throw new ArgumentException("Tool recovery candidate must match the qualified attacker.", nameof(toolRecoveryCandidate));
+                values.Add(toolRecoveryCandidate);
+            }
+            return new ReadOnlyCollection<AttackCandidateV3>(values);
+        }
+
         private static bool IsPower(AttackActionClassV3 value) => value == AttackActionClassV3.PowerLine || value == AttackActionClassV3.PowerCross || value == AttackActionClassV3.PowerEdge || value == AttackActionClassV3.PowerOverHand;
         private static string Zone(SimVector3 target) => target.X < -1f ? "Line" : target.X > 1f ? "Cross" : "Middle";
     }
