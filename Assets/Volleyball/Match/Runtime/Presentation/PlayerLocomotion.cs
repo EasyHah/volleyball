@@ -50,6 +50,7 @@ namespace Volleyball.Presentation
         private float _lastSampleSimulationTime = float.NaN;
         private float _lastSampleDeltaSeconds;
         private float _remainingAttackStepDistance = float.PositiveInfinity;
+        private bool _hasSampledAttackRootMotion;
         private TechniqueAction _scheduledAction;
         private PlayerAbilityProfile _scheduledAbility;
         private Vector3 _attackMotionOrigin;
@@ -144,6 +145,7 @@ namespace Volleyball.Presentation
             float? movementLeadOverride = null)
         {
             ClearAttackPlanState();
+            _hasSampledAttackRootMotion = false;
             _movementStartPosition = ConstrainGroundPosition(_root.position);
             _movementStartSimulationTime = movementStartSimulationTime;
             var movementLead = movementLeadOverride ?? (action == TechniqueAction.Attack ? 0.32f : 0.10f);
@@ -332,7 +334,7 @@ namespace Volleyball.Presentation
             }
             if (_scheduledAction == TechniqueAction.Attack)
             {
-                if (shareAttackAlignmentStepBudget && isFixedStep)
+                if (shareAttackAlignmentStepBudget && isFixedStep && _hasSampledAttackRootMotion)
                 {
                     var stepBudget = MaximumSpeed * liveStepSeconds;
                     _remainingAttackStepDistance = Mathf.Max(
@@ -343,6 +345,7 @@ namespace Volleyball.Presentation
                 {
                     _remainingAttackStepDistance = float.PositiveInfinity;
                 }
+                _hasSampledAttackRootMotion = true;
             }
             return new PlayerLocomotionSample(ConstrainToOwnCourt(position), complete);
         }

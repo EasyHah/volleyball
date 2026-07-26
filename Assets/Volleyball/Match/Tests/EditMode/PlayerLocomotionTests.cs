@@ -193,6 +193,35 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void FirstAttackSample_LeavesAlignmentBudgetUnsharedBeforeLaterStepsShareIt()
+        {
+            var root = new GameObject("FirstAttackAlignmentBudget");
+            root.transform.position = new Vector3(0f, 0f, -4f);
+            var locomotion = new PlayerLocomotion(
+                root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            ConfigureSaturatedAttack(locomotion);
+
+            var first = locomotion.Sample(.01f, .01f, true);
+            locomotion.SetRootPosition(first.Position);
+            var firstStepLimit = Mathf.Min(.18f, locomotion.MaximumSpeed * .01f);
+            var firstApplied = locomotion.ApplyAttackContactAlignment(new Vector3(.18f, 0f, 0f), .01f);
+
+            Assert.That(firstApplied.magnitude, Is.EqualTo(firstStepLimit).Within(.0001f),
+                "The first sampled attack root has no preceding route step to share.");
+
+            var rootBeforeSecondSample = root.transform.position;
+            var second = locomotion.Sample(.02f, .01f, true);
+            var plannedDistance = Vector3.Distance(rootBeforeSecondSample, second.Position);
+            locomotion.SetRootPosition(second.Position);
+            var secondApplied = locomotion.ApplyAttackContactAlignment(new Vector3(.18f, 0f, 0f), .01f);
+
+            Assert.That(secondApplied.magnitude,
+                Is.LessThanOrEqualTo(Mathf.Max(0f, (locomotion.MaximumSpeed * .01f) - plannedDistance) + .0001f),
+                "Every later attack sample must share the published step budget with its route motion.");
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
         public void SaturatedSmoothStepMidpoint_LiveAttackRootNeverExceedsOneStepBudget()
         {
             var root = new GameObject("SaturatedMidpointAttackRoot");
