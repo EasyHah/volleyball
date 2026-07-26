@@ -9,6 +9,15 @@ namespace Volleyball.Match.Domain.FullRallyV3
     {
         public static TeamRallyPlanV3 Compose(RallyWorldSnapshotV3 snapshot, TeamSide side, string trajectoryIdentity)
         {
+            return Compose(snapshot, side, trajectoryIdentity, null);
+        }
+
+        public static TeamRallyPlanV3 Compose(
+            RallyWorldSnapshotV3 snapshot,
+            TeamSide side,
+            string trajectoryIdentity,
+            ReceiveOrganizationPlanV3 receiveOrganization)
+        {
             if (snapshot == null)
             {
                 throw new ArgumentNullException(nameof(snapshot));
@@ -51,7 +60,12 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 throw new InvalidOperationException("Eligible candidates cannot form a six-player exclusive beam.");
             }
 
-            return new TeamRallyPlanV3(side, assignments, new[] { "artifact=" + trajectoryIdentity }, snapshot.Eligibility);
+            return new TeamRallyPlanV3(
+                side,
+                assignments,
+                new[] { "artifact=" + trajectoryIdentity },
+                snapshot.Eligibility,
+                receiveOrganization);
         }
 
         public static PlanCoverageDecision EvaluateCoverage(RallyPlanV3 plan, AcceptedRuleEventV3 acceptedEvent)

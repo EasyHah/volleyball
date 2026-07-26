@@ -11,7 +11,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             TeamSide side,
             IReadOnlyList<PlayerResponsibilityAssignmentV3> assignments,
             IReadOnlyList<string> candidateEvidence,
-            OnCourtEligibilitySnapshot eligibility)
+            OnCourtEligibilitySnapshot eligibility,
+            ReceiveOrganizationPlanV3 receiveOrganization = null)
         {
             Side = PlayerWorldSnapshotV3.RequireDefinedEnum(side, nameof(side));
             if (eligibility == null)
@@ -21,11 +22,71 @@ namespace Volleyball.Match.Domain.FullRallyV3
 
             Assignments = new ReadOnlyCollection<PlayerResponsibilityAssignmentV3>(CopyAssignments(side, assignments, eligibility));
             CandidateEvidence = new ReadOnlyCollection<string>(CopyEvidence(candidateEvidence));
+            ReceiveOrganization = ValidateReceiveOrganization(
+                side,
+                receiveOrganization,
+                eligibility);
         }
 
         public TeamSide Side { get; }
         public IReadOnlyList<PlayerResponsibilityAssignmentV3> Assignments { get; }
         public IReadOnlyList<string> CandidateEvidence { get; }
+        public ReceiveOrganizationPlanV3 ReceiveOrganization { get; }
+
+        private static ReceiveOrganizationPlanV3 ValidateReceiveOrganization(
+            TeamSide side,
+            ReceiveOrganizationPlanV3 plan,
+            OnCourtEligibilitySnapshot eligibility)
+        {
+            if (plan == null)
+            {
+                return null;
+            }
+
+            if (plan.Side != side)
+            {
+                throw new ArgumentException(
+                    "Receive/organization plan side must match the team plan.",
+                    nameof(plan));
+            }
+
+            ValidatePlanPlayer(side, plan.PrimaryReceiver, eligibility);
+            ValidatePlanPlayer(side, plan.RegisteredSetter, eligibility);
+            ValidatePlanPlayer(side, plan.AttackPreparation, eligibility);
+            foreach (var player in plan.EmergencyReceivers)
+            {
+                ValidatePlanPlayer(side, player, eligibility);
+            }
+
+            foreach (var player in plan.BackupOrganizers)
+            {
+                ValidatePlanPlayer(side, player, eligibility);
+            }
+
+            return plan;
+        }
+
+        private static void ValidatePlanPlayer(
+            TeamSide side,
+            PlayerId playerId,
+            OnCourtEligibilitySnapshot eligibility)
+        {
+            try
+            {
+                if (eligibility.For(playerId).Side != side)
+                {
+                    throw new ArgumentException(
+                        "Receive/organization responsibility must reference an eligible player on the plan side.");
+                }
+            }
+            catch (KeyNotFoundException exception)
+            {
+                throw new ArgumentException(
+                    "Receive/organization responsibility player is not on court.",
+                    nameof(playerId),
+                    exception);
+            }
+        }
 
         private static PlayerResponsibilityAssignmentV3[] CopyAssignments(
             TeamSide side, IReadOnlyList<PlayerResponsibilityAssignmentV3> assignments, OnCourtEligibilitySnapshot eligibility)
