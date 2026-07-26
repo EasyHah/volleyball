@@ -571,7 +571,8 @@ namespace Volleyball.Presentation
                 scheduledSimulationTime,
                 movementTarget,
                 movementStartSimulationTime,
-                isSupportAction: false);
+                isSupportAction: false,
+                blockContactHeight: _physicalBlockContactRootHeight);
             _physicalBlockTargetVelocity = targetVelocity;
             _physicalBlockContactGroupId = contactGroupId;
             _hasPhysicalBlockContact = true;
@@ -629,7 +630,8 @@ namespace Volleyball.Presentation
             float scheduledSimulationTime,
             Vector3 movementTarget,
             float movementStartSimulationTime,
-            bool isSupportAction = true)
+            bool isSupportAction = true,
+            float blockContactHeight = 0f)
         {
             if (isSupportAction)
             {
@@ -639,16 +641,13 @@ namespace Volleyball.Presentation
             {
                 _actionTimelineState.ScheduleBlock(scheduledSimulationTime);
             }
-            var blockHeight = action == TechniqueAction.Block
-                ? _physicalBlockContactRootHeight
-                : 0f;
             _locomotion.ConfigureSupportMovement(
                 action,
                 movementTarget,
                 movementStartSimulationTime,
                 scheduledSimulationTime,
                 Ability,
-                blockHeight);
+                blockContactHeight);
         }
 
         public void PrepareForTraining(Vector3 worldPosition)

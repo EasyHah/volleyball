@@ -842,6 +842,37 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void OrdinarySupportBlock_DoesNotReusePhysicalBlockRequestedHeight()
+        {
+            var player = CreatePlayer("SupportBlockHeightReset", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                player.ScheduleBlockContact(
+                    2f,
+                    new Vector3(0f, 0.16f, -1f),
+                    0f,
+                    new SimVector3(0f, -2f, 4f),
+                    814);
+                Collect(player, 2f);
+                Assert.That(player.transform.position.y, Is.EqualTo(0.16f).Within(0.01f));
+
+                player.DisableBlockContactWindow();
+                player.ScheduleSupportAction(
+                    TechniqueAction.Block,
+                    4f,
+                    new Vector3(0f, 0f, -1f),
+                    2f);
+                Collect(player, 4f);
+
+                Assert.That(player.transform.position.y, Is.GreaterThan(0.2f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void PhysicalBlockScheduling_ReplacesStaleScheduledMovementDistance()
         {
             var player = CreatePlayer("BlockMovementDistance", TeamId.Blue, PlayerRole.MiddleBlocker);
