@@ -91,7 +91,7 @@ namespace Volleyball.EditModeTests
         {
             var root = new GameObject("PersistentAlignmentAttackRoot");
             root.transform.position = new Vector3(0f, 0f, -1f);
-            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 1f);
             locomotion.ConfigureScheduledMovement(
                 new Vector3(4f, 0f, -1f),
                 0f,
@@ -322,6 +322,56 @@ namespace Volleyball.EditModeTests
             Assert.That(locomotion.HasAttackApproach, Is.False);
             Assert.That(sample.Position.y, Is.LessThan(2f));
             Object.DestroyImmediate(locomotion.Root.gameObject);
+        }
+
+        [Test]
+        public void ScheduledReceive_MaximumSpeedCoversSmoothStepPeakWithoutChangingReach()
+        {
+            var root = new GameObject("ReceiveRoutePeak");
+            root.transform.position = new Vector3(0f, 0f, -4f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -.18f), 0f, 1f, TechniqueAction.Receive,
+                PlayerAbilityProfile.Default);
+
+            Assert.That(locomotion.MaximumSpeed,
+                Is.GreaterThanOrEqualTo((1.5f * locomotion.ScheduledMovementDistance) / .9f));
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
+        public void UnplannedAttack_MaximumSpeedCoversTheActualVerticalParabola()
+        {
+            var root = new GameObject("UnplannedVerticalRoutePeak");
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 1f);
+            locomotion.ConfigureScheduledMovement(
+                Vector3.zero, 0f, 1f, TechniqueAction.Attack, PlayerAbilityProfile.Default);
+
+            Assert.That(locomotion.MaximumSpeed, Is.GreaterThanOrEqualTo(4f));
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
+        public void SaturatedAttackRoute_ReservesFiniteAlignmentSpeedWithinThePublishedBound()
+        {
+            var root = new GameObject("SaturatedAlignmentAllowance");
+            root.transform.position = new Vector3(0f, 0f, -4f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -.18f), 0f, 1f, TechniqueAction.Attack,
+                PlayerAbilityProfile.Default, 0f);
+            locomotion.ConfigureAttackContact(new Vector3(0f, 3f, -.18f), .38f, PlayerAbilityProfile.Default);
+            locomotion.SetRootPosition(locomotion.Sample(.50f, .01f, true).Position);
+            var before = root.transform.position;
+            locomotion.SetRootPosition(locomotion.Sample(.51f, .01f, true).Position);
+            var applied = locomotion.ApplyAttackContactAlignment(new Vector3(.18f, 0f, 0f), .01f);
+
+            Assert.That(applied.magnitude, Is.GreaterThan(0f));
+            Assert.That(Vector3.Distance(before, root.transform.position),
+                Is.LessThanOrEqualTo((locomotion.MaximumSpeed * .01f) + .0001f));
+            Assert.That(locomotion.CurrentAttackAlignmentOffset.magnitude,
+                Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance + .0001f));
+            Object.DestroyImmediate(root);
         }
 
         private static PlayerLocomotion CreateAttackLocomotion()

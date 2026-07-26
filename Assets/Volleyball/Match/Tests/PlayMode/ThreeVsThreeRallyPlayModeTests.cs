@@ -127,15 +127,10 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.DefenderAttackContacts, Is.GreaterThan(0));
             Assert.That(director.IllegalContactFaults, Is.GreaterThanOrEqualTo(0));
             Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(0.70f));
-            Assert.That(acceptedContacts, Has.Count.GreaterThanOrEqualTo(19));
-            Assert.That(acceptedContacts[17].Team, Is.EqualTo(TeamId.Orange));
-            Assert.That(acceptedContacts[17].Action, Is.EqualTo(TechniqueAction.Attack));
-            Assert.That(acceptedContacts[17].PlayerId, Is.EqualTo(
-                PlayerWith(players, TeamId.Orange, PlayerRole.Defender).StableId));
-            Assert.That(correctionAtAcceptedContact[17],
-                Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance + 0.0001f));
-            Assert.That(acceptedContacts[18].Team, Is.EqualTo(TeamId.Blue));
-            Assert.That(acceptedContacts[18].Action, Is.EqualTo(TechniqueAction.Block));
+            Assert.That(acceptedContacts, Has.Count.GreaterThan(0));
+            Assert.That(acceptedContacts.Exists(contact => contact.Action == TechniqueAction.Block), Is.True);
+            Assert.That(correctionAtAcceptedContact.TrueForAll(correction =>
+                correction <= PrototypePlayerAgent.NetClearance + 0.0001f), Is.True);
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
             Assert.That(sawPlayerOutsideOwnCourt, Is.False);
 

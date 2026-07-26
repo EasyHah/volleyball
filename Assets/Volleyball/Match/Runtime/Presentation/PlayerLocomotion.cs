@@ -26,6 +26,9 @@ namespace Volleyball.Presentation
     /// </summary>
     public sealed class PlayerLocomotion
     {
+        // A bounded portion of each live-root budget is reserved for persistent
+        // contact alignment; it is intentionally part of the public route bound.
+        private const float AttackAlignmentSpeedAllowance = 0.60f;
         private readonly Transform _root;
         private readonly TeamId _team;
         private readonly float _courtHalfLength;
@@ -456,36 +459,42 @@ namespace Volleyball.Presentation
         // MaximumSpeed is instead the instantaneous 3D route bound consumed by live root steps.
         private void UpdateAttackRouteMaximumSpeed()
         {
+            var maximum = HorizontalMaximumSpeed(_scheduledAbility);
+            var scheduledPeak = SmoothStepPeakSpeed(
+                Vector3.Distance(_movementStartPosition, _movementTargetPosition),
+                _movementEndSimulationTime - _movementStartSimulationTime);
+            maximum = Mathf.Max(maximum, scheduledPeak);
+
             if (_scheduledAction != TechniqueAction.Attack)
             {
+                MaximumSpeed = maximum;
                 return;
             }
-
-            var maximum = HorizontalMaximumSpeed(_scheduledAbility);
-            maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
-                Vector3.Distance(_movementStartPosition, _movementTargetPosition),
-                _movementEndSimulationTime - _movementStartSimulationTime));
 
             var takeoffTime = Mathf.Max(_movementEndSimulationTime + .01f, _attackContactTime - _attackJumpLead);
             if (_hasAttackApproach)
             {
                 maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
                     Vector3.Distance(_movementTargetPosition, _attackTakeoffPosition),
-                    takeoffTime - _movementEndSimulationTime));
+                    takeoffTime - _movementEndSimulationTime) + AttackAlignmentSpeedAllowance);
             }
 
             if (_hasAttackContactRoot)
             {
                 maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
                     Vector3.Distance(_attackTakeoffPosition, _attackContactRootPosition),
-                    _attackContactTime - takeoffTime));
+                    _attackContactTime - takeoffTime) + AttackAlignmentSpeedAllowance);
                 maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
-                    Mathf.Abs(_attackContactRootPosition.y), .45f));
+                    Mathf.Abs(_attackContactRootPosition.y), .45f) + AttackAlignmentSpeedAllowance);
             }
             else
             {
-                var jumpHeight = (0.72f + (_scheduledAbility.Jump * .5f)) * _attackJumpQuality;
-                maximum = Mathf.Max(maximum, (4f * jumpHeight) / .83f);
+                var jumpHeight = 0.72f + (_scheduledAbility.Jump * .5f);
+                var verticalPeak = (4f * jumpHeight) / .83f;
+                var approachPeak = SmoothStepPeakSpeed(
+                    .45f + (_scheduledAbility.Mobility * .35f), .55f);
+                maximum = Mathf.Max(maximum,
+                    scheduledPeak + approachPeak + verticalPeak + AttackAlignmentSpeedAllowance);
             }
 
             MaximumSpeed = maximum;
