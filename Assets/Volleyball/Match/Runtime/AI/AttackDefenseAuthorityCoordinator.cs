@@ -142,17 +142,18 @@ namespace Volleyball.AI
 
     public sealed class AttackDefenseAuthorityStateV3
     {
-        internal AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3 phase, long revision, AttackDefensePlanV3 plan, PlanCoverageDecision coverage)
-        { Phase = phase; Revision = revision; Plan = plan; CoverageDecision = coverage; }
-        public AttackDefenseAuthorityPhaseV3 Phase { get; } public long Revision { get; } public AttackDefensePlanV3 Plan { get; }
+        internal AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3 phase, long revision, TeamSide attackingSide, AttackDefensePlanV3 plan, PlanCoverageDecision coverage)
+        { Phase = phase; Revision = revision; AttackingSide = attackingSide; Plan = plan; CoverageDecision = coverage; }
+        public AttackDefenseAuthorityPhaseV3 Phase { get; } public long Revision { get; } public TeamSide AttackingSide { get; } public AttackDefensePlanV3 Plan { get; }
         public PlanCoverageDecision CoverageDecision { get; }
-        public static AttackDefenseAuthorityStateV3 Idle { get; } = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Idle, -1, null, null);
+        public static AttackDefenseAuthorityStateV3 Idle { get; } = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Idle, -1, TeamSide.Home, null, null);
     }
 
     public sealed class AttackDefenseAuthorityCoordinator
     {
         private readonly AttackDefensePlanner _planner; private readonly IAttackDefenseAuthorityCommandSink _sink;
         private GateISetIntentV3 _intent; private AttackPlanningResultV3 _attack; private JointDefensePlanV3 _defense;
+        private TeamSide _attackingSide;
         private long _lastSequence = -1;
         public AttackDefenseAuthorityCoordinator(AttackDefensePlanner planner, IAttackDefenseAuthorityCommandSink sink)
         { _planner = planner ?? throw new ArgumentNullException(nameof(planner)); _sink = sink ?? throw new ArgumentNullException(nameof(sink)); State = AttackDefenseAuthorityStateV3.Idle; }
@@ -164,7 +165,8 @@ namespace Volleyball.AI
             var intent = _planner.PlanSetIntent(request ?? throw new ArgumentNullException(nameof(request)));
             if (intent.SourceSequence <= _lastSequence) throw new InvalidOperationException("Source sequence must increase.");
             _intent = intent; _lastSequence = intent.SourceSequence;
-            State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.SetIntentPlanned, intent.PlanRevision, null, PlanCoverageDecision.Covered(intent.PlanRevision.ToString(), PlanCoverageReason.RallyOpen));
+            _attackingSide = request.AttackingSide;
+            State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.SetIntentPlanned, intent.PlanRevision, _attackingSide, null, PlanCoverageDecision.Covered(intent.PlanRevision.ToString(), PlanCoverageReason.RallyOpen));
             return new GateISetIntentPlanningResultV3(intent, new GateISetIntentReceiptV3(intent.PlanRevision, intent.SourceSequence, intent));
         }
 
@@ -175,7 +177,7 @@ namespace Volleyball.AI
             if (request.Revision != State.Revision || !SameSet(request.SetIntent, _intent) || !SameSetEvidence(accepted.AcceptedSet, _intent) || !SameSetEvidence(request.ActualSet, _intent))
                 throw new InvalidOperationException("Accepted Set evidence does not match the active SetIntent.");
             _attack = _planner.PlanAttack(request); _lastSequence = accepted.SourceSequence;
-            State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackPlanned, State.Revision, null, State.CoverageDecision);
+            State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackPlanned, State.Revision, _attackingSide, null, State.CoverageDecision);
             return State;
         }
 
@@ -196,8 +198,8 @@ namespace Volleyball.AI
         {
             Require(AttackDefenseAuthorityPhaseV3.DefenseCommitted, revision, sourceSequence);
             var selected = _planner.ChooseFinal(_attack, _defense).Candidate; _lastSequence = sourceSequence;
-            var plan = new AttackDefensePlanV3(TeamSide.Home, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, _defense.ReorganizationExits);
-            State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, plan, State.CoverageDecision);
+            var plan = new AttackDefensePlanV3(_attackingSide, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, _defense.ReorganizationExits);
+            State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, _attackingSide, plan, State.CoverageDecision);
             Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true) });
             return State;
         }
@@ -208,15 +210,15 @@ namespace Volleyball.AI
             if (State.Phase != AttackDefenseAuthorityPhaseV3.AttackCommitted && State.Phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact) throw new InvalidOperationException("No Gate I contact is awaiting acceptance.");
             if (contact.PlanRevision != State.Revision || contact.SourceSequence <= _lastSequence) throw new InvalidOperationException("Stale or mismatched contact evidence.");
             var coverage = Coverage(contact.CoverageReason);
-            if (coverage.Kind == PlanCoverageDecisionKind.TerminalNoPlan) { _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Terminal, State.Revision, State.Plan, coverage); return State; }
+            if (coverage.Kind == PlanCoverageDecisionKind.TerminalNoPlan) { _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Terminal, State.Revision, _attackingSide, State.Plan, coverage); return State; }
             var exit = State.Plan.ReorganizationExits.OrderBy(x => x.Identity, StringComparer.Ordinal).FirstOrDefault(x => string.IsNullOrEmpty(contact.ReorganizationExitIdentity) || x.Identity == contact.ReorganizationExitIdentity);
             if (exit == null) throw new InvalidOperationException("Actual contact does not select a declared reorganization exit.");
-            _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned, State.Revision, State.Plan, coverage);
+            _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned, State.Revision, _attackingSide, State.Plan, coverage);
             Publish(contact.SourceSequence, State, new[] { new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence, AttackDefenseCommandKind.Reorganization, exit.Actor, true) });
             return State;
         }
 
-        private AttackDefenseAuthorityStateV3 New(AttackDefenseAuthorityPhaseV3 phase) => new AttackDefenseAuthorityStateV3(phase, State.Revision, State.Plan, State.CoverageDecision);
+        private AttackDefenseAuthorityStateV3 New(AttackDefenseAuthorityPhaseV3 phase) => new AttackDefenseAuthorityStateV3(phase, State.Revision, _attackingSide, State.Plan, State.CoverageDecision);
         private void Require(AttackDefenseAuthorityPhaseV3 phase, long revision, long sourceSequence)
         { if (State.Phase != phase || revision != State.Revision || sourceSequence <= _lastSequence) throw new InvalidOperationException("Phase, revision, or source sequence is invalid."); }
         private void Publish(long sequence, AttackDefenseAuthorityStateV3 state, IEnumerable<AttackDefenseAuthorityCommand> commands) => _sink.Publish(new AttackDefenseCommandBatch(commands.ToArray(), new AttackDefenseAuthorityEvidenceV3(state.Revision, sequence, state.Phase, state.Plan, state.CoverageDecision)));

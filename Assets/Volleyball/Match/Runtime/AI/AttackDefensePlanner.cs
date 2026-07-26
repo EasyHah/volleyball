@@ -12,19 +12,20 @@ namespace Volleyball.AI
     // request nor the planner has a Set command, timing command, or facade input.
     public sealed class SetIntentPlanningRequestV3
     {
-        public SetIntentPlanningRequestV3(long revision, long sourceSequence, PlayerId organizer,
+        public SetIntentPlanningRequestV3(long revision, long sourceSequence, TeamSide attackingSide, PlayerId organizer,
             PlayerId preparedAttacker, SimVector3 target, float expectedSetContactTime,
             ExecutionSampleClassificationV4 executionClassification,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
         {
             if (revision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(revision < 0 ? nameof(revision) : nameof(sourceSequence));
-            Revision = revision; SourceSequence = sourceSequence; Organizer = organizer; PreparedAttacker = preparedAttacker;
+            if (!Enum.IsDefined(typeof(TeamSide), attackingSide)) throw new ArgumentOutOfRangeException(nameof(attackingSide));
+            Revision = revision; SourceSequence = sourceSequence; AttackingSide = attackingSide; Organizer = organizer; PreparedAttacker = preparedAttacker;
             if (!target.IsFinite || float.IsNaN(expectedSetContactTime) || float.IsInfinity(expectedSetContactTime)) throw new ArgumentOutOfRangeException(nameof(target));
             if (executionClassification == null || executionClassification.ExecutableEnvelope == null) throw new ArgumentException("An executable Set envelope is required.", nameof(executionClassification));
             Target = target; ExpectedSetContactTime = expectedSetContactTime; ExecutionClassification = executionClassification;
             TrajectoryArtifact = trajectoryArtifact ?? throw new ArgumentNullException(nameof(trajectoryArtifact));
         }
-        public long Revision { get; } public long SourceSequence { get; } public PlayerId Organizer { get; } public PlayerId PreparedAttacker { get; }
+        public long Revision { get; } public long SourceSequence { get; } public TeamSide AttackingSide { get; } public PlayerId Organizer { get; } public PlayerId PreparedAttacker { get; }
         public SimVector3 Target { get; } public float ExpectedSetContactTime { get; }
         public ExecutionSampleClassificationV4 ExecutionClassification { get; } public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
     }

@@ -21,6 +21,16 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlanSetIntent_AwayAttackingPlanRetainsExplicitAwaySide()
+        {
+            var coordinator = new AttackDefenseAuthorityCoordinator(new AttackDefensePlanner(), new Sink());
+
+            coordinator.PlanSetIntent(Fixture.Request(4, 1, Volleyball.Shared.Contracts.TeamSide.Away));
+
+            Assert.That(coordinator.State.AttackingSide, Is.EqualTo(Volleyball.Shared.Contracts.TeamSide.Away));
+        }
+
+        [Test]
         public void Coordinator_HasNoSetContactCommandSurface()
         {
             var names = System.Enum.GetNames(typeof(AttackDefenseCommandKind));
@@ -57,7 +67,7 @@ namespace Volleyball.EditModeTests
         private static class Fixture
         {
             public static readonly Volleyball.Shared.Contracts.PlayerId Organizer = new Volleyball.Shared.Contracts.PlayerId("home-setter");
-            public static SetIntentPlanningRequestV3 Request(long revision, long sequence)
+            public static SetIntentPlanningRequestV3 Request(long revision, long sequence, Volleyball.Shared.Contracts.TeamSide attackingSide = Volleyball.Shared.Contracts.TeamSide.Home)
             {
                 var envelope = ExecutionEnvelopeFactoryV4.Create(MatchV4TestFixture.CreateDerived(),
                     new ExecutionIntentV4("gate-i-set", ExecutionCandidateCategoryV4.Set, new SimVector3(0f, 2f, 1f), new SimVector3(0f, 3f, 2f), .5f),
@@ -71,7 +81,7 @@ namespace Volleyball.EditModeTests
                         new BallSimulationParameters(-9.8f, .9995f), context.PhysicsConfigurationHash, "gate-i-trajectory",
                         context.TrajectoryPredictionProviderConfiguration.PredictorVersion, context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
                         envelope.Identity, ExecutionDegradationStepV4.FullSampling));
-                return new SetIntentPlanningRequestV3(revision, sequence, Organizer, new Volleyball.Shared.Contracts.PlayerId("home-attacker"),
+                return new SetIntentPlanningRequestV3(revision, sequence, attackingSide, Organizer, new Volleyball.Shared.Contracts.PlayerId("home-attacker"),
                     envelope.BaselineTarget, 1f, envelope.Classify(sample), artifact);
             }
         }
