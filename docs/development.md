@@ -100,11 +100,19 @@ The Task 12 full-suite evidence on Unity `6000.0.43f1` is:
 - both legacy production searches returned no matches and `git diff --check`
   was clean.
 
-Gates A–E freeze the V4 contract, deterministic derivation, shared execution
-envelope, trajectory prediction, observed P6 geometry and Replay V4 interfaces.
-Gates F–K remain: 12-player shadow roster/substitution lifecycle, component
-ownership split, organization/tactical authority, attack expansion, defense
-expansion, perception/director slimming and calibration.
+Gates A–H are complete. Gate H formal authority is enabled only for V3 Authority
+with a complete twelve-player formal roster. Immutable Gate F responsibilities
+select receive/organization ownership; the Gate H coordinator owns revision,
+fallback and bounded coverage decisions; the controller is the single writer
+through Gate G player facades. Accepted formal Receive/Set replay events carry
+their own exact authority receipt. Legacy 3v3 and V3 Shadow/Disabled remain
+outside Gate H, while accepted Set hands off to the temporary Gate I attack seam.
+
+Gate H completion evidence on Unity `6000.0.43f1` is EditMode `627/627`,
+PlayMode `31/31`, and fixed-seed determinism `2/2`, all with zero failures,
+skips or inconclusive results. Gates I–K remain pending: attack/defense and
+reorganization authority, perception/CourtAwareness, then director slimming,
+Replay/calibration completion.
 
 ## Windows delivery
 

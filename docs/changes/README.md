@@ -12,7 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
-| CHG-20260726-002 | 2026-07-26 | 进行中 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate H 接发与组织权威](2026-07-26-002-full-rally-v4-gate-h-receive-organization-authority.md) |
+| CHG-20260726-002 | 2026-07-26 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate H 接发与组织权威](2026-07-26-002-full-rally-v4-gate-h-receive-organization-authority.md) |
 | CHG-20260726-001 | 2026-07-26 | 已完成 | Match / Docs | 模块内部 | [Full Rally V4 Gate G player component boundaries](2026-07-26-001-full-rally-v4-gate-g-player-component-boundaries.md) |
 | CHG-20260725-001 | 2026-07-26 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate F 十二人责任计划 Shadow](2026-07-25-001-full-rally-v4-gate-f-shadow-plans.md) |
 | CHG-20260724-002 | 2026-07-24 | 已完成 | Career / Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gates A–E contract cut](2026-07-24-full-rally-v4-gates-a-e.md) |

@@ -495,19 +495,19 @@ base attributes + DominantHand
 - 固定 seed 重复运行产生相同字节和 hash。
 - HTML overlay 只渲染实际消费字段和明确来源。
 
-### Gate F：十二人责任计划 Shadow
+### Gate F：十二人责任计划 Shadow（已完成）
 
 - 复用原 Stage 3 的 `RallyPlan`、`TeamRallyPlan`、六人 assignment、claims 和 beam composition。
 - 两队从同一 V4 world/physical artifact 创建 shadow plans。
 - shadow 只写 Replay V4，不能发 movement/contact command。
 
-### Gate G：Player 组件边界
+### Gate G：Player 组件边界（已完成）
 
 - 在现有 facade 后拆出 locomotion、action、contact surface、technique execution 和 presentation。
 - 保持 Stage 1.5 连续动作与 `0.18m` 攻击对齐基线。
 - technique executor 只消费 `ExecutionEnvelopeV4`。
 
-### Gate H：接发与组织权威
+### Gate H：接发与组织权威（已完成）
 
 - 责任 plan 接管接发、二传预备、应急代传、覆盖和攻击预备。
 - 复用唯一 `SetterOrganizationZone` 和注册二传可达性规则。
