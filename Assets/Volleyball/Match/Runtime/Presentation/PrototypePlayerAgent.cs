@@ -578,7 +578,9 @@ namespace Volleyball.Presentation
             Vector3 movementTarget,
             float movementStartSimulationTime,
             SimVector3 targetVelocity,
-            int contactGroupId)
+            int contactGroupId,
+            ExecutionSampleClassificationV4 executionClassification = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
             if (!targetVelocity.IsFinite)
             {
@@ -586,6 +588,16 @@ namespace Volleyball.Presentation
             }
 
             CancelScheduledContact();
+            if (executionClassification != null)
+            {
+                _techniqueExecutor.ScheduleV4(
+                    TechniqueAction.Block,
+                    scheduledSimulationTime,
+                    executionClassification,
+                    NoExecutionError(),
+                    contactGroupId,
+                    trajectoryArtifact: trajectoryArtifact);
+            }
             transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
             var blockContactRootHeight = movementTarget.y > 0f
                 ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
@@ -599,6 +611,11 @@ namespace Volleyball.Presentation
                 blockContactHeight: blockContactRootHeight);
             _contactSurfaceProvider.Begin();
             _contactSurfaceProvider.SchedulePhysicalBlock(targetVelocity, contactGroupId, scheduledSimulationTime);
+        }
+
+        private static SkillExecutionError NoExecutionError()
+        {
+            return new SkillExecutionError(0f, SimVector3.Zero, SimVector3.Zero, 0f, 1f, SimVector3.Zero, 1f);
         }
 
         public bool RetargetBlockContact(

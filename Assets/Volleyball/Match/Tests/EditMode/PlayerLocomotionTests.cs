@@ -230,6 +230,41 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void SaturatedAttackRoute_MaximumSpeedCoversTheConfiguredAscentAndKeepsContactReachable()
+        {
+            var root = new GameObject("SaturatedAttackRouteSpeedBound");
+            root.transform.position = new Vector3(0f, 0f, -4f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -0.18f), 0f, 1f, TechniqueAction.Attack,
+                PlayerAbilityProfile.Default, 0f);
+            locomotion.ConfigureAttackApproach(
+                new AttackApproachPlan(
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -0.18f),
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -0.18f),
+                    0f, 1f, 0f),
+                PlayerAbilityProfile.Default, 1f);
+            locomotion.ConfigureAttackContact(
+                new Vector3(0f, 3f, -0.18f), .38f, PlayerAbilityProfile.Default);
+
+            var previous = root.transform.position;
+            for (var time = .01f; time <= 1f; time += .01f)
+            {
+                var sample = locomotion.Sample(time, .01f, true);
+                locomotion.SetRootPosition(sample.Position);
+                Assert.That(Vector3.Distance(previous, root.transform.position),
+                    Is.LessThanOrEqualTo((locomotion.MaximumSpeed * .01f) + .0001f));
+                previous = root.transform.position;
+            }
+
+            Assert.That(locomotion.MaximumSpeed, Is.GreaterThanOrEqualTo(10f));
+            Assert.That(Vector3.Distance(new Vector3(0f, 0f, -.18f), root.transform.position),
+                Is.LessThanOrEqualTo(.001f),
+                "The live root must not trail a desired route already declared feasible.");
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
         public void ConfigureAttackApproach_ResetsThePersistentAlignmentOffsetForANewAttack()
         {
             var locomotion = CreateAttackLocomotion();

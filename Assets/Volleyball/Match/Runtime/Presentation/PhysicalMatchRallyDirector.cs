@@ -2862,12 +2862,20 @@ namespace Volleyball.Presentation
                     blocker,
                     unit.Blockers[0]);
                 target = _players[blocker.Id].ResolveBlockRootTarget(intercept.Point, target);
+                var rebound = BlockReboundVelocity(attackingTeam);
+                var classification = CreateBlockExecutionClassification(
+                    blocker.Id,
+                    intercept.Point,
+                    rebound,
+                    out var trajectoryArtifact);
                 _players[blocker.Id].ScheduleBlockContact(
                     blockTime,
                     target,
                     _ball.SimulationTime,
-                    BlockReboundVelocity(attackingTeam),
-                    NextContactGroup());
+                    rebound,
+                    NextContactGroup(),
+                    classification,
+                    trajectoryArtifact);
                 _scheduledBlockers.Add(blocker.Id);
                 BlockSupportAssignments++;
                 if (_configuration.RosterSize == 6 && !IsFrontRow(blocker.Id))
@@ -2957,6 +2965,68 @@ namespace Volleyball.Presentation
                 $"time={appliedBlockTime:0.00} predicted={blockTime:0.00} " +
                 $"intercept=({intercept.Point.X:0.00},{intercept.Point.Y:0.00}," +
                 $"{intercept.Point.Z:0.00})");
+        }
+
+        private ExecutionSampleClassificationV4 CreateBlockExecutionClassification(
+            PlayerId blocker,
+            SimVector3 interceptPoint,
+            SimVector3 rebound,
+            out BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
+        {
+            trajectoryArtifact = null;
+            if (_matchContext == null)
+            {
+                return null;
+            }
+
+            var identity = $"execution:{_matchContext.SessionId:D}:block:{_tacticRevision}:{_decisionIndex}:" +
+                           $"{SuccessfulContacts}:{(int)blocker.Team}:{(int)blocker.Role}:{blocker.RosterSlot}";
+            var samplingKey = identity + ":sample";
+            var envelope = PlanExecutionEnvelopeV4(
+                _players[blocker].Ability.Derived,
+                new ExecutionIntentV4(
+                    identity,
+                    ExecutionCandidateCategoryV4.Block,
+                    interceptPoint,
+                    rebound,
+                    .6f),
+                samplingKey,
+                ExecutionEnvelopePolicyV4.Default);
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                samplingKey,
+                ExecutionCandidateCategoryV4.Block,
+                interceptPoint,
+                rebound,
+                envelope.RequestedEffort);
+            var classification = ExecuteExecutionSampleV4(envelope, sample);
+            if (classification.Kind is ExecutionSampleClassificationKindV4.UnexpectedExecutionSample or
+                ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                throw new InvalidOperationException("Formal Block V4 sample must be executable.");
+            }
+
+            _lastPlannedExecutionEnvelopeV4 = envelope;
+            _lastExecutionSampleClassificationV4 = classification;
+            var stateVersion = (long)(uint)BitConverter.ToInt32(
+                BitConverter.GetBytes(_ball.SimulationTime), 0);
+            var samplingKeyForTrajectory = samplingKey + ":trajectory";
+            var request = new BallTrajectoryPredictionRequestV4(
+                blocker.Team == TeamId.Blue ? TeamSide.Home : TeamSide.Away,
+                stateVersion,
+                new BallState(interceptPoint, rebound, SimulatedBall.DefaultRadius),
+                SimulationParameters,
+                _matchContext.PhysicsConfigurationHash,
+                samplingKeyForTrajectory,
+                _matchContext.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                _matchContext.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                envelope.Identity,
+                ExecutionDegradationStepV4.FullSampling);
+            trajectoryArtifact = PredictSharedGate5TrajectoryV4(
+                _trajectoryPredictionProviderV4,
+                request,
+                ExecutionEnvelopePolicyV4.Default);
+            return classification;
         }
 
         private void HandleAcceptedBlock(PlayerBallContactEvent contact)

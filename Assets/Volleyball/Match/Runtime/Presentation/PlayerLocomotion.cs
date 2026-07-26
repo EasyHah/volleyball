@@ -148,7 +148,7 @@ namespace Volleyball.Presentation
                 _movementStartSimulationTime + 0.01f,
                 scheduledContactTime - movementLead);
             var availableSeconds = _movementEndSimulationTime - _movementStartSimulationTime;
-            MaximumSpeed = _moveSpeed * (0.65f + (ability.Mobility * 0.5f));
+            MaximumSpeed = HorizontalMaximumSpeed(ability);
             _scheduledAction = action;
             _scheduledAbility = ability;
             _attackContactTime = scheduledContactTime;
@@ -165,6 +165,7 @@ namespace Volleyball.Presentation
             ScheduledMovementDistance = Vector3.Distance(_movementStartPosition, _movementTargetPosition);
             MovementShortfall = Vector3.Distance(_movementTargetPosition, requestedTarget);
             _hasScheduledMovement = ScheduledMovementDistance > 0.01f;
+            UpdateAttackRouteMaximumSpeed();
         }
 
         public void ConfigureContinuationMovement(
@@ -202,28 +203,30 @@ namespace Volleyball.Presentation
             }
 
             var takeoffTime = Mathf.Max(_movementEndSimulationTime + 0.01f, contactTime - _attackJumpLead);
-            MaximumSpeed = _moveSpeed * (0.65f + (ability.Mobility * 0.5f));
+            var horizontalMaximumSpeed = HorizontalMaximumSpeed(ability);
             _attackTakeoffPosition = Vector3.MoveTowards(
                 approachStart,
                 requestedTakeoff,
-                MaximumSpeed * (takeoffTime - _movementEndSimulationTime));
+                horizontalMaximumSpeed * (takeoffTime - _movementEndSimulationTime));
             ScheduledMovementDistance += Vector3.Distance(approachStart, _attackTakeoffPosition);
             MovementShortfall += Vector3.Distance(_attackTakeoffPosition, requestedTakeoff);
+            UpdateAttackRouteMaximumSpeed();
         }
 
         public void ConfigureAttackContact(Vector3 requestedRootPosition, float jumpLead, PlayerAbilityProfile ability)
         {
             _attackJumpLead = jumpLead;
-            MaximumSpeed = _moveSpeed * (0.65f + (ability.Mobility * 0.5f));
+            var horizontalMaximumSpeed = HorizontalMaximumSpeed(ability);
             var takeoffHorizontal = new Vector3(_attackTakeoffPosition.x, 0f, _attackTakeoffPosition.z);
             var requestedHorizontal = new Vector3(requestedRootPosition.x, 0f, requestedRootPosition.z);
             var reachableHorizontal = Vector3.MoveTowards(
                 takeoffHorizontal,
                 requestedHorizontal,
-                MaximumSpeed * jumpLead);
+                horizontalMaximumSpeed * jumpLead);
             _attackContactRootPosition = new Vector3(reachableHorizontal.x, requestedRootPosition.y, reachableHorizontal.z);
             _hasAttackContactRoot = true;
             MovementShortfall += Vector3.Distance(reachableHorizontal, requestedHorizontal);
+            UpdateAttackRouteMaximumSpeed();
         }
 
         public void ConfigureSupportMovement(
@@ -238,7 +241,7 @@ namespace Volleyball.Presentation
             _supportStartPosition = ConstrainGroundPosition(_root.position);
             _supportStartSimulationTime = movementStartSimulationTime;
             _supportEndSimulationTime = Mathf.Max(_supportStartSimulationTime + 0.01f, scheduledContactTime - 0.10f);
-            MaximumSpeed = _moveSpeed * (0.65f + (ability.Mobility * 0.5f));
+            MaximumSpeed = HorizontalMaximumSpeed(ability);
             _supportTargetPosition = Vector3.MoveTowards(
                 _supportStartPosition,
                 ConstrainGroundPosition(requestedTarget),
@@ -442,6 +445,55 @@ namespace Volleyball.Presentation
             _attackContactRootPosition = default;
             _attackJumpLead = 0f;
             _attackJumpQuality = 0f;
+        }
+
+        private float HorizontalMaximumSpeed(PlayerAbilityProfile ability)
+        {
+            return _moveSpeed * (0.65f + (ability.Mobility * 0.5f));
+        }
+
+        // The horizontal reach calculation deliberately uses mobility's average speed.
+        // MaximumSpeed is instead the instantaneous 3D route bound consumed by live root steps.
+        private void UpdateAttackRouteMaximumSpeed()
+        {
+            if (_scheduledAction != TechniqueAction.Attack)
+            {
+                return;
+            }
+
+            var maximum = HorizontalMaximumSpeed(_scheduledAbility);
+            maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
+                Vector3.Distance(_movementStartPosition, _movementTargetPosition),
+                _movementEndSimulationTime - _movementStartSimulationTime));
+
+            var takeoffTime = Mathf.Max(_movementEndSimulationTime + .01f, _attackContactTime - _attackJumpLead);
+            if (_hasAttackApproach)
+            {
+                maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
+                    Vector3.Distance(_movementTargetPosition, _attackTakeoffPosition),
+                    takeoffTime - _movementEndSimulationTime));
+            }
+
+            if (_hasAttackContactRoot)
+            {
+                maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
+                    Vector3.Distance(_attackTakeoffPosition, _attackContactRootPosition),
+                    _attackContactTime - takeoffTime));
+                maximum = Mathf.Max(maximum, SmoothStepPeakSpeed(
+                    Mathf.Abs(_attackContactRootPosition.y), .45f));
+            }
+            else
+            {
+                var jumpHeight = (0.72f + (_scheduledAbility.Jump * .5f)) * _attackJumpQuality;
+                maximum = Mathf.Max(maximum, (4f * jumpHeight) / .83f);
+            }
+
+            MaximumSpeed = maximum;
+        }
+
+        private static float SmoothStepPeakSpeed(float distance, float duration)
+        {
+            return duration > .000001f ? (1.5f * distance) / duration : 0f;
         }
 
         public void SetRootPosition(Vector3 position)
