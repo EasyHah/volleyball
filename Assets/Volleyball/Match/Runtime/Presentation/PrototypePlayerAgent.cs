@@ -137,9 +137,53 @@ namespace Volleyball.Presentation
         private bool _physicalBlockActivationLogged;
         private BlockArmContactVolumes _blockArmContactVolumes;
         private PlayerContactSurfaceProvider _contactSurfaceProvider;
+        private ScheduledContactExecution _contactExecution;
         private bool _isControlledHandling;
         private float _courtHalfLength = CourtBuilder.HalfLength;
         private PlayerLocomotion _locomotion;
+
+        private readonly struct ScheduledContactExecution
+        {
+            public ScheduledContactExecution(
+                TechniqueAction contactAction,
+                TechniqueAction surfaceAction,
+                int contactGroupId,
+                float playerTechnique,
+                SimVector3 targetVelocity,
+                SetContactHand setContactHand,
+                SimVector3? plannedContactCenter)
+            {
+                ContactAction = contactAction;
+                SurfaceAction = surfaceAction;
+                ContactGroupId = contactGroupId;
+                PlayerTechnique = playerTechnique;
+                TargetVelocity = targetVelocity;
+                SetContactHand = setContactHand;
+                PlannedContactCenter = plannedContactCenter;
+            }
+
+            public TechniqueAction ContactAction { get; }
+            public TechniqueAction SurfaceAction { get; }
+            public int ContactGroupId { get; }
+            public float PlayerTechnique { get; }
+            public SimVector3 TargetVelocity { get; }
+            public SetContactHand SetContactHand { get; }
+            public SimVector3? PlannedContactCenter { get; }
+
+            public PlayerContactInput WithSample(PlayerId playerId, ActionTimelineSample sample)
+            {
+                return new PlayerContactInput(
+                    playerId,
+                    ContactAction,
+                    SurfaceAction,
+                    sample,
+                    ContactGroupId,
+                    PlayerTechnique,
+                    TargetVelocity,
+                    SetContactHand,
+                    PlannedContactCenter);
+            }
+        }
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -228,7 +272,8 @@ namespace Volleyball.Presentation
                 command.AttackApproach,
                 command.AttackContactPlan,
                 command.NormalSetRoute,
-                applyLegacyAttackPowerScale: false);
+                applyLegacyAttackPowerScale: false,
+                executionCommand: command);
         }
 
         // Compatibility path for legacy 3v3 callers. Formal V4 scheduling is
@@ -277,7 +322,8 @@ namespace Volleyball.Presentation
             AttackApproachPlan? attackApproach,
             AttackContactPlan? attackContactPlan,
             SetRoute? normalSetRoute,
-            bool applyLegacyAttackPowerScale)
+            bool applyLegacyAttackPowerScale,
+            PlayerExecutionCommand executionCommand = null)
         {
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
@@ -369,6 +415,30 @@ namespace Volleyball.Presentation
             var authoritativeContactCenter = attackContactPlan?.ContactCenter ?? plannedContactCenter;
             _hasPlannedContactCenter = authoritativeContactCenter.HasValue;
             _plannedContactCenter = authoritativeContactCenter.GetValueOrDefault();
+            if (executionCommand?.ControlledHandling == true)
+            {
+                _isControlledHandling = true;
+            }
+            var contactAction = _isControlledHandling ? TechniqueAction.Receive : action;
+            var surfaceAction = _isControlledHandling ? TechniqueAction.Set : action;
+            var playerTechnique = action == TechniqueAction.Receive ||
+                                  action == TechniqueAction.Set ||
+                                  action == TechniqueAction.Attack
+                ? 1f
+                : Ability.TechniqueFor(action);
+            if (action == TechniqueAction.Set)
+            {
+                playerTechnique *= _setDecision.ControlScale;
+            }
+
+            _contactExecution = new ScheduledContactExecution(
+                contactAction,
+                surfaceAction,
+                executionCommand?.ContactGroupId ?? contactGroupId,
+                playerTechnique,
+                _targetVelocity,
+                CurrentSetContactHand(),
+                authoritativeContactCenter);
             MinimumActiveSurfacePlanError = float.PositiveInfinity;
             _contactSurfaceProvider.Begin();
             _actionTimelineState.DisableSupport();
@@ -417,7 +487,8 @@ namespace Volleyball.Presentation
                 command.AttackApproach,
                 command.AttackContactPlan,
                 command.NormalSetRoute,
-                applyLegacyAttackPowerScale: false);
+                applyLegacyAttackPowerScale: false,
+                executionCommand: command);
             ConfigureControlledHandling(attackContactPlan);
         }
 
@@ -451,6 +522,14 @@ namespace Volleyball.Presentation
                 attackContactPlan: attackContactPlan);
             _targetVelocity = targetVelocity + executionError.TargetVelocityError;
             ConfigureControlledHandling(attackContactPlan);
+            _contactExecution = new ScheduledContactExecution(
+                TechniqueAction.Receive,
+                TechniqueAction.Set,
+                contactGroupId,
+                1f,
+                _targetVelocity,
+                SetContactHand.Both,
+                attackContactPlan.ContactCenter);
         }
 
         private void ConfigureControlledHandling(AttackContactPlan attackContactPlan)
@@ -486,6 +565,10 @@ namespace Volleyball.Presentation
             _actionTimelineState.CancelContact();
             _actionTimelineState.DisableSupport();
             _contactSurfaceProvider.Clear();
+            _contactExecution = default;
+            LastScheduledSurfaceCenter = SimVector3.Zero;
+            LastScheduledSurfaceNormal = SimVector3.Zero;
+            MinimumActiveSurfacePlanError = float.PositiveInfinity;
             _supportActionActivated = false;
             _isControlledHandling = false;
             _hasAttackContactCommand = false;
@@ -879,36 +962,8 @@ namespace Volleyball.Presentation
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample);
             SetRootPosition(transform.position);
-            var contactAction = _isControlledHandling
-                ? TechniqueAction.Receive
-                : _scheduledAction;
-            var surfaceAction = _isControlledHandling
-                ? TechniqueAction.Set
-                : _scheduledAction;
-            // AI assistance resolves the physical impulse toward this action's already-imperfect
-            // execution target. Ability still changes that target, reaction time, reachable position,
-            // contact pose and set-style availability before technique control is applied.
-            var playerTechnique = _scheduledAction == TechniqueAction.Receive ||
-                                  _scheduledAction == TechniqueAction.Set ||
-                                  _scheduledAction == TechniqueAction.Attack
-                ? 1f
-                : Ability.TechniqueFor(_scheduledAction);
-            if (_scheduledAction == TechniqueAction.Set)
-            {
-                playerTechnique *= _setDecision.ControlScale;
-            }
-
             _contactSurfaceProvider.Collect(
-                new PlayerContactInput(
-                    Id,
-                    contactAction,
-                    surfaceAction,
-                    sample,
-                    _contactGroupId,
-                    playerTechnique,
-                    _targetVelocity,
-                    CurrentSetContactHand(),
-                    _hasPlannedContactCenter ? _plannedContactCenter : (SimVector3?)null),
+                _contactExecution.WithSample(Id, sample),
                 contacts);
             LastScheduledSurfaceCenter = _contactSurfaceProvider.LastScheduledSurfaceCenter;
             LastScheduledSurfaceNormal = _contactSurfaceProvider.LastScheduledSurfaceNormal;

@@ -80,6 +80,7 @@ namespace Volleyball.Presentation
             _surfaces.Clear();
             LastScheduledSurfaceCenter = SimVector3.Zero;
             LastScheduledSurfaceNormal = SimVector3.Zero;
+            MinimumActiveSurfacePlanError = float.PositiveInfinity;
         }
 
         public void Collect(PlayerContactInput input, ICollection<BallContactCandidate> contacts)

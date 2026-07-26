@@ -13,6 +13,39 @@ namespace Volleyball.EditModeTests
     public sealed class PrototypePlayerContactSourceTests
     {
         [Test]
+        public void CancelScheduledContact_ClearsContactDiagnosticsAndFutureCandidates()
+        {
+            var playerObject = new GameObject("CancelledContactProvider");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PlayerId(TeamId.Blue, PlayerRole.Defender), Color.blue, "3");
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    2f,
+                    new SimVector3(0f, 4f, 3f),
+                    new SkillExecutionError(0f, SimVector3.Zero, SimVector3.Zero, 0f, 1f, SimVector3.Zero, 1f),
+                    811,
+                    new SimVector3(0f, 2f, 0f));
+                var contacts = new List<BallContactCandidate>();
+
+                player.CollectContacts(2f, 1f / 120f, contacts);
+                player.CancelScheduledContact();
+                contacts.Clear();
+                player.CollectContacts(2.01f, 1f / 120f, contacts);
+
+                Assert.That(contacts, Is.Empty);
+                Assert.That(player.LastScheduledSurfaceCenter.SqrMagnitude, Is.EqualTo(0f));
+                Assert.That(player.LastScheduledSurfaceNormal.SqrMagnitude, Is.EqualTo(0f));
+                Assert.That(ReadMinimumActiveSurfacePlanError(player), Is.EqualTo(float.PositiveInfinity));
+            }
+            finally
+            {
+                Object.DestroyImmediate(playerObject);
+            }
+        }
+
+        [Test]
         public void ScheduleContact_RecordsAssignedMovementDistance()
         {
             var playerObject = new GameObject("MovingReceiver");
@@ -1500,6 +1533,15 @@ namespace Volleyball.EditModeTests
             var contacts = new List<BallContactCandidate>();
             player.CollectContacts(simulationTime, 1f / 120f, contacts);
             return contacts;
+        }
+
+        private static float ReadMinimumActiveSurfacePlanError(PrototypePlayerAgent player)
+        {
+            var property = typeof(PrototypePlayerAgent).GetProperty(
+                "MinimumActiveSurfacePlanError",
+                System.Reflection.BindingFlags.Instance |
+                System.Reflection.BindingFlags.NonPublic);
+            return (float)property.GetValue(player);
         }
 
         private static float HorizontalDistance(Vector3 first, Vector3 second)
