@@ -131,7 +131,27 @@ namespace Volleyball.AI
         public FinalAttackChoiceV3 ChooseFinal(AttackPlanningResultV3 result, JointDefensePlanV3 committedDefense) { if (result == null) throw new ArgumentNullException(nameof(result)); if (committedDefense == null) throw new ArgumentNullException(nameof(committedDefense)); var pool = result.QualifiedPowerRoutes.Count > 0 ? result.QualifiedPowerRoutes : result.FallbackCandidates; if (pool.Count == 0) throw new InvalidOperationException("No attack candidate is available."); return new FinalAttackChoiceV3(pool.OrderByDescending(c => c.ExpectedRallyValue).ThenBy(c => c.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.ActionClass).ThenBy(c => c.CandidateIdentity, StringComparer.Ordinal).First(), result.FallbackCandidates); }
 
         public static IReadOnlyList<AttackCandidateV3> AddQualifiedToolRecoveryFallback(IReadOnlyList<AttackCandidateV3> fallbackCandidates, BlockToolRecoveryResultV3 recovery, AttackCandidateV3 toolRecoveryCandidate)
-        { if (fallbackCandidates == null) throw new ArgumentNullException(nameof(fallbackCandidates)); if (recovery == null) throw new ArgumentNullException(nameof(recovery)); if (toolRecoveryCandidate == null) throw new ArgumentNullException(nameof(toolRecoveryCandidate)); var values = fallbackCandidates.Select(x => x ?? throw new ArgumentException("Fallback candidates cannot contain null.", nameof(fallbackCandidates))).ToList(); if (recovery.IsQualified) { if (toolRecoveryCandidate.ActionClass != AttackActionClassV3.BlockToolRecovery || !toolRecoveryCandidate.Actor.Equals(recovery.Attacker)) throw new ArgumentException("Tool recovery candidate must match the qualified attacker.", nameof(toolRecoveryCandidate)); values.Add(toolRecoveryCandidate); } return new ReadOnlyCollection<AttackCandidateV3>(values); }
+        {
+            if (fallbackCandidates == null) throw new ArgumentNullException(nameof(fallbackCandidates));
+            if (recovery == null) throw new ArgumentNullException(nameof(recovery));
+            if (toolRecoveryCandidate == null) throw new ArgumentNullException(nameof(toolRecoveryCandidate));
+            var values = fallbackCandidates.Select(x => x ?? throw new ArgumentException("Fallback candidates cannot contain null.", nameof(fallbackCandidates))).ToList();
+            if (recovery.IsQualified)
+            {
+                var qualified = recovery.ToolRecoveryCandidate;
+                if (qualified == null || recovery.ReboundEvidence == null || recovery.ReorganizationExit == null ||
+                    toolRecoveryCandidate.CandidateIdentity != qualified.CandidateIdentity ||
+                    toolRecoveryCandidate.ActionClass != AttackActionClassV3.BlockToolRecovery ||
+                    !toolRecoveryCandidate.Actor.Equals(recovery.Attacker) ||
+                    toolRecoveryCandidate.EnvelopeIdentity != recovery.PlanEnvelopeIdentity ||
+                    toolRecoveryCandidate.TrajectoryArtifactIdentity != recovery.ReboundEvidence.TrajectoryArtifactIdentity ||
+                    toolRecoveryCandidate.ReorganizationExitIdentity != recovery.ReorganizationExit.Identity ||
+                    toolRecoveryCandidate.ExpectedRallyValue != recovery.Value)
+                    throw new ArgumentException("Tool recovery candidate must exactly match qualified rebound evidence, exit, and value.", nameof(toolRecoveryCandidate));
+                values.Add(qualified);
+            }
+            return new ReadOnlyCollection<AttackCandidateV3>(values);
+        }
 
         private static IEnumerable<GateITacticalPlayerV3> Eligible(SetIntentPlanningRequestV3 request) => request.Players.Where(x => x.Side == request.AttackingSide && x.CanAttack);
         private static float AttackScore(GateITacticalPlayerV3 x) { var a = x.Attributes.Attributes.Attack; return a.PowerCapacity + a.DirectionControl + a.SpeedControl + a.ApproachMobility; }

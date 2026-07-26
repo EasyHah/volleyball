@@ -28,7 +28,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             AttackActionClassV3 actionClass, SimVector3 contactCenter,
             SimVector3 target, float expectedRallyValue, float legalSampleRatio,
             bool isQualifiedPowerRoute, string eliminationReason,
-            string envelopeIdentity, string trajectoryArtifactIdentity)
+            string envelopeIdentity, string trajectoryArtifactIdentity,
+            string reorganizationExitIdentity = "")
         {
             CandidateIdentity = Text(candidateIdentity, nameof(candidateIdentity));
             Actor = PlayerWorldSnapshotV3.RequirePlayerId(actor, nameof(actor));
@@ -43,6 +44,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
             EliminationReason = eliminationReason == null ? string.Empty : eliminationReason.Trim();
             EnvelopeIdentity = Text(envelopeIdentity, nameof(envelopeIdentity));
             TrajectoryArtifactIdentity = Text(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
+            ReorganizationExitIdentity = reorganizationExitIdentity == null ? string.Empty : reorganizationExitIdentity.Trim();
         }
         public string CandidateIdentity { get; }
         public PlayerId Actor { get; }
@@ -55,6 +57,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public string EliminationReason { get; }
         public string EnvelopeIdentity { get; }
         public string TrajectoryArtifactIdentity { get; }
+        // A tool-recovery candidate must name the only declared continuation exit.
+        // Other attack classes deliberately leave this empty.
+        public string ReorganizationExitIdentity { get; }
     }
 
     public sealed class PublicAttackThreatEntryV3

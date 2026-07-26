@@ -18,6 +18,13 @@ namespace Volleyball.EditModeTests
             Assert.That(result.IsQualified, Is.True);
             Assert.That(result.RecoveryActor, Is.Not.EqualTo(result.Attacker));
             Assert.That(result.ReorganizationExit, Is.Not.Null);
+            Assert.That(result.ReboundEvidence.TrajectoryArtifactIdentity, Is.EqualTo("trajectory"));
+            Assert.That(result.ReboundEvidence.SampleIdentity, Is.EqualTo("sample-17"));
+            Assert.That(result.ReboundEvidence.BlockContactIdentity, Is.EqualTo("block-contact-17"));
+            Assert.That(result.ToolRecoveryCandidate.EnvelopeIdentity, Is.EqualTo("envelope"));
+            Assert.That(result.PlanEnvelopeIdentity, Is.EqualTo(result.ToolRecoveryCandidate.EnvelopeIdentity));
+            Assert.That(result.ToolRecoveryCandidate.ReorganizationExitIdentity, Is.EqualTo(result.ReorganizationExit.Identity));
+            Assert.That(result.ToolRecoveryCandidate.ExpectedRallyValue, Is.EqualTo(result.Value));
         }
 
         [TestCase(ToolRecoveryFailure.NoBlockContact)]
@@ -43,6 +50,30 @@ namespace Volleyball.EditModeTests
             Assert.That(result.Select(value => value.CandidateIdentity), Is.EqualTo(new[] { "roll", "tool" }));
         }
 
+        [TestCase("wrong-trajectory", "envelope", "recovery-exit", .332f)]
+        [TestCase("trajectory", "wrong-envelope", "recovery-exit", .332f)]
+        [TestCase("trajectory", "envelope", "wrong-exit", .332f)]
+        [TestCase("trajectory", "envelope", "recovery-exit", .331f)]
+        public void AddQualifiedToolRecoveryFallback_RejectsCandidateWithMismatchedEvidence(
+            string trajectory, string envelope, string exit, float value)
+        {
+            var recovery = new BlockToolRecoveryPlanner().Qualify(Fixture.PlayableToolRecovery());
+            var mismatched = Fixture.ToolCandidate("tool", envelope, trajectory, exit, value);
+
+            Assert.That(() => AttackDefensePlanner.AddQualifiedToolRecoveryFallback(
+                new[] { Fixture.RollCandidate() }, recovery, mismatched), Throws.ArgumentException);
+        }
+
+        [Test]
+        public void AddQualifiedToolRecoveryFallback_CannotAppendAnArbitraryCallerCandidate()
+        {
+            var recovery = new BlockToolRecoveryPlanner().Qualify(Fixture.PlayableToolRecovery());
+
+            Assert.That(() => AttackDefensePlanner.AddQualifiedToolRecoveryFallback(
+                new[] { Fixture.RollCandidate() }, recovery, Fixture.ToolCandidate(identity: "unqualified-tool")),
+                Throws.ArgumentException);
+        }
+
         private static class Fixture
         {
             private static readonly PlayerId Attacker = new PlayerId("blue-attacker-1");
@@ -51,7 +82,9 @@ namespace Volleyball.EditModeTests
             public static BlockToolRecoveryPlanningRequestV3 PlayableToolRecovery() =>
                 new BlockToolRecoveryPlanningRequestV3(Attacker, true, 1, .8f, .75f, .1f,
                     new[] { new ToolRecoveryTeammateV3(Recovery, true, .9f, .8f) },
-                    new[] { new ReorganizationExitV3("recovery-exit", Recovery, "Organize") });
+                    new[] { new ReorganizationExitV3("recovery-exit", Recovery, "Organize") },
+                    new ToolRecoveryReboundEvidenceV3("trajectory", "sample-17", new PlayerId("red-blocker-3"), "block-contact-17"),
+                    "envelope", ToolCandidate());
 
             public static BlockToolRecoveryPlanningRequestV3 InvalidRecovery(ToolRecoveryFailure failure)
             {
@@ -64,14 +97,16 @@ namespace Volleyball.EditModeTests
                 var exits = failure == ToolRecoveryFailure.NoReorganizationExit
                     ? new ReorganizationExitV3[0]
                     : new[] { new ReorganizationExitV3("recovery-exit", Recovery, "Organize") };
-                return new BlockToolRecoveryPlanningRequestV3(Attacker, ruleEligible, remainingTouches, .8f, homeRebound, .1f, teammates, exits);
+                return new BlockToolRecoveryPlanningRequestV3(Attacker, ruleEligible, remainingTouches, .8f, homeRebound, .1f, teammates, exits,
+                    new ToolRecoveryReboundEvidenceV3("trajectory", "sample-17", new PlayerId("red-blocker-3"), "block-contact-17"), "envelope", ToolCandidate());
             }
 
-            public static AttackCandidateV3 ToolCandidate() => Candidate("tool", AttackActionClassV3.BlockToolRecovery);
+            public static AttackCandidateV3 ToolCandidate(string identity = "tool", string envelope = "envelope", string trajectory = "trajectory", string exit = "recovery-exit", float value = .332f) =>
+                Candidate(identity, AttackActionClassV3.BlockToolRecovery, envelope, trajectory, exit, value);
             public static AttackCandidateV3 RollCandidate() => Candidate("roll", AttackActionClassV3.Roll);
-            private static AttackCandidateV3 Candidate(string identity, AttackActionClassV3 action) =>
+            private static AttackCandidateV3 Candidate(string identity, AttackActionClassV3 action, string envelope = "envelope", string trajectory = "trajectory", string exit = "", float value = .4f) =>
                 new AttackCandidateV3(identity, Attacker, action, new SimVector3(0f, 2f, 0f), new SimVector3(0f, 0f, 5f),
-                    .4f, 1f, false, string.Empty, "envelope", "trajectory");
+                    value, 1f, false, string.Empty, envelope, trajectory, exit);
         }
     }
 }
