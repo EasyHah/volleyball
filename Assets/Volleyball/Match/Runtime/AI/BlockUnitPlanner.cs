@@ -124,6 +124,23 @@ namespace Volleyball.AI
             return new BlockUnitPlan(selected.ToArray());
         }
 
+        // Formal 6v6 composition consumes candidates, not an imperative selection.
+        // Select remains the legacy 3v3 entry point above.
+        public static IReadOnlyList<BlockUnitPlan> EvaluateUnits(
+            IReadOnlyList<BlockCandidateSnapshot> candidates, SimVector3 intercept,
+            float availableSeconds, bool requireFrontRow = false)
+        {
+            var selected = Select(candidates, intercept, availableSeconds, requireFrontRow).Blockers;
+            var units = new List<BlockUnitPlan>();
+            for (var count = 1; count <= selected.Count; count++)
+            {
+                var unit = new BlockCandidateSnapshot[count];
+                for (var index = 0; index < count; index++) unit[index] = selected[index];
+                units.Add(new BlockUnitPlan(unit));
+            }
+            return units;
+        }
+
         private static void AddBestAdjacent(
             IReadOnlyList<ScoredCandidate> reachable,
             BlockCandidateSnapshot primary,

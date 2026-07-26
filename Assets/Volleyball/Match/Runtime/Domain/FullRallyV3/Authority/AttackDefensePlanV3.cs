@@ -142,15 +142,44 @@ namespace Volleyball.Match.Domain.FullRallyV3
     public sealed class JointDefensePlanV3
     {
         public JointDefensePlanV3(IReadOnlyList<DefenseResponsibilityV3> responsibilities, IReadOnlyList<ReorganizationExitV3> reorganizationExits)
+            : this(string.Empty, responsibilities, reorganizationExits, Array.Empty<string>(), Array.Empty<string>())
         {
+        }
+
+        public JointDefensePlanV3(string sourceThreatIdentity, IReadOnlyList<DefenseResponsibilityV3> responsibilities,
+            IReadOnlyList<ReorganizationExitV3> reorganizationExits, IReadOnlyList<string> blockedZones,
+            IReadOnlyList<string> floorCoveredZones)
+        {
+            SourceThreatIdentity = sourceThreatIdentity ?? string.Empty;
             if (responsibilities == null || responsibilities.Count != 6) throw new ArgumentException("Exactly six defense responsibilities are required.", nameof(responsibilities));
             var copy = responsibilities.Select(value => value ?? throw new ArgumentException("Responsibilities cannot be null.", nameof(responsibilities))).ToArray();
             if (copy.Select(value => value.Actor).Distinct().Count() != 6) throw new ArgumentException("Responsibilities require distinct actors.", nameof(responsibilities));
             Responsibilities = new ReadOnlyCollection<DefenseResponsibilityV3>(copy);
             ReorganizationExits = CopyExits(reorganizationExits);
+            BlockedZones = CopyZones(blockedZones, nameof(blockedZones));
+            FloorCoveredZones = CopyZones(floorCoveredZones, nameof(floorCoveredZones));
         }
+        public string SourceThreatIdentity { get; }
         public IReadOnlyList<DefenseResponsibilityV3> Responsibilities { get; }
         public IReadOnlyList<ReorganizationExitV3> ReorganizationExits { get; }
+        public IReadOnlyList<string> BlockedZones { get; }
+        public IReadOnlyList<string> FloorCoveredZones { get; }
+
+        public override bool Equals(object obj)
+        {
+            if (!(obj is JointDefensePlanV3 other) || SourceThreatIdentity != other.SourceThreatIdentity) return false;
+            return Responsibilities.Select(ValueKey).SequenceEqual(other.Responsibilities.Select(ValueKey)) &&
+                ReorganizationExits.Select(value => value.Identity).SequenceEqual(other.ReorganizationExits.Select(value => value.Identity)) &&
+                BlockedZones.SequenceEqual(other.BlockedZones) && FloorCoveredZones.SequenceEqual(other.FloorCoveredZones);
+        }
+
+        public override int GetHashCode() => SourceThreatIdentity.GetHashCode();
+        private static string ValueKey(DefenseResponsibilityV3 value) => value.Actor.Value + ":" + (int)value.Kind + ":" + value.Zone + ":" + (int)value.Branch;
+        private static IReadOnlyList<string> CopyZones(IReadOnlyList<string> zones, string name)
+        {
+            if (zones == null) throw new ArgumentNullException(name);
+            return new ReadOnlyCollection<string>(zones.Select(value => Text(value, name)).Distinct(StringComparer.Ordinal).ToArray());
+        }
     }
 
     public sealed class AttackDefensePlanV3
