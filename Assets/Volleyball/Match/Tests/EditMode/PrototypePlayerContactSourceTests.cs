@@ -1463,10 +1463,24 @@ namespace Volleyball.EditModeTests
                     attackApproach: approach,
                     attackContactPlan: plan);
 
+                for (var simulationTime = 1.614f;
+                     simulationTime < 2.025f;
+                     simulationTime += 1f / 120f)
+                {
+                    Collect(player, simulationTime);
+                }
                 Collect(player, 2.025f);
+                var rootBeforeContactStep = player.transform.position;
                 var contacts = Collect(player, 2.033f);
                 var palmCenter = contacts[0].Surface.Current.Origin +
                                  (contacts[0].Surface.Current.Normal * SimulatedBall.DefaultRadius);
+
+                var maximumStepDistance =
+                    7f * (0.65f + (player.Ability.Mobility * 0.5f)) * (1f / 120f);
+                Assert.That(
+                    Vector3.Distance(rootBeforeContactStep, player.transform.position),
+                    Is.LessThanOrEqualTo(maximumStepDistance + 0.0001f),
+                    "The planned root sample and persistent alignment must share one locomotion step budget.");
 
                 Assert.That(
                     (palmCenter - plan.ContactCenter).Magnitude,

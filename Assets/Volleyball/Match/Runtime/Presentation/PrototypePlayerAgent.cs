@@ -872,7 +872,7 @@ namespace Volleyball.Presentation
             }
 
             _actionTimelineState.TrySampleContact(simulationTime, out var sample);
-            ApplyScheduledRootMotion(sample, simulationTime);
+            ApplyScheduledRootMotion(sample, simulationTime, deltaSeconds);
             CaptureObservedAttackTakeoff(simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample, deltaSeconds);
@@ -1194,9 +1194,18 @@ namespace Volleyball.Presentation
             }
         }
 
-        private void ApplyScheduledRootMotion(ActionTimelineSample sample, float simulationTime)
+        private void ApplyScheduledRootMotion(
+            ActionTimelineSample sample,
+            float simulationTime,
+            float deltaSeconds)
         {
-            var locomotionSample = _locomotion.Sample(simulationTime);
+            var locomotionSample = _locomotion.Sample(
+                simulationTime,
+                deltaSeconds,
+                !_techniqueExecutor.IsControlledHandling &&
+                _techniqueExecutor.ScheduledAction == TechniqueAction.Attack &&
+                sample.Phase == ActionPhase.Contact &&
+                _contactSurfaceProvider.HasPlannedContactCenter);
             var movementPosition = locomotionSample.Position;
             _locomotion.IsMovingThisStep = _locomotion.HasScheduledMovement && !locomotionSample.MovementComplete;
             if (_techniqueExecutor.ScheduledAction != TechniqueAction.Attack)

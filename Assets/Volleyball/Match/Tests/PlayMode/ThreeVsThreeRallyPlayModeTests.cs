@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,6 +63,25 @@ namespace Volleyball.PlayModeTests
                 aiSource,
                 realTimeTimeoutSeconds: 0.5f,
                 restoreDurationSeconds: 0.04f);
+            var acceptedContacts = new List<ReplayContactEvent>();
+            var correctionAtAcceptedContact = new List<float>();
+            director.ReplayContactAccepted += replayEvent =>
+            {
+                acceptedContacts.Add(replayEvent);
+                var correction = 0f;
+                if (replayEvent.PlayerId.HasValue)
+                {
+                    foreach (var player in players)
+                    {
+                        if (player.StableId.Equals(replayEvent.PlayerId.Value))
+                        {
+                            correction = player.MaximumAppliedContactCorrection;
+                            break;
+                        }
+                    }
+                }
+                correctionAtAcceptedContact.Add(correction);
+            };
 
             var timeout = Time.realtimeSinceStartup + 120f;
             var sawActiveBlockFeedback = false;
@@ -107,6 +127,15 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.DefenderAttackContacts, Is.GreaterThan(0));
             Assert.That(director.IllegalContactFaults, Is.GreaterThanOrEqualTo(0));
             Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(0.70f));
+            Assert.That(acceptedContacts, Has.Count.GreaterThanOrEqualTo(19));
+            Assert.That(acceptedContacts[17].Team, Is.EqualTo(TeamId.Orange));
+            Assert.That(acceptedContacts[17].Action, Is.EqualTo(TechniqueAction.Attack));
+            Assert.That(acceptedContacts[17].PlayerId, Is.EqualTo(
+                PlayerWith(players, TeamId.Orange, PlayerRole.Defender).StableId));
+            Assert.That(correctionAtAcceptedContact[17],
+                Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance + 0.0001f));
+            Assert.That(acceptedContacts[18].Team, Is.EqualTo(TeamId.Blue));
+            Assert.That(acceptedContacts[18].Action, Is.EqualTo(TechniqueAction.Block));
             Assert.That(ball.Diagnostics.NonFiniteStates, Is.Zero);
             Assert.That(sawPlayerOutsideOwnCourt, Is.False);
 
@@ -204,6 +233,23 @@ namespace Volleyball.PlayModeTests
             {
                 Time.timeScale = originalTimeScale;
             }
+        }
+
+        private static PrototypePlayerAgent PlayerWith(
+            IEnumerable<PrototypePlayerAgent> players,
+            TeamId team,
+            PlayerRole role)
+        {
+            foreach (var player in players)
+            {
+                if (player.Id.Team == team && player.Id.Role == role)
+                {
+                    return player;
+                }
+            }
+
+            Assert.Fail($"Missing {team} {role} player.");
+            return null;
         }
 
         private sealed class ImmediateLocalWeightSource : IRallyTacticalWeightSource

@@ -105,6 +105,34 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AttackStep_PlannedMotionAndPersistentAlignmentShareOneSpeedBudget()
+        {
+            var root = new GameObject("SharedAttackStepBudget");
+            root.transform.position = new Vector3(0f, 0f, -1f);
+            var locomotion = new PlayerLocomotion(
+                root.transform,
+                TeamId.Blue,
+                CourtBuilder.HalfLength,
+                7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(1f, 0f, -1f),
+                0f,
+                0.6f,
+                TechniqueAction.Attack,
+                PlayerAbilityProfile.Default);
+
+            SampleAndSetRoot(locomotion, 0.14f, 0.01f, true);
+            var rootBeforeStep = root.transform.position;
+            SampleAndSetRoot(locomotion, 0.15f, 0.01f, true);
+            locomotion.ApplyAttackContactAlignment(new Vector3(0.18f, 0f, 0f));
+
+            Assert.That(Vector3.Distance(rootBeforeStep, root.transform.position),
+                Is.LessThanOrEqualTo((locomotion.MaximumSpeed * 0.01f) + 0.0001f),
+                "Planned root motion and alignment must use one MaximumSpeed * dt budget.");
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
         public void ConfigureAttackApproach_ResetsThePersistentAlignmentOffsetForANewAttack()
         {
             var locomotion = CreateAttackLocomotion();
@@ -194,6 +222,26 @@ namespace Volleyball.EditModeTests
         private static void SampleAndSetRoot(PlayerLocomotion locomotion, float simulationTime)
         {
             locomotion.SetRootPosition(locomotion.Sample(simulationTime).Position);
+        }
+
+        private static void SampleAndSetRoot(
+            PlayerLocomotion locomotion,
+            float simulationTime,
+            float elapsedStepSeconds)
+        {
+            locomotion.SetRootPosition(locomotion.Sample(simulationTime, elapsedStepSeconds).Position);
+        }
+
+        private static void SampleAndSetRoot(
+            PlayerLocomotion locomotion,
+            float simulationTime,
+            float elapsedStepSeconds,
+            bool shareAttackAlignmentStepBudget)
+        {
+            locomotion.SetRootPosition(locomotion.Sample(
+                simulationTime,
+                elapsedStepSeconds,
+                shareAttackAlignmentStepBudget).Position);
         }
     }
 }
