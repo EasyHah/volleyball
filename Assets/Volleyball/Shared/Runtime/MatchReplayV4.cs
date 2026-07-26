@@ -1152,13 +1152,30 @@ namespace Volleyball.Shared.Contracts
             var eventValues = StrictJsonV4.RequiredArray(root, "events");
             var events = new MatchReplayEventV4[eventValues.Count];
             var hasLegacyShadowCoverage = false;
+            var hasCurrentShadowCoverage = false;
             for (var index = 0; index < events.Length; index++)
             {
                 var eventValue = StrictJsonV4.AsObject(
                     eventValues[index],
                     "events[" + index + "]");
-                hasLegacyShadowCoverage |= HasLegacyShadowCoverage(eventValue);
+                if (HasShadowCoverage(eventValue))
+                {
+                    if (HasLegacyShadowCoverage(eventValue))
+                    {
+                        hasLegacyShadowCoverage = true;
+                    }
+                    else
+                    {
+                        hasCurrentShadowCoverage = true;
+                    }
+                }
                 events[index] = ParseEvent(eventValue);
+            }
+
+            if (hasLegacyShadowCoverage && hasCurrentShadowCoverage)
+            {
+                throw new ContractValidationException(
+                    "Mixed legacy and current shadow coverage is not supported.");
             }
 
             return MatchReplayV4.Restore(
@@ -1170,6 +1187,11 @@ namespace Volleyball.Shared.Contracts
                     : 0,
                 StrictJsonV4.RequiredString(root, "replayHash"),
                 hasLegacyShadowCoverage);
+        }
+
+        private static bool HasShadowCoverage(StrictJsonObjectV4 value)
+        {
+            return StrictJsonV4.OptionalNullableObject(value, "shadow") != null;
         }
 
         private static bool HasLegacyShadowCoverage(StrictJsonObjectV4 value)

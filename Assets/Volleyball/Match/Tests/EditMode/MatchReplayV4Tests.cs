@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Reflection;
 using NUnit.Framework;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
@@ -226,6 +227,68 @@ namespace Volleyball.EditModeTests
                 () => ContractJson.DeserializeMatchReplayV4(tampered),
                 Throws.TypeOf<ContractValidationException>()
                     .With.Message.Contains("replayHash"));
+        }
+
+        [Test]
+        public void Deserialize_AllLegacyShadowCoverageStillVerifiesHistoricalHash()
+        {
+            var replay = CreateReplay(
+                EventWithShadow(0, "Attack", 0),
+                EventWithShadow(1, "Receive", 1));
+            var canonical = ContractJson.SerializeV4(replay);
+            var legacy = ReplaceAllShadowCoverageWithLegacy(canonical);
+            var historicalHash = ComputeLegacyShadowCoverageHash(replay);
+            legacy = legacy.Replace(replay.ReplayHash, historicalHash);
+
+            var restored = ContractJson.DeserializeMatchReplayV4(legacy);
+
+            Assert.That(restored.Events, Has.Count.EqualTo(2));
+            Assert.That(restored.Events[0].Shadow.Coverage.Decision, Is.EqualTo("Covered"));
+            Assert.That(restored.Events[1].Shadow.Coverage.Decision, Is.EqualTo("Covered"));
+        }
+
+        [Test]
+        public void Deserialize_RejectsMixedLegacyAndCurrentShadowCoverage()
+        {
+            var replay = CreateReplay(
+                EventWithShadow(0, "Attack", 0),
+                EventWithShadow(1, "Receive", 1));
+            var canonical = ContractJson.SerializeV4(replay);
+            var mixed = ReplaceShadowCoverageWithLegacy(canonical, 0)
+                .Replace(replay.ReplayHash, ComputeLegacyShadowCoverageHash(replay));
+
+            Assert.That(
+                () => ContractJson.DeserializeMatchReplayV4(mixed),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("Mixed"));
+        }
+
+        [Test]
+        public void Deserialize_RejectsDetailedCoverageTamperingHiddenByMixedLegacyHash()
+        {
+            var replay = CreateReplay(
+                EventWithShadow(0, "Attack", 0),
+                EventWithShadow(Event(1, "Receive"), new ReplayShadowRecordV4(
+                    8,
+                    2,
+                    HashC,
+                    TeamPlan("Home", "home"),
+                    TeamPlan("Away", "away"),
+                    new ReplayCoverageDecisionRecordV4(
+                        "Scoped",
+                        0f,
+                        "BallEnvelopeExceeded",
+                        new[] { "condition=Always" },
+                        1,
+                        null))));
+            var canonical = ContractJson.SerializeV4(replay);
+            var tampered = ReplaceShadowCoverageWithLegacy(canonical, 0)
+                .Replace("\"reason\":\"BallEnvelopeExceeded\"", "\"reason\":\"RallyEnd\"")
+                .Replace(replay.ReplayHash, ComputeLegacyShadowCoverageHash(replay));
+
+            Assert.That(
+                () => ContractJson.DeserializeMatchReplayV4(tampered),
+                Throws.TypeOf<ContractValidationException>());
         }
 
         [Test]
@@ -822,6 +885,67 @@ namespace Volleyball.EditModeTests
                 TeamPlan("Home", "home"),
                 TeamPlan("Away", "away"),
                 new ReplayCoverageDecisionRecordV4("Covered", 0.75f));
+        }
+
+        private static string ReplaceAllShadowCoverageWithLegacy(string json)
+        {
+            var replacement = json;
+            var shadows = 0;
+            var searchOffset = 0;
+            while (true)
+            {
+                var shadowIndex = replacement.IndexOf(
+                    "\"shadow\":",
+                    searchOffset,
+                    StringComparison.Ordinal);
+                if (shadowIndex < 0)
+                {
+                    break;
+                }
+
+                shadows++;
+                searchOffset = shadowIndex + "\"shadow\":".Length;
+            }
+
+            for (var shadowOrdinal = shadows - 1;
+                 shadowOrdinal >= 0;
+                 shadowOrdinal--)
+            {
+                replacement = ReplaceShadowCoverageWithLegacy(
+                    replacement,
+                    shadowOrdinal);
+            }
+
+            return replacement;
+        }
+
+        private static string ReplaceShadowCoverageWithLegacy(
+            string json,
+            int shadowOrdinal)
+        {
+            var searchOffset = 0;
+            var shadowIndex = -1;
+            for (var index = 0; index <= shadowOrdinal; index++)
+            {
+                shadowIndex = json.IndexOf("\"shadow\":", searchOffset, StringComparison.Ordinal);
+                searchOffset = shadowIndex + 1;
+            }
+
+            var coverageStart = json.IndexOf("\"coverage\":", shadowIndex, StringComparison.Ordinal);
+            var coverageEnd = json.IndexOf("}", coverageStart, StringComparison.Ordinal);
+            return json.Substring(0, coverageStart) +
+                "\"coverage\":{\"decision\":\"Covered\",\"score\":0.75" +
+                json.Substring(coverageEnd);
+        }
+
+        private static string ComputeLegacyShadowCoverageHash(MatchReplayV4 replay)
+        {
+            var serializer = typeof(ContractJson).Assembly.GetType(
+                "Volleyball.Shared.Contracts.CanonicalMatchReplayJsonV4");
+            var method = serializer.GetMethod(
+                "ComputeLegacyShadowCoverageHash",
+                BindingFlags.Static | BindingFlags.Public);
+            return (string)method.Invoke(null, new object[] { replay });
         }
 
         private static ReplayTeamRallyPlanRecordV4 TeamPlan(

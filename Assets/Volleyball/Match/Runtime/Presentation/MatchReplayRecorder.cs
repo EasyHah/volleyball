@@ -252,8 +252,9 @@ namespace Volleyball.Presentation
 
             if (_events.Count == 0)
             {
-                throw new InvalidOperationException(
+                InvalidateCapture(
                     "A formal V4 replay segment requires at least one contact event.");
+                return;
             }
 
             var unresolvedPlans = _pendingShadowPlans.Clear();

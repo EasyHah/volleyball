@@ -11,6 +11,7 @@ using UnityEngine.TestTools;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
+using Volleyball.Domain;
 
 namespace Volleyball.PlayModeTests
 {
@@ -344,6 +345,40 @@ namespace Volleyball.PlayModeTests
                     replay.Events[index].Shadow.SourceSequenceNumber,
                     Is.EqualTo(captureBase + index + 1));
             }
+        }
+
+        [UnityTest]
+        public IEnumerator Capture_StartedMidRallyWithoutContactInvalidatesWithoutInterruptingResolution()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players = UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            var recorder = MatchReplayRecorder.Attach(director, ball, players);
+            var resolved = 0;
+            director.ReplayRallyResolved += _ => resolved++;
+            recorder.StartCapture();
+
+            var resolveRally = typeof(PhysicalMatchRallyDirector).GetMethod(
+                "ResolveRally",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(resolveRally, Is.Not.Null);
+            Assert.DoesNotThrow(() => resolveRally.Invoke(
+                director,
+                new object[]
+                {
+                    new RallyOutcome(TeamSide.Home, true, "test zero-contact capture"),
+                    null,
+                    null,
+                    "test zero-contact capture"
+                }));
+
+            Assert.That(resolved, Is.EqualTo(1));
+            Assert.That(director.HomeScore, Is.EqualTo(1));
+            Assert.That(recorder.IsComplete, Is.False);
+            Assert.That(recorder.CaptureFailureReason, Does.Contain("at least one contact"));
+            Assert.That(() => recorder.Complete(), Throws.TypeOf<InvalidOperationException>());
         }
 
         [UnityTest]
