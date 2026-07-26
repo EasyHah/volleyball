@@ -117,26 +117,10 @@ namespace Volleyball.Presentation
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
             bool controlledHandling = false)
         {
-            if (classification == null)
-            {
-                throw new ArgumentNullException(nameof(classification));
-            }
+            ValidateV4(classification);
 
-            if (classification.Kind is not ExecutionSampleClassificationKindV4.Accepted
-                and not ExecutionSampleClassificationKindV4.EnvelopeExpanded)
-            {
-                throw new InvalidOperationException("Only accepted or expanded V4 samples may be scheduled.");
-            }
-
-            var executableEnvelope = classification.ExecutableEnvelope ??
-                throw new InvalidOperationException("Executable V4 envelope is required.");
-            var executableSample = classification.ExecutableSample ??
-                throw new InvalidOperationException("Executable V4 sample is required.");
-            if (executableSample.EnvelopeIdentity != executableEnvelope.Identity)
-            {
-                throw new InvalidOperationException("Executable V4 sample must retain its envelope identity.");
-            }
-
+            var executableEnvelope = classification.ExecutableEnvelope;
+            var executableSample = classification.ExecutableSample;
             var consumedVelocityError = new SkillExecutionError(
                 executionError.ReactionDelay,
                 executionError.ContactPositionError,
@@ -172,6 +156,37 @@ namespace Volleyball.Presentation
                 attackContactPlan,
                 default,
                 controlledHandling);
+        }
+
+        public static void ValidateV4(
+            ExecutionSampleClassificationV4 classification)
+        {
+            if (classification == null)
+            {
+                throw new ArgumentNullException(nameof(classification));
+            }
+
+            if (classification.Kind is not ExecutionSampleClassificationKindV4.Accepted
+                and not ExecutionSampleClassificationKindV4.EnvelopeExpanded)
+            {
+                throw new InvalidOperationException("Only accepted or expanded V4 samples may be scheduled.");
+            }
+
+            var executableEnvelope = classification.ExecutableEnvelope ??
+                throw new InvalidOperationException("Executable V4 envelope is required.");
+            var executableSample = classification.ExecutableSample ??
+                throw new InvalidOperationException("Executable V4 sample is required.");
+            if (executableSample.EnvelopeIdentity != executableEnvelope.Identity)
+            {
+                throw new InvalidOperationException("Executable V4 sample must retain its envelope identity.");
+            }
+
+            if (executableSample.CandidateCategory !=
+                executableEnvelope.CandidateCategory)
+            {
+                throw new InvalidOperationException(
+                    "Executable V4 sample must retain its candidate category.");
+            }
         }
 
         internal void Clear()

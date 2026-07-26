@@ -46,6 +46,25 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ValidateV4_RejectsCategoryMismatchWithoutMutatingExecutor()
+        {
+            var executor = new PlayerTechniqueExecutor();
+            var accepted = CreateAcceptedClassification();
+            var sample = accepted.ExecutableSample;
+            typeof(ExecutionSampleV4)
+                .GetField(
+                    "<CandidateCategory>k__BackingField",
+                    BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(sample, ExecutionCandidateCategoryV4.Receive);
+
+            Assert.That(
+                () => PlayerTechniqueExecutor.ValidateV4(accepted),
+                Throws.TypeOf<InvalidOperationException>());
+            Assert.That(executor.ExecutionEnvelope, Is.Null);
+            Assert.That(executor.ExecutionSample, Is.Null);
+        }
+
+        [Test]
         public void Facade_ProjectsV4EvidenceFromExecutorWithoutWritableCopies()
         {
             Assert.That(

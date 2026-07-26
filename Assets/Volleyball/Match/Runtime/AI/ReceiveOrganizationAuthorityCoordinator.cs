@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
@@ -33,6 +34,89 @@ namespace Volleyball.AI
         CancelUncommitted
     }
 
+    public sealed class ReceiveOrganizationCommandExecutionV4
+    {
+        public ReceiveOrganizationCommandExecutionV4(
+            float scheduledSimulationTime,
+            float movementStartSimulationTime,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            ExecutionSampleClassificationV4 executionClassification,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
+            float emergencyWindowStart,
+            float emergencyWindowEnd,
+            SimVector3 emergencyTargetVelocity)
+        {
+            ValidateFiniteNonNegative(
+                scheduledSimulationTime,
+                nameof(scheduledSimulationTime));
+            ValidateFiniteNonNegative(
+                movementStartSimulationTime,
+                nameof(movementStartSimulationTime));
+            if (contactGroupId <= 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(contactGroupId));
+            }
+
+            ValidateFiniteNonNegative(
+                emergencyWindowStart,
+                nameof(emergencyWindowStart));
+            ValidateFiniteNonNegative(
+                emergencyWindowEnd,
+                nameof(emergencyWindowEnd));
+            if (emergencyWindowEnd < emergencyWindowStart)
+            {
+                throw new ArgumentException(
+                    "Emergency window end cannot precede its start.",
+                    nameof(emergencyWindowEnd));
+            }
+
+            if (!emergencyTargetVelocity.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(emergencyTargetVelocity));
+            }
+
+            ScheduledSimulationTime = scheduledSimulationTime;
+            MovementStartSimulationTime = movementStartSimulationTime;
+            ExecutionError = executionError;
+            ContactGroupId = contactGroupId;
+            ExecutionClassification = executionClassification;
+            TrajectoryArtifact = trajectoryArtifact;
+            EmergencyWindowStart = emergencyWindowStart;
+            EmergencyWindowEnd = emergencyWindowEnd;
+            EmergencyTargetVelocity = emergencyTargetVelocity;
+        }
+
+        public float ScheduledSimulationTime { get; }
+
+        public float MovementStartSimulationTime { get; }
+
+        public SkillExecutionError ExecutionError { get; }
+
+        public int ContactGroupId { get; }
+
+        public ExecutionSampleClassificationV4 ExecutionClassification { get; }
+
+        public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
+
+        public float EmergencyWindowStart { get; }
+
+        public float EmergencyWindowEnd { get; }
+
+        public SimVector3 EmergencyTargetVelocity { get; }
+
+        private static void ValidateFiniteNonNegative(
+            float value,
+            string parameterName)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f)
+            {
+                throw new ArgumentOutOfRangeException(parameterName);
+            }
+        }
+    }
+
     public sealed class ReceiveOrganizationAuthorityCommand
     {
         public ReceiveOrganizationAuthorityCommand(
@@ -42,7 +126,8 @@ namespace Volleyball.AI
             StablePlayerId actor,
             RallyPlanBranchV3 branch,
             TeamRallyDecision decision,
-            bool isCommitted)
+            bool isCommitted,
+            ReceiveOrganizationCommandExecutionV4 execution = null)
         {
             ValidateRevisionAndSequence(planRevision, sourceSequence);
             RequireDefined(kind, nameof(kind));
@@ -54,6 +139,7 @@ namespace Volleyball.AI
             Branch = branch;
             Decision = decision ?? throw new ArgumentNullException(nameof(decision));
             IsCommitted = isCommitted;
+            Execution = execution;
         }
 
         public long PlanRevision { get; }
@@ -70,6 +156,8 @@ namespace Volleyball.AI
 
         public bool IsCommitted { get; }
 
+        public ReceiveOrganizationCommandExecutionV4 Execution { get; }
+
         internal ReceiveOrganizationAuthorityCommand WithCommitted(
             long sourceSequence)
         {
@@ -80,7 +168,8 @@ namespace Volleyball.AI
                 Actor,
                 Branch,
                 Decision,
-                true);
+                true,
+                Execution);
         }
 
         internal static void ValidateRevisionAndSequence(

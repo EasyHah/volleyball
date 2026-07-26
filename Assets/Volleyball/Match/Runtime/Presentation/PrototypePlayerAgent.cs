@@ -209,6 +209,34 @@ namespace Volleyball.Presentation
                 executionCommand: command);
         }
 
+        public void ValidateV4Schedule(
+            TechniqueAction action,
+            ExecutionSampleClassificationV4 classification,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null)
+        {
+            ValidateScheduleContactArguments(
+                action,
+                attackApproach,
+                attackContactPlan);
+            PlayerTechniqueExecutor.ValidateV4(classification);
+            var expectedCategory = action switch
+            {
+                TechniqueAction.Receive => ExecutionCandidateCategoryV4.Receive,
+                TechniqueAction.Set => ExecutionCandidateCategoryV4.Set,
+                TechniqueAction.Attack => ExecutionCandidateCategoryV4.Attack,
+                TechniqueAction.Block => ExecutionCandidateCategoryV4.Block,
+                TechniqueAction.Serve => ExecutionCandidateCategoryV4.Serve,
+                _ => throw new ArgumentOutOfRangeException(nameof(action))
+            };
+            if (classification.ExecutableEnvelope.CandidateCategory !=
+                expectedCategory)
+            {
+                throw new InvalidOperationException(
+                    "V4 execution category must match the scheduled action.");
+            }
+        }
+
         // Compatibility path for legacy 3v3 callers. Formal V4 scheduling is
         // routed through PlayerTechniqueExecutor.ScheduleV4 above.
         public void ScheduleContact(
