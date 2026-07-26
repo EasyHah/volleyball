@@ -81,8 +81,11 @@ namespace Volleyball.EditModeTests
                         new BallSimulationParameters(-9.8f, .9995f), context.PhysicsConfigurationHash, "gate-i-trajectory",
                         context.TrajectoryPredictionProviderConfiguration.PredictorVersion, context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
                         envelope.Identity, ExecutionDegradationStepV4.FullSampling));
-                return new SetIntentPlanningRequestV3(revision, sequence, attackingSide, Organizer, new Volleyball.Shared.Contracts.PlayerId("home-attacker"),
-                    envelope.BaselineTarget, 1f, envelope.Classify(sample), artifact);
+                var derived = MatchV4TestFixture.CreateDerived();
+                return new SetIntentPlanningRequestV3(revision, sequence, attackingSide, Organizer, 1f,
+                    new BallState(new SimVector3(0f, 3f, -2f), new SimVector3(0f, 4f, 1f), .12f),
+                    new[] { new GateITacticalPlayerV3(new Volleyball.Shared.Contracts.PlayerId("home-attacker"), attackingSide,
+                        new SimVector3(0f, 2f, 1f), true, derived) }, derived, artifact);
             }
         }
     }
