@@ -18,6 +18,16 @@ namespace Volleyball.Match.Domain.FullRallyV3
             string trajectoryIdentity,
             ReceiveOrganizationPlanV3 receiveOrganization)
         {
+            return Compose(snapshot, side, trajectoryIdentity, receiveOrganization, null);
+        }
+
+        public static TeamRallyPlanV3 Compose(
+            RallyWorldSnapshotV3 snapshot,
+            TeamSide side,
+            string trajectoryIdentity,
+            ReceiveOrganizationPlanV3 receiveOrganization,
+            AttackDefensePlanV3 attackDefense)
+        {
             if (snapshot == null)
             {
                 throw new ArgumentNullException(nameof(snapshot));
@@ -65,7 +75,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 assignments,
                 new[] { "artifact=" + trajectoryIdentity },
                 snapshot.Eligibility,
-                receiveOrganization);
+                receiveOrganization,
+                attackDefense);
         }
 
         public static PlanCoverageDecision EvaluateCoverage(RallyPlanV3 plan, AcceptedRuleEventV3 acceptedEvent)

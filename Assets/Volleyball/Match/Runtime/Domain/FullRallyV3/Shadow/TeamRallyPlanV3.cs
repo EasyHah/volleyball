@@ -12,7 +12,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             IReadOnlyList<PlayerResponsibilityAssignmentV3> assignments,
             IReadOnlyList<string> candidateEvidence,
             OnCourtEligibilitySnapshot eligibility,
-            ReceiveOrganizationPlanV3 receiveOrganization = null)
+            ReceiveOrganizationPlanV3 receiveOrganization = null,
+            AttackDefensePlanV3 attackDefense = null)
         {
             Side = PlayerWorldSnapshotV3.RequireDefinedEnum(side, nameof(side));
             if (eligibility == null)
@@ -26,12 +27,41 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 side,
                 receiveOrganization,
                 eligibility);
+            AttackDefense = ValidateAttackDefense(side, attackDefense, eligibility);
         }
 
         public TeamSide Side { get; }
         public IReadOnlyList<PlayerResponsibilityAssignmentV3> Assignments { get; }
         public IReadOnlyList<string> CandidateEvidence { get; }
         public ReceiveOrganizationPlanV3 ReceiveOrganization { get; }
+        public AttackDefensePlanV3 AttackDefense { get; }
+
+        private static AttackDefensePlanV3 ValidateAttackDefense(
+            TeamSide side,
+            AttackDefensePlanV3 plan,
+            OnCourtEligibilitySnapshot eligibility)
+        {
+            if (plan == null)
+            {
+                return null;
+            }
+
+            if (plan.AttackingSide != side)
+            {
+                throw new ArgumentException(
+                    "Attack/defense plan side must match the team plan.",
+                    nameof(plan));
+            }
+
+            ValidatePlanPlayer(side, plan.SetIntent.Organizer, eligibility);
+            ValidatePlanPlayer(side, plan.SetIntent.PreparedAttacker, eligibility);
+            foreach (var candidate in plan.AttackCandidates)
+            {
+                ValidatePlanPlayer(side, candidate.Actor, eligibility);
+            }
+
+            return plan;
+        }
 
         private static ReceiveOrganizationPlanV3 ValidateReceiveOrganization(
             TeamSide side,
