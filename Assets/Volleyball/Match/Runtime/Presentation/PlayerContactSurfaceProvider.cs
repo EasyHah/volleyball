@@ -7,6 +7,35 @@ using Volleyball.Domain.Simulation;
 
 namespace Volleyball.Presentation
 {
+    internal readonly struct ScheduledPlayerContact
+    {
+        public ScheduledPlayerContact(
+            TechniqueAction contactAction, TechniqueAction surfaceAction, int contactGroupId,
+            float playerTechnique, SimVector3 targetVelocity, SetContactHand setContactHand,
+            SimVector3? plannedContactCenter)
+        {
+            ContactAction = contactAction;
+            SurfaceAction = surfaceAction;
+            ContactGroupId = contactGroupId;
+            PlayerTechnique = playerTechnique;
+            TargetVelocity = targetVelocity;
+            SetContactHand = setContactHand;
+            PlannedContactCenter = plannedContactCenter;
+        }
+
+        public TechniqueAction ContactAction { get; }
+        public TechniqueAction SurfaceAction { get; }
+        public int ContactGroupId { get; }
+        public float PlayerTechnique { get; }
+        public SimVector3 TargetVelocity { get; }
+        public SetContactHand SetContactHand { get; }
+        public SimVector3? PlannedContactCenter { get; }
+
+        public PlayerContactInput WithSample(PlayerId playerId, ActionTimelineSample sample) =>
+            new PlayerContactInput(playerId, ContactAction, SurfaceAction, sample, ContactGroupId,
+                PlayerTechnique, TargetVelocity, SetContactHand, PlannedContactCenter);
+    }
+
     /// <summary>Builds contact candidates from already-resolved player presentation state.</summary>
     public readonly struct PlayerContactInput
     {
@@ -49,6 +78,18 @@ namespace Volleyball.Presentation
         private readonly BlockArmContactVolumes _blockVolumes;
         private bool _cleared;
 
+        internal ScheduledPlayerContact ScheduledContact { get; private set; }
+        internal bool HasPlannedContactCenter { get; private set; }
+        internal SimVector3 PlannedContactCenter { get; private set; }
+        internal bool HasPhysicalBlockContact { get; private set; }
+        internal SimVector3 PhysicalBlockTargetVelocity { get; private set; }
+        internal int PhysicalBlockContactGroupId { get; private set; }
+        internal bool PhysicalBlockActivationLogged { get; set; }
+        internal int PhysicalBlockContactAssignments { get; private set; }
+        internal float BlockRetargetDistance { get; private set; }
+        internal float BlockRetargetTimeShift { get; private set; }
+        internal float PhysicalBlockContactTime { get; private set; }
+
         public PlayerContactSurfaceProvider(StickFigureRig rig, Transform playerRoot)
             : this(new PlayerContactSurfaces(rig, playerRoot), new BlockArmContactVolumes(rig))
         {
@@ -83,6 +124,49 @@ namespace Volleyball.Presentation
             LastScheduledSurfaceCenter = SimVector3.Zero;
             LastScheduledSurfaceNormal = SimVector3.Zero;
             MinimumActiveSurfacePlanError = float.PositiveInfinity;
+            ScheduledContact = default;
+            HasPlannedContactCenter = false;
+            HasPhysicalBlockContact = false;
+            PhysicalBlockActivationLogged = false;
+        }
+
+        internal void ScheduleContact(ScheduledPlayerContact contact)
+        {
+            ScheduledContact = contact;
+            HasPlannedContactCenter = contact.PlannedContactCenter.HasValue;
+            PlannedContactCenter = contact.PlannedContactCenter.GetValueOrDefault();
+        }
+
+        internal void ClearScheduledContact()
+        {
+            ScheduledContact = default;
+            HasPlannedContactCenter = false;
+        }
+
+        internal void SchedulePhysicalBlock(SimVector3 targetVelocity, int contactGroupId, float contactTime)
+        {
+            HasPhysicalBlockContact = true;
+            PhysicalBlockTargetVelocity = targetVelocity;
+            PhysicalBlockContactGroupId = contactGroupId;
+            PhysicalBlockContactTime = contactTime;
+            PhysicalBlockActivationLogged = false;
+            PhysicalBlockContactAssignments++;
+            BlockRetargetDistance = 0f;
+            BlockRetargetTimeShift = 0f;
+        }
+
+        internal void RetargetPhysicalBlock(SimVector3 targetVelocity, float contactTime, float timeShift, float distance)
+        {
+            PhysicalBlockTargetVelocity = targetVelocity;
+            PhysicalBlockContactTime = contactTime;
+            BlockRetargetTimeShift = Mathf.Abs(timeShift);
+            BlockRetargetDistance = distance;
+        }
+
+        internal void DisablePhysicalBlock()
+        {
+            HasPhysicalBlockContact = false;
+            PhysicalBlockActivationLogged = false;
         }
 
         public void Collect(PlayerContactInput input, ICollection<BallContactCandidate> contacts)

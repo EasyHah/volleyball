@@ -67,6 +67,40 @@ namespace Volleyball.Presentation
         public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; private set; }
         internal PlayerExecutionCommand ExecutionCommand { get; private set; }
 
+        // Execution-specific state stays with the executor; the facade only coordinates it.
+        internal TechniqueAction ScheduledAction { get; private set; }
+        internal SkillExecutionError ScheduledError { get; private set; }
+        internal SimVector3 ScheduledTargetVelocity { get; private set; }
+        internal int ScheduledContactGroupId { get; private set; }
+        internal SetTechniqueDecision SetDecision { get; private set; }
+        internal AttackContactPlan ScheduledAttackContactPlan { get; private set; }
+        internal bool HasAttackContactCommand { get; private set; }
+        internal bool IsControlledHandling { get; private set; }
+
+        internal void ConfigureLegacy(
+            TechniqueAction action,
+            SkillExecutionError error,
+            int contactGroupId,
+            SimVector3 targetVelocity,
+            AttackContactPlan? attackContactPlan,
+            SetTechniqueDecision setDecision,
+            bool controlledHandling)
+        {
+            ScheduledAction = action;
+            ScheduledError = error;
+            ScheduledContactGroupId = contactGroupId;
+            ScheduledTargetVelocity = targetVelocity;
+            ScheduledAttackContactPlan = attackContactPlan.GetValueOrDefault();
+            HasAttackContactCommand = attackContactPlan.HasValue;
+            SetDecision = setDecision;
+            IsControlledHandling = controlledHandling;
+        }
+
+        internal void SetControlledHandling(bool value)
+        {
+            IsControlledHandling = value;
+        }
+
         public void ScheduleV4(
             TechniqueAction action,
             float scheduledSimulationTime,
@@ -130,6 +164,14 @@ namespace Volleyball.Presentation
                 controlledHandling,
                 trajectoryArtifact,
                 executableSample.Velocity);
+            ConfigureLegacy(
+                action,
+                consumedVelocityError,
+                contactGroupId,
+                executableSample.Velocity,
+                attackContactPlan,
+                default,
+                controlledHandling);
         }
 
         internal void Clear()
@@ -139,6 +181,14 @@ namespace Volleyball.Presentation
             ExecutionClassification = null;
             TrajectoryArtifact = null;
             ExecutionCommand = null;
+            ScheduledAction = default;
+            ScheduledError = default;
+            ScheduledTargetVelocity = default;
+            ScheduledContactGroupId = default;
+            SetDecision = default;
+            ScheduledAttackContactPlan = default;
+            HasAttackContactCommand = false;
+            IsControlledHandling = false;
         }
     }
 }

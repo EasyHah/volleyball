@@ -434,6 +434,8 @@ namespace Volleyball.PlayModeTests
         public IEnumerator Capture_TwoIndependentFixedSeedFormalRunsAreByteStable()
         {
             var payloads = new byte[2][];
+            var acceptedSequences = new string[2][];
+            var v3Transitions = new int[2];
             MatchReplayV4 first = null;
             MatchReplayV4 second = null;
             for (var run = 0; run < 2; run++)
@@ -471,6 +473,14 @@ namespace Volleyball.PlayModeTests
                 var replay = recorder.Complete();
                 payloads[run] = Encoding.UTF8.GetBytes(
                     ContractJson.SerializeV4(replay));
+                acceptedSequences[run] = replay.Events
+                    .Select(replayEvent =>
+                        replayEvent.SequenceNumber + ":" +
+                        replayEvent.ActorPlayerId + ":" +
+                        replayEvent.EventKind + ":" +
+                        replayEvent.RuleDecision.ReasonCode)
+                    .ToArray();
+                v3Transitions[run] = director.V3RuleTransitions;
                 if (run == 0)
                 {
                     first = replay;
@@ -482,6 +492,9 @@ namespace Volleyball.PlayModeTests
             }
 
             CollectionAssert.AreEqual(payloads[0], payloads[1]);
+            CollectionAssert.AreEqual(acceptedSequences[0], acceptedSequences[1]);
+            Assert.That(v3Transitions[0], Is.GreaterThan(0));
+            Assert.That(v3Transitions[1], Is.EqualTo(v3Transitions[0]));
             Assert.That(second.ReplayHash, Is.EqualTo(first.ReplayHash));
             Assert.That(second.Events.Count, Is.EqualTo(first.Events.Count));
             for (var eventIndex = 0;

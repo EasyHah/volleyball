@@ -40,6 +40,27 @@ namespace Volleyball.EditModeTests
                     Is.True,
                     "Facade-owned business state: " + field.Name);
             }
+
+            var allowedProperties = new HashSet<string>
+            {
+                "Id", "StableId", "Rig", "Ability", "ContactSurfaces", "CurrentSetStyle",
+                "RequestedSetStyle", "PreparedForward", "ScheduledMovementTarget", "ReplayScheduledAction",
+                "MovementShortfall", "ScheduledMovementDistance", "PhysicalBlockContactAssignments",
+                "BlockRetargetDistance", "BlockRetargetTimeShift", "PhysicalBlockContactTime",
+                "MaximumAppliedContactCorrection", "LastScheduledSurfaceCenter", "LastScheduledSurfaceNormal",
+                "ScheduledExecutionEnvelopeV4", "ScheduledExecutionSampleV4",
+                "ScheduledExecutionClassificationV4", "ScheduledTrajectoryPredictionArtifactV4",
+                "MinimumActiveSurfacePlanError", "IsWithinOwnCourt", "EmergencyReceiveWindowEnabled"
+            };
+            var properties = typeof(PrototypePlayerAgent).GetProperties(
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+            foreach (var property in properties)
+            {
+                Assert.That(
+                    allowedProperties.Contains(property.Name),
+                    Is.True,
+                    "Facade private business-state proxy: " + property.Name);
+            }
         }
 
         [Test]

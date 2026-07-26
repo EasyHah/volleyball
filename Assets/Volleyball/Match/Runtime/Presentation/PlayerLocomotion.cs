@@ -55,6 +55,26 @@ namespace Volleyball.Presentation
         private bool _hasSupportMovement;
         private float _supportBlockContactHeight;
 
+        internal SimVector3 PreparedForward { get; set; }
+        internal Vector3 MotionOrigin { get; set; }
+        internal Vector3 MotionForward { get; set; }
+        internal bool IsMovingThisStep { get; set; }
+        internal ObservedAttackTakeoff ObservedAttackTakeoff { get; private set; }
+        internal bool HasObservedAttackTakeoff { get; private set; }
+        internal bool ContinueAttackPreparation { get; set; }
+
+        internal void ClearObservedAttackTakeoff()
+        {
+            ObservedAttackTakeoff = default;
+            HasObservedAttackTakeoff = false;
+        }
+
+        internal void RecordObservedAttackTakeoff(ObservedAttackTakeoff takeoff)
+        {
+            ObservedAttackTakeoff = takeoff;
+            HasObservedAttackTakeoff = true;
+        }
+
         public PlayerLocomotion(Transform root, TeamId team, float courtHalfLength, float moveSpeed)
         {
             _root = root ?? throw new ArgumentNullException(nameof(root));
