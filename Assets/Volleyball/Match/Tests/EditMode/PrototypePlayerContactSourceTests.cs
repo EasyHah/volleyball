@@ -720,6 +720,25 @@ namespace Volleyball.EditModeTests
                 Assert.That(
                     player.MaximumAppliedContactCorrection,
                     Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance));
+                Assert.That(player.MovementShortfall, Is.GreaterThan(0f),
+                    "The facade path must expose the unresolved component-owned correction.");
+                Assert.That(player.IsWithinOwnCourt, Is.True,
+                    "Contact alignment must use the locomotion court clamp.");
+
+                player.ScheduleContact(
+                    TechniqueAction.Attack,
+                    3f,
+                    new SimVector3(0f, -4f, 14f),
+                    NoExecutionError(),
+                    710,
+                    new SimVector3(-4f, 4f, -1f));
+                Collect(player, 3f);
+
+                Assert.That(player.MaximumAppliedContactCorrection,
+                    Is.GreaterThan(0f),
+                    "A newly configured facade attack must receive a fresh correction budget.");
+                Assert.That(player.MaximumAppliedContactCorrection,
+                    Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance));
             }
             finally
             {
