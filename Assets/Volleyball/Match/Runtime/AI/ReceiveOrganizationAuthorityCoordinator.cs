@@ -45,7 +45,8 @@ namespace Volleyball.AI
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
             float emergencyWindowStart,
             float emergencyWindowEnd,
-            SimVector3 emergencyTargetVelocity)
+            SimVector3 emergencyTargetVelocity,
+            SimVector3? plannedContactCenter = null)
         {
             ValidateFiniteNonNegative(
                 scheduledSimulationTime,
@@ -77,6 +78,13 @@ namespace Volleyball.AI
                     nameof(emergencyTargetVelocity));
             }
 
+            if (plannedContactCenter.HasValue &&
+                !plannedContactCenter.Value.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(plannedContactCenter));
+            }
+
             ScheduledSimulationTime = scheduledSimulationTime;
             MovementStartSimulationTime = movementStartSimulationTime;
             ExecutionError = executionError;
@@ -86,6 +94,7 @@ namespace Volleyball.AI
             EmergencyWindowStart = emergencyWindowStart;
             EmergencyWindowEnd = emergencyWindowEnd;
             EmergencyTargetVelocity = emergencyTargetVelocity;
+            PlannedContactCenter = plannedContactCenter;
         }
 
         public float ScheduledSimulationTime { get; }
@@ -105,6 +114,8 @@ namespace Volleyball.AI
         public float EmergencyWindowEnd { get; }
 
         public SimVector3 EmergencyTargetVelocity { get; }
+
+        public SimVector3? PlannedContactCenter { get; }
 
         private static void ValidateFiniteNonNegative(
             float value,
@@ -542,6 +553,8 @@ namespace Volleyball.AI
         }
 
         public ReceiveOrganizationAuthorityStateV3 State { get; private set; }
+
+        public ReceiveOrganizationPlanningResult CurrentPlanning => _planning;
 
         public ReceiveOrganizationAuthorityStateV3 PlanReceive(
             ReceiveOrganizationAuthorityRequestV3 request)

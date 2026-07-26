@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Volleyball.AI;
 using Volleyball.Domain;
@@ -272,6 +273,13 @@ namespace Volleyball.Presentation
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
         private RallyTacticalWeights _activeTacticalWeights;
         private PhysicalMatchConfiguration _configuration;
+        private ReceiveOrganizationAuthorityCoordinator
+            _receiveOrganizationCoordinator;
+        private readonly Dictionary<TeamId, ReceiveOrganizationAuthorityController>
+            _receiveOrganizationControllers =
+                new Dictionary<TeamId, ReceiveOrganizationAuthorityController>();
+        private long _gateHPlanRevision;
+        private long _gateHSourceSequence;
         private string _status = "Preparing dynamic physical 3v3";
 
         public int CompletedCycles { get; private set; }
@@ -317,6 +325,10 @@ namespace Volleyball.Presentation
         public int EmergencyReceiveWindowAssignments { get; private set; }
 
         public int EmergencyReceiveContacts { get; private set; }
+
+        public bool GateHAuthorityEnabled { get; private set; }
+
+        public int GateHLegacyWriterInvocations { get; private set; }
 
         public float TotalMovementShortfall { get; private set; }
 
@@ -492,6 +504,9 @@ namespace Volleyball.Presentation
         public event Action<ReplayContactEvent> ReplayContactAccepted;
 
         public event Action<RallyPlanV3> ReplayShadowPlanRecorded;
+
+        public event Action<ReceiveOrganizationAuthorityReceipt>
+            ReceiveOrganizationAuthorityCommitted;
 
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
 
@@ -750,6 +765,9 @@ namespace Volleyball.Presentation
             if (mode == V3RulesMode.Disabled)
             {
                 _v3RulesAdapter = null;
+                GateHAuthorityEnabled = false;
+                _receiveOrganizationCoordinator = null;
+                _receiveOrganizationControllers.Clear();
                 _pendingV3AuthorityContact = null;
                 if (_ball != null)
                 {
@@ -786,6 +804,33 @@ namespace Volleyball.Presentation
                 _ball.SelectedContactCommitter = mode == V3RulesMode.Authority
                     ? CommitSelectedCandidateV3
                     : null;
+            }
+            GateHAuthorityEnabled =
+                _configuration.RosterSize == 6 &&
+                _matchContext != null &&
+                _v3RulesAdapter != null;
+            if (GateHAuthorityEnabled)
+            {
+                var responsibilityPlanner =
+                    new ReceiveOrganizationResponsibilityPlanner(
+                        _decisionPlanner);
+                _receiveOrganizationCoordinator =
+                    new ReceiveOrganizationAuthorityCoordinator(
+                        responsibilityPlanner,
+                        NullReceiveOrganizationAuthorityCommandSink.Instance);
+                _receiveOrganizationControllers.Clear();
+                foreach (var team in new[] { TeamId.Blue, TeamId.Orange })
+                {
+                    var formalPlayers = _players
+                        .Where(pair => pair.Key.Team == team)
+                        .Select(pair => pair.Value)
+                        .ToArray();
+                    var controller =
+                        new ReceiveOrganizationAuthorityController(formalPlayers);
+                    controller.AuthorityCommitted += receipt =>
+                        ReceiveOrganizationAuthorityCommitted?.Invoke(receipt);
+                    _receiveOrganizationControllers.Add(team, controller);
+                }
             }
             ResetV3Diagnostics();
         }
@@ -1107,12 +1152,79 @@ namespace Volleyball.Presentation
 
         private void ScheduleReceiveDecision(TeamId team, float availableSeconds)
         {
+            if (GateHAuthorityEnabled)
+            {
+                ScheduleGateHReceive(team, availableSeconds);
+                if (_tacticRevision == 0 && SuccessfulContacts == 0)
+                {
+                    _status =
+                        $"Serve to {team.ToString().ToUpperInvariant()} possession";
+                }
+
+                return;
+            }
+
             var decision = PlanDecision(team, RallyDecisionStage.Receive, availableSeconds);
             ScheduleDecision(decision, availableSeconds);
             if (_tacticRevision == 0 && SuccessfulContacts == 0)
             {
                 _status = $"Serve to {team.ToString().ToUpperInvariant()} possession";
             }
+        }
+
+        private void ScheduleGateHReceive(TeamId team, float availableSeconds)
+        {
+            var receiveSeconds = Mathf.Max(0.10f, availableSeconds);
+            var receiveInput = CreateDecisionInput(
+                team,
+                RallyDecisionStage.Receive,
+                receiveSeconds,
+                PredictGate5BallCenterV4(
+                    team,
+                    RallyDecisionStage.Receive,
+                    receiveSeconds),
+                _touchState.CountedTeamTouches,
+                _touchState.LastCountedActor);
+            var organizationInput = CreateDecisionInput(
+                team,
+                RallyDecisionStage.Organize,
+                ReceiveFlightSeconds,
+                PredictGate5BallCenterV4(
+                    team,
+                    RallyDecisionStage.Organize,
+                    ReceiveFlightSeconds),
+                1,
+                null);
+            var attackInput = CreateDecisionInput(
+                team,
+                RallyDecisionStage.Attack,
+                SetFlightSolver.PreferredFlightSeconds(
+                    TacticFor(team).SetRhythm),
+                PredictGate5BallCenterV4(
+                    team,
+                    RallyDecisionStage.Attack,
+                    SetFlightSolver.PreferredFlightSeconds(
+                        TacticFor(team).SetRhythm)),
+                2,
+                null);
+            var bindings = _players
+                .Where(pair => pair.Key.Team == team)
+                .OrderBy(pair => pair.Key.RosterSlot)
+                .Select(pair => new ReceiveOrganizationPlayerBindingV3(
+                    pair.Key,
+                    pair.Value.StableId))
+                .ToArray();
+            var request = new ReceiveOrganizationAuthorityRequestV3(
+                ++_gateHPlanRevision,
+                ++_gateHSourceSequence,
+                receiveInput,
+                organizationInput,
+                attackInput,
+                CreateV3Eligibility(_matchContext),
+                bindings);
+            _receiveOrganizationCoordinator.PlanReceive(request);
+            var planning = _receiveOrganizationCoordinator.CurrentPlanning;
+            ScheduleDecision(planning.Decision, receiveSeconds);
         }
 
         private RallyTacticalWeights LocalTacticalWeights()
@@ -1159,35 +1271,13 @@ namespace Volleyball.Presentation
             int countedTouches,
             PlayerId? lastCountedActor)
         {
-            var players = new List<RallyPlayerSnapshot>(_configuration.RosterSize);
-            foreach (var pair in _players)
-            {
-                var id = pair.Key;
-                if (id.Team != team)
-                {
-                    continue;
-                }
-
-                var player = pair.Value;
-                players.Add(new RallyPlayerSnapshot(
-                    id,
-                    ToSimulation(player.transform.position),
-                    player.Ability));
-            }
-
-            var input = new TeamRallyDecisionInput(
+            var input = CreateDecisionInput(
                 team,
-                TacticFor(team),
-                players,
-                predictedBallCenter,
-                availableSeconds,
-                BaseMovementSpeed,
-                countedTouches,
-                lastCountedActor,
-                _tacticRevision,
-                _decisionIndex++,
                 stage,
-                _activeTacticalWeights);
+                availableSeconds,
+                predictedBallCenter,
+                countedTouches,
+                lastCountedActor);
             var decision = _decisionPlanner.Plan(input);
             if (!decision.HasDecision)
             {
@@ -1217,6 +1307,45 @@ namespace Volleyball.Presentation
                     decision,
                     organizationDiagnostic));
             return decision;
+        }
+
+        private TeamRallyDecisionInput CreateDecisionInput(
+            TeamId team,
+            RallyDecisionStage stage,
+            float availableSeconds,
+            SimVector3 predictedBallCenter,
+            int countedTouches,
+            PlayerId? lastCountedActor)
+        {
+            var players = new List<RallyPlayerSnapshot>(_configuration.RosterSize);
+            foreach (var pair in _players)
+            {
+                var id = pair.Key;
+                if (id.Team != team)
+                {
+                    continue;
+                }
+
+                var player = pair.Value;
+                players.Add(new RallyPlayerSnapshot(
+                    id,
+                    ToSimulation(player.transform.position),
+                    player.Ability));
+            }
+
+            return new TeamRallyDecisionInput(
+                team,
+                TacticFor(team),
+                players,
+                predictedBallCenter,
+                availableSeconds,
+                BaseMovementSpeed,
+                countedTouches,
+                lastCountedActor,
+                _tacticRevision,
+                _decisionIndex++,
+                stage,
+                _activeTacticalWeights);
         }
 
         private ReplayOrganizationDecisionDiagnostic CreateOrganizationDiagnostic(
@@ -1309,13 +1438,16 @@ namespace Volleyball.Presentation
             {
                 var attackFlight = SetFlightSolver.PreferredFlightSeconds(
                     TacticFor(decision.Actor.Team).SetRhythm);
-                _plannedAttackDecision = PlanDecisionAt(
-                    decision.Actor.Team,
-                    RallyDecisionStage.Attack,
-                    attackFlight,
-                    decision.BallTarget,
-                    _touchState.CountedTeamTouches + 1,
-                    decision.Actor);
+                _plannedAttackDecision = GateHAuthorityEnabled
+                    ? _receiveOrganizationCoordinator.CurrentPlanning
+                        .AttackPreparationDecision
+                    : PlanDecisionAt(
+                        decision.Actor.Team,
+                        RallyDecisionStage.Attack,
+                        attackFlight,
+                        decision.BallTarget,
+                        _touchState.CountedTeamTouches + 1,
+                        decision.Actor);
                 _plannedAttackTrajectoryArtifactV4 = trajectoryArtifact;
                 if (_plannedAttackDecision.HasDecision)
                 {
@@ -1457,6 +1589,19 @@ namespace Volleyball.Presentation
             }
 
             _expectedContactTime = _ball.SimulationTime + flightSeconds;
+            if (GateHAuthorityEnabled &&
+                (decision.Action == TechniqueAction.Receive ||
+                 decision.Action == TechniqueAction.Set))
+            {
+                ScheduleGateHDecision(
+                    decision,
+                    execution,
+                    outgoing,
+                    trajectoryArtifact,
+                    authoritativeContactCenter);
+                return;
+            }
+
             if (decision.Action == TechniqueAction.Receive)
             {
                 if (_configuration.RosterSize == 6 || _tacticRevision % 4 != 3)
@@ -1558,6 +1703,144 @@ namespace Volleyball.Presentation
                     outgoing,
                     _expectedContactTime);
             }
+        }
+
+        private void ScheduleGateHDecision(
+            TeamRallyDecision decision,
+            SkillExecutionError executionError,
+            SimVector3 outgoing,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
+            SimVector3 authoritativeContactCenter)
+        {
+            var planning = _receiveOrganizationCoordinator.CurrentPlanning;
+            var state = _receiveOrganizationCoordinator.State;
+            var contactGroup = NextContactGroup();
+            var payload = new ReceiveOrganizationCommandExecutionV4(
+                _expectedContactTime,
+                _ball.SimulationTime,
+                executionError,
+                contactGroup,
+                _lastExecutionSampleClassificationV4,
+                trajectoryArtifact,
+                _expectedContactTime - ContactWindowLead,
+                _expectedContactTime + ContactWindowTail,
+                outgoing,
+                authoritativeContactCenter);
+            var commands = new List<ReceiveOrganizationAuthorityCommand>();
+            var stableActor = StableId(decision.Actor);
+            if (decision.Action == TechniqueAction.Receive)
+            {
+                commands.Add(new ReceiveOrganizationAuthorityCommand(
+                    state.Revision,
+                    _gateHSourceSequence,
+                    ReceiveOrganizationCommandKind.PrimaryReceive,
+                    stableActor,
+                    RallyPlanBranchV3.Primary,
+                    decision,
+                    false,
+                    payload));
+                for (var index = 0;
+                     index < planning.Plan.EmergencyReceivers.Count;
+                     index++)
+                {
+                    commands.Add(new ReceiveOrganizationAuthorityCommand(
+                        state.Revision,
+                        _gateHSourceSequence,
+                        ReceiveOrganizationCommandKind.EmergencyReceive,
+                        planning.Plan.EmergencyReceivers[index],
+                        RallyPlanBranchV3.Contingency,
+                        TeamRallyDecision.NoDecision,
+                        false,
+                        new ReceiveOrganizationCommandExecutionV4(
+                            _expectedContactTime,
+                            _ball.SimulationTime,
+                            executionError,
+                            NextContactGroup(),
+                            null,
+                            null,
+                            _expectedContactTime - ContactWindowLead,
+                            _expectedContactTime + ContactWindowTail,
+                            outgoing)));
+                }
+
+                commands.Add(new ReceiveOrganizationAuthorityCommand(
+                    state.Revision,
+                    _gateHSourceSequence,
+                    ReceiveOrganizationCommandKind.SetterPreparation,
+                    planning.Plan.RegisteredSetter,
+                    RallyPlanBranchV3.Primary,
+                    TeamRallyDecision.NoDecision,
+                    false,
+                    payload));
+            }
+            else
+            {
+                commands.Add(new ReceiveOrganizationAuthorityCommand(
+                    state.Revision,
+                    _gateHSourceSequence,
+                    ReceiveOrganizationCommandKind.OrganizationContact,
+                    stableActor,
+                    stableActor.Equals(planning.Plan.RegisteredSetter)
+                        ? RallyPlanBranchV3.Primary
+                        : RallyPlanBranchV3.Contingency,
+                    decision,
+                    false,
+                    payload));
+            }
+
+            if (planning.AttackPreparationDecision.HasDecision)
+            {
+                commands.Add(new ReceiveOrganizationAuthorityCommand(
+                    state.Revision,
+                    _gateHSourceSequence,
+                    ReceiveOrganizationCommandKind.AttackPreparation,
+                    planning.Plan.AttackPreparation,
+                    RallyPlanBranchV3.Primary,
+                    planning.AttackPreparationDecision,
+                    false,
+                    payload));
+            }
+
+            var evidence = new ReceiveOrganizationAuthorityEvidenceV3(
+                state.Revision,
+                _gateHSourceSequence,
+                state.Phase,
+                planning.Plan,
+                planning.SetterEvidence,
+                planning.FallbackReason,
+                state.CoverageDecision,
+                state.ActualFirstPassLanding);
+            _receiveOrganizationControllers[decision.Actor.Team]
+                .PreflightAndCommit(new ReceiveOrganizationCommandBatch(
+                    state.Revision,
+                    _gateHSourceSequence,
+                    commands,
+                    evidence));
+            _scheduledPrimaryActor = decision.Actor;
+            MovementAssignments += commands.Count(command =>
+                command.Kind !=
+                ReceiveOrganizationCommandKind.EmergencyReceive);
+            EmergencyReceiveWindowAssignments += commands.Count(command =>
+                command.Kind ==
+                ReceiveOrganizationCommandKind.EmergencyReceive);
+            TotalMovementShortfall += _players[decision.Actor].MovementShortfall;
+
+            var eligibleActors = new List<PlayerId> { decision.Actor };
+            if (decision.Action == TechniqueAction.Receive)
+            {
+                foreach (var emergency in planning.Plan.EmergencyReceivers)
+                {
+                    eligibleActors.Add(PlayerForStableId(emergency).Id);
+                }
+            }
+
+            _touchState.OpenWindow(new RallyContactWindow(
+                decision.Actor.Team,
+                decision.Action,
+                _expectedContactTime - ContactWindowLead,
+                _expectedContactTime + ContactWindowTail,
+                eligibleActors));
+            _contactDeadlineActive = true;
         }
 
         private void PrepareSetterForReceive(TeamRallyDecision receiveDecision)
@@ -1976,11 +2259,34 @@ namespace Volleyball.Presentation
                         break;
                     }
 
-                    ScheduleDecision(
-                        PlanDecision(actorId.Team, RallyDecisionStage.Organize, ReceiveFlightSeconds),
-                        ReceiveFlightSeconds);
+                    if (GateHAuthorityEnabled)
+                    {
+                        AdvanceGateHAfterReceive(
+                            actorId,
+                            acceptedExecutionClassification,
+                            acceptedTrajectoryArtifact);
+                    }
+                    else
+                    {
+                        ScheduleDecision(
+                            PlanDecision(
+                                actorId.Team,
+                                RallyDecisionStage.Organize,
+                                ReceiveFlightSeconds),
+                            ReceiveFlightSeconds);
+                    }
                     break;
                 case TechniqueAction.Set:
+                    if (GateHAuthorityEnabled)
+                    {
+                        _receiveOrganizationCoordinator.CommitOrganization(
+                            _receiveOrganizationCoordinator.State.Revision,
+                            ++_gateHSourceSequence);
+                        _receiveOrganizationCoordinator.HandOffToAttack(
+                            _receiveOrganizationCoordinator.State.Revision,
+                            ++_gateHSourceSequence);
+                    }
+
                     _lastSetQualityAssessment = null;
                     _activeSetChain = false;
                     var setFlight = _scheduledSetFlightSeconds > 0f
@@ -2046,6 +2352,52 @@ namespace Volleyball.Presentation
                     authorityContact?.Transition,
                     acceptedExecutionClassification,
                     acceptedTrajectoryArtifact));
+        }
+
+        private void AdvanceGateHAfterReceive(
+            PlayerId actor,
+            ExecutionSampleClassificationV4 acceptedClassification,
+            BallTrajectoryPredictionArtifactV4 acceptedTrajectory)
+        {
+            var state = _receiveOrganizationCoordinator.State;
+            var stableActor = StableId(actor);
+            if (!stableActor.Equals(state.PrimaryActor))
+            {
+                _receiveOrganizationCoordinator.ActivateEmergency(
+                    state.Revision,
+                    ++_gateHSourceSequence,
+                    stableActor);
+            }
+            else
+            {
+                _receiveOrganizationCoordinator.CommitReceive(
+                    state.Revision,
+                    ++_gateHSourceSequence);
+            }
+
+            var landing = PredictGate5BallCenterV4(
+                actor.Team,
+                RallyDecisionStage.Organize,
+                ReceiveFlightSeconds);
+            _receiveOrganizationCoordinator.AcceptReceive(
+                new AcceptedReceiveV3(
+                    state.Revision,
+                    ++_gateHSourceSequence,
+                    stableActor,
+                    landing,
+                    PlanCoverageReason.WithinConditionalEnvelope,
+                    acceptedTrajectory?.ArtifactIdentity ??
+                    "gate-h-accepted-trajectory",
+                    acceptedClassification?.ExecutableEnvelope?.Identity ??
+                    "gate-h-accepted-classification"));
+            var organization = _receiveOrganizationCoordinator.CurrentPlanning;
+            if (organization.Decision.HasDecision)
+            {
+                ScheduleDecision(
+                    organization.Decision,
+                    ReceiveFlightSeconds,
+                    acceptedTrajectory);
+            }
         }
 
         private RuleTransitionV3 ObserveAcceptedContactV3(
@@ -4013,6 +4365,18 @@ namespace Volleyball.Presentation
         private static SimVector3 ToSimulation(Vector3 value)
         {
             return new SimVector3(value.x, value.y, value.z);
+        }
+
+        private sealed class NullReceiveOrganizationAuthorityCommandSink :
+            IReceiveOrganizationAuthorityCommandSink
+        {
+            public static NullReceiveOrganizationAuthorityCommandSink Instance {
+                get;
+            } = new NullReceiveOrganizationAuthorityCommandSink();
+
+            public void Publish(ReceiveOrganizationCommandBatch batch)
+            {
+            }
         }
     }
 }

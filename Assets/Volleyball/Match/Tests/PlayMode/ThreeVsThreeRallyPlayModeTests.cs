@@ -44,6 +44,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.V3RuleParityMatches, Is.Zero);
             Assert.That(director.V3RuleIntentionalCorrections, Is.Zero);
             Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero);
+            Assert.That(director.GateHAuthorityEnabled, Is.False);
+            Assert.That(director.GateHLegacyWriterInvocations, Is.Zero);
             Assert.That(director.LastV3RuleDiagnostic, Is.Empty);
             Assert.That(
                 typeof(PhysicalMatchRallyDirector)

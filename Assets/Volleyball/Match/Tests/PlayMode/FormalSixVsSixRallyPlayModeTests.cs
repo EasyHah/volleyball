@@ -25,6 +25,45 @@ namespace Volleyball.PlayModeTests
     public sealed class FormalSixVsSixRallyPlayModeTests
     {
         [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator FormalReceiveAndOrganization_UseOnePlanAuthorityWriter()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "FormalIndoor6v6",
+                LoadSceneMode.Single);
+            var director =
+                Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            Assert.That(director, Is.Not.Null);
+            var traces = new List<ReceiveOrganizationAuthorityReceipt>();
+            director.ReceiveOrganizationAuthorityCommitted += traces.Add;
+
+            var timeout = Time.realtimeSinceStartup + 90f;
+            while (!traces.Any(trace =>
+                       trace.Kind ==
+                       ReceiveOrganizationCommandKind.OrganizationContact) &&
+                   Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(director.GateHAuthorityEnabled, Is.True);
+            Assert.That(
+                traces.Any(trace =>
+                    trace.Kind ==
+                    ReceiveOrganizationCommandKind.PrimaryReceive),
+                Is.True);
+            Assert.That(
+                traces.Any(trace =>
+                    trace.Kind ==
+                    ReceiveOrganizationCommandKind.OrganizationContact),
+                Is.True);
+            Assert.That(
+                traces.Select(trace => trace.PlanRevision),
+                Is.Ordered.Ascending);
+            Assert.That(director.GateHLegacyWriterInvocations, Is.Zero);
+        }
+
+        [UnityTest]
         [Timeout(180000)]
         public IEnumerator Formal6v6_ReplayDiagnosticRecordingPreservesFixedSeedAuthority()
         {

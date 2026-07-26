@@ -139,6 +139,33 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PhysicalDirector_ExposesReadOnlyGateHFormalAuthorityBoundary()
+        {
+            var enabled = typeof(PhysicalMatchRallyDirector)
+                .GetProperty(nameof(PhysicalMatchRallyDirector.GateHAuthorityEnabled));
+            var legacy = typeof(PhysicalMatchRallyDirector)
+                .GetProperty(nameof(PhysicalMatchRallyDirector.GateHLegacyWriterInvocations));
+            var authorityEvent = typeof(PhysicalMatchRallyDirector)
+                .GetEvent(nameof(PhysicalMatchRallyDirector.ReceiveOrganizationAuthorityCommitted));
+            var gateHReceive = typeof(PhysicalMatchRallyDirector)
+                .GetMethod(
+                    "ScheduleGateHReceive",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(enabled, Is.Not.Null);
+            Assert.That(enabled.GetSetMethod(false), Is.Null);
+            Assert.That(legacy, Is.Not.Null);
+            Assert.That(legacy.GetSetMethod(false), Is.Null);
+            Assert.That(authorityEvent, Is.Not.Null);
+            Assert.That(gateHReceive, Is.Not.Null);
+            Assert.That(
+                typeof(ReceiveOrganizationAuthorityController)
+                    .GetMethod(nameof(
+                        ReceiveOrganizationAuthorityController.PreflightAndCommit)),
+                Is.Not.Null);
+        }
+
+        [Test]
         public void PlannedAttackGeometry_IsNeverExposedAsObservedGeometry()
         {
             Assert.That(

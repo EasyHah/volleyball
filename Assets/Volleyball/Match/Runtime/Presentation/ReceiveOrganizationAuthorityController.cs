@@ -290,13 +290,11 @@ namespace Volleyball.Presentation
                 execution.ExecutionClassification,
                 command.Decision.AttackApproach,
                 command.Decision.AttackContactPlan);
-            if (!string.Equals(
-                    execution.TrajectoryArtifact.Key.EnvelopeIdentity,
-                    execution.ExecutionClassification.ExecutableEnvelope.Identity,
-                    StringComparison.Ordinal))
+            if (string.IsNullOrWhiteSpace(
+                    execution.TrajectoryArtifact.ArtifactIdentity))
             {
                 throw new InvalidOperationException(
-                    "Trajectory and executable envelope identities must match.");
+                    "Trajectory artifact identity is required.");
             }
         }
 
@@ -351,14 +349,27 @@ namespace Volleyball.Presentation
             {
                 case ReceiveOrganizationCommandKind.PrimaryReceive:
                 case ReceiveOrganizationCommandKind.OrganizationContact:
+                    var movementTarget = ToUnity(command.Decision.MovementTarget);
+                    if (prepared.Action == TechniqueAction.Receive)
+                    {
+                        var contactCenter =
+                            execution.PlannedContactCenter ??
+                            command.Decision.ContactTarget;
+                        movementTarget = player.ResolveContactRootTarget(
+                            prepared.Action,
+                            contactCenter,
+                            movementTarget);
+                    }
+
                     player.ScheduleContact(
                         prepared.Action,
                         execution.ScheduledSimulationTime,
                         execution.ExecutionClassification,
                         execution.ExecutionError,
                         execution.ContactGroupId,
+                        execution.PlannedContactCenter ??
                         command.Decision.ContactTarget,
-                        movementTarget: ToUnity(command.Decision.MovementTarget),
+                        movementTarget: movementTarget,
                         movementStartSimulationTime:
                         execution.MovementStartSimulationTime,
                         attackApproach: command.Decision.AttackApproach,
