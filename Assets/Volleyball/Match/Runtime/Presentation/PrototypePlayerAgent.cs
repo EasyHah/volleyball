@@ -57,15 +57,15 @@ namespace Volleyball.Presentation
 
         public SimVector3 PreparedForward { get; private set; }
 
-        public Vector3 ScheduledMovementTarget => _hasPhysicalBlockContact || _hasSupportAction
+        public Vector3 ScheduledMovementTarget => _hasPhysicalBlockContact || _actionTimelineState.HasSupportAction
             ? _supportTargetPosition
             : _movementTargetPosition;
 
         public string ReplayScheduledAction => _hasPhysicalBlockContact
             ? TechniqueAction.Block.ToString()
-            : _hasSupportAction
-                ? _supportAction.ToString()
-                : _hasScheduledContact
+            : _actionTimelineState.HasSupportAction
+                ? _actionTimelineState.SupportAction.ToString()
+                : _actionTimelineState.HasScheduledContact
                     ? _isControlledHandling ? "Handling" : _scheduledAction.ToString()
                     : "Ready";
 
@@ -104,7 +104,7 @@ namespace Volleyball.Presentation
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
-        public bool EmergencyReceiveWindowEnabled => _hasEmergencyReceiveWindow;
+        public bool EmergencyReceiveWindowEnabled => _actionTimelineState.HasEmergencyReceiveWindow;
 
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
 
@@ -114,12 +114,11 @@ namespace Volleyball.Presentation
             return _hasObservedAttackTakeoff;
         }
 
-        private ActionTimeline _actionTimeline;
+        private readonly PlayerActionTimeline _actionTimelineState = new PlayerActionTimeline();
         private TechniqueAction _scheduledAction;
         private SkillExecutionError _executionError;
         private SimVector3 _targetVelocity;
         private int _contactGroupId;
-        private bool _hasScheduledContact;
         private Vector3 _motionOrigin;
         private Vector3 _motionForward;
         private SimVector3 _plannedContactCenter;
@@ -131,19 +130,11 @@ namespace Volleyball.Presentation
         private float _movementEndSimulationTime;
         private bool _hasScheduledMovement;
         private bool _isMovingThisStep;
-        private ActionTimeline _supportTimeline;
-        private TechniqueAction _supportAction;
         private Vector3 _supportStartPosition;
         private Vector3 _supportTargetPosition;
         private float _supportStartSimulationTime;
         private float _supportEndSimulationTime;
-        private bool _hasSupportAction;
         private bool _supportActionActivated;
-        private bool _hasEmergencyReceiveWindow;
-        private float _emergencyReceiveStartSimulationTime;
-        private float _emergencyReceiveEndSimulationTime;
-        private SimVector3 _emergencyReceiveTargetVelocity;
-        private int _emergencyReceiveContactGroupId;
         private bool _hasPhysicalBlockContact;
         private SimVector3 _physicalBlockTargetVelocity;
         private int _physicalBlockContactGroupId;
@@ -385,19 +376,23 @@ namespace Volleyball.Presentation
             }
             _executionError = executionError;
             _contactGroupId = contactGroupId;
-            _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
+            _actionTimelineState.ScheduleContact(
+                action,
+                scheduledSimulationTime,
+                executionError.ContactTimingError);
             _hasAttackApproach = attackApproach.HasValue;
             _attackApproach = attackApproach.GetValueOrDefault();
             _hasAttackContactPlan = attackContactPlan.HasValue;
             _attackContactPlan = attackContactPlan.GetValueOrDefault();
             var continuePreparedAttack = attackApproach.HasValue &&
                                          (_continueAttackPreparation ||
-                                          (_hasSupportAction && _supportAction == TechniqueAction.Attack));
+                                          (_actionTimelineState.HasSupportAction &&
+                                           _actionTimelineState.SupportAction == TechniqueAction.Attack));
             if (continuePreparedAttack)
             {
                 ConfigureContinuationMovement(
                     ToUnity(attackApproach.Value.Takeoff),
-                    _actionTimeline.ActualContactTime);
+                    _actionTimelineState.ContactTimeline.ActualContactTime);
             }
             else
             {
@@ -408,7 +403,7 @@ namespace Volleyball.Presentation
                     requestedMovementTarget,
                     movementStartSimulationTime + executionError.ReactionDelay,
                     action == TechniqueAction.Attack
-                        ? _actionTimeline.ActualContactTime
+                        ? _actionTimelineState.ContactTimeline.ActualContactTime
                         : scheduledSimulationTime,
                     action,
                     attackApproach.HasValue ? 0.72f : (float?)null);
@@ -424,8 +419,7 @@ namespace Volleyball.Presentation
             _hasPlannedContactCenter = authoritativeContactCenter.HasValue;
             _plannedContactCenter = authoritativeContactCenter.GetValueOrDefault();
             MinimumActiveSurfacePlanError = float.PositiveInfinity;
-            _hasScheduledContact = true;
-            _hasSupportAction = false;
+            _actionTimelineState.DisableSupport();
             _supportActionActivated = false;
         }
 
@@ -482,12 +476,10 @@ namespace Volleyball.Presentation
 
         public void CancelScheduledContact()
         {
-            _hasScheduledContact = false;
             _hasPlannedContactCenter = false;
             _continueAttackPreparation = false;
-            _actionTimeline = null;
-            _hasSupportAction = false;
-            _supportTimeline = null;
+            _actionTimelineState.CancelContact();
+            _actionTimelineState.DisableSupport();
             _supportActionActivated = false;
             _hasAttackApproach = false;
             _hasAttackContactPlan = false;
@@ -502,16 +494,16 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             int contactGroupId)
         {
-            _hasEmergencyReceiveWindow = true;
-            _emergencyReceiveStartSimulationTime = startSimulationTime;
-            _emergencyReceiveEndSimulationTime = Mathf.Max(startSimulationTime, endSimulationTime);
-            _emergencyReceiveTargetVelocity = targetVelocity;
-            _emergencyReceiveContactGroupId = contactGroupId;
+            _actionTimelineState.EnableEmergencyReceive(
+                startSimulationTime,
+                endSimulationTime,
+                targetVelocity,
+                contactGroupId);
         }
 
         public void DisableEmergencyReceiveWindow()
         {
-            _hasEmergencyReceiveWindow = false;
+            _actionTimelineState.DisableEmergencyReceive();
         }
 
         public void ScheduleSupportAction(
@@ -527,7 +519,6 @@ namespace Volleyball.Presentation
 
             DisableBlockContactWindow();
             ConfigureSupportAction(action, scheduledSimulationTime, movementTarget, movementStartSimulationTime);
-            _hasSupportAction = true;
             _supportActionActivated = false;
         }
 
@@ -542,7 +533,6 @@ namespace Volleyball.Presentation
                 scheduledSetContactTime,
                 approachStart,
                 movementStartSimulationTime);
-            _hasSupportAction = true;
             _supportActionActivated = false;
         }
 
@@ -557,7 +547,6 @@ namespace Volleyball.Presentation
                 scheduledReceiveContactTime,
                 settingPosition,
                 movementStartSimulationTime);
-            _hasSupportAction = true;
             _supportActionActivated = false;
         }
 
@@ -579,7 +568,8 @@ namespace Volleyball.Presentation
                 TechniqueAction.Block,
                 scheduledSimulationTime,
                 movementTarget,
-                movementStartSimulationTime);
+                movementStartSimulationTime,
+                isSupportAction: false);
             _physicalBlockContactRootHeight = movementTarget.y > 0f
                 ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
                 : MaximumBlockContactRootHeight();
@@ -609,10 +599,10 @@ namespace Volleyball.Presentation
                 throw new ArgumentOutOfRangeException(nameof(targetVelocity));
             }
 
-            var requestedShift = scheduledSimulationTime - _supportTimeline.ScheduledContactTime;
+            var requestedShift = scheduledSimulationTime - _actionTimelineState.SupportTimeline.ScheduledContactTime;
             var appliedShift = Mathf.Clamp(requestedShift, -0.12f, 0.12f);
-            var adjustedContactTime = _supportTimeline.ScheduledContactTime + appliedShift;
-            _supportTimeline = new ActionTimeline(TechniqueAction.Block, adjustedContactTime);
+            var adjustedContactTime = _actionTimelineState.SupportTimeline.ScheduledContactTime + appliedShift;
+            _actionTimelineState.ScheduleBlock(adjustedContactTime);
             PhysicalBlockContactTime = adjustedContactTime;
             BlockRetargetTimeShift = Mathf.Abs(appliedShift);
 
@@ -636,9 +626,9 @@ namespace Volleyball.Presentation
         public void DisableBlockContactWindow()
         {
             _hasPhysicalBlockContact = false;
-            if (!_hasSupportAction)
+            if (!_actionTimelineState.HasSupportAction)
             {
-                _supportTimeline = null;
+                _actionTimelineState.DisableSupport();
             }
         }
 
@@ -646,10 +636,17 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             float scheduledSimulationTime,
             Vector3 movementTarget,
-            float movementStartSimulationTime)
+            float movementStartSimulationTime,
+            bool isSupportAction = true)
         {
-            _supportAction = action;
-            _supportTimeline = new ActionTimeline(action, scheduledSimulationTime);
+            if (isSupportAction)
+            {
+                _actionTimelineState.ScheduleSupport(action, scheduledSimulationTime);
+            }
+            else
+            {
+                _actionTimelineState.ScheduleBlock(scheduledSimulationTime);
+            }
             _supportStartPosition = ConstrainGroundPosition(transform.position);
             _supportStartSimulationTime = movementStartSimulationTime;
             _supportEndSimulationTime = Mathf.Max(
@@ -865,29 +862,29 @@ namespace Volleyball.Presentation
 
             transform.position = ConstrainToOwnCourt(transform.position);
 
-            if (_hasPhysicalBlockContact && !_hasScheduledContact)
+            if (_hasPhysicalBlockContact && !_actionTimelineState.HasScheduledContact)
             {
                 CollectPhysicalBlockContacts(simulationTime, deltaSeconds, contacts);
                 return;
             }
 
-            if (_hasSupportAction && !_hasScheduledContact)
+            if (_actionTimelineState.HasSupportAction && !_actionTimelineState.HasScheduledContact)
             {
                 ApplySupportAction(simulationTime, deltaSeconds);
             }
 
-            if (!_hasScheduledContact &&
+            if (!_actionTimelineState.HasScheduledContact &&
                 TryAddEmergencyReceiveContacts(simulationTime, deltaSeconds, contacts))
             {
                 return;
             }
 
-            if (!_hasScheduledContact)
+            if (!_actionTimelineState.HasScheduledContact)
             {
                 return;
             }
 
-            var sample = _actionTimeline.Sample(simulationTime);
+            _actionTimelineState.TrySampleContact(simulationTime, out var sample);
             ApplyScheduledRootMotion(sample, simulationTime);
             CaptureObservedAttackTakeoff(simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
@@ -961,7 +958,7 @@ namespace Volleyball.Presentation
             float deltaSeconds,
             ICollection<BallContactCandidate> contacts)
         {
-            var sample = _supportTimeline.Sample(simulationTime);
+            _actionTimelineState.TrySampleSupport(simulationTime, out var sample);
             transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
             var pose = sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete
                 ? StickFigurePose.Ready
@@ -1014,32 +1011,33 @@ namespace Volleyball.Presentation
             float deltaSeconds,
             ICollection<BallContactCandidate> contacts)
         {
-            if (!_hasEmergencyReceiveWindow)
+            if (!_actionTimelineState.HasEmergencyReceiveWindow)
             {
                 return false;
             }
 
-            if (simulationTime < _emergencyReceiveStartSimulationTime)
+            if (simulationTime < _actionTimelineState.EmergencyReceiveStartSimulationTime)
             {
                 return false;
             }
 
-            if (simulationTime > _emergencyReceiveEndSimulationTime)
+            if (simulationTime > _actionTimelineState.EmergencyReceiveEndSimulationTime)
             {
                 DisableEmergencyReceiveWindow();
                 return false;
             }
 
             Rig.SetPose(StickFigurePose.Receive, Mathf.Clamp01(deltaSeconds * 18f));
-            var strikeDirection = _emergencyReceiveTargetVelocity.SqrMagnitude > 0.000001f
-                ? _emergencyReceiveTargetVelocity.Normalized
+            var targetVelocity = _actionTimelineState.EmergencyReceiveTargetVelocity;
+            var strikeDirection = targetVelocity.SqrMagnitude > 0.000001f
+                ? targetVelocity.Normalized
                 : SimVector3.Up;
             var response = ResponseFor(TechniqueAction.Receive);
             var playerTechnique = Ability.TechniqueFor(TechniqueAction.Receive);
             var surfaces = ContactSurfaces.Capture(
                 TechniqueAction.Receive,
                 true,
-                _emergencyReceiveContactGroupId);
+                _actionTimelineState.EmergencyReceiveContactGroupId);
             foreach (var surface in surfaces)
             {
                 contacts.Add(new BallContactCandidate(
@@ -1047,7 +1045,7 @@ namespace Volleyball.Presentation
                     TechniqueAction.Receive,
                     Id,
                     playerTechnique,
-                    _emergencyReceiveTargetVelocity,
+                    targetVelocity,
                     strikeDirection,
                     response));
             }
@@ -1057,23 +1055,24 @@ namespace Volleyball.Presentation
 
         private void ApplySupportAction(float simulationTime, float deltaSeconds)
         {
-            var sample = _supportTimeline.Sample(simulationTime);
+            _actionTimelineState.TrySampleSupport(simulationTime, out var sample);
             transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
             if (!_supportActionActivated &&
                 (sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact))
             {
                 _supportActionActivated = true;
-                SupportActionActivated?.Invoke(this, _supportAction);
+                SupportActionActivated?.Invoke(this, _actionTimelineState.SupportAction);
             }
 
-            var pose = _supportAction switch
+            var pose = _actionTimelineState.SupportAction switch
             {
                 TechniqueAction.Block => StickFigurePose.Block,
                 TechniqueAction.Attack => StickFigurePose.Run,
                 TechniqueAction.Set => StickFigurePose.Run,
                 _ => StickFigurePose.Receive
             };
-            if (sample.Phase == ActionPhase.Prepare && _supportAction == TechniqueAction.Receive)
+            if (sample.Phase == ActionPhase.Prepare &&
+                _actionTimelineState.SupportAction == TechniqueAction.Receive)
             {
                 pose = StickFigurePose.Run;
             }
@@ -1085,8 +1084,7 @@ namespace Volleyball.Presentation
             Rig.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
             if (sample.Phase == ActionPhase.Complete)
             {
-                _hasSupportAction = false;
-                _supportTimeline = null;
+                _actionTimelineState.DisableSupport();
                 _supportActionActivated = false;
                 transform.position = ConstrainToOwnCourt(_supportTargetPosition);
             }
@@ -1348,11 +1346,11 @@ namespace Volleyball.Presentation
                 return EvaluatePlannedAttackPosition(simulationTime, movementPosition);
             }
 
-            var takeoffTime = _actionTimeline.ActualContactTime - 0.38f;
-            var landingTime = _actionTimeline.ActualContactTime + 0.45f;
+            var takeoffTime = _actionTimelineState.ContactTimeline.ActualContactTime - 0.38f;
+            var landingTime = _actionTimelineState.ContactTimeline.ActualContactTime + 0.45f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
             var jumpHeight = (0.72f + (Ability.Jump * 0.5f)) * 4f * jumpProgress * (1f - jumpProgress);
-            var approachStart = _actionTimeline.ActualContactTime - 0.72f;
+            var approachStart = _actionTimelineState.ContactTimeline.ActualContactTime - 0.72f;
             var approachProgress = Mathf.Clamp01((simulationTime - approachStart) / 0.55f);
             approachProgress = approachProgress * approachProgress * (3f - (2f * approachProgress));
             var approachDistance = 0.45f + (Ability.Mobility * 0.35f);
@@ -1365,7 +1363,7 @@ namespace Volleyball.Presentation
         {
             if (_hasObservedAttackTakeoff ||
                 _scheduledAction != TechniqueAction.Attack ||
-                _actionTimeline == null)
+                !_actionTimelineState.HasScheduledContact)
             {
                 return;
             }
@@ -1405,23 +1403,27 @@ namespace Volleyball.Presentation
                     return position;
                 }
 
-                if (simulationTime <= _actionTimeline.ActualContactTime)
+                if (simulationTime <= _actionTimelineState.ContactTimeline.ActualContactTime)
                 {
-                    var ascent = Mathf.InverseLerp(takeoffTime, _actionTimeline.ActualContactTime, simulationTime);
+                    var ascent = Mathf.InverseLerp(
+                        takeoffTime,
+                        _actionTimelineState.ContactTimeline.ActualContactTime,
+                        simulationTime);
                     ascent = ascent * ascent * (3f - (2f * ascent));
                     return Vector3.Lerp(_attackTakeoffPosition, _attackContactRootPosition, ascent);
                 }
 
                 const float plannedLandingSeconds = 0.45f;
                 var descent = Mathf.Clamp01(
-                    (simulationTime - _actionTimeline.ActualContactTime) / plannedLandingSeconds);
+                    (simulationTime - _actionTimelineState.ContactTimeline.ActualContactTime) /
+                    plannedLandingSeconds);
                 descent = descent * descent * (3f - (2f * descent));
                 var landed = _attackContactRootPosition;
                 landed.y = _motionOrigin.y;
                 return Vector3.Lerp(_attackContactRootPosition, landed, descent);
             }
 
-            var landingTime = _actionTimeline.ActualContactTime + 0.45f;
+            var landingTime = _actionTimelineState.ContactTimeline.ActualContactTime + 0.45f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
             var jumpHeight = (0.72f + (Ability.Jump * 0.5f)) *
                              _attackApproach.JumpQuality *
@@ -1447,7 +1449,7 @@ namespace Volleyball.Presentation
 
             var takeoffTime = Mathf.Max(
                 _movementEndSimulationTime + 0.01f,
-                _actionTimeline.ActualContactTime - 0.38f);
+                _actionTimelineState.ContactTimeline.ActualContactTime - 0.38f);
             var availableSeconds = takeoffTime - _movementEndSimulationTime;
             var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
             _attackTakeoffPosition = Vector3.MoveTowards(
@@ -1472,7 +1474,7 @@ namespace Volleyball.Presentation
         private float AttackTakeoffTime()
         {
             var requestedTakeoffTime =
-                _actionTimeline.ActualContactTime - AttackJumpLead();
+                _actionTimelineState.ContactTimeline.ActualContactTime - AttackJumpLead();
             return _hasAttackApproach
                 ? Mathf.Max(_movementEndSimulationTime + 0.01f, requestedTakeoffTime)
                 : requestedTakeoffTime;
@@ -1537,8 +1539,8 @@ namespace Volleyball.Presentation
             float scheduledContactTime)
         {
             _movementStartPosition = ConstrainGroundPosition(transform.position);
-            _movementStartSimulationTime = _supportTimeline != null
-                ? Mathf.Min(_supportTimeline.ActualContactTime, scheduledContactTime)
+            _movementStartSimulationTime = _actionTimelineState.HasSupportAction
+                ? Mathf.Min(_actionTimelineState.SupportTimeline.ActualContactTime, scheduledContactTime)
                 : scheduledContactTime;
             _movementEndSimulationTime = Mathf.Max(
                 _movementStartSimulationTime + 0.01f,
@@ -1583,7 +1585,7 @@ namespace Volleyball.Presentation
         private Vector3 EvaluateSupportPosition(float simulationTime)
         {
             var position = EvaluateSupportGroundMovement(simulationTime);
-            if (_supportAction == TechniqueAction.Block)
+            if (_actionTimelineState.SupportAction == TechniqueAction.Block)
             {
                 position.y += EvaluateSupportBlockJump(simulationTime);
             }
@@ -1613,7 +1615,7 @@ namespace Volleyball.Presentation
 
         private float EvaluateSupportBlockJump(float simulationTime)
         {
-            var contactTime = _supportTimeline.ActualContactTime;
+            var contactTime = _actionTimelineState.SupportTimeline.ActualContactTime;
             var takeoffTime = contactTime - 0.22f;
             var landingTime = contactTime + 0.28f;
             var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
