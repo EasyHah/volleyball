@@ -66,10 +66,26 @@ namespace Volleyball.AI
 
     public sealed class AttackPlanningResultV3
     {
-        public AttackPlanningResultV3(IReadOnlyList<AttackCandidateV3> candidates, IReadOnlyList<AttackCandidateV3> qualifiedPowerRoutes, IReadOnlyList<AttackCandidateV3> fallbackCandidates, PublicAttackThreatV3 publicThreat)
-        { Candidates = Copy(candidates, nameof(candidates)); QualifiedPowerRoutes = Copy(qualifiedPowerRoutes, nameof(qualifiedPowerRoutes)); FallbackCandidates = Copy(fallbackCandidates, nameof(fallbackCandidates)); PublicThreat = publicThreat ?? throw new ArgumentNullException(nameof(publicThreat)); }
+        public AttackPlanningResultV3(IReadOnlyList<AttackCandidateV3> candidates, IReadOnlyList<AttackCandidateV3> qualifiedPowerRoutes, IReadOnlyList<AttackCandidateV3> fallbackCandidates, IReadOnlyList<GateIAttackExecutionEvidenceV3> executionEvidence, PublicAttackThreatV3 publicThreat)
+        { Candidates = Copy(candidates, nameof(candidates)); QualifiedPowerRoutes = Copy(qualifiedPowerRoutes, nameof(qualifiedPowerRoutes)); FallbackCandidates = Copy(fallbackCandidates, nameof(fallbackCandidates)); ExecutionEvidence = CopyEvidence(executionEvidence); PublicThreat = publicThreat ?? throw new ArgumentNullException(nameof(publicThreat)); }
         public IReadOnlyList<AttackCandidateV3> Candidates { get; } public IReadOnlyList<AttackCandidateV3> QualifiedPowerRoutes { get; } public IReadOnlyList<AttackCandidateV3> FallbackCandidates { get; } public PublicAttackThreatV3 PublicThreat { get; }
+        // Pure domain lookup for the coordinator; no Presentation command types leak here.
+        public IReadOnlyList<GateIAttackExecutionEvidenceV3> ExecutionEvidence { get; }
+        public GateIAttackExecutionEvidenceV3 EvidenceFor(AttackCandidateV3 candidate) => ExecutionEvidence.Single(x => x.CandidateIdentity == (candidate ?? throw new ArgumentNullException(nameof(candidate))).CandidateIdentity);
         private static IReadOnlyList<AttackCandidateV3> Copy(IReadOnlyList<AttackCandidateV3> values, string name) => new ReadOnlyCollection<AttackCandidateV3>((values ?? throw new ArgumentNullException(name)).ToArray());
+        private static IReadOnlyList<GateIAttackExecutionEvidenceV3> CopyEvidence(IReadOnlyList<GateIAttackExecutionEvidenceV3> values) => new ReadOnlyCollection<GateIAttackExecutionEvidenceV3>((values ?? throw new ArgumentNullException(nameof(values))).ToArray());
+    }
+
+    public sealed class GateIAttackExecutionEvidenceV3
+    {
+        public GateIAttackExecutionEvidenceV3(AttackCandidateV3 candidate, ExecutionSampleClassificationV4 executionClassification, BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
+        {
+            Candidate = candidate ?? throw new ArgumentNullException(nameof(candidate)); ExecutionClassification = executionClassification ?? throw new ArgumentNullException(nameof(executionClassification));
+            TrajectoryArtifact = trajectoryArtifact ?? throw new ArgumentNullException(nameof(trajectoryArtifact));
+            if (ExecutionClassification.ExecutableEnvelope == null || Candidate.EnvelopeIdentity != ExecutionClassification.ExecutableEnvelope.Identity || Candidate.TrajectoryArtifactIdentity != TrajectoryArtifact.ArtifactIdentity) throw new ArgumentException("Candidate identity must match its exact execution evidence.");
+        }
+        public AttackCandidateV3 Candidate { get; } public string CandidateIdentity => Candidate.CandidateIdentity;
+        public ExecutionSampleClassificationV4 ExecutionClassification { get; } public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
     }
 
     public sealed class FinalAttackChoiceV3
@@ -100,7 +116,8 @@ namespace Volleyball.AI
             if (request.SetIntent.PlanRevision != request.Revision || !request.SetIntent.Organizer.Equals(request.ActualSet.Actor) || request.SetIntent.ExecutionClassification.ExecutableEnvelope.Identity != request.ActualSet.EnvelopeIdentity || request.SetIntent.TrajectoryArtifact.ArtifactIdentity != request.ActualSet.TrajectoryArtifactIdentity) throw new ArgumentException("Accepted Set evidence does not match the immutable SetIntent.", nameof(request));
             var actor = request.Players.FirstOrDefault(x => x.Player.Equals(request.SetIntent.PreparedAttacker) && x.CanAttack);
             if (actor == null) throw new ArgumentException("Accepted Set attacker is not eligible.", nameof(request));
-            var generated = Generate(actor, request.SetIntent).OrderByDescending(c => c.IsQualifiedPowerRoute).ThenByDescending(c => c.ExpectedRallyValue).ThenBy(c => c.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.ActionClass).ThenBy(c => c.CandidateIdentity, StringComparer.Ordinal).ToArray();
+            var generatedEvidence = Generate(actor, request.SetIntent).OrderByDescending(c => c.Candidate.IsQualifiedPowerRoute).ThenByDescending(c => c.Candidate.ExpectedRallyValue).ThenBy(c => c.Candidate.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.Candidate.ActionClass).ThenBy(c => c.Candidate.CandidateIdentity, StringComparer.Ordinal).ToArray();
+            var generated = generatedEvidence.Select(x => x.Candidate).ToArray();
             var power = generated.Where(c => IsPower(c.ActionClass) && c.IsQualifiedPowerRoute && c.LegalSampleRatio >= .6f).ToArray();
             // Tool recovery stays visible as an eliminated tactical branch, but does not
             // become a comparable fallback until AddQualifiedToolRecoveryFallback.
@@ -108,7 +125,7 @@ namespace Volleyball.AI
             var threatSource = power.Length > 0 ? power : fallback;
             var min = threatSource.Min(c => c.ExpectedRallyValue); var total = threatSource.Sum(c => Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f));
             var entries = threatSource.Select(c => new PublicAttackThreatEntryV3(c.ActionClass, Zone(c.Target), Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f) / total, ArrivalTime(c, request.SetIntent))).ToArray();
-            return new AttackPlanningResultV3(generated, power, fallback, new PublicAttackThreatV3("gate-i-threat-" + request.Revision, entries));
+            return new AttackPlanningResultV3(generated, power, fallback, generatedEvidence, new PublicAttackThreatV3("gate-i-threat-" + request.Revision, entries));
         }
 
         public FinalAttackChoiceV3 ChooseFinal(AttackPlanningResultV3 result, JointDefensePlanV3 committedDefense) { if (result == null) throw new ArgumentNullException(nameof(result)); if (committedDefense == null) throw new ArgumentNullException(nameof(committedDefense)); var pool = result.QualifiedPowerRoutes.Count > 0 ? result.QualifiedPowerRoutes : result.FallbackCandidates; if (pool.Count == 0) throw new InvalidOperationException("No attack candidate is available."); return new FinalAttackChoiceV3(pool.OrderByDescending(c => c.ExpectedRallyValue).ThenBy(c => c.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.ActionClass).ThenBy(c => c.CandidateIdentity, StringComparer.Ordinal).First(), result.FallbackCandidates); }
@@ -118,14 +135,22 @@ namespace Volleyball.AI
 
         private static IEnumerable<GateITacticalPlayerV3> Eligible(SetIntentPlanningRequestV3 request) => request.Players.Where(x => x.Side == request.AttackingSide && x.CanAttack);
         private static float AttackScore(GateITacticalPlayerV3 x) { var a = x.Attributes.Attributes.Attack; return a.PowerCapacity + a.DirectionControl + a.SpeedControl + a.ApproachMobility; }
-        private static IEnumerable<AttackCandidateV3> Generate(GateITacticalPlayerV3 actor, GateISetIntentV3 set)
+        private static IEnumerable<GateIAttackExecutionEvidenceV3> Generate(GateITacticalPlayerV3 actor, GateISetIntentV3 set)
         {
             var a = actor.Attributes.Attributes.Attack; var distance = (actor.WorldPosition - set.Target).Magnitude; var ratio = Math.Max(0f, Math.Min(1f, 1f - (distance / 8f))); var powerQualified = ratio >= .6f && a.PowerCapacity >= .45f;
             foreach (var action in new[] { AttackActionClassV3.PowerLine, AttackActionClassV3.PowerCross, AttackActionClassV3.PowerEdge, AttackActionClassV3.PowerOverHand, AttackActionClassV3.Tip, AttackActionClassV3.Roll, AttackActionClassV3.Push, AttackActionClassV3.HighSurvival, AttackActionClassV3.BlockOut, AttackActionClassV3.BlockToolRecovery })
             {
                 var power = IsPower(action); var tool = action == AttackActionClassV3.BlockToolRecovery; var target = Target(set.Target, action); var qualified = power && powerQualified;
                 var value = (power ? .65f + a.PowerCapacity : .25f + a.DirectionControl) + (ratio * .2f) - ((int)action * .001f);
-                yield return new AttackCandidateV3("gate-i-" + set.PlanRevision + "-" + action, actor.Player, action, set.Target, target, value, power ? ratio : 1f, qualified, qualified || !power ? (tool ? "Tool recovery requires qualification." : string.Empty) : "Set geometry does not qualify power.", set.ExecutionClassification.ExecutableEnvelope.Identity, set.TrajectoryArtifact.ArtifactIdentity);
+                var identity = "gate-i-" + set.PlanRevision + "-" + action;
+                var category = power ? ExecutionCandidateCategoryV4.Attack : ExecutionCandidateCategoryV4.SoftAction;
+                var velocity = new SimVector3(0f, 1.5f, target.Z >= set.Target.Z ? 2f : -2f);
+                var envelope = ExecutionEnvelopeFactoryV4.Create(actor.Attributes, new ExecutionIntentV4(identity, category, target, velocity, .5f), identity, ExecutionEnvelopePolicyV4.GateI);
+                var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey, category, target, velocity, .5f);
+                var classification = envelope.Classify(sample);
+                var trajectory = set.TrajectoryArtifact.ForCandidate(identity, classification.ExecutableEnvelope.Identity);
+                var candidate = new AttackCandidateV3(identity, actor.Player, action, set.Target, target, value, power ? ratio : 1f, qualified, qualified || !power ? (tool ? "Tool recovery requires qualification." : string.Empty) : "Set geometry does not qualify power.", classification.ExecutableEnvelope.Identity, trajectory.ArtifactIdentity);
+                yield return new GateIAttackExecutionEvidenceV3(candidate, classification, trajectory);
             }
         }
         private static SimVector3 Target(SimVector3 center, AttackActionClassV3 action) { var offset = action == AttackActionClassV3.PowerLine ? -3f : action == AttackActionClassV3.PowerCross ? 3f : 0f; return new SimVector3(center.X + offset, 1f, center.Z + 7f); }

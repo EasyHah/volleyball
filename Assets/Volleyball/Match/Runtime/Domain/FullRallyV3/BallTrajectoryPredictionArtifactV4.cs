@@ -145,6 +145,33 @@ namespace Volleyball.Match.Domain.FullRallyV3
             return (byte[])_canonicalBytes.Clone();
         }
 
+        // Gate I derives a new immutable prediction identity for every generated
+        // action.  The physical samples remain the accepted Set prediction; the
+        // cache key binds them to the candidate-specific envelope and sampling key.
+        public BallTrajectoryPredictionArtifactV4 ForCandidate(
+            string candidateIdentity,
+            string envelopeIdentity)
+        {
+            if (string.IsNullOrWhiteSpace(candidateIdentity))
+            {
+                throw new ArgumentException("Candidate identity is required.", nameof(candidateIdentity));
+            }
+
+            var key = new BallTrajectoryPredictionCacheKeyV4(
+                Key.BallStateVersion,
+                Key.BallStateFingerprint,
+                Key.PhysicsConfigurationHash,
+                "gate-i-candidate-" + candidateIdentity,
+                Key.PredictorVersion,
+                Key.PredictorConfigurationHash,
+                envelopeIdentity,
+                Key.DegradationStep);
+            return new BallTrajectoryPredictionArtifactV4(
+                key,
+                PredictorSource + ":gate-i-candidate",
+                PredictionSnapshot);
+        }
+
         public bool Equals(BallTrajectoryPredictionArtifactV4 other)
         {
             return other != null &&

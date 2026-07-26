@@ -58,6 +58,10 @@ namespace Volleyball.EditModeTests
             Assert.That(result.Candidates.Select(x => x.ActionClass), Does.Contain(AttackActionClassV3.BlockToolRecovery));
             Assert.That(result.FallbackCandidates.Select(x => x.ActionClass), Has.None.EqualTo(AttackActionClassV3.BlockToolRecovery));
             Assert.That(result.PublicThreat.Entries.All(x => x.ArrivalTime > intent.GateHExpectedContactTime), Is.True);
+            Assert.That(result.ExecutionEvidence.All(x => x.Candidate.EnvelopeIdentity == x.ExecutionClassification.ExecutableEnvelope.Identity && x.Candidate.TrajectoryArtifactIdentity == x.TrajectoryArtifact.ArtifactIdentity), Is.True);
+            Assert.That(result.ExecutionEvidence.Where(x => x.Candidate.IsQualifiedPowerRoute).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.Attack), Is.True);
+            Assert.That(result.ExecutionEvidence.Where(x => !x.Candidate.IsQualifiedPowerRoute).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.SoftAction), Is.True);
+            Assert.That(result.ExecutionEvidence.Select(x => x.TrajectoryArtifact.ArtifactIdentity).Distinct().Count(), Is.EqualTo(result.ExecutionEvidence.Count));
         }
 
         [Test]
