@@ -133,6 +133,44 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void SaturatedSmoothStepMidpoint_LiveAttackRootNeverExceedsOneStepBudget()
+        {
+            var root = new GameObject("SaturatedMidpointAttackRoot");
+            root.transform.position = new Vector3(0f, 0f, -4f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -0.18f),
+                0f,
+                1f,
+                TechniqueAction.Attack,
+                PlayerAbilityProfile.Default,
+                0f);
+            locomotion.ConfigureAttackApproach(
+                new AttackApproachPlan(
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -0.18f),
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -0.18f),
+                    0f,
+                    1f,
+                    0f),
+                PlayerAbilityProfile.Default,
+                1f);
+            locomotion.ConfigureAttackContact(new Vector3(0f, 3f, -0.18f), 0.38f, PlayerAbilityProfile.Default);
+
+            var previous = root.transform.position;
+            for (var time = 0.01f; time <= 1.35f; time += 0.01f)
+            {
+                var sample = locomotion.Sample(time, 0.01f, true);
+                locomotion.SetRootPosition(sample.Position);
+                Assert.That(Vector3.Distance(previous, root.transform.position),
+                    Is.LessThanOrEqualTo((locomotion.MaximumSpeed * 0.01f) + 0.0001f),
+                    "The live root must share one speed budget across saturated ground, ascent, and landing motion.");
+                previous = root.transform.position;
+            }
+
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
         public void ConfigureAttackApproach_ResetsThePersistentAlignmentOffsetForANewAttack()
         {
             var locomotion = CreateAttackLocomotion();

@@ -253,6 +253,29 @@ namespace Volleyball.Presentation
             return frames;
         }
 
+        public IReadOnlyList<ContactCapsuleFrame> PreviewBlockFrames()
+        {
+            var snapshots = _blockVolumes.Capture(false, 0);
+            var frames = new ContactCapsuleFrame[snapshots.Count];
+            for (var index = 0; index < snapshots.Count; index++) frames[index] = snapshots[index].Current;
+            return frames;
+        }
+
+        internal SimVector3 CaptureSurfaceCenter(
+            TechniqueAction action,
+            int contactGroupId,
+            SetContactHand setContactHand)
+        {
+            var frames = _surfaces.Capture(action, true, contactGroupId, setContactHand: setContactHand);
+            var center = SimVector3.Zero;
+            foreach (var frame in frames)
+            {
+                center += frame.Current.Origin + (frame.Current.Normal * SimulatedBall.DefaultRadius);
+            }
+
+            return center / frames.Count;
+        }
+
         private void UpdateScheduledSurfaceDiagnostics(
             IReadOnlyList<ContactSurfaceSnapshot> surfaces,
             SimVector3? plannedContactCenter)

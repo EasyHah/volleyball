@@ -115,6 +115,42 @@ namespace Volleyball.EditModeTests
             }
         }
 
+        [Test]
+        public void FailedV4Reschedule_PreservesExistingExecutorTimelineAndProviderState()
+        {
+            var playerObject = new GameObject("AtomicV4Reschedule");
+            try
+            {
+                var player = playerObject.AddComponent<PrototypePlayerAgent>();
+                player.Initialize(new PrototypePlayerId(PrototypeTeamId.Blue, PrototypePlayerRole.Attacker), Color.blue, "2");
+                var original = CreateAcceptedClassification();
+                player.ScheduleContact(TechniqueAction.Attack, 2f, original, default, 71);
+
+                var beforeEnvelope = player.ScheduledExecutionEnvelopeV4;
+                var beforeSample = player.ScheduledExecutionSampleV4;
+                var beforeClassification = player.ScheduledExecutionClassificationV4;
+                var beforeAction = player.ReplayScheduledAction;
+                var beforeMovement = player.ScheduledMovementTarget;
+                var invalidApproach = new AttackApproachPlan(
+                    new SimVector3(0f, 0f, -2f), new SimVector3(0f, 0f, -1f), 1f, 1f, 0f);
+
+                Assert.That(() => player.ScheduleContact(
+                        TechniqueAction.Receive, 3f, CreateAcceptedClassification(), default, 72,
+                        attackApproach: invalidApproach),
+                    Throws.TypeOf<ArgumentException>());
+
+                Assert.That(player.ScheduledExecutionEnvelopeV4, Is.SameAs(beforeEnvelope));
+                Assert.That(player.ScheduledExecutionSampleV4, Is.SameAs(beforeSample));
+                Assert.That(player.ScheduledExecutionClassificationV4, Is.SameAs(beforeClassification));
+                Assert.That(player.ReplayScheduledAction, Is.EqualTo(beforeAction));
+                Assert.That(player.ScheduledMovementTarget, Is.EqualTo(beforeMovement));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(playerObject);
+            }
+        }
+
         private static ExecutionSampleClassificationV4 CreateAcceptedClassification()
         {
             var envelope = CreateEnvelope();

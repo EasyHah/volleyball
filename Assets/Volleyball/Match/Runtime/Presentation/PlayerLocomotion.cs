@@ -22,7 +22,7 @@ namespace Volleyball.Presentation
     }
 
     /// <summary>
-    /// Owns player root motion.  Inputs are immutable plans; timeline ownership remains with the facade.
+    /// Owns player root motion. Inputs are immutable timeline samples and execution plans.
     /// </summary>
     public sealed class PlayerLocomotion
     {
@@ -48,6 +48,7 @@ namespace Volleyball.Presentation
         private float _lastSampleDeltaSeconds;
         private float _remainingAttackStepDistance = float.PositiveInfinity;
         private bool _hasSampledAttackRootMotion;
+        private bool _hasSampledLiveRootMotion;
         private TechniqueAction _scheduledAction;
         private PlayerAbilityProfile _scheduledAbility;
         private Vector3 _attackMotionOrigin;
@@ -143,6 +144,7 @@ namespace Volleyball.Presentation
         {
             ClearAttackPlanState();
             _hasSampledAttackRootMotion = false;
+            _hasSampledLiveRootMotion = false;
             _movementStartPosition = ConstrainGroundPosition(_root.position);
             _movementStartSimulationTime = movementStartSimulationTime;
             var movementLead = movementLeadOverride ?? (action == TechniqueAction.Attack ? 0.32f : 0.10f);
@@ -309,12 +311,25 @@ namespace Volleyball.Presentation
                 : _scheduledAction == TechniqueAction.Attack
                     ? EvaluateUnplannedAttackPosition(simulationTime, movementPosition)
                     : movementPosition;
+            // SmoothStep describes the desired route only. The live root travels that
+            // route through one arc-length budget, so midpoint easing and vertical jump
+            // motion cannot consume more than MaximumSpeed * dt in a single simulation step.
+            var isFixedStep = elapsedStepSeconds >= 0f &&
+                              _lastSampleDeltaSeconds <= elapsedStepSeconds + .0001f;
+            var liveStepSeconds = Mathf.Max(0f, elapsedStepSeconds);
+            if (isFixedStep && _hasSampledLiveRootMotion)
+            {
+                position = Vector3.MoveTowards(
+                    _root.position,
+                    position,
+                    (MaximumSpeed * liveStepSeconds) + 0.000001f);
+            }
             if (_scheduledAction == TechniqueAction.Attack)
             {
                 position += _attackAlignmentOffset;
-                if (shareAttackAlignmentStepBudget && _hasSampledAttackRootMotion)
+                if (shareAttackAlignmentStepBudget && isFixedStep && _hasSampledAttackRootMotion)
                 {
-                    var stepBudget = MaximumSpeed * elapsedStepSeconds;
+                    var stepBudget = MaximumSpeed * liveStepSeconds;
                     _remainingAttackStepDistance = Mathf.Max(
                         0f,
                         stepBudget - Vector3.Distance(_root.position, position));
@@ -325,6 +340,7 @@ namespace Volleyball.Presentation
                 }
                 _hasSampledAttackRootMotion = true;
             }
+            _hasSampledLiveRootMotion = true;
             return new PlayerLocomotionSample(ConstrainToOwnCourt(position), complete);
         }
 
@@ -379,6 +395,35 @@ namespace Volleyball.Presentation
             MovementShortfall += Mathf.Max(0f, requested.magnitude - constrainedStep.magnitude);
             SetRootPosition(_root.position + constrainedStep);
             return constrainedStep;
+        }
+
+        internal void ApplyContactAlignment(
+            SimVector3 plannedCenter,
+            SimVector3 actualCenter,
+            TechniqueAction action,
+            bool controlledHandling,
+            ActionPhase phase,
+            float phaseProgress,
+            float elapsedStepSeconds)
+        {
+            if (phase != ActionPhase.Power && phase != ActionPhase.Contact) return;
+            var maximumCorrection = controlledHandling ? .70f : action switch
+            {
+                TechniqueAction.Attack => PrototypePlayerAgent.NetClearance,
+                TechniqueAction.Set => .30f,
+                _ => .16f
+            };
+            var correction = plannedCenter - actualCenter;
+            if (correction.Magnitude > maximumCorrection)
+                correction = correction.Normalized * (maximumCorrection - .0001f);
+            var requested = ToUnity(correction);
+            if (!controlledHandling && action == TechniqueAction.Attack)
+            {
+                if (phase == ActionPhase.Contact) ApplyAttackContactAlignment(requested, elapsedStepSeconds);
+                return;
+            }
+            if (phase == ActionPhase.Power) requested *= Mathf.SmoothStep(0f, 1f, phaseProgress);
+            SetRootPosition(_root.position + requested);
         }
 
         private void ResetAttackCorrectionAccounting()
