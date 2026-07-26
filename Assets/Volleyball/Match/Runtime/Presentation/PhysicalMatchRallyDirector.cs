@@ -813,9 +813,11 @@ namespace Volleyball.Presentation
                     : null;
             }
             GateHAuthorityEnabled =
+                mode == V3RulesMode.Authority &&
                 _configuration.RosterSize == 6 &&
                 _matchContext != null &&
-                _v3RulesAdapter != null;
+                _v3RulesAdapter != null &&
+                _players.Count == 12;
             if (GateHAuthorityEnabled)
             {
                 var responsibilityPlanner =
@@ -837,6 +839,12 @@ namespace Volleyball.Presentation
                     controller.AuthorityCommitted += HandleGateHAuthorityCommitted;
                     _receiveOrganizationControllers.Add(team, controller);
                 }
+            }
+            else
+            {
+                _receiveOrganizationCoordinator = null;
+                _receiveOrganizationControllers.Clear();
+                _pendingGateHContactReceipts.Clear();
             }
             ResetV3Diagnostics();
         }

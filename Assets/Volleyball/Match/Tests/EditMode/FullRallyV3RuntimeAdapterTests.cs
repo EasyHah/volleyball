@@ -536,12 +536,14 @@ namespace Volleyball.EditModeTests
                 PrepareFormalDirector(director);
                 director.ConfigureV3Rules(V3RulesMode.Shadow);
                 var originalAdapter = GetPrivateField(director, "_v3RulesAdapter");
+                Assert.That(director.GateHAuthorityEnabled, Is.False);
 
                 director.ConfigureV3Rules(V3RulesMode.Disabled);
 
                 Assert.That(originalAdapter, Is.Not.Null);
                 Assert.That(GetPrivateField(director, "_v3RulesAdapter"), Is.Null);
                 Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
+                Assert.That(director.GateHAuthorityEnabled, Is.False);
             }
             finally
             {
