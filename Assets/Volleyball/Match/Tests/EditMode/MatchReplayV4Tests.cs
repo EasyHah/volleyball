@@ -177,6 +177,23 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CanonicalJson_DeserializesF4EraShadowCoverageWithOnlyCoveredDecisionAndScore()
+        {
+            var canonical = ContractJson.SerializeV4(CreateReplay(EventWithShadow(0, "Attack", 0)));
+            var coverageStart = canonical.IndexOf("\"coverage\":", StringComparison.Ordinal);
+            var coverageEnd = canonical.IndexOf("}", coverageStart);
+            var legacy = canonical.Substring(0, coverageStart) +
+                "\"coverage\":{\"decision\":\"Covered\",\"score\":0.75" +
+                canonical.Substring(coverageEnd);
+
+            var coverage = ContractJson.DeserializeMatchReplayV4(legacy).Events[0].Shadow.Coverage;
+
+            Assert.That(coverage.Decision, Is.EqualTo("Covered"));
+            Assert.That(coverage.Score, Is.EqualTo(0.75f));
+            Assert.That(coverage.Reason, Is.EqualTo("WithinConditionalEnvelope"));
+        }
+
+        [Test]
         public void ShadowRecord_RequiresBothSidesAndValidAssignmentsAndCoverage()
         {
             Assert.That(

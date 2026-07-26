@@ -1266,11 +1266,14 @@ namespace Volleyball.Shared.Contracts
                 value.Properties.ContainsKey("decision") &&
                 value.Properties.ContainsKey("score"))
             {
+                var decision = NormalizeLegacyCoverageDecision(
+                    StrictJsonV4.RequiredString(value, "decision"));
                 return new ReplayCoverageDecisionRecordV4(
-                    NormalizeLegacyCoverageDecision(
-                        StrictJsonV4.RequiredString(value, "decision")),
+                    decision,
                     StrictJsonV4.RequiredFloat(value, "score"),
-                    "RallyEnd",
+                    decision == "Terminal"
+                        ? "RallyEnd"
+                        : "WithinConditionalEnvelope",
                     Array.Empty<string>(),
                     0,
                     null);
