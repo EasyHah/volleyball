@@ -243,22 +243,12 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             SetContactHand setContactHand = SetContactHand.Both)
         {
-            var snapshots = _surfaces.Capture(action, true, 0, setContactHand: setContactHand);
-            var frames = new ContactSurfaceFrame[snapshots.Count];
-            for (var index = 0; index < snapshots.Count; index++)
-            {
-                frames[index] = snapshots[index].Current;
-            }
-
-            return frames;
+            return _surfaces.CaptureCurrent(action, setContactHand);
         }
 
         public IReadOnlyList<ContactCapsuleFrame> PreviewBlockFrames()
         {
-            var snapshots = _blockVolumes.Capture(false, 0);
-            var frames = new ContactCapsuleFrame[snapshots.Count];
-            for (var index = 0; index < snapshots.Count; index++) frames[index] = snapshots[index].Current;
-            return frames;
+            return _blockVolumes.CaptureCurrent();
         }
 
         internal SimVector3 CaptureSurfaceCenter(

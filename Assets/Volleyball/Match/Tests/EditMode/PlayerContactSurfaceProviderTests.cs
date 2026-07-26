@@ -93,5 +93,68 @@ namespace Volleyball.EditModeTests
                 Object.DestroyImmediate(player);
             }
         }
+
+        [Test]
+        public void PreviewFrames_DoesNotReplacePreviousFrameUsedByFormalContactCapture()
+        {
+            var player = new GameObject("ProviderPreviewHistory");
+            try
+            {
+                var rig = StickFigureRig.Create(player.transform, Color.blue, "3");
+                var provider = new PlayerContactSurfaceProvider(rig, player.transform);
+                var contacts = new List<BallContactCandidate>();
+                var input = new PlayerContactInput(
+                    new PlayerId(TeamId.Blue, PlayerRole.Attacker),
+                    TechniqueAction.Attack,
+                    TechniqueAction.Attack,
+                    new ActionTimelineSample(ActionPhase.Contact, 0.5f, 0f, 1f, true),
+                    803,
+                    1f,
+                    new SimVector3(0f, 2f, 8f),
+                    SetContactHand.Both);
+
+                provider.Collect(input, contacts);
+                var firstFormalCurrent = contacts[0].Surface.Current;
+
+                player.transform.position = new Vector3(0f, 0f, 0.4f);
+                var preview = provider.PreviewFrames(TechniqueAction.Attack);
+                provider.Collect(input, contacts);
+
+                Assert.That(contacts[1].Surface.Previous.Origin, Is.EqualTo(firstFormalCurrent.Origin));
+                Assert.That(contacts[1].Surface.Previous.Origin, Is.Not.EqualTo(preview[0].Origin));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
+
+        [Test]
+        public void PreviewBlockFrames_DoesNotReplacePreviousFrameUsedByFormalBlockCapture()
+        {
+            var player = new GameObject("ProviderBlockPreviewHistory");
+            try
+            {
+                var rig = StickFigureRig.Create(player.transform, Color.red, "4");
+                rig.SetPose(StickFigurePose.Block, 1f);
+                var provider = new PlayerContactSurfaceProvider(rig, player.transform);
+                var firstFormal = provider.CaptureBlock(
+                    new ActionTimelineSample(ActionPhase.Contact, 0.5f, 0f, 1f, true),
+                    804);
+
+                player.transform.position = new Vector3(0f, 0f, 0.4f);
+                var preview = provider.PreviewBlockFrames();
+                var secondFormal = provider.CaptureBlock(
+                    new ActionTimelineSample(ActionPhase.Contact, 0.5f, 0f, 1f, true),
+                    804);
+
+                Assert.That(secondFormal[0].Previous.Start, Is.EqualTo(firstFormal[0].Current.Start));
+                Assert.That(secondFormal[0].Previous.Start, Is.Not.EqualTo(preview[0].Start));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
     }
 }
