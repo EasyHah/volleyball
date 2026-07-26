@@ -47,8 +47,6 @@ namespace Volleyball.Presentation
         private float _lastSampleSimulationTime = float.NaN;
         private float _lastSampleDeltaSeconds;
         private float _remainingAttackStepDistance = float.PositiveInfinity;
-        private bool _hasSampledAttackRootMotion;
-        private bool _hasSampledLiveRootMotion;
         private TechniqueAction _scheduledAction;
         private PlayerAbilityProfile _scheduledAbility;
         private Vector3 _attackMotionOrigin;
@@ -143,8 +141,6 @@ namespace Volleyball.Presentation
             float? movementLeadOverride = null)
         {
             ClearAttackPlanState();
-            _hasSampledAttackRootMotion = false;
-            _hasSampledLiveRootMotion = false;
             _movementStartPosition = ConstrainGroundPosition(_root.position);
             _movementStartSimulationTime = movementStartSimulationTime;
             var movementLead = movementLeadOverride ?? (action == TechniqueAction.Attack ? 0.32f : 0.10f);
@@ -300,7 +296,8 @@ namespace Volleyball.Presentation
             float elapsedStepSeconds,
             bool shareAttackAlignmentStepBudget)
         {
-            if (!float.IsNaN(_lastSampleSimulationTime))
+            var isFirstLiveSample = float.IsNaN(_lastSampleSimulationTime);
+            if (!isFirstLiveSample)
             {
                 _lastSampleDeltaSeconds = Mathf.Max(0f, simulationTime - _lastSampleSimulationTime);
             }
@@ -311,13 +308,19 @@ namespace Volleyball.Presentation
                 : _scheduledAction == TechniqueAction.Attack
                     ? EvaluateUnplannedAttackPosition(simulationTime, movementPosition)
                     : movementPosition;
+            if (_scheduledAction == TechniqueAction.Attack)
+            {
+                position += _attackAlignmentOffset;
+            }
             // SmoothStep describes the desired route only. The live root travels that
             // route through one arc-length budget, so midpoint easing and vertical jump
             // motion cannot consume more than MaximumSpeed * dt in a single simulation step.
             var isFixedStep = elapsedStepSeconds >= 0f &&
                               _lastSampleDeltaSeconds <= elapsedStepSeconds + .0001f;
-            var liveStepSeconds = Mathf.Max(0f, elapsedStepSeconds);
-            if (isFixedStep && _hasSampledLiveRootMotion)
+            var liveStepSeconds = isFirstLiveSample
+                ? Mathf.Max(0f, simulationTime - _movementStartSimulationTime)
+                : Mathf.Max(0f, elapsedStepSeconds);
+            if (isFixedStep)
             {
                 position = Vector3.MoveTowards(
                     _root.position,
@@ -326,8 +329,7 @@ namespace Volleyball.Presentation
             }
             if (_scheduledAction == TechniqueAction.Attack)
             {
-                position += _attackAlignmentOffset;
-                if (shareAttackAlignmentStepBudget && isFixedStep && _hasSampledAttackRootMotion)
+                if (shareAttackAlignmentStepBudget && isFixedStep)
                 {
                     var stepBudget = MaximumSpeed * liveStepSeconds;
                     _remainingAttackStepDistance = Mathf.Max(
@@ -338,9 +340,7 @@ namespace Volleyball.Presentation
                 {
                     _remainingAttackStepDistance = float.PositiveInfinity;
                 }
-                _hasSampledAttackRootMotion = true;
             }
-            _hasSampledLiveRootMotion = true;
             return new PlayerLocomotionSample(ConstrainToOwnCourt(position), complete);
         }
 

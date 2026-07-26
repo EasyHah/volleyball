@@ -87,6 +87,65 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PersistentAttackAlignment_NextFixedSampleKeepsTheActualRootWithinOneSpeedBudget()
+        {
+            var root = new GameObject("PersistentAlignmentAttackRoot");
+            root.transform.position = new Vector3(0f, 0f, -1f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(4f, 0f, -1f),
+                0f,
+                0.5f,
+                TechniqueAction.Attack,
+                PlayerAbilityProfile.Default,
+                0f);
+
+            SampleAndSetRoot(locomotion, 0.24f, 0.01f, false);
+            SampleAndSetRoot(locomotion, 0.25f, 0.01f, false);
+            locomotion.ApplyAttackContactAlignment(new Vector3(0.05f, 0f, 0f));
+            var rootBeforeNextSample = locomotion.Root.position;
+
+            var nextSample = locomotion.Sample(0.26f, 0.01f, true);
+
+            Assert.That(Vector3.Distance(rootBeforeNextSample, nextSample.Position),
+                Is.LessThanOrEqualTo((locomotion.MaximumSpeed * 0.01f) + 0.0001f),
+                "A persistent alignment must be part of the single speed-limited live-root target.");
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
+        public void FirstFixedLiveSample_UsesElapsedSimulationTimeWithoutTeleporting()
+        {
+            var root = new GameObject("FirstFixedLiveAttackRoot");
+            root.transform.position = new Vector3(0f, 0f, -4f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -0.18f),
+                0f,
+                1f,
+                TechniqueAction.Attack,
+                PlayerAbilityProfile.Default,
+                0.5f);
+            locomotion.ConfigureAttackApproach(
+                new AttackApproachPlan(
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -0.18f),
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -0.18f),
+                    0f,
+                    1f,
+                    0f),
+                PlayerAbilityProfile.Default,
+                1f);
+            locomotion.ConfigureAttackContact(new Vector3(0f, 20f, -0.18f), 0.38f, PlayerAbilityProfile.Default);
+
+            var sample = locomotion.Sample(1f, 0.01f, true);
+
+            Assert.That(Vector3.Distance(root.transform.position, sample.Position),
+                Is.LessThanOrEqualTo(locomotion.MaximumSpeed + 0.0001f),
+                "The first live sample must consume its elapsed simulation-time speed budget.");
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
         public void AttackAlignment_StaysWithinPointEighteenMetersAndThePerStepSpeedBound()
         {
             var locomotion = CreateAttackLocomotion();
