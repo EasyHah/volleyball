@@ -1,3 +1,4 @@
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using Volleyball.AI;
@@ -265,6 +266,64 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void FixedStepSampling_PreservesTheConfiguredSaturatedAttackRoute()
+        {
+            var plannedRoot = new GameObject("PlannedSaturatedAttackRoute");
+            var liveRoot = new GameObject("LiveSaturatedAttackRoute");
+            plannedRoot.transform.position = new Vector3(0f, 0f, -4f);
+            liveRoot.transform.position = plannedRoot.transform.position;
+            var planned = new PlayerLocomotion(
+                plannedRoot.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            var live = new PlayerLocomotion(
+                liveRoot.transform, TeamId.Blue, CourtBuilder.HalfLength, 7f);
+            ConfigureSaturatedAttack(planned);
+            ConfigureSaturatedAttack(live);
+
+            for (var time = .01f; time <= 1.45f; time += .01f)
+            {
+                var expected = planned.Sample(time).Position;
+                var actual = live.Sample(time, .01f, true).Position;
+
+                Assert.That(Vector3.Distance(actual, expected), Is.LessThanOrEqualTo(.0001f),
+                    "A fixed live sample must retain the exact configured route; the public speed bound " +
+                    "describes that route rather than making the root chase it.");
+                live.SetRootPosition(actual);
+            }
+
+            Object.DestroyImmediate(plannedRoot);
+            Object.DestroyImmediate(liveRoot);
+        }
+
+        [Test]
+        public void SetAlignment_NextFixedSamplePreservesThePlannedRouteAndPublishesItsSpeed()
+        {
+            var root = new GameObject("SetAlignmentRoute");
+            root.transform.position = new Vector3(1.6f, 0f, .8f);
+            var locomotion = new PlayerLocomotion(root.transform, TeamId.Orange, CourtBuilder.HalfLength, 7f);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(1.2f, 0f, .65f), 1f, 2f, TechniqueAction.Set,
+                PlayerAbilityProfile.Default);
+            locomotion.SetRootPosition(locomotion.Sample(1.492f).Position);
+            InvokeContactAlignment(
+                locomotion,
+                new Volleyball.Domain.Simulation.SimVector3(.30f, 0f, 0f),
+                Volleyball.Domain.Simulation.SimVector3.Zero,
+                TechniqueAction.Set,
+                ActionPhase.Power,
+                1f,
+                .008f);
+            var correctedRoot = root.transform.position;
+
+            var expected = locomotion.Sample(1.5f).Position;
+            var actual = locomotion.Sample(1.5f, .008f, false).Position;
+
+            Assert.That(Vector3.Distance(actual, expected), Is.LessThanOrEqualTo(.0001f));
+            Assert.That(Vector3.Distance(correctedRoot, actual),
+                Is.LessThanOrEqualTo((locomotion.MaximumSpeed * .008f) + .0001f));
+            Object.DestroyImmediate(root);
+        }
+
+        [Test]
         public void ConfigureAttackApproach_ResetsThePersistentAlignmentOffsetForANewAttack()
         {
             var locomotion = CreateAttackLocomotion();
@@ -399,6 +458,39 @@ namespace Volleyball.EditModeTests
                 ability,
                 2f);
             return locomotion;
+        }
+
+        private static void ConfigureSaturatedAttack(PlayerLocomotion locomotion)
+        {
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -.18f), 0f, 1f, TechniqueAction.Attack,
+                PlayerAbilityProfile.Default, 0f);
+            locomotion.ConfigureAttackApproach(
+                new AttackApproachPlan(
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -.18f),
+                    new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -.18f),
+                    0f, 1f, 0f),
+                PlayerAbilityProfile.Default, 1f);
+            locomotion.ConfigureAttackContact(
+                new Vector3(0f, 3f, -.18f), .38f, PlayerAbilityProfile.Default);
+        }
+
+        private static void InvokeContactAlignment(
+            PlayerLocomotion locomotion,
+            Volleyball.Domain.Simulation.SimVector3 plannedCenter,
+            Volleyball.Domain.Simulation.SimVector3 actualCenter,
+            TechniqueAction action,
+            ActionPhase phase,
+            float phaseProgress,
+            float elapsedStepSeconds)
+        {
+            var method = typeof(PlayerLocomotion).GetMethod(
+                "ApplyContactAlignment", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(method, Is.Not.Null);
+            method.Invoke(locomotion, new object[]
+            {
+                plannedCenter, actualCenter, action, false, phase, phaseProgress, elapsedStepSeconds
+            });
         }
 
         private static void SampleAndSetRoot(PlayerLocomotion locomotion, float simulationTime)

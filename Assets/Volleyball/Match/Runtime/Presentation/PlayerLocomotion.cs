@@ -318,9 +318,9 @@ namespace Volleyball.Presentation
             {
                 position += _attackAlignmentOffset;
             }
-            // SmoothStep describes the desired route only. The live root travels that
-            // route through one arc-length budget, so midpoint easing and vertical jump
-            // motion cannot consume more than MaximumSpeed * dt in a single simulation step.
+            // Sampled plans are authoritative: callers receive the configured route
+            // exactly.  MaximumSpeed documents the actual per-step route bound; it must
+            // never turn sampling into a chasing integrator that changes the plan.
             var isFixedStep = elapsedStepSeconds >= 0f &&
                               _lastSampleDeltaSeconds <= elapsedStepSeconds + .0001f;
             var liveStepSeconds = isFirstLiveSample
@@ -328,10 +328,7 @@ namespace Volleyball.Presentation
                 : Mathf.Max(0f, elapsedStepSeconds);
             if (isFixedStep)
             {
-                position = Vector3.MoveTowards(
-                    _root.position,
-                    position,
-                    (MaximumSpeed * liveStepSeconds) + 0.000001f);
+                PublishLiveStepSpeed(_root.position, position, liveStepSeconds);
             }
             if (_scheduledAction == TechniqueAction.Attack)
             {
@@ -429,7 +426,12 @@ namespace Volleyball.Presentation
                 return;
             }
             if (phase == ActionPhase.Power) requested *= Mathf.SmoothStep(0f, 1f, phaseProgress);
-            SetRootPosition(_root.position + requested);
+            var rootBeforeAlignment = _root.position;
+            SetRootPosition(rootBeforeAlignment + requested);
+            PublishLiveStepSpeed(
+                rootBeforeAlignment,
+                _root.position,
+                Mathf.Max(0f, elapsedStepSeconds));
         }
 
         private void ResetAttackCorrectionAccounting()
@@ -503,6 +505,14 @@ namespace Volleyball.Presentation
         private static float SmoothStepPeakSpeed(float distance, float duration)
         {
             return duration > .000001f ? (1.5f * distance) / duration : 0f;
+        }
+
+        private void PublishLiveStepSpeed(Vector3 start, Vector3 end, float elapsedStepSeconds)
+        {
+            if (elapsedStepSeconds <= .000001f) return;
+            MaximumSpeed = Mathf.Max(
+                MaximumSpeed,
+                Vector3.Distance(start, end) / elapsedStepSeconds);
         }
 
         public void SetRootPosition(Vector3 position)
