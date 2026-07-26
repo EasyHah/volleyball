@@ -141,7 +141,16 @@ director 只提供：
 
 Gate I 正式路径中，director 不直接调用 legacy selection 来决定 set target、
 attack route、block unit、cover player 或 post-block continuation。现有算法可由
-planner 作为纯评估器复用。Set accepted 从 Gate H handoff 到 Gate I；实际
+planner 作为纯评估器复用。Gate H 与 Gate I 使用双阶段 handoff：
+
+1. Gate H 进入 `OrganizationPlanned` 后，把 organizer、预计 Set 触球、实际一传
+   和当前规则事实交给 Gate I。Gate I 返回不可变 `SetIntent`，只拥有 set target、
+   arrival envelope 与下游攻击准备。
+2. Gate H 仍是 Set actor、timing 和 contact command 的唯一 writer，并执行该
+   `SetIntent`。Set 实际被 V3 rules 接受后，Gate H 终结 organization 生命周期，
+   Gate I 继续 threat → defense → final attack。
+
+Gate I controller 不直接向 setter 再发第二个 Set contact command。实际
 Attack/Block/Defense 接触仍先经 V3 rules authority。
 
 Gate I 仅在以下条件全部成立时启用：
@@ -157,7 +166,8 @@ Shadow、Disabled、3v3 或不完整 fixture 不创建 Gate I controller。
 
 每个攻击机会只运行一次：
 
-1. 从 Gate H handoff、实际组织触球与 set-quality 输入选择合法 set target。
+1. 从 Gate H `OrganizationPlanned` 的预执行 handoff 选择合法 set target，并把
+   不可变 `SetIntent` 返回给 Gate H 的唯一 Set contact writer。
 2. 生成 power、soft、block-out 与 tool-recovery candidates。
 3. 用六道门得到候选资格、sample outcomes 与 expected rally value。
 4. 发布 threat distribution，内容仅限类别、区域、概率、时序和可见准备事实。
@@ -397,7 +407,8 @@ feature flag 长期同时运行新旧正式 writer。
 Gate I 完成必须同时满足：
 
 1. 正式 6v6 set target、attack、joint defense、tool recovery 与直接重组只有一个
-   writer；
+   writer；Gate H 是 Set contact actor/timing writer，Gate I 是其 `SetIntent`
+   target/envelope writer；
 2. threat → defense → final choice 每个机会只运行一次；
 3. defense 不读取隐藏 final route 或 future sample；
 4. power route 先过 error-aware legality，fallback candidates 在同一 pool；
