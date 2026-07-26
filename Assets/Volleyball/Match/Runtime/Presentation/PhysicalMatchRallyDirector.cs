@@ -2520,6 +2520,14 @@ namespace Volleyball.Presentation
                     {
                         BackSetAttackContacts++;
                     }
+                    if (GateIAuthorityEnabled)
+                    {
+                        // The committed Gate I joint-defense batch has already
+                        // scheduled block/floor responsibility.  Never rebuild a
+                        // legacy block unit from the hidden final route.
+                        break;
+                    }
+                    GateILegacyWriterInvocations++;
                     SchedulePhysicalBlock(actorId.Team, _scheduledDecision, contact);
                     break;
                 case TechniqueAction.Block:
