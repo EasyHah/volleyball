@@ -237,6 +237,28 @@ namespace Volleyball.Presentation
             }
         }
 
+        // Validation-only Gate G entry points used by Gate I atomic preflight.
+        // These methods deliberately do not schedule movement, contact, or Set.
+        public void ValidateGateIContact(
+            TechniqueAction action,
+            ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory,
+            AttackApproachPlan? approach,
+            AttackContactPlan? contactPlan)
+        {
+            ValidateV4Schedule(action, classification, approach, contactPlan);
+            _techniqueExecutor.ValidateGateIContact(
+                action, classification, trajectory, approach, contactPlan);
+        }
+
+        public void ValidateGateISupport(
+            TechniqueAction action,
+            float scheduledTime,
+            Vector3 target)
+        {
+            _techniqueExecutor.ValidateGateISupport(action, scheduledTime, target);
+        }
+
         // Compatibility path for legacy 3v3 callers. Formal V4 scheduling is
         // routed through PlayerTechniqueExecutor.ScheduleV4 above.
         public void ScheduleContact(

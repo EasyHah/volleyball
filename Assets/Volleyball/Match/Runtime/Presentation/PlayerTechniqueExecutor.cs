@@ -189,6 +189,60 @@ namespace Volleyball.Presentation
             }
         }
 
+        // Gate I uses this validation-only seam during batch preflight.  It must
+        // not alter any scheduled command or expose a Set-contact path.
+        public void ValidateGateIContact(
+            TechniqueAction action,
+            ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory,
+            AttackApproachPlan? approach,
+            AttackContactPlan? contactPlan)
+        {
+            if (string.IsNullOrWhiteSpace(trajectory?.ArtifactIdentity))
+            {
+                throw new InvalidOperationException(
+                    "Gate I contact requires a trajectory artifact identity.");
+            }
+
+            ValidateV4(classification);
+            if (approach.HasValue && action != TechniqueAction.Attack ||
+                contactPlan.HasValue && action != TechniqueAction.Attack ||
+                contactPlan.HasValue && !approach.HasValue)
+            {
+                throw new ArgumentException(
+                    "Only a complete attack contact may carry attack planning.");
+            }
+
+            if (contactPlan.HasValue)
+            {
+                contactPlan.Value.Validate();
+                if (!contactPlan.Value.Takeoff.Equals(approach.Value.Takeoff))
+                {
+                    throw new ArgumentException(
+                        "Attack contact plan must retain the planned takeoff.");
+                }
+            }
+        }
+
+        public void ValidateGateISupport(
+            TechniqueAction action,
+            float scheduledTime,
+            Vector3 target)
+        {
+            if (action != TechniqueAction.Block && action != TechniqueAction.Receive)
+            {
+                throw new ArgumentOutOfRangeException(nameof(action));
+            }
+
+            if (float.IsNaN(scheduledTime) || float.IsInfinity(scheduledTime) ||
+                float.IsNaN(target.x) || float.IsInfinity(target.x) ||
+                float.IsNaN(target.y) || float.IsInfinity(target.y) ||
+                float.IsNaN(target.z) || float.IsInfinity(target.z))
+            {
+                throw new ArgumentOutOfRangeException(nameof(scheduledTime));
+            }
+        }
+
         internal void Clear()
         {
             ExecutionEnvelope = null;

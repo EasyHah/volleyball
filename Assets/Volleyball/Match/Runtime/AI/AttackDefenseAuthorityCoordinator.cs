@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using Volleyball.Domain.Players;
+using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
 
@@ -68,14 +70,57 @@ namespace Volleyball.AI
 
     public sealed class AttackDefenseAuthorityCommand
     {
-        public AttackDefenseAuthorityCommand(long planRevision, long sourceSequence, AttackDefenseCommandKind kind, PlayerId actor, bool isCommitted)
+        public AttackDefenseAuthorityCommand(long planRevision, long sourceSequence, AttackDefenseCommandKind kind, PlayerId actor, bool isCommitted,
+            AttackDefenseCommandExecutionV4 execution = null, RallyPlanBranchV3 branch = RallyPlanBranchV3.Primary)
         {
             if (planRevision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(planRevision < 0 ? nameof(planRevision) : nameof(sourceSequence));
             if (!Enum.IsDefined(typeof(AttackDefenseCommandKind), kind)) throw new ArgumentOutOfRangeException(nameof(kind));
-            PlanRevision = planRevision; SourceSequence = sourceSequence; Kind = kind; Actor = actor; IsCommitted = isCommitted;
+            if (!Enum.IsDefined(typeof(RallyPlanBranchV3), branch)) throw new ArgumentOutOfRangeException(nameof(branch));
+            PlanRevision = planRevision; SourceSequence = sourceSequence; Kind = kind; Actor = actor; IsCommitted = isCommitted; Execution = execution; Branch = branch;
         }
         public long PlanRevision { get; } public long SourceSequence { get; } public AttackDefenseCommandKind Kind { get; }
         public PlayerId Actor { get; } public bool IsCommitted { get; }
+        public AttackDefenseCommandExecutionV4 Execution { get; }
+        public RallyPlanBranchV3 Branch { get; }
+    }
+
+    // Immutable execution inputs are supplied by the coordinator boundary; the
+    // presentation controller only validates and executes them.
+    public sealed class AttackDefenseCommandExecutionV4
+    {
+        public AttackDefenseCommandExecutionV4(float scheduledSimulationTime,
+            float movementStartSimulationTime, SkillExecutionError executionError,
+            int contactGroupId, ExecutionSampleClassificationV4 executionClassification,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact, SimVector3 movementTarget,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null)
+        {
+            if (!Finite(scheduledSimulationTime) || !Finite(movementStartSimulationTime) ||
+                contactGroupId <= 0 || !Finite(movementTarget))
+                throw new ArgumentOutOfRangeException("Execution inputs must be finite and ordered.");
+            if (executionClassification == null || trajectoryArtifact == null)
+                throw new ArgumentNullException(executionClassification == null ? nameof(executionClassification) : nameof(trajectoryArtifact));
+            ScheduledSimulationTime = scheduledSimulationTime;
+            MovementStartSimulationTime = movementStartSimulationTime;
+            ExecutionError = executionError;
+            ContactGroupId = contactGroupId;
+            ExecutionClassification = executionClassification;
+            TrajectoryArtifact = trajectoryArtifact;
+            MovementTarget = movementTarget;
+            AttackApproach = attackApproach;
+            AttackContactPlan = attackContactPlan;
+        }
+        public float ScheduledSimulationTime { get; }
+        public float MovementStartSimulationTime { get; }
+        public SkillExecutionError ExecutionError { get; }
+        public int ContactGroupId { get; }
+        public ExecutionSampleClassificationV4 ExecutionClassification { get; }
+        public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
+        public SimVector3 MovementTarget { get; }
+        public AttackApproachPlan? AttackApproach { get; }
+        public AttackContactPlan? AttackContactPlan { get; }
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value) && value >= 0f;
+        private static bool Finite(SimVector3 value) => value.IsFinite;
     }
 
     public sealed class AttackDefenseAuthorityEvidenceV3
