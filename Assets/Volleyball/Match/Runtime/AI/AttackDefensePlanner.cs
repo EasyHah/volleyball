@@ -25,9 +25,30 @@ namespace Volleyball.AI
 
     public sealed class SetIntentPlanningRequestV3
     {
+        // Compatibility overload for existing domain fixtures.  It still creates a
+        // fresh provider request; production formal handoff supplies its exact
+        // runtime provider and physics facts through the full constructor below.
         public SetIntentPlanningRequestV3(long revision, long sourceSequence, TeamSide attackingSide, PlayerId organizer,
             float expectedSetContactTime, BallState acceptedPass, IReadOnlyList<GateITacticalPlayerV3> players,
             DerivedMatchAttributesV4 organizerAttributes, BallTrajectoryPredictionArtifactV4 passPrediction)
+            : this(revision, sourceSequence, attackingSide, organizer, expectedSetContactTime,
+                acceptedPass, players, organizerAttributes, passPrediction,
+                new BallTrajectoryPredictionProviderV4(new TrajectoryPredictionProviderConfigurationV4(
+                    32, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    passPrediction?.PredictorVersion ?? BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                    passPrediction?.PredictorConfigurationHash ?? BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash)),
+                new BallSimulationParameters(-9.8f, .9995f),
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(new BallSimulationParameters(-9.8f, .9995f)),
+                sourceSequence)
+        {
+        }
+
+        public SetIntentPlanningRequestV3(long revision, long sourceSequence, TeamSide attackingSide, PlayerId organizer,
+            float expectedSetContactTime, BallState acceptedPass, IReadOnlyList<GateITacticalPlayerV3> players,
+            DerivedMatchAttributesV4 organizerAttributes, BallTrajectoryPredictionArtifactV4 passPrediction,
+            BallTrajectoryPredictionProviderV4 trajectoryProvider,
+            BallSimulationParameters simulationParameters, string physicsConfigurationHash,
+            long acceptedPassStateVersion)
         {
             if (revision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(revision < 0 ? nameof(revision) : nameof(sourceSequence));
             if (!Enum.IsDefined(typeof(TeamSide), attackingSide) || !acceptedPass.Position.IsFinite || !acceptedPass.Velocity.IsFinite || float.IsNaN(expectedSetContactTime) || float.IsInfinity(expectedSetContactTime)) throw new ArgumentOutOfRangeException(nameof(attackingSide));
@@ -35,10 +56,21 @@ namespace Volleyball.AI
             ExpectedSetContactTime = expectedSetContactTime; AcceptedPass = acceptedPass;
             Players = Copy(players, nameof(players)); OrganizerAttributes = organizerAttributes ?? throw new ArgumentNullException(nameof(organizerAttributes));
             PassPrediction = passPrediction ?? throw new ArgumentNullException(nameof(passPrediction));
+            TrajectoryProvider = trajectoryProvider ?? throw new ArgumentNullException(nameof(trajectoryProvider));
+            SimulationParameters = simulationParameters;
+            PhysicsConfigurationHash = string.IsNullOrWhiteSpace(physicsConfigurationHash) ? throw new ArgumentException("Value is required.", nameof(physicsConfigurationHash)) : physicsConfigurationHash;
+            if (acceptedPassStateVersion < 0) throw new ArgumentOutOfRangeException(nameof(acceptedPassStateVersion));
+            AcceptedPassStateVersion = acceptedPassStateVersion;
         }
         public long Revision { get; } public long SourceSequence { get; } public TeamSide AttackingSide { get; } public PlayerId Organizer { get; }
         public float ExpectedSetContactTime { get; } public BallState AcceptedPass { get; } public IReadOnlyList<GateITacticalPlayerV3> Players { get; }
         public DerivedMatchAttributesV4 OrganizerAttributes { get; } public BallTrajectoryPredictionArtifactV4 PassPrediction { get; }
+        // The planner predicts a fresh Set artifact from the accepted pass state.
+        // The pass artifact remains evidence of the preceding contact only.
+        public BallTrajectoryPredictionProviderV4 TrajectoryProvider { get; }
+        public BallSimulationParameters SimulationParameters { get; }
+        public string PhysicsConfigurationHash { get; }
+        public long AcceptedPassStateVersion { get; }
         internal static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values, string name) where T : class =>
             new ReadOnlyCollection<T>((values ?? throw new ArgumentNullException(name)).Select(x => x ?? throw new ArgumentException("Values cannot contain null.", name)).ToArray());
     }
@@ -107,7 +139,17 @@ namespace Volleyball.AI
                 new ExecutionIntentV4("gate-i-set-" + request.Revision + "-" + request.SourceSequence, ExecutionCandidateCategoryV4.Set, target, velocity, .5f),
                 "gate-i-set-" + request.Revision + "-" + request.SourceSequence, ExecutionEnvelopePolicyV4.GateI);
             var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey, ExecutionCandidateCategoryV4.Set, target, velocity, .5f);
-            return new GateISetIntentV3(request.Revision, request.SourceSequence, request.Organizer, attacker.Player, target, request.ExpectedSetContactTime, envelope.Classify(sample), request.PassPrediction);
+            var classification = envelope.Classify(sample);
+            var setBall = new BallState(request.AcceptedPass.Position, velocity, request.AcceptedPass.Radius);
+            var trajectory = request.TrajectoryProvider.Predict(new BallTrajectoryPredictionRequestV4(
+                request.AttackingSide, request.AcceptedPassStateVersion, setBall,
+                request.SimulationParameters, request.PhysicsConfigurationHash,
+                "gate-i-set-trajectory-" + request.Revision + "-" + request.SourceSequence,
+                request.TrajectoryProvider.PredictorVersion,
+                request.TrajectoryProvider.PredictorConfigurationHash,
+                classification.ExecutableEnvelope.Identity,
+                ExecutionDegradationStepV4.FullSampling));
+            return new GateISetIntentV3(request.Revision, request.SourceSequence, request.Organizer, attacker.Player, target, request.ExpectedSetContactTime, classification, trajectory);
         }
 
         public AttackPlanningResultV3 PlanAttack(AttackPlanningRequestV3 request)

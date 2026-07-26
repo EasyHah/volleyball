@@ -191,6 +191,9 @@ namespace Volleyball.AI
         public AttackDefenseAuthorityCoordinator(AttackDefensePlanner planner, IAttackDefenseAuthorityCommandSink sink)
         { _planner = planner ?? throw new ArgumentNullException(nameof(planner)); _sink = sink ?? throw new ArgumentNullException(nameof(sink)); State = AttackDefenseAuthorityStateV3.Idle; }
         public AttackDefenseAuthorityStateV3 State { get; private set; }
+        // Exposes only the already-generated public distribution for the joint
+        // defense handoff; it never exposes the selected route or future sample.
+        public PublicAttackThreatV3 PublicThreat => _attack?.PublicThreat;
 
         public GateISetIntentPlanningResultV3 PlanSetIntent(SetIntentPlanningRequestV3 request)
         {

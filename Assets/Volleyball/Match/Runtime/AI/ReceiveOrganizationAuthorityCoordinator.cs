@@ -138,7 +138,8 @@ namespace Volleyball.AI
             RallyPlanBranchV3 branch,
             TeamRallyDecision decision,
             bool isCommitted,
-            ReceiveOrganizationCommandExecutionV4 execution = null)
+            ReceiveOrganizationCommandExecutionV4 execution = null,
+            GateISetIntentV3 gateISetIntent = null)
         {
             ValidateRevisionAndSequence(planRevision, sourceSequence);
             RequireDefined(kind, nameof(kind));
@@ -151,6 +152,9 @@ namespace Volleyball.AI
             Decision = decision ?? throw new ArgumentNullException(nameof(decision));
             IsCommitted = isCommitted;
             Execution = execution;
+            GateISetIntent = gateISetIntent;
+            if (gateISetIntent != null && kind != ReceiveOrganizationCommandKind.OrganizationContact)
+                throw new ArgumentException("Only the Gate H OrganizationContact may carry a Gate I SetIntent.", nameof(gateISetIntent));
         }
 
         public long PlanRevision { get; }
@@ -168,6 +172,7 @@ namespace Volleyball.AI
         public bool IsCommitted { get; }
 
         public ReceiveOrganizationCommandExecutionV4 Execution { get; }
+        public GateISetIntentV3 GateISetIntent { get; }
 
         internal ReceiveOrganizationAuthorityCommand WithCommitted(
             long sourceSequence)
@@ -180,7 +185,8 @@ namespace Volleyball.AI
                 Branch,
                 Decision,
                 true,
-                Execution);
+                Execution,
+                GateISetIntent);
         }
 
         internal static void ValidateRevisionAndSequence(

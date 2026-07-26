@@ -206,6 +206,7 @@ namespace Volleyball.Presentation
                 case ReceiveOrganizationCommandKind.PrimaryReceive:
                 case ReceiveOrganizationCommandKind.OrganizationContact:
                     ValidateContact(command, player, action);
+                    ValidateGateISetIntent(command);
                     break;
                 case ReceiveOrganizationCommandKind.EmergencyReceive:
                     RequireExecution(command);
@@ -313,6 +314,23 @@ namespace Volleyball.Presentation
             }
         }
 
+        private static void ValidateGateISetIntent(
+            ReceiveOrganizationAuthorityCommand command)
+        {
+            var intent = command.GateISetIntent;
+            if (intent == null)
+                return;
+            var execution = RequireExecution(command);
+            if (!command.Actor.Equals(intent.Organizer) ||
+                !command.Decision.BallTarget.Equals(intent.Target) ||
+                execution.ExecutionClassification.ExecutableEnvelope.Identity !=
+                    intent.ExecutionClassification.ExecutableEnvelope.Identity ||
+                execution.TrajectoryArtifact.ArtifactIdentity !=
+                    intent.TrajectoryArtifact.ArtifactIdentity)
+                throw new InvalidOperationException(
+                    "Gate H OrganizationContact must consume the exact Gate I SetIntent evidence.");
+        }
+
         private static ReceiveOrganizationCommandExecutionV4 RequireExecution(
             ReceiveOrganizationAuthorityCommand command)
         {
@@ -342,7 +360,7 @@ namespace Volleyball.Presentation
             };
         }
 
-        private static void Apply(
+        private void Apply(
             PreparedCommand prepared,
             ReceiveOrganizationAuthorityEvidenceV3 evidence)
         {
@@ -379,6 +397,16 @@ namespace Volleyball.Presentation
                         attackApproach: command.Decision.AttackApproach,
                         attackContactPlan: command.Decision.AttackContactPlan,
                         trajectoryArtifact: execution.TrajectoryArtifact);
+                    if (command.Kind == ReceiveOrganizationCommandKind.OrganizationContact &&
+                        command.GateISetIntent != null &&
+                        _players.TryGetValue(command.GateISetIntent.PreparedAttacker,
+                            out var preparedAttacker))
+                    {
+                        preparedAttacker.ScheduleAttackPreparation(
+                            execution.ScheduledSimulationTime,
+                            ToUnity(command.GateISetIntent.Target),
+                            execution.MovementStartSimulationTime);
+                    }
                     break;
                 case ReceiveOrganizationCommandKind.EmergencyReceive:
                     player.EnableEmergencyReceiveWindow(

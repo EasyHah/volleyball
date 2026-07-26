@@ -285,6 +285,12 @@ namespace Volleyball.Presentation
             _pendingGateHContactReceipts =
                 new Dictionary<string, ReceiveOrganizationAuthorityReceipt>(
                     StringComparer.Ordinal);
+        private AttackDefenseAuthorityCoordinator _attackDefenseCoordinator;
+        private readonly Dictionary<TeamId, AttackDefenseAuthorityController>
+            _attackDefenseControllers = new Dictionary<TeamId, AttackDefenseAuthorityController>();
+        private readonly Dictionary<string, GateISetIntentReceiptV3>
+            _pendingGateISetIntentReceipts = new Dictionary<string, GateISetIntentReceiptV3>(StringComparer.Ordinal);
+        private GateISetIntentPlanningResultV3 _activeGateISetIntent;
         private long _gateHPlanRevision;
         private long _gateHSourceSequence;
         private string _status = "Preparing dynamic physical 3v3";
@@ -336,6 +342,12 @@ namespace Volleyball.Presentation
         public bool GateHAuthorityEnabled { get; private set; }
 
         public int GateHLegacyWriterInvocations { get; private set; }
+
+        public bool GateIAuthorityEnabled { get; private set; }
+
+        public int GateILegacyWriterInvocations { get; private set; }
+
+        public int AcceptedSetContactWriterCount { get; private set; }
 
         public float TotalMovementShortfall { get; private set; }
 
@@ -514,6 +526,10 @@ namespace Volleyball.Presentation
 
         public event Action<ReceiveOrganizationAuthorityReceipt>
             ReceiveOrganizationAuthorityCommitted;
+
+        public event Action<AttackDefenseAuthorityReceipt> AttackDefenseAuthorityCommitted;
+
+        public event Action<GateISetIntentReceiptV3> GateISetIntentCommitted;
 
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
 
@@ -773,8 +789,12 @@ namespace Volleyball.Presentation
             {
                 _v3RulesAdapter = null;
                 GateHAuthorityEnabled = false;
+                GateIAuthorityEnabled = false;
                 _receiveOrganizationCoordinator = null;
                 _receiveOrganizationControllers.Clear();
+                _attackDefenseCoordinator = null;
+                _attackDefenseControllers.Clear();
+                _pendingGateISetIntentReceipts.Clear();
                 _pendingV3AuthorityContact = null;
                 if (_ball != null)
                 {
@@ -845,6 +865,28 @@ namespace Volleyball.Presentation
                 _receiveOrganizationCoordinator = null;
                 _receiveOrganizationControllers.Clear();
                 _pendingGateHContactReceipts.Clear();
+            }
+            GateIAuthorityEnabled =
+                mode == V3RulesMode.Authority && GateHAuthorityEnabled &&
+                _configuration.RosterSize == 6 && _players.Count == 12;
+            if (GateIAuthorityEnabled)
+            {
+                _attackDefenseCoordinator = new AttackDefenseAuthorityCoordinator(
+                    new AttackDefensePlanner(), new DirectorAttackDefenseCommandSink(this));
+                _attackDefenseControllers.Clear();
+                foreach (var team in new[] { TeamId.Blue, TeamId.Orange })
+                {
+                    var controller = new AttackDefenseAuthorityController(_players
+                        .Where(pair => pair.Key.Team == team).Select(pair => pair.Value).ToArray());
+                    controller.AuthorityCommitted += HandleGateIAuthorityCommitted;
+                    _attackDefenseControllers.Add(team, controller);
+                }
+            }
+            else
+            {
+                _attackDefenseCoordinator = null;
+                _attackDefenseControllers.Clear();
+                _pendingGateISetIntentReceipts.Clear();
             }
             ResetV3Diagnostics();
         }
@@ -1002,6 +1044,15 @@ namespace Volleyball.Presentation
             _scheduledDecision = null;
             _plannedAttackDecision = null;
             _plannedAttackTrajectoryArtifactV4 = null;
+            if (GateIAuthorityEnabled)
+            {
+                // A pending intent belongs to the just-resolved rally and must not
+                // survive into the next receive/organization lifecycle.
+                _attackDefenseCoordinator = new AttackDefenseAuthorityCoordinator(
+                    new AttackDefensePlanner(), new DirectorAttackDefenseCommandSink(this));
+                _activeGateISetIntent = null;
+                _pendingGateISetIntentReceipts.Clear();
+            }
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
             _scheduledBlockPrimary = null;
@@ -1441,6 +1492,15 @@ namespace Volleyball.Presentation
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
             trajectoryArtifact ??= _lastTrajectoryPredictionArtifactV4;
+            if (GateIAuthorityEnabled && decision != null && decision.HasDecision &&
+                decision.Action == TechniqueAction.Set)
+            {
+                var intent = PlanGateISetIntent(decision, flightSeconds, trajectoryArtifact);
+                decision = new TeamRallyDecision(decision.Actor, TechniqueAction.Set,
+                    intent.Intent.Target, decision.MovementTarget, intent.Intent.Target,
+                    decision.Score, decision.Candidates, null);
+                trajectoryArtifact = intent.Intent.TrajectoryArtifact;
+            }
             _scheduledDecision = decision;
             _scheduledPrimaryActor = null;
             _contactDeadlineActive = false;
@@ -1461,7 +1521,9 @@ namespace Volleyball.Presentation
             {
                 var attackFlight = SetFlightSolver.PreferredFlightSeconds(
                     TacticFor(decision.Actor.Team).SetRhythm);
-                _plannedAttackDecision = GateHAuthorityEnabled
+                _plannedAttackDecision = GateIAuthorityEnabled
+                    ? TeamRallyDecision.NoDecision
+                    : GateHAuthorityEnabled
                     ? _receiveOrganizationCoordinator.CurrentPlanning
                         .AttackPreparationDecision
                     : PlanDecisionAt(
@@ -1490,12 +1552,15 @@ namespace Volleyball.Presentation
                 _scheduledGeometricSetTarget = null;
                 try
                 {
-                    outgoingTarget = SelectGeometricSetTarget(
-                        decision,
-                        outgoingTarget,
-                        _ball.SimulationTime + flightSeconds);
-                    _scheduledGeometricSetTarget = outgoingTarget;
-                    GeometricSetTargetSelections++;
+                    if (!GateIAuthorityEnabled)
+                    {
+                        outgoingTarget = SelectGeometricSetTarget(
+                            decision,
+                            outgoingTarget,
+                            _ball.SimulationTime + flightSeconds);
+                        _scheduledGeometricSetTarget = outgoingTarget;
+                        GeometricSetTargetSelections++;
+                    }
                 }
                 catch (InvalidOperationException exception)
                 {
@@ -1738,13 +1803,15 @@ namespace Volleyball.Presentation
             var planning = _receiveOrganizationCoordinator.CurrentPlanning;
             var state = _receiveOrganizationCoordinator.State;
             var contactGroup = NextContactGroup();
+            var gateIIntent = GateIAuthorityEnabled && decision.Action == TechniqueAction.Set
+                ? _activeGateISetIntent?.Intent : null;
             var payload = new ReceiveOrganizationCommandExecutionV4(
                 _expectedContactTime,
                 _ball.SimulationTime,
                 executionError,
                 contactGroup,
-                _lastExecutionSampleClassificationV4,
-                trajectoryArtifact,
+                gateIIntent?.ExecutionClassification ?? _lastExecutionSampleClassificationV4,
+                gateIIntent?.TrajectoryArtifact ?? trajectoryArtifact,
                 _expectedContactTime - ContactWindowLead,
                 _expectedContactTime + ContactWindowTail,
                 outgoing,
@@ -1808,10 +1875,11 @@ namespace Volleyball.Presentation
                         : RallyPlanBranchV3.Contingency,
                     decision,
                     false,
-                    payload));
+                    payload,
+                    gateIIntent));
             }
 
-            if (planning.AttackPreparationDecision.HasDecision)
+            if (!GateIAuthorityEnabled && planning.AttackPreparationDecision.HasDecision)
             {
                 commands.Add(new ReceiveOrganizationAuthorityCommand(
                     state.Revision,
@@ -1866,6 +1934,33 @@ namespace Volleyball.Presentation
             _contactDeadlineActive = true;
         }
 
+        private GateISetIntentPlanningResultV3 PlanGateISetIntent(
+            TeamRallyDecision gateHDecision, float flightSeconds,
+            BallTrajectoryPredictionArtifactV4 passPrediction)
+        {
+            if (_attackDefenseCoordinator == null || _trajectoryPredictionProviderV4 == null ||
+                _matchContext == null)
+                throw new InvalidOperationException("Formal Gate I requires initialized authority facts.");
+            if (_attackDefenseCoordinator.State.Phase != AttackDefenseAuthorityPhaseV3.Idle)
+                throw new InvalidOperationException("Gate I cannot plan a second SetIntent before the accepted Set.");
+            var side = ToSide(gateHDecision.Actor.Team);
+            var players = _players.OrderBy(pair => pair.Key.Team).ThenBy(pair => pair.Key.RosterSlot)
+                .Select(pair => new GateITacticalPlayerV3(pair.Value.StableId, ToSide(pair.Key.Team),
+                    ToSimulation(pair.Value.transform.position), pair.Key.Team == gateHDecision.Actor.Team,
+                    pair.Value.Ability.Derived)).ToArray();
+            var organizer = _players[gateHDecision.Actor];
+            var result = _attackDefenseCoordinator.PlanSetIntent(new SetIntentPlanningRequestV3(
+                _gateHPlanRevision, ++_gateHSourceSequence, side, organizer.StableId,
+                _ball.SimulationTime + flightSeconds, _ball.State, players, organizer.Ability.Derived,
+                passPrediction ?? _lastTrajectoryPredictionArtifactV4 ?? throw new InvalidOperationException("Accepted pass trajectory is required."),
+                _trajectoryPredictionProviderV4, SimulationParameters, _matchContext.PhysicsConfigurationHash,
+                _gateHSourceSequence));
+            _activeGateISetIntent = result;
+            _pendingGateISetIntentReceipts[GateHReceiptKey(organizer.StableId, TechniqueAction.Set)] = result.Receipt;
+            GateISetIntentCommitted?.Invoke(result.Receipt);
+            return result;
+        }
+
         private void HandleGateHAuthorityCommitted(
             ReceiveOrganizationAuthorityReceipt receipt)
         {
@@ -1902,6 +1997,28 @@ namespace Volleyball.Presentation
 
             _pendingGateHContactReceipts.Remove(key);
             return receipt;
+        }
+
+        private GateISetIntentReceiptV3 TakeGateISetIntentReceipt(StablePlayerId actor)
+        {
+            var key = GateHReceiptKey(actor, TechniqueAction.Set);
+            if (!_pendingGateISetIntentReceipts.TryGetValue(key, out var receipt))
+                return null;
+            _pendingGateISetIntentReceipts.Remove(key);
+            return receipt;
+        }
+
+        private void HandleGateIAuthorityCommitted(AttackDefenseAuthorityReceipt receipt)
+        {
+            AttackDefenseAuthorityCommitted?.Invoke(receipt);
+        }
+
+        private void PublishGateIBatch(AttackDefenseCommandBatch batch)
+        {
+            if (batch == null || batch.Commands.Count == 0)
+                throw new InvalidOperationException("Gate I must publish a non-empty command batch.");
+            var team = PlayerForStableId(batch.Commands[0].Actor).Id.Team;
+            _attackDefenseControllers[team].PreflightAndCommit(batch);
         }
 
         private static string GateHReceiptKey(
@@ -2362,6 +2479,14 @@ namespace Volleyball.Presentation
                             ++_gateHSourceSequence);
                     }
 
+                    if (GateIAuthorityEnabled)
+                    {
+                        AdvanceGateIAfterAcceptedSet(actorId, acceptedExecutionClassification,
+                            acceptedTrajectoryArtifact);
+                        _activeGateISetIntent = null;
+                        break;
+                    }
+
                     _lastSetQualityAssessment = null;
                     _activeSetChain = false;
                     var setFlight = _scheduledSetFlightSeconds > 0f
@@ -2474,6 +2599,60 @@ namespace Volleyball.Presentation
                     ReceiveFlightSeconds,
                     acceptedTrajectory);
             }
+        }
+
+        private void AdvanceGateIAfterAcceptedSet(PlayerId actor,
+            ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            var intent = _activeGateISetIntent?.Intent;
+            var receipt = TakeGateISetIntentReceipt(StableId(actor));
+            if (intent == null || receipt == null || classification == null || trajectory == null ||
+                !StableId(actor).Equals(intent.Organizer) ||
+                classification.ExecutableEnvelope.Identity != intent.ExecutionClassification.ExecutableEnvelope.Identity ||
+                trajectory.ArtifactIdentity != intent.TrajectoryArtifact.ArtifactIdentity)
+                throw new InvalidOperationException("Accepted Set does not exactly match the pending Gate I intent.");
+            AcceptedSetContactWriterCount++;
+            var accepted = new AcceptedSetEvidenceV3(StableId(actor),
+                classification.ExecutableEnvelope.Identity, trajectory.ArtifactIdentity);
+            var players = _players.OrderBy(pair => pair.Key.Team).ThenBy(pair => pair.Key.RosterSlot)
+                .Select(pair => new GateITacticalPlayerV3(pair.Value.StableId, ToSide(pair.Key.Team),
+                    ToSimulation(pair.Value.transform.position), pair.Key.Team == actor.Team,
+                    pair.Value.Ability.Derived)).ToArray();
+            _attackDefenseCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
+                ++_gateHSourceSequence, accepted), new AttackPlanningRequestV3(intent.PlanRevision,
+                intent, accepted, players));
+            _attackDefenseCoordinator.PublishThreat(intent.PlanRevision, ++_gateHSourceSequence);
+            var defending = Opponent(actor.Team);
+            var defensePlayers = _players.Where(pair => pair.Key.Team == defending)
+                .OrderBy(pair => pair.Key.RosterSlot).Select(pair => new DefensePlayerSnapshotV3(
+                    pair.Value.StableId, ToSimulation(pair.Value.transform.position), BaseMovementSpeed,
+                    pair.Value.Ability.Jump, IsFrontRow(pair.Key))).ToArray();
+            var claims = new[] { RallyPlanSpatialClaimV3.FrontRight, RallyPlanSpatialClaimV3.FrontCenter,
+                RallyPlanSpatialClaimV3.FrontLeft, RallyPlanSpatialClaimV3.BackLeft,
+                RallyPlanSpatialClaimV3.BackCenter, RallyPlanSpatialClaimV3.BackRight };
+            var assignments = defensePlayers.Select((player, index) => new PlayerResponsibilityAssignmentV3(
+                player.Id, RallyPlanTaskV3.Defend, RallyPlanConditionV3.Always, claims[index],
+                RallyPlanBranchV3.Primary, 1f, index + 1)).ToArray();
+            var exits = new[] { new ReorganizationExitV3("gate-i-exit-" + intent.PlanRevision,
+                defensePlayers[0].Id, "recover") };
+            var defense = new JointDefensePlanner().Plan(new JointDefensePlanningRequestV3(intent.PlanRevision,
+                Opponent(ToSide(actor.Team)), _attackDefenseCoordinator.State.Phase == AttackDefenseAuthorityPhaseV3.ThreatPublished
+                    ? GetGateIPublicThreat() : throw new InvalidOperationException("Gate I threat was not published."),
+                defensePlayers, assignments, exits));
+            _attackDefenseCoordinator.CommitDefense(intent.PlanRevision, ++_gateHSourceSequence, defense);
+            _attackDefenseCoordinator.CommitFinalAttack(intent.PlanRevision, ++_gateHSourceSequence);
+        }
+
+        // The coordinator keeps candidates private; the committed public threat is
+        // the only cross-team input used for joint defense.
+        private PublicAttackThreatV3 GetGateIPublicThreat()
+        {
+            var plan = _attackDefenseCoordinator.State.Plan;
+            // Before defense commitment the plan is intentionally not materialized.
+            // The coordinator's public threat is carried by the current intent's
+            // attack result, so this accessor is populated by the coordinator API.
+            return _attackDefenseCoordinator.PublicThreat;
         }
 
         private RuleTransitionV3 ObserveAcceptedContactV3(
@@ -4453,6 +4632,14 @@ namespace Volleyball.Presentation
             public void Publish(ReceiveOrganizationCommandBatch batch)
             {
             }
+        }
+
+        private sealed class DirectorAttackDefenseCommandSink : IAttackDefenseAuthorityCommandSink
+        {
+            private readonly PhysicalMatchRallyDirector _director;
+            public DirectorAttackDefenseCommandSink(PhysicalMatchRallyDirector director)
+            { _director = director ?? throw new ArgumentNullException(nameof(director)); }
+            public void Publish(AttackDefenseCommandBatch batch) => _director.PublishGateIBatch(batch);
         }
     }
 }
