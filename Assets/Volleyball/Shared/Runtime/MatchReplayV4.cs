@@ -365,9 +365,13 @@ namespace Volleyball.Shared.Contracts
             ReplayCoverageDecisionRecordV4 coverage)
         {
             Revision = ReplayContractGuardV4.NonNegative(revision, nameof(revision));
-            SourceSequenceNumber = ReplayContractGuardV4.NonNegative(
-                sourceSequenceNumber,
-                nameof(sourceSequenceNumber));
+            if (sourceSequenceNumber < 1)
+            {
+                throw new ContractValidationException(
+                    "sourceSequenceNumber must be positive.");
+            }
+
+            SourceSequenceNumber = sourceSequenceNumber;
             ArtifactIdentity = ReplayContractGuardV4.Hash(
                 artifactIdentity,
                 nameof(artifactIdentity));
@@ -582,7 +586,6 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException(
                     "Shadow artifact identity must match the event trajectory.");
             }
-
         }
 
         public int SequenceNumber { get; }
@@ -651,7 +654,9 @@ namespace Volleyball.Shared.Contracts
             string replayId,
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events,
-            string suppliedReplayHash)
+            int sourceSequenceAnchor,
+            string suppliedReplayHash,
+            bool allowLegacyShadowCoverageHash)
         {
             FormatVersion = ContractVersions.ReplayV4;
             ReplayId = ReplayContractGuardV4.Required(replayId, nameof(replayId));
@@ -666,13 +671,21 @@ namespace Volleyball.Shared.Contracts
             }
 
             _events = CopySortAndValidateEvents(events);
-            ValidateEventsAgainstContext(Context, _events);
+            SourceSequenceAnchor = ReplayContractGuardV4.NonNegative(
+                sourceSequenceAnchor,
+                nameof(sourceSequenceAnchor));
+            ValidateEventsAgainstContext(Context, _events, SourceSequenceAnchor);
             ReplayHash = CanonicalMatchReplayJsonV4.ComputeHash(this);
             if (suppliedReplayHash != null &&
                 !string.Equals(
                     suppliedReplayHash,
                     ReplayHash,
-                    StringComparison.Ordinal))
+                    StringComparison.Ordinal) &&
+                (!allowLegacyShadowCoverageHash ||
+                 !string.Equals(
+                     suppliedReplayHash,
+                     CanonicalMatchReplayJsonV4.ComputeLegacyShadowCoverageHash(this),
+                     StringComparison.Ordinal)))
             {
                 throw new ContractValidationException(
                     "replayHash does not match the canonical V4 replay segment.");
@@ -683,6 +696,7 @@ namespace Volleyball.Shared.Contracts
         public string ReplayId { get; }
         public MatchContextV4 Context { get; }
         public string ContextHash => Context.ContextHash;
+        public int SourceSequenceAnchor { get; }
         public IReadOnlyList<MatchReplayEventV4> Events =>
             new ReadOnlyCollection<MatchReplayEventV4>(_events);
         public string ReplayHash { get; }
@@ -692,28 +706,46 @@ namespace Volleyball.Shared.Contracts
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events)
         {
-            return new MatchReplayV4(replayId, context, events, null);
+            return new MatchReplayV4(replayId, context, events, 0, null, false);
+        }
+
+        public static MatchReplayV4 Create(
+            string replayId,
+            MatchContextV4 context,
+            IReadOnlyList<MatchReplayEventV4> events,
+            int sourceSequenceAnchor)
+        {
+            return new MatchReplayV4(
+                replayId, context, events, sourceSequenceAnchor, null, false);
         }
 
         internal static MatchReplayV4 Restore(
             string replayId,
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events,
-            string replayHash)
+            int sourceSequenceAnchor,
+            string replayHash,
+            bool allowLegacyShadowCoverageHash)
         {
             if (replayHash != null)
             {
                 ReplayContractGuardV4.Hash(replayHash, nameof(replayHash));
             }
 
-            return new MatchReplayV4(replayId, context, events, replayHash);
+            return new MatchReplayV4(
+                replayId,
+                context,
+                events,
+                sourceSequenceAnchor,
+                replayHash,
+                allowLegacyShadowCoverageHash);
         }
 
         internal void Validate()
         {
             Context.Validate();
             CopySortAndValidateEvents(_events);
-            ValidateEventsAgainstContext(Context, _events);
+            ValidateEventsAgainstContext(Context, _events, SourceSequenceAnchor);
             ReplayContractGuardV4.Hash(ReplayHash, nameof(ReplayHash));
             if (CanonicalMatchReplayJsonV4.ComputeHash(this) != ReplayHash)
             {
@@ -764,8 +796,10 @@ namespace Volleyball.Shared.Contracts
 
         private static void ValidateEventsAgainstContext(
             MatchContextV4 context,
-            IReadOnlyList<MatchReplayEventV4> events)
+            IReadOnlyList<MatchReplayEventV4> events,
+            int sourceSequenceAnchor)
         {
+            var lastShadowSource = sourceSequenceAnchor;
             for (var eventIndex = 0;
                  eventIndex < events.Count;
                  eventIndex++)
@@ -806,6 +840,25 @@ namespace Volleyball.Shared.Contracts
                 }
 
                 ValidateShadowAssignments(context, replayEvent.Shadow);
+                if (replayEvent.Shadow == null)
+                {
+                    continue;
+                }
+
+                var expectedSource = sourceSequenceAnchor + eventIndex + 1;
+                if (replayEvent.Shadow.SourceSequenceNumber != expectedSource)
+                {
+                    throw new ContractValidationException(
+                        "Shadow source sequence is inconsistent with the replay capture anchor.");
+                }
+
+                if (replayEvent.Shadow.SourceSequenceNumber <= lastShadowSource)
+                {
+                    throw new ContractValidationException(
+                        "Shadow source sequences must be strictly increasing.");
+                }
+
+                lastShadowSource = replayEvent.Shadow.SourceSequenceNumber;
             }
         }
 
@@ -1038,8 +1091,18 @@ namespace Volleyball.Shared.Contracts
 
         public static string ComputeHash(MatchReplayV4 replay)
         {
+            return ComputeHash(Payload(replay));
+        }
+
+        public static string ComputeLegacyShadowCoverageHash(MatchReplayV4 replay)
+        {
+            return ComputeHash(Payload(replay, true));
+        }
+
+        private static string ComputeHash(string payload)
+        {
             using var sha = SHA256.Create();
-            var bytes = Encoding.UTF8.GetBytes(HashFamily + Payload(replay));
+            var bytes = Encoding.UTF8.GetBytes(HashFamily + payload);
             var digest = sha.ComputeHash(bytes);
             var output = new StringBuilder(64);
             for (var index = 0; index < digest.Length; index++)
@@ -1052,13 +1115,26 @@ namespace Volleyball.Shared.Contracts
 
         public static MatchReplayV4 Deserialize(StrictJsonObjectV4 root)
         {
-            StrictJsonV4.RequireExactProperties(
-                root,
-                "formatVersion",
-                "replayId",
-                "context",
-                "events",
-                "replayHash");
+            var hasSourceSequenceAnchor =
+                root.Properties.ContainsKey("sourceSequenceAnchor");
+            if (root.Properties.Count != (hasSourceSequenceAnchor ? 6 : 5))
+            {
+                throw new ContractValidationException(
+                    "JSON object fields do not match the native V4 schema.");
+            }
+            var requiredRootFields = new[]
+            {
+                "formatVersion", "replayId", "context", "events", "replayHash"
+            };
+            for (var index = 0; index < requiredRootFields.Length; index++)
+            {
+                if (!root.Properties.ContainsKey(requiredRootFields[index]))
+                {
+                    throw new ContractValidationException(
+                        "Required native V4 JSON field is missing: " +
+                        requiredRootFields[index] + ".");
+                }
+            }
             var formatVersion = StrictJsonV4.RequiredInt(
                 root,
                 "formatVersion");
@@ -1089,9 +1165,11 @@ namespace Volleyball.Shared.Contracts
                 StrictJsonV4.RequiredString(root, "replayId"),
                 context,
                 events,
-                hasLegacyShadowCoverage
-                    ? null
-                    : StrictJsonV4.RequiredString(root, "replayHash"));
+                hasSourceSequenceAnchor
+                    ? StrictJsonV4.RequiredInt(root, "sourceSequenceAnchor")
+                    : 0,
+                StrictJsonV4.RequiredString(root, "replayHash"),
+                hasLegacyShadowCoverage);
         }
 
         private static bool HasLegacyShadowCoverage(StrictJsonObjectV4 value)
@@ -1599,18 +1677,25 @@ namespace Volleyball.Shared.Contracts
             return strings;
         }
 
-        private static string Payload(MatchReplayV4 replay)
+        private static string Payload(
+            MatchReplayV4 replay,
+            bool legacyShadowCoverage = false)
         {
             var output = new StringBuilder(32768);
             output.Append("{\"formatVersion\":4,\"replayId\":")
                 .Append(Quote(replay.ReplayId));
+            if (replay.SourceSequenceAnchor != 0)
+            {
+                output.Append(",\"sourceSequenceAnchor\":")
+                    .Append(replay.SourceSequenceAnchor);
+            }
             output.Append(",\"context\":")
                 .Append(CanonicalMatchJsonV4.SerializeContext(replay.Context));
             output.Append(",\"events\":[");
             for (var index = 0; index < replay.Events.Count; index++)
             {
                 if (index > 0) output.Append(',');
-                AppendEvent(output, replay.Events[index]);
+                AppendEvent(output, replay.Events[index], legacyShadowCoverage);
             }
 
             output.Append("]}");
@@ -1619,7 +1704,8 @@ namespace Volleyball.Shared.Contracts
 
         private static void AppendEvent(
             StringBuilder output,
-            MatchReplayEventV4 replayEvent)
+            MatchReplayEventV4 replayEvent,
+            bool legacyShadowCoverage)
         {
             output.Append("{\"sequenceNumber\":").Append(replayEvent.SequenceNumber);
             output.Append(",\"eventKind\":").Append(Quote(replayEvent.EventKind));
@@ -1675,7 +1761,7 @@ namespace Volleyball.Shared.Contracts
             if (replayEvent.Shadow != null)
             {
                 output.Append(",\"shadow\":");
-                AppendShadow(output, replayEvent.Shadow);
+                AppendShadow(output, replayEvent.Shadow, legacyShadowCoverage);
             }
 
             output.Append('}');
@@ -1683,7 +1769,8 @@ namespace Volleyball.Shared.Contracts
 
         private static void AppendShadow(
             StringBuilder output,
-            ReplayShadowRecordV4 shadow)
+            ReplayShadowRecordV4 shadow,
+            bool legacyShadowCoverage)
         {
             output.Append("{\"revision\":").Append(shadow.Revision);
             output.Append(",\"sourceSequenceNumber\":")
@@ -1695,9 +1782,17 @@ namespace Volleyball.Shared.Contracts
             output.Append(",\"away\":");
             AppendTeamPlan(output, shadow.Away);
             output.Append(",\"coverage\":{\"decision\":")
-                .Append(Quote(shadow.Coverage.Decision))
+                .Append(Quote(
+                    legacyShadowCoverage && shadow.Coverage.Decision == "Terminal"
+                        ? "Uncovered"
+                        : shadow.Coverage.Decision))
                 .Append(",\"score\":");
             Float(output, shadow.Coverage.Score);
+            if (legacyShadowCoverage)
+            {
+                output.Append("}}");
+                return;
+            }
             output.Append(",\"reason\":")
                 .Append(Quote(shadow.Coverage.Reason));
             output.Append(",\"invalidationSet\":");

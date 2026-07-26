@@ -20,6 +20,7 @@ namespace Volleyball.Presentation
         private List<PrototypePlayerAgent> _players;
         private List<MatchReplayEventV4> _events;
         private ReplayShadowPlanPendingStore<RallyPlanV3> _pendingShadowPlans;
+        private int _sourceSequenceAnchor;
         private bool _capturing;
 
         public bool IsComplete { get; private set; }
@@ -67,6 +68,9 @@ namespace Volleyball.Presentation
             _events = new List<MatchReplayEventV4>();
             _pendingShadowPlans = new ReplayShadowPlanPendingStore<RallyPlanV3>(
                 _director.V3RuleTransitions);
+            _sourceSequenceAnchor = CheckedInt(
+                _director.V3RuleTransitions,
+                nameof(_director.V3RuleTransitions));
             _capturing = true;
             IsComplete = false;
         }
@@ -82,7 +86,8 @@ namespace Volleyball.Presentation
             return MatchReplayV4.Create(
                 ReplayId(_director.MatchContext),
                 _director.MatchContext,
-                _events);
+                _events,
+                _sourceSequenceAnchor);
         }
 
         private void Initialize(

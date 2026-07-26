@@ -156,7 +156,21 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanonicalJson_DeserializesF4EraShadowCoverageWithOnlyUncoveredDecisionAndScore()
         {
-            var canonical = ContractJson.SerializeV4(CreateReplay(EventWithShadow(0, "Attack", 0)));
+            var terminalShadow = new ReplayShadowRecordV4(
+                0,
+                1,
+                HashC,
+                TeamPlan("Home", "home"),
+                TeamPlan("Away", "away"),
+                new ReplayCoverageDecisionRecordV4(
+                    "Terminal",
+                    0f,
+                    "RallyEnd",
+                    Array.Empty<string>(),
+                    0,
+                    null));
+            var canonical = ContractJson.SerializeV4(
+                CreateReplay(EventWithShadow(Event(0, "Attack"), terminalShadow)));
             var coverageStart = canonical.IndexOf("\"coverage\":", StringComparison.Ordinal);
             var coverageEnd = canonical.IndexOf("}", coverageStart);
             var legacy = canonical.Substring(0, coverageStart) +
@@ -191,6 +205,27 @@ namespace Volleyball.EditModeTests
             Assert.That(coverage.Decision, Is.EqualTo("Covered"));
             Assert.That(coverage.Score, Is.EqualTo(0.75f));
             Assert.That(coverage.Reason, Is.EqualTo("WithinConditionalEnvelope"));
+        }
+
+        [Test]
+        public void Deserialize_LegacyShadowCoverageStillVerifiesReplayHash()
+        {
+            var canonical = ContractJson.SerializeV4(
+                CreateReplay(EventWithShadow(0, "Attack", 0)));
+            var coverageStart = canonical.IndexOf("\"coverage\":", StringComparison.Ordinal);
+            var coverageEnd = canonical.IndexOf("}", coverageStart);
+            var legacy = canonical.Substring(0, coverageStart) +
+                "\"coverage\":{\"decision\":\"Covered\",\"score\":0.75" +
+                canonical.Substring(coverageEnd);
+            var tampered = legacy.Replace(
+                "\"homeScore\":4",
+                "\"homeScore\":5");
+
+            Assert.That(tampered, Is.Not.EqualTo(legacy));
+            Assert.That(
+                () => ContractJson.DeserializeMatchReplayV4(tampered),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("replayHash"));
         }
 
         [Test]
@@ -343,6 +378,56 @@ namespace Volleyball.EditModeTests
                     shadow),
                 Throws.TypeOf<ContractValidationException>()
                     .With.Message.Contains("artifact"));
+        }
+
+        [Test]
+        public void ShadowRecord_RequiresPositiveSourceSequence()
+        {
+            Assert.That(
+                () => Shadow(0),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("sourceSequenceNumber"));
+        }
+
+        [Test]
+        public void Create_RejectsDuplicateDecreasingAndUnrelatedShadowSources()
+        {
+            Assert.That(
+                () => CreateReplay(
+                    EventWithShadow(Event(0, "Attack"), Shadow(8)),
+                    EventWithShadow(Event(1, "Receive"), Shadow(8))),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => CreateReplay(
+                    EventWithShadow(Event(0, "Attack"), Shadow(9)),
+                    EventWithShadow(Event(1, "Receive"), Shadow(8))),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => CreateReplay(
+                    EventWithShadow(Event(0, "Attack"), Shadow(8)),
+                    EventWithShadow(Event(1, "Receive"), Shadow(10))),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains("anchor"));
+        }
+
+        [Test]
+        public void Create_PreservesMidRallyCaptureSourceAnchor()
+        {
+            var replay = MatchReplayV4.Create(
+                "mid-rally-replay",
+                MatchV4TestFixture.CreateContext(),
+                new[]
+                {
+                    EventWithShadow(Event(0, "Attack"), Shadow(18)),
+                    EventWithShadow(Event(1, "Receive"), Shadow(19))
+                },
+                17);
+
+            var restored = ContractJson.DeserializeMatchReplayV4(
+                ContractJson.SerializeV4(replay));
+
+            Assert.That(restored.SourceSequenceAnchor, Is.EqualTo(17));
+            Assert.That(restored.Events[1].Shadow.SourceSequenceNumber, Is.EqualTo(19));
         }
 
         [Test]
