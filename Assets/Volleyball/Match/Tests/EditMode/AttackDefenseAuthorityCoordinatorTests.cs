@@ -58,6 +58,22 @@ namespace Volleyball.EditModeTests
             Assert.That(sink.Batches, Is.Empty);
         }
 
+        [Test]
+        public void ContactEvidence_RetainsV3AcceptanceActionBranchAndExecutionIdentities()
+        {
+            var evidence = new GateIContactEvidenceV3(4, 9, Fixture.Organizer,
+                PlanCoverageReason.RallyOpen, AttackDefenseCommandKind.AttackContact,
+                RallyPlanBranchV3.Primary, "attack-envelope", "attack-trajectory", true,
+                "declared-exit");
+
+            Assert.That(evidence.V3Accepted, Is.True);
+            Assert.That(evidence.ActionKind, Is.EqualTo(AttackDefenseCommandKind.AttackContact));
+            Assert.That(evidence.Branch, Is.EqualTo(RallyPlanBranchV3.Primary));
+            Assert.That(evidence.EnvelopeIdentity, Is.EqualTo("attack-envelope"));
+            Assert.That(evidence.TrajectoryArtifactIdentity, Is.EqualTo("attack-trajectory"));
+            Assert.That(evidence.ReorganizationExitIdentity, Is.EqualTo("declared-exit"));
+        }
+
         private sealed class Sink : IAttackDefenseAuthorityCommandSink
         {
             public List<AttackDefenseCommandBatch> Batches { get; } = new List<AttackDefenseCommandBatch>();

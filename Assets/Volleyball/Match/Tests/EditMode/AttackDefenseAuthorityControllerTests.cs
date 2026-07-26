@@ -43,6 +43,22 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CancelUncommitted_RequiresAndUsesExactGateICommandIdentity()
+        {
+            using var fixture = new Fixture();
+            fixture.Controller.PreflightAndCommit(fixture.Batch(
+                fixture.Command(fixture.Attacker.StableId, committed: false)));
+            var cancel = new AttackDefenseAuthorityCommand(7, 2,
+                AttackDefenseCommandKind.CancelUncommitted, fixture.Attacker.StableId,
+                false, cancelTargetSourceSequence: 1,
+                cancelTargetKind: AttackDefenseCommandKind.AttackContact);
+
+            fixture.Controller.PreflightAndCommit(fixture.Batch(cancel, 2));
+
+            Assert.That(fixture.Attacker.ScheduledExecutionEnvelopeV4, Is.Null);
+        }
+
+        [Test]
         public void Commit_UsesExactEnvelopeAndTrajectory()
         {
             using var fixture = new Fixture();
@@ -58,6 +74,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Commit_AllowsGateISoftAttackButKeepsExactEvidence()
+        {
+            using var fixture = new Fixture(ExecutionCandidateCategoryV4.SoftAction);
+
+            fixture.Controller.PreflightAndCommit(fixture.Batch(
+                fixture.Command(fixture.Attacker.StableId)));
+
+            Assert.That(fixture.Attacker.ScheduledExecutionEnvelopeV4.CandidateCategory,
+                Is.EqualTo(ExecutionCandidateCategoryV4.SoftAction));
+        }
+
+        [Test]
         public void Controller_HasNoSetContactCommandSurface()
         {
             Assert.That(Enum.GetNames(typeof(AttackDefenseCommandKind)),
@@ -69,7 +97,7 @@ namespace Volleyball.EditModeTests
         private sealed class Fixture : IDisposable
         {
             private readonly List<GameObject> _objects = new List<GameObject>();
-            public Fixture()
+            public Fixture(ExecutionCandidateCategoryV4 category = ExecutionCandidateCategoryV4.Attack)
             {
                 var players = new List<PrototypePlayerAgent>();
                 var roles = new[] { PlayerRole.Attacker, PlayerRole.Setter, PlayerRole.Defender, PlayerRole.OutsideHitter, PlayerRole.MiddleBlocker, PlayerRole.Opposite };
@@ -81,7 +109,7 @@ namespace Volleyball.EditModeTests
                         new Volleyball.Shared.Contracts.PlayerId("home-" + index), Color.blue, index.ToString());
                     players.Add(player);
                 }
-                Players = players; Attacker = players[0]; Execution = CreateExecution();
+                Players = players; Attacker = players[0]; Execution = CreateExecution(category);
                 var candidate = new AttackCandidateV3("attack", Attacker.StableId, AttackActionClassV3.Tip,
                     new SimVector3(1f, 3f, -2f), new SimVector3(1f, 1f, 3f), 1f, 1f, false,
                     string.Empty, Execution.ExecutionClassification.ExecutableEnvelope.Identity,
@@ -105,7 +133,8 @@ namespace Volleyball.EditModeTests
             public AttackDefensePlanV3 Plan { get; }
             public AttackDefenseAuthorityController Controller { get; }
             public AttackDefenseAuthorityCommand Command(StablePlayerId actor, bool committed = false) =>
-                new AttackDefenseAuthorityCommand(7, 1, AttackDefenseCommandKind.AttackContact, actor, committed, Execution);
+                new AttackDefenseAuthorityCommand(7, 1, AttackDefenseCommandKind.AttackContact, actor, committed, Execution,
+                    candidateIdentity: "attack");
             public AttackDefenseCommandBatch Batch(AttackDefenseAuthorityCommand command, long sequence = 1) => Batch(new[] { command }, sequence);
             public AttackDefenseCommandBatch Batch(AttackDefenseAuthorityCommand first, AttackDefenseAuthorityCommand second) => Batch(new[] { first, second }, 1);
             private AttackDefenseCommandBatch Batch(IReadOnlyList<AttackDefenseAuthorityCommand> commands, long sequence) =>
@@ -113,13 +142,13 @@ namespace Volleyball.EditModeTests
                     AttackDefenseAuthorityPhaseV3.AttackCommitted, Plan,
                     PlanCoverageDecision.Covered("7", PlanCoverageReason.RallyOpen)));
             public void Dispose() { foreach (var item in _objects) UnityEngine.Object.DestroyImmediate(item); }
-            private static AttackDefenseCommandExecutionV4 CreateExecution()
+            private static AttackDefenseCommandExecutionV4 CreateExecution(ExecutionCandidateCategoryV4 category)
             {
                 var envelope = ExecutionEnvelopeFactoryV4.Create(MatchV4TestFixture.CreateDerived(),
-                    new ExecutionIntentV4("attack", ExecutionCandidateCategoryV4.Attack,
-                        new SimVector3(1f, 3f, -2f), new SimVector3(1f, 4f, 2f), .5f), "sample", ExecutionEnvelopePolicyV4.Default);
+                    new ExecutionIntentV4("attack", category,
+                        new SimVector3(1f, 3f, -2f), new SimVector3(1f, 4f, 2f), .5f), "sample", ExecutionEnvelopePolicyV4.GateI);
                 var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey,
-                    ExecutionCandidateCategoryV4.Attack, envelope.BaselineTarget, envelope.BaselineVelocity, envelope.RequestedEffort);
+                    category, envelope.BaselineTarget, envelope.BaselineVelocity, envelope.RequestedEffort);
                 var context = MatchV4TestFixture.CreateContext();
                 var artifact = PhysicalMatchRallyDirector.CreateTrajectoryPredictionProviderV4(context).Predict(
                     new BallTrajectoryPredictionRequestV4(TeamSide.Home, 7,

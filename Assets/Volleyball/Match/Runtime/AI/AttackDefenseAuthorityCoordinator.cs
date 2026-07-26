@@ -58,30 +58,62 @@ namespace Volleyball.AI
     {
         public GateIContactEvidenceV3(long planRevision, long sourceSequence, PlayerId actor,
             PlanCoverageReason coverageReason, string reorganizationExitIdentity = null)
+            : this(planRevision, sourceSequence, actor, coverageReason,
+                AttackDefenseCommandKind.AttackContact, RallyPlanBranchV3.Primary,
+                string.Empty, string.Empty, false, reorganizationExitIdentity)
+        {
+        }
+
+        public GateIContactEvidenceV3(long planRevision, long sourceSequence, PlayerId actor,
+            PlanCoverageReason coverageReason, AttackDefenseCommandKind actionKind,
+            RallyPlanBranchV3 branch, string envelopeIdentity,
+            string trajectoryArtifactIdentity, bool v3Accepted,
+            string reorganizationExitIdentity = null)
         {
             if (planRevision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(planRevision < 0 ? nameof(planRevision) : nameof(sourceSequence));
             if (!Enum.IsDefined(typeof(PlanCoverageReason), coverageReason)) throw new ArgumentOutOfRangeException(nameof(coverageReason));
             PlanRevision = planRevision; SourceSequence = sourceSequence; Actor = actor;
-            CoverageReason = coverageReason; ReorganizationExitIdentity = reorganizationExitIdentity ?? string.Empty;
+            if (!Enum.IsDefined(typeof(AttackDefenseCommandKind), actionKind)) throw new ArgumentOutOfRangeException(nameof(actionKind));
+            if (!Enum.IsDefined(typeof(RallyPlanBranchV3), branch)) throw new ArgumentOutOfRangeException(nameof(branch));
+            CoverageReason = coverageReason; ActionKind = actionKind; Branch = branch;
+            EnvelopeIdentity = envelopeIdentity ?? string.Empty;
+            TrajectoryArtifactIdentity = trajectoryArtifactIdentity ?? string.Empty;
+            V3Accepted = v3Accepted;
+            ReorganizationExitIdentity = reorganizationExitIdentity ?? string.Empty;
         }
         public long PlanRevision { get; } public long SourceSequence { get; } public PlayerId Actor { get; }
         public PlanCoverageReason CoverageReason { get; } public string ReorganizationExitIdentity { get; }
+        public AttackDefenseCommandKind ActionKind { get; }
+        public RallyPlanBranchV3 Branch { get; }
+        public string EnvelopeIdentity { get; }
+        public string TrajectoryArtifactIdentity { get; }
+        public bool V3Accepted { get; }
     }
 
     public sealed class AttackDefenseAuthorityCommand
     {
         public AttackDefenseAuthorityCommand(long planRevision, long sourceSequence, AttackDefenseCommandKind kind, PlayerId actor, bool isCommitted,
-            AttackDefenseCommandExecutionV4 execution = null, RallyPlanBranchV3 branch = RallyPlanBranchV3.Primary)
+            AttackDefenseCommandExecutionV4 execution = null, RallyPlanBranchV3 branch = RallyPlanBranchV3.Primary,
+            long cancelTargetSourceSequence = -1, AttackDefenseCommandKind? cancelTargetKind = null,
+            string reorganizationExitIdentity = null, string candidateIdentity = null)
         {
             if (planRevision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(planRevision < 0 ? nameof(planRevision) : nameof(sourceSequence));
             if (!Enum.IsDefined(typeof(AttackDefenseCommandKind), kind)) throw new ArgumentOutOfRangeException(nameof(kind));
             if (!Enum.IsDefined(typeof(RallyPlanBranchV3), branch)) throw new ArgumentOutOfRangeException(nameof(branch));
             PlanRevision = planRevision; SourceSequence = sourceSequence; Kind = kind; Actor = actor; IsCommitted = isCommitted; Execution = execution; Branch = branch;
+            CancelTargetSourceSequence = cancelTargetSourceSequence;
+            CancelTargetKind = cancelTargetKind;
+            ReorganizationExitIdentity = reorganizationExitIdentity ?? string.Empty;
+            CandidateIdentity = candidateIdentity ?? string.Empty;
         }
         public long PlanRevision { get; } public long SourceSequence { get; } public AttackDefenseCommandKind Kind { get; }
         public PlayerId Actor { get; } public bool IsCommitted { get; }
         public AttackDefenseCommandExecutionV4 Execution { get; }
         public RallyPlanBranchV3 Branch { get; }
+        public long CancelTargetSourceSequence { get; }
+        public AttackDefenseCommandKind? CancelTargetKind { get; }
+        public string ReorganizationExitIdentity { get; }
+        public string CandidateIdentity { get; }
     }
 
     // Immutable execution inputs are supplied by the coordinator boundary; the
@@ -153,6 +185,7 @@ namespace Volleyball.AI
     {
         private readonly AttackDefensePlanner _planner; private readonly IAttackDefenseAuthorityCommandSink _sink;
         private GateISetIntentV3 _intent; private AttackPlanningResultV3 _attack; private JointDefensePlanV3 _defense;
+        private IReadOnlyDictionary<PlayerId, GateITacticalPlayerV3> _players;
         private TeamSide _attackingSide;
         private long _lastSequence = -1;
         public AttackDefenseAuthorityCoordinator(AttackDefensePlanner planner, IAttackDefenseAuthorityCommandSink sink)
@@ -177,6 +210,7 @@ namespace Volleyball.AI
             if (request.Revision != State.Revision || !SameSet(request.SetIntent, _intent) || !SameSetEvidence(accepted.AcceptedSet, _intent) || !SameSetEvidence(request.ActualSet, _intent))
                 throw new InvalidOperationException("Accepted Set evidence does not match the active SetIntent.");
             _attack = _planner.PlanAttack(request); _lastSequence = accepted.SourceSequence;
+            _players = request.Players.GroupBy(player => player.Player).ToDictionary(group => group.Key, group => group.First());
             State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackPlanned, State.Revision, _attackingSide, null, State.CoverageDecision);
             return State;
         }
@@ -188,9 +222,20 @@ namespace Volleyball.AI
         {
             Require(AttackDefenseAuthorityPhaseV3.ThreatPublished, revision, sourceSequence);
             if (defense == null || defense.SourceThreatIdentity != _attack.PublicThreat.ThreatIdentity) throw new InvalidOperationException("Defense must be composed from the published threat.");
-            _defense = defense; _lastSequence = sourceSequence; State = New(AttackDefenseAuthorityPhaseV3.DefenseCommitted);
-            Publish(sourceSequence, State, defense.Responsibilities.Select(x => new AttackDefenseAuthorityCommand(revision, sourceSequence,
-                x.Kind == DefenseResponsibilityKindV3.PrimaryBlock || x.Kind == DefenseResponsibilityKindV3.SupportingBlock ? AttackDefenseCommandKind.BlockContact : AttackDefenseCommandKind.FloorDefense, x.Actor, true)));
+            _defense = defense; _lastSequence = sourceSequence;
+            var defensePlan = new AttackDefensePlanV3(_attackingSide, revision,
+                "gate-i-plan-" + revision, _intent, _attack.Candidates,
+                _attack.PublicThreat, defense, null, defense.ReorganizationExits);
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.DefenseCommitted, revision,
+                _attackingSide, defensePlan, State.CoverageDecision);
+            Publish(sourceSequence, State, defense.Responsibilities.Select(x =>
+            {
+                var kind = x.Kind == DefenseResponsibilityKindV3.PrimaryBlock || x.Kind == DefenseResponsibilityKindV3.SupportingBlock
+                    ? AttackDefenseCommandKind.BlockContact : AttackDefenseCommandKind.FloorDefense;
+                return new AttackDefenseAuthorityCommand(revision, sourceSequence, kind, x.Actor, true,
+                    ExecutionFor(x.Actor, kind), x.Branch);
+            }));
             return State;
         }
 
@@ -200,7 +245,7 @@ namespace Volleyball.AI
             var selected = _planner.ChooseFinal(_attack, _defense).Candidate; _lastSequence = sourceSequence;
             var plan = new AttackDefensePlanV3(_attackingSide, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, _defense.ReorganizationExits);
             State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, _attackingSide, plan, State.CoverageDecision);
-            Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true) });
+            Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true, ExecutionFor(selected.Actor, AttackDefenseCommandKind.AttackContact), candidateIdentity: selected.CandidateIdentity) });
             return State;
         }
 
@@ -211,10 +256,11 @@ namespace Volleyball.AI
             if (contact.PlanRevision != State.Revision || contact.SourceSequence <= _lastSequence) throw new InvalidOperationException("Stale or mismatched contact evidence.");
             var coverage = Coverage(contact.CoverageReason);
             if (coverage.Kind == PlanCoverageDecisionKind.TerminalNoPlan) { _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Terminal, State.Revision, _attackingSide, State.Plan, coverage); return State; }
-            var exit = State.Plan.ReorganizationExits.OrderBy(x => x.Identity, StringComparer.Ordinal).FirstOrDefault(x => string.IsNullOrEmpty(contact.ReorganizationExitIdentity) || x.Identity == contact.ReorganizationExitIdentity);
+            ValidateContactEvidence(contact);
+            var exit = State.Plan.ReorganizationExits.OrderBy(x => x.Identity, StringComparer.Ordinal).FirstOrDefault(x => x.Identity == contact.ReorganizationExitIdentity);
             if (exit == null) throw new InvalidOperationException("Actual contact does not select a declared reorganization exit.");
             _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned, State.Revision, _attackingSide, State.Plan, coverage);
-            Publish(contact.SourceSequence, State, new[] { new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence, AttackDefenseCommandKind.Reorganization, exit.Actor, true) });
+            Publish(contact.SourceSequence, State, new[] { new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence, AttackDefenseCommandKind.Reorganization, exit.Actor, true, ExecutionFor(exit.Actor, AttackDefenseCommandKind.Reorganization), contact.Branch, reorganizationExitIdentity: exit.Identity) });
             return State;
         }
 
@@ -232,5 +278,58 @@ namespace Volleyball.AI
         }
         private static bool SameSet(GateISetIntentV3 a, GateISetIntentV3 b) => a != null && b != null && a.PlanRevision == b.PlanRevision && a.SourceSequence == b.SourceSequence;
         private static bool SameSetEvidence(AcceptedSetEvidenceV3 evidence, GateISetIntentV3 intent) => evidence != null && evidence.Actor.Equals(intent.Organizer) && evidence.EnvelopeIdentity == intent.ExecutionClassification.ExecutableEnvelope.Identity && evidence.TrajectoryArtifactIdentity == intent.TrajectoryArtifact.ArtifactIdentity;
+
+        private void ValidateContactEvidence(GateIContactEvidenceV3 contact)
+        {
+            if (!contact.V3Accepted) throw new InvalidOperationException("Gate I contacts require a V3-accepted marker.");
+            if (contact.ActionKind == AttackDefenseCommandKind.AttackContact)
+            {
+                if (!State.Plan.SelectedAction.Actor.Equals(contact.Actor) ||
+                    contact.Branch != RallyPlanBranchV3.Primary ||
+                    contact.EnvelopeIdentity != State.Plan.SelectedAction.EnvelopeIdentity ||
+                    contact.TrajectoryArtifactIdentity != State.Plan.SelectedAction.TrajectoryArtifactIdentity)
+                    throw new InvalidOperationException("Attack evidence must exactly match the committed Gate I attack.");
+                return;
+            }
+            var responsibility = State.Plan.Defense.Responsibilities.SingleOrDefault(x =>
+                x.Actor.Equals(contact.Actor) && x.Branch == contact.Branch);
+            var kindMatches = contact.ActionKind == AttackDefenseCommandKind.BlockContact
+                ? responsibility != null && (responsibility.Kind == DefenseResponsibilityKindV3.PrimaryBlock || responsibility.Kind == DefenseResponsibilityKindV3.SupportingBlock)
+                : contact.ActionKind == AttackDefenseCommandKind.FloorDefense || contact.ActionKind == AttackDefenseCommandKind.AttackCover
+                    ? responsibility != null : false;
+            var expectedEnvelope = "gate-i-" + State.Revision + "-" + (int)contact.ActionKind + "-" + contact.Actor.Value;
+            if (!kindMatches || contact.EnvelopeIdentity != expectedEnvelope ||
+                contact.TrajectoryArtifactIdentity != _intent.TrajectoryArtifact.ArtifactIdentity)
+                throw new InvalidOperationException("Defense evidence must exactly match a committed responsibility.");
+        }
+
+        private AttackDefenseCommandExecutionV4 ExecutionFor(PlayerId actor, AttackDefenseCommandKind kind)
+        {
+            if (_players == null || !_players.TryGetValue(actor, out var player))
+                throw new InvalidOperationException("Every command actor must have immutable Gate I execution inputs.");
+            if (kind == AttackDefenseCommandKind.AttackContact)
+            {
+                var candidate = State.Plan?.SelectedAction ?? throw new InvalidOperationException(
+                    "Final attack execution requires the committed selected candidate.");
+                var exact = _attack.EvidenceFor(candidate);
+                var approach = new AttackApproachPlan(player.WorldPosition, player.WorldPosition, 1f, .8f, 0f);
+                var attackContact = AttackContactPlanner.Plan(new AttackContactInput(
+                    _intent.Target.Y, .8f, 1f, SetQualityGrade.A, approach.Takeoff, .6f, 1f));
+                return new AttackDefenseCommandExecutionV4(_intent.GateHExpectedContactTime + .01f,
+                    0f, default, 1, exact.ExecutionClassification, exact.TrajectoryArtifact,
+                    candidate.Target, approach, attackContact);
+            }
+            var category = kind == AttackDefenseCommandKind.AttackContact ? ExecutionCandidateCategoryV4.Attack :
+                kind == AttackDefenseCommandKind.BlockContact ? ExecutionCandidateCategoryV4.Block : ExecutionCandidateCategoryV4.Receive;
+            var target = player.WorldPosition;
+            var envelope = ExecutionEnvelopeFactoryV4.Create(player.Attributes,
+                new ExecutionIntentV4("gate-i-" + State.Revision + "-" + (int)kind + "-" + actor.Value, category, target,
+                    new SimVector3(0f, 1f, 1f), .5f),
+                "gate-i-" + State.Revision + "-" + (int)kind + "-" + actor.Value, ExecutionEnvelopePolicyV4.GateI);
+            var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey, category,
+                envelope.BaselineTarget, envelope.BaselineVelocity, envelope.RequestedEffort);
+            return new AttackDefenseCommandExecutionV4(_intent.GateHExpectedContactTime + .01f, 0f, default, 1,
+                envelope.Classify(sample), _intent.TrajectoryArtifact, target);
+        }
     }
 }

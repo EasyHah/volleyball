@@ -51,6 +51,10 @@ namespace Volleyball.Presentation
             _players;
         private readonly HashSet<CommandActorIdentity> _committed =
             new HashSet<CommandActorIdentity>();
+        private readonly Dictionary<GateICommandIdentity, ScheduledGateICommand> _scheduled =
+            new Dictionary<GateICommandIdentity, ScheduledGateICommand>();
+        private readonly Dictionary<StablePlayerId, GateICommandIdentity> _latestScheduledByActor =
+            new Dictionary<StablePlayerId, GateICommandIdentity>();
         private long _latestRevision = -1;
         private long _latestSourceSequence = -1;
 
@@ -107,6 +111,17 @@ namespace Volleyball.Presentation
                 if (command.Command.IsCommitted)
                     _committed.Add(new CommandActorIdentity(
                         batch.Evidence.PlanRevision, command.Command.Actor));
+                else if (command.Command.Kind != AttackDefenseCommandKind.CancelUncommitted)
+                {
+                    var identity = new GateICommandIdentity(command.Command);
+                    _scheduled[identity] = new ScheduledGateICommand(command.Player, command.Command.IsCommitted);
+                    _latestScheduledByActor[command.Command.Actor] = identity;
+                }
+                else if (command.CancellationTarget.HasValue)
+                {
+                    _scheduled.Remove(command.CancellationTarget.Value);
+                    _latestScheduledByActor.Remove(command.Command.Actor);
+                }
             _latestRevision = Math.Max(_latestRevision, batch.Evidence.PlanRevision);
             _latestSourceSequence = batch.Evidence.SourceSequence;
             foreach (var receipt in receipts) AuthorityCommitted?.Invoke(receipt);
@@ -136,9 +151,23 @@ namespace Volleyball.Presentation
             ValidateDeclaredActor(batch.Evidence.Plan, command);
             if (command.Kind == AttackDefenseCommandKind.CancelUncommitted)
             {
-                if (_committed.Contains(new CommandActorIdentity(command.PlanRevision, command.Actor)))
+                if (!command.CancelTargetKind.HasValue || command.CancelTargetSourceSequence < 0)
+                    throw new InvalidOperationException("Gate I cancellation requires an exact command identity.");
+                var target = new GateICommandIdentity(command.PlanRevision,
+                    command.CancelTargetSourceSequence, command.CancelTargetKind.Value,
+                    command.Actor, command.Branch);
+                if (!_scheduled.TryGetValue(target, out var scheduled))
+                {
+                    if (_committed.Contains(new CommandActorIdentity(command.PlanRevision, command.Actor)))
+                        throw new InvalidOperationException("A committed authority command cannot be canceled.");
+                    throw new InvalidOperationException("Cancellation may only target a live Gate I command.");
+                }
+                if (scheduled.IsCommitted)
                     throw new InvalidOperationException("A committed authority command cannot be canceled.");
-                return new PreparedCommand(command, player);
+                if (!_latestScheduledByActor.TryGetValue(command.Actor, out var latest) ||
+                    !latest.Equals(target))
+                    throw new InvalidOperationException("Cancellation cannot erase a newer scheduled contact.");
+                return new PreparedCommand(command, player, target);
             }
 
             var execution = command.Execution ?? throw new InvalidOperationException(
@@ -181,12 +210,15 @@ namespace Volleyball.Presentation
                 AttackDefenseCommandKind.AttackPreparation =>
                     plan.AttackCandidates.Any(x => x.Actor.Equals(command.Actor)),
                 AttackDefenseCommandKind.AttackContact =>
-                    plan.SelectedAction != null && plan.SelectedAction.Actor.Equals(command.Actor),
+                    plan.SelectedAction != null && plan.SelectedAction.Actor.Equals(command.Actor) &&
+                    plan.SelectedAction.CandidateIdentity == command.CandidateIdentity,
                 AttackDefenseCommandKind.BlockContact => plan.Defense.Responsibilities.Any(x =>
-                    x.Actor.Equals(command.Actor) && (x.Kind == DefenseResponsibilityKindV3.PrimaryBlock || x.Kind == DefenseResponsibilityKindV3.SupportingBlock)),
+                    x.Actor.Equals(command.Actor) && x.Branch == command.Branch &&
+                    (x.Kind == DefenseResponsibilityKindV3.PrimaryBlock || x.Kind == DefenseResponsibilityKindV3.SupportingBlock)),
                 AttackDefenseCommandKind.FloorDefense or AttackDefenseCommandKind.AttackCover =>
-                    plan.Defense.Responsibilities.Any(x => x.Actor.Equals(command.Actor)),
-                AttackDefenseCommandKind.Reorganization => plan.ReorganizationExits.Any(x => x.Actor.Equals(command.Actor)),
+                    plan.Defense.Responsibilities.Any(x => x.Actor.Equals(command.Actor) && x.Branch == command.Branch),
+                AttackDefenseCommandKind.Reorganization => plan.ReorganizationExits.Any(x =>
+                    x.Actor.Equals(command.Actor) && x.Identity == command.ReorganizationExitIdentity),
                 AttackDefenseCommandKind.CancelUncommitted => true,
                 _ => false
             };
@@ -203,6 +235,9 @@ namespace Volleyball.Presentation
                     ? plan.AttackCandidates.FirstOrDefault(x => x.Actor.Equals(command.Actor))
                     : null;
             if (candidate == null) return;
+            if (command.Kind == AttackDefenseCommandKind.AttackContact &&
+                command.CandidateIdentity != candidate.CandidateIdentity)
+                throw new InvalidOperationException("Attack command must retain the selected candidate identity.");
             if (candidate.EnvelopeIdentity != execution.ExecutionClassification.ExecutableEnvelope.Identity ||
                 candidate.TrajectoryArtifactIdentity != execution.TrajectoryArtifact.ArtifactIdentity)
                 throw new InvalidOperationException("Execution evidence must retain the plan envelope and trajectory identities.");
@@ -239,7 +274,8 @@ namespace Volleyball.Presentation
                         attackContactPlan: execution.AttackContactPlan,
                         movementTarget: ToUnity(execution.MovementTarget),
                         movementStartSimulationTime: execution.MovementStartSimulationTime,
-                        trajectoryArtifact: execution.TrajectoryArtifact);
+                        trajectoryArtifact: execution.TrajectoryArtifact,
+                        allowGateISoftAttack: true);
                     break;
                 case AttackDefenseCommandKind.BlockContact:
                     prepared.Player.ScheduleBlockContact(execution.ScheduledSimulationTime,
@@ -256,6 +292,9 @@ namespace Volleyball.Presentation
                         execution.MovementStartSimulationTime);
                     break;
                 case AttackDefenseCommandKind.CancelUncommitted:
+                    // The target is a controller-owned Gate I identity.  The player
+                    // is touched only after preflight has proved it still owns that
+                    // identity, preventing Gate H/legacy contacts from being erased.
                     prepared.Player.CancelScheduledContact();
                     break;
                 default: throw new ArgumentOutOfRangeException();
@@ -274,10 +313,12 @@ namespace Volleyball.Presentation
 
         private readonly struct PreparedCommand
         {
-            public PreparedCommand(AttackDefenseAuthorityCommand command, PrototypePlayerAgent player)
-            { Command = command; Player = player; }
+            public PreparedCommand(AttackDefenseAuthorityCommand command, PrototypePlayerAgent player,
+                GateICommandIdentity? cancellationTarget = null)
+            { Command = command; Player = player; CancellationTarget = cancellationTarget; }
             public AttackDefenseAuthorityCommand Command { get; }
             public PrototypePlayerAgent Player { get; }
+            public GateICommandIdentity? CancellationTarget { get; }
         }
         private readonly struct CommandActorIdentity : IEquatable<CommandActorIdentity>
         {
@@ -286,6 +327,29 @@ namespace Volleyball.Presentation
             public bool Equals(CommandActorIdentity other) => Revision == other.Revision && Actor.Equals(other.Actor);
             public override bool Equals(object obj) => obj is CommandActorIdentity other && Equals(other);
             public override int GetHashCode() => (Revision.GetHashCode() * 397) ^ Actor.GetHashCode();
+        }
+        private readonly struct GateICommandIdentity : IEquatable<GateICommandIdentity>
+        {
+            public GateICommandIdentity(AttackDefenseAuthorityCommand command)
+                : this(command.PlanRevision, command.SourceSequence, command.Kind,
+                    command.Actor, command.Branch) { }
+            public GateICommandIdentity(long revision, long sourceSequence,
+                AttackDefenseCommandKind kind, StablePlayerId actor, RallyPlanBranchV3 branch)
+            { Revision = revision; SourceSequence = sourceSequence; Kind = kind; Actor = actor; Branch = branch; }
+            public long Revision { get; } public long SourceSequence { get; }
+            public AttackDefenseCommandKind Kind { get; } public StablePlayerId Actor { get; }
+            public RallyPlanBranchV3 Branch { get; }
+            public bool Equals(GateICommandIdentity other) => Revision == other.Revision &&
+                SourceSequence == other.SourceSequence && Kind == other.Kind && Actor.Equals(other.Actor) && Branch == other.Branch;
+            public override bool Equals(object obj) => obj is GateICommandIdentity other && Equals(other);
+            public override int GetHashCode() => (((Revision.GetHashCode() * 397) ^ SourceSequence.GetHashCode()) * 397) ^
+                ((int)Kind * 17) ^ Actor.GetHashCode() ^ (int)Branch;
+        }
+        private readonly struct ScheduledGateICommand
+        {
+            public ScheduledGateICommand(PrototypePlayerAgent player, bool isCommitted)
+            { Player = player; IsCommitted = isCommitted; }
+            public PrototypePlayerAgent Player { get; } public bool IsCommitted { get; }
         }
     }
 }

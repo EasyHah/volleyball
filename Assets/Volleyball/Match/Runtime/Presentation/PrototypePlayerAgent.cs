@@ -174,9 +174,11 @@ namespace Volleyball.Presentation
             AttackApproachPlan? attackApproach = null,
             AttackContactPlan? attackContactPlan = null,
             SetRoute? normalSetRoute = null,
-            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
+            bool allowGateISoftAttack = false)
         {
-            ValidateScheduleContactArguments(action, attackApproach, attackContactPlan);
+            ValidateV4Schedule(action, executionClassification, attackApproach,
+                attackContactPlan, allowGateISoftAttack);
             _techniqueExecutor.ScheduleV4(
                 action,
                 scheduledSimulationTime,
@@ -213,7 +215,8 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             ExecutionSampleClassificationV4 classification,
             AttackApproachPlan? attackApproach = null,
-            AttackContactPlan? attackContactPlan = null)
+            AttackContactPlan? attackContactPlan = null,
+            bool allowGateISoftAttack = false)
         {
             ValidateScheduleContactArguments(
                 action,
@@ -229,8 +232,10 @@ namespace Volleyball.Presentation
                 TechniqueAction.Serve => ExecutionCandidateCategoryV4.Serve,
                 _ => throw new ArgumentOutOfRangeException(nameof(action))
             };
-            if (classification.ExecutableEnvelope.CandidateCategory !=
-                expectedCategory)
+            var category = classification.ExecutableEnvelope.CandidateCategory;
+            if (category != expectedCategory &&
+                !(allowGateISoftAttack && action == TechniqueAction.Attack &&
+                  category == ExecutionCandidateCategoryV4.SoftAction))
             {
                 throw new InvalidOperationException(
                     "V4 execution category must match the scheduled action.");
@@ -246,7 +251,8 @@ namespace Volleyball.Presentation
             AttackApproachPlan? approach,
             AttackContactPlan? contactPlan)
         {
-            ValidateV4Schedule(action, classification, approach, contactPlan);
+            ValidateV4Schedule(action, classification, approach, contactPlan,
+                allowGateISoftAttack: true);
             _techniqueExecutor.ValidateGateIContact(
                 action, classification, trajectory, approach, contactPlan);
         }
