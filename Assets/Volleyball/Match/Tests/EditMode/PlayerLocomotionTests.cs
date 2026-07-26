@@ -89,6 +89,25 @@ namespace Volleyball.EditModeTests
             Object.DestroyImmediate(root);
         }
 
+        [Test]
+        public void PlannedAttackThenUnplannedAttack_SamplesTheNewUnplannedTrajectory()
+        {
+            var locomotion = CreateAttackLocomotion();
+            locomotion.ConfigureAttackContact(new Vector3(0f, 2.5f, -1f), 0.38f, PlayerAbilityProfile.Default);
+            locomotion.ConfigureScheduledMovement(
+                new Vector3(0f, 0f, -1f),
+                3f,
+                4f,
+                TechniqueAction.Attack,
+                PlayerAbilityProfile.Default);
+
+            var sample = locomotion.Sample(4f);
+
+            Assert.That(locomotion.HasAttackApproach, Is.False);
+            Assert.That(sample.Position.y, Is.LessThan(2f));
+            Object.DestroyImmediate(locomotion.Root.gameObject);
+        }
+
         private static PlayerLocomotion CreateAttackLocomotion()
         {
             var root = new GameObject("LocomotionAttacker");

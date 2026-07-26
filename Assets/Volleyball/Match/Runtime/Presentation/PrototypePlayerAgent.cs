@@ -563,15 +563,15 @@ namespace Volleyball.Presentation
 
             CancelScheduledContact();
             transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
+            _physicalBlockContactRootHeight = movementTarget.y > 0f
+                ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
+                : MaximumBlockContactRootHeight();
             ConfigureSupportAction(
                 TechniqueAction.Block,
                 scheduledSimulationTime,
                 movementTarget,
                 movementStartSimulationTime,
                 isSupportAction: false);
-            _physicalBlockContactRootHeight = movementTarget.y > 0f
-                ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
-                : MaximumBlockContactRootHeight();
             _physicalBlockTargetVelocity = targetVelocity;
             _physicalBlockContactGroupId = contactGroupId;
             _hasPhysicalBlockContact = true;
@@ -609,6 +609,7 @@ namespace Volleyball.Presentation
             _physicalBlockContactRootHeight = movementTarget.y > 0f
                 ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
                 : MaximumBlockContactRootHeight();
+            _locomotion.SetSupportBlockContactHeight(_physicalBlockContactRootHeight);
             BlockRetargetDistance = Vector3.Distance(previousTarget, _locomotion.SupportTarget);
             _physicalBlockTargetVelocity = targetVelocity;
             return true;
@@ -638,7 +639,7 @@ namespace Volleyball.Presentation
             {
                 _actionTimelineState.ScheduleBlock(scheduledSimulationTime);
             }
-            var blockHeight = action == TechniqueAction.Block && _hasPhysicalBlockContact
+            var blockHeight = action == TechniqueAction.Block
                 ? _physicalBlockContactRootHeight
                 : 0f;
             _locomotion.ConfigureSupportMovement(

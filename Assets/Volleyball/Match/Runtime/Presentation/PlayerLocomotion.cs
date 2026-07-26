@@ -114,6 +114,7 @@ namespace Volleyball.Presentation
             PlayerAbilityProfile ability,
             float? movementLeadOverride = null)
         {
+            ClearAttackPlanState();
             _movementStartPosition = ConstrainGroundPosition(_root.position);
             _movementStartSimulationTime = movementStartSimulationTime;
             var movementLead = movementLeadOverride ?? (action == TechniqueAction.Attack ? 0.32f : 0.10f);
@@ -218,6 +219,7 @@ namespace Volleyball.Presentation
                 MaximumSpeed * (_supportEndSimulationTime - _supportStartSimulationTime));
             _supportBlockContactHeight = blockContactHeight;
             _hasSupportMovement = true;
+            ScheduledMovementDistance = Vector3.Distance(_supportStartPosition, _supportTargetPosition);
         }
 
         public void RetargetSupportMovement(Vector3 requestedTarget, float scheduledContactTime)
@@ -227,6 +229,12 @@ namespace Volleyball.Presentation
                 ConstrainGroundPosition(requestedTarget),
                 0.549f);
             _supportEndSimulationTime = Mathf.Max(_supportStartSimulationTime + 0.01f, scheduledContactTime - 0.10f);
+            ScheduledMovementDistance = Vector3.Distance(_supportStartPosition, _supportTargetPosition);
+        }
+
+        public void SetSupportBlockContactHeight(float blockContactHeight)
+        {
+            _supportBlockContactHeight = blockContactHeight;
         }
 
         public Vector3 SampleSupport(float simulationTime, float supportContactTime, PlayerAbilityProfile ability)
@@ -291,6 +299,16 @@ namespace Volleyball.Presentation
         {
             _appliedAttackCorrection = 0f;
             MaximumAppliedContactCorrection = 0f;
+        }
+
+        private void ClearAttackPlanState()
+        {
+            _hasAttackApproach = false;
+            _hasAttackContactRoot = false;
+            _attackTakeoffPosition = default;
+            _attackContactRootPosition = default;
+            _attackJumpLead = 0f;
+            _attackJumpQuality = 0f;
         }
 
         public void SetRootPosition(Vector3 position)

@@ -814,6 +814,66 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ScheduledAndRetargetedBlock_UseRequestedContactHeights()
+        {
+            var player = CreatePlayer("RequestedBlockHeight", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                player.ScheduleBlockContact(
+                    2f,
+                    new Vector3(0f, 0.16f, -1f),
+                    0f,
+                    new SimVector3(0f, -2f, 4f),
+                    811);
+                Collect(player, 2f);
+                Assert.That(player.transform.position.y, Is.EqualTo(0.16f).Within(0.01f));
+
+                Assert.That(player.RetargetBlockContact(
+                    2.05f,
+                    new Vector3(0f, 0.34f, -1f),
+                    new SimVector3(0f, -2f, 4f)), Is.True);
+                Collect(player, 2.05f);
+                Assert.That(player.transform.position.y, Is.EqualTo(0.34f).Within(0.01f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
+        public void PhysicalBlockScheduling_ReplacesStaleScheduledMovementDistance()
+        {
+            var player = CreatePlayer("BlockMovementDistance", TeamId.Blue, PlayerRole.MiddleBlocker);
+            try
+            {
+                player.ScheduleContact(
+                    TechniqueAction.Receive,
+                    4f,
+                    new SimVector3(0f, 3f, 4f),
+                    NoExecutionError(),
+                    812,
+                    movementTarget: new Vector3(4f, 0f, -0.3f),
+                    movementStartSimulationTime: 0f);
+                var staleDistance = player.ScheduledMovementDistance;
+
+                player.ScheduleBlockContact(
+                    2f,
+                    player.transform.position,
+                    0f,
+                    new SimVector3(0f, -2f, 4f),
+                    813);
+
+                Assert.That(staleDistance, Is.GreaterThan(0.01f));
+                Assert.That(player.ScheduledMovementDistance, Is.EqualTo(0f).Within(0.001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(player.gameObject);
+            }
+        }
+
+        [Test]
         public void PreviewBlockArmFrames_ReturnsBlockPoseWithoutMutatingPlayerState()
         {
             var player = CreatePlayer("PreviewBlocker", TeamId.Blue, PlayerRole.MiddleBlocker);
