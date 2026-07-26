@@ -64,6 +64,7 @@ namespace Volleyball.Presentation
         public ExecutionEnvelopeV4 ExecutionEnvelope { get; private set; }
         public ExecutionSampleV4 ExecutionSample { get; private set; }
         public ExecutionSampleClassificationV4 ExecutionClassification { get; private set; }
+        public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; private set; }
         internal PlayerExecutionCommand ExecutionCommand { get; private set; }
 
         public void ScheduleV4(
@@ -87,8 +88,8 @@ namespace Volleyball.Presentation
                 throw new ArgumentNullException(nameof(classification));
             }
 
-            if (classification.Kind is ExecutionSampleClassificationKindV4.UnexpectedExecutionSample
-                or ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            if (classification.Kind is not ExecutionSampleClassificationKindV4.Accepted
+                and not ExecutionSampleClassificationKindV4.EnvelopeExpanded)
             {
                 throw new InvalidOperationException("Only accepted or expanded V4 samples may be scheduled.");
             }
@@ -113,6 +114,7 @@ namespace Volleyball.Presentation
             ExecutionEnvelope = executableEnvelope;
             ExecutionSample = executableSample;
             ExecutionClassification = classification;
+            TrajectoryArtifact = trajectoryArtifact;
             ExecutionCommand = new PlayerExecutionCommand(
                 action,
                 scheduledSimulationTime,
@@ -128,6 +130,15 @@ namespace Volleyball.Presentation
                 controlledHandling,
                 trajectoryArtifact,
                 executableSample.Velocity);
+        }
+
+        internal void Clear()
+        {
+            ExecutionEnvelope = null;
+            ExecutionSample = null;
+            ExecutionClassification = null;
+            TrajectoryArtifact = null;
+            ExecutionCommand = null;
         }
     }
 }

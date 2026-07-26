@@ -2712,9 +2712,42 @@ namespace Volleyball.Presentation
                 7351,
                 0.72f);
             ExecutionErrorApplications++;
+            var executionCandidateCategory = ExecutionCandidateCategoryV4.Receive;
+            var executionIntentIdentity =
+                $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
+                $"controlled-handling:{_tacticRevision}:{_decisionIndex}:{SuccessfulContacts}:" +
+                $"{(int)decision.Actor.Team}:{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}";
+            var executionSamplingKey = executionIntentIdentity + ":sample";
+            var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
+                actor.Ability.Derived,
+                new ExecutionIntentV4(
+                    executionIntentIdentity,
+                    executionCandidateCategory,
+                    target,
+                    outgoing,
+                    requestedEffort: 0.6f),
+                executionSamplingKey,
+                ExecutionEnvelopePolicyV4.Default);
+            _lastPlannedExecutionEnvelopeV4 = plannedExecutionEnvelope;
+            var executionSample = new ExecutionSampleV4(
+                plannedExecutionEnvelope.Identity,
+                executionSamplingKey,
+                executionCandidateCategory,
+                target + execution.ContactPositionError,
+                (outgoing * execution.SurfaceSpeedScale) + execution.TargetVelocityError,
+                plannedExecutionEnvelope.RequestedEffort);
+            _lastExecutionSampleClassificationV4 = ExecuteExecutionSampleV4(
+                plannedExecutionEnvelope,
+                executionSample);
+            if (_lastExecutionSampleClassificationV4.Kind is
+                ExecutionSampleClassificationKindV4.UnexpectedExecutionSample or
+                ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                return;
+            }
             actor.ScheduleControlledHandlingContact(
                 _expectedContactTime,
-                outgoing,
+                _lastExecutionSampleClassificationV4,
                 execution,
                 NextContactGroup(),
                 decision.AttackApproach.Value,

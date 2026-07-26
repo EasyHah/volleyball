@@ -87,18 +87,15 @@ namespace Volleyball.Presentation
 
         public SimVector3 LastScheduledSurfaceNormal { get; private set; }
 
-        public ExecutionEnvelopeV4 ScheduledExecutionEnvelopeV4 { get; private set; }
+        public ExecutionEnvelopeV4 ScheduledExecutionEnvelopeV4 => _techniqueExecutor.ExecutionEnvelope;
 
-        public ExecutionSampleV4 ScheduledExecutionSampleV4 { get; private set; }
+        public ExecutionSampleV4 ScheduledExecutionSampleV4 => _techniqueExecutor.ExecutionSample;
 
-        public ExecutionSampleClassificationV4 ScheduledExecutionClassificationV4
-        {
-            get;
-            private set;
-        }
+        public ExecutionSampleClassificationV4 ScheduledExecutionClassificationV4 =>
+            _techniqueExecutor.ExecutionClassification;
 
         public BallTrajectoryPredictionArtifactV4
-            ScheduledTrajectoryPredictionArtifactV4 { get; private set; }
+            ScheduledTrajectoryPredictionArtifactV4 => _techniqueExecutor.TrajectoryArtifact;
 
         internal float MinimumActiveSurfacePlanError { get; private set; }
 
@@ -238,10 +235,6 @@ namespace Volleyball.Presentation
                 command.AttackContactPlan,
                 command.NormalSetRoute,
                 applyLegacyAttackPowerScale: false);
-            ScheduledExecutionEnvelopeV4 = _techniqueExecutor.ExecutionEnvelope;
-            ScheduledExecutionSampleV4 = _techniqueExecutor.ExecutionSample;
-            ScheduledExecutionClassificationV4 = _techniqueExecutor.ExecutionClassification;
-            ScheduledTrajectoryPredictionArtifactV4 = command.TrajectoryArtifact;
         }
 
         // Compatibility path for legacy 3v3 callers. Formal V4 scheduling is
@@ -260,10 +253,7 @@ namespace Volleyball.Presentation
             AttackContactPlan? attackContactPlan = null,
             SetRoute? normalSetRoute = null)
         {
-            ScheduledExecutionEnvelopeV4 = null;
-            ScheduledExecutionSampleV4 = null;
-            ScheduledExecutionClassificationV4 = null;
-            ScheduledTrajectoryPredictionArtifactV4 = null;
+            _techniqueExecutor.Clear();
             ScheduleContactCore(
                 action,
                 scheduledSimulationTime,
@@ -394,6 +384,53 @@ namespace Volleyball.Presentation
 
         public void ScheduleControlledHandlingContact(
             float scheduledSimulationTime,
+            ExecutionSampleClassificationV4 executionClassification,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            AttackApproachPlan attackApproach,
+            AttackContactPlan attackContactPlan,
+            float movementStartSimulationTime)
+        {
+            if (attackContactPlan.Outcome != AttackContactOutcome.Handling)
+            {
+                throw new ArgumentException(
+                    "Controlled handling requires a handling contact plan.",
+                    nameof(attackContactPlan));
+            }
+
+            _techniqueExecutor.ScheduleV4(
+                TechniqueAction.Attack,
+                scheduledSimulationTime,
+                executionClassification,
+                executionError,
+                contactGroupId,
+                attackContactPlan.ContactCenter,
+                movementTarget: ToUnity(attackApproach.ApproachStart),
+                movementStartSimulationTime: movementStartSimulationTime,
+                attackApproach: attackApproach,
+                attackContactPlan: attackContactPlan,
+                controlledHandling: true);
+            var command = _techniqueExecutor.ExecutionCommand;
+            ScheduleContactCore(
+                command.Action,
+                command.ScheduledSimulationTime,
+                command.TargetVelocity,
+                command.Error,
+                command.ContactGroupId,
+                command.PlannedContactCenter,
+                command.EmergencyOneHand,
+                command.MovementTarget,
+                command.MovementStartSimulationTime,
+                command.AttackApproach,
+                command.AttackContactPlan,
+                command.NormalSetRoute,
+                applyLegacyAttackPowerScale: false);
+            ConfigureControlledHandling(attackContactPlan);
+        }
+
+        // Compatibility path for legacy 3v3 controlled handling callers.
+        public void ScheduleControlledHandlingContact(
+            float scheduledSimulationTime,
             SimVector3 targetVelocity,
             SkillExecutionError executionError,
             int contactGroupId,
@@ -419,11 +456,14 @@ namespace Volleyball.Presentation
                 movementStartSimulationTime: movementStartSimulationTime,
                 attackApproach: attackApproach,
                 attackContactPlan: attackContactPlan);
-            _isControlledHandling = true;
             _targetVelocity = targetVelocity + executionError.TargetVelocityError;
-            _attackContactRootPosition = ContactRootPosition(
-                attackContactPlan,
-                TechniqueAction.Set);
+            ConfigureControlledHandling(attackContactPlan);
+        }
+
+        private void ConfigureControlledHandling(AttackContactPlan attackContactPlan)
+        {
+            _isControlledHandling = true;
+            _attackContactRootPosition = ContactRootPosition(attackContactPlan, TechniqueAction.Set);
         }
 
         public void ContinueAttackPreparation(
