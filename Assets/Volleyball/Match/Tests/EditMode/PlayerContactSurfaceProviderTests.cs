@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using Volleyball.Domain.Players;
@@ -41,6 +42,51 @@ namespace Volleyball.EditModeTests
                 provider.Collect(input, contacts);
 
                 Assert.That(contacts, Is.Empty);
+            }
+            finally
+            {
+                Object.DestroyImmediate(player);
+            }
+        }
+
+        [Test]
+        public void CaptureSurfaceCenter_DoesNotReplacePreviousFrameUsedByFormalContactCapture()
+        {
+            var player = new GameObject("ProviderAlignmentProbeHistory");
+            try
+            {
+                var rig = StickFigureRig.Create(player.transform, Color.blue, "2");
+                var provider = new PlayerContactSurfaceProvider(rig, player.transform);
+                var contacts = new List<BallContactCandidate>();
+                var input = new PlayerContactInput(
+                    new PlayerId(TeamId.Blue, PlayerRole.Attacker),
+                    TechniqueAction.Attack,
+                    TechniqueAction.Attack,
+                    new ActionTimelineSample(ActionPhase.Contact, 0.5f, 0f, 1f, true),
+                    802,
+                    1f,
+                    new SimVector3(0f, 2f, 8f),
+                    SetContactHand.Both);
+
+                provider.Collect(input, contacts);
+                var formalPrevious = contacts[0].Surface.Current;
+
+                player.transform.position = new Vector3(0f, 0f, 0.4f);
+                var captureSurfaceCenter = typeof(PlayerContactSurfaceProvider).GetMethod(
+                    "CaptureSurfaceCenter",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+                Assert.That(captureSurfaceCenter, Is.Not.Null);
+                captureSurfaceCenter.Invoke(provider, new object[]
+                {
+                    TechniqueAction.Attack,
+                    802,
+                    SetContactHand.Both
+                });
+                provider.Collect(input, contacts);
+
+                Assert.That(contacts[1].Surface.Previous.Origin.X, Is.EqualTo(formalPrevious.Origin.X));
+                Assert.That(contacts[1].Surface.Previous.Origin.Y, Is.EqualTo(formalPrevious.Origin.Y));
+                Assert.That(contacts[1].Surface.Previous.Origin.Z, Is.EqualTo(formalPrevious.Origin.Z));
             }
             finally
             {

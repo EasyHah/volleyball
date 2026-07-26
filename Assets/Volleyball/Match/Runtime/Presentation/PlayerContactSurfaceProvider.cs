@@ -266,11 +266,11 @@ namespace Volleyball.Presentation
             int contactGroupId,
             SetContactHand setContactHand)
         {
-            var frames = _surfaces.Capture(action, true, contactGroupId, setContactHand: setContactHand);
+            var frames = _surfaces.CaptureCurrent(action, setContactHand);
             var center = SimVector3.Zero;
             foreach (var frame in frames)
             {
-                center += frame.Current.Origin + (frame.Current.Normal * SimulatedBall.DefaultRadius);
+                center += frame.Origin + (frame.Normal * SimulatedBall.DefaultRadius);
             }
 
             return center / frames.Count;

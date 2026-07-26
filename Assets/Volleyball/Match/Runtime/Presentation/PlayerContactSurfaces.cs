@@ -34,34 +34,75 @@ namespace Volleyball.Presentation
             Vector3 localNormalErrorDegrees = default,
             SetContactHand setContactHand = SetContactHand.Both)
         {
+            return CaptureSnapshots(
+                action,
+                active,
+                contactGroupId,
+                localPositionError,
+                localNormalErrorDegrees,
+                setContactHand,
+                true);
+        }
+
+        internal IReadOnlyList<ContactSurfaceFrame> CaptureCurrent(
+            TechniqueAction action,
+            SetContactHand setContactHand = SetContactHand.Both)
+        {
+            var snapshots = CaptureSnapshots(
+                action,
+                true,
+                0,
+                default,
+                default,
+                setContactHand,
+                false);
+            var frames = new ContactSurfaceFrame[snapshots.Count];
+            for (var index = 0; index < snapshots.Count; index++)
+            {
+                frames[index] = snapshots[index].Current;
+            }
+
+            return frames;
+        }
+
+        private IReadOnlyList<ContactSurfaceSnapshot> CaptureSnapshots(
+            TechniqueAction action,
+            bool active,
+            int contactGroupId,
+            Vector3 localPositionError,
+            Vector3 localNormalErrorDegrees,
+            SetContactHand setContactHand,
+            bool recordHistory)
+        {
             return action switch
             {
                 TechniqueAction.Receive => new[]
                 {
-                    Snapshot("ForearmPlatform", BuildForearmPlatform(localPositionError, localNormalErrorDegrees), active, contactGroupId)
+                    Snapshot("ForearmPlatform", BuildForearmPlatform(localPositionError, localNormalErrorDegrees), active, contactGroupId, false, recordHistory)
                 },
                 TechniqueAction.Set => CaptureSet(
                     active,
                     contactGroupId,
                     localPositionError,
                     localNormalErrorDegrees,
-                    setContactHand),
+                    setContactHand,
+                    recordHistory),
                 TechniqueAction.Attack => new[]
                 {
                     Snapshot("AttackPalm", BuildPalm(
                         "RightPalm",
                         localPositionError,
                         localNormalErrorDegrees,
-                        true), active, contactGroupId, true)
+                        true), active, contactGroupId, true, recordHistory)
                 },
                 TechniqueAction.Block => new[]
                 {
-                    Snapshot("BlockLeftPalm", BuildBlockPalm("LeftPalm", localPositionError, localNormalErrorDegrees), active, contactGroupId),
-                    Snapshot("BlockRightPalm", BuildBlockPalm("RightPalm", localPositionError, localNormalErrorDegrees), active, contactGroupId)
+                    Snapshot("BlockLeftPalm", BuildBlockPalm("LeftPalm", localPositionError, localNormalErrorDegrees), active, contactGroupId, false, recordHistory),
+                    Snapshot("BlockRightPalm", BuildBlockPalm("RightPalm", localPositionError, localNormalErrorDegrees), active, contactGroupId, false, recordHistory)
                 },
                 TechniqueAction.Serve => new[]
                 {
-                    Snapshot("ServePalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
+                    Snapshot("ServePalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId, false, recordHistory)
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
             };
@@ -77,13 +118,14 @@ namespace Volleyball.Presentation
             int contactGroupId,
             Vector3 localPositionError,
             Vector3 localNormalErrorDegrees,
-            SetContactHand setContactHand)
+            SetContactHand setContactHand,
+            bool recordHistory)
         {
             if (setContactHand == SetContactHand.Left)
             {
                 return new[]
                 {
-                    Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                    Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId, false, recordHistory)
                 };
             }
 
@@ -91,14 +133,14 @@ namespace Volleyball.Presentation
             {
                 return new[]
                 {
-                    Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                    Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId, false, recordHistory)
                 };
             }
 
             return new[]
             {
-                Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId),
-                Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId)
+                Snapshot("LeftPalm", BuildPalm("LeftPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId, false, recordHistory),
+                Snapshot("RightPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, false), active, contactGroupId, false, recordHistory)
             };
         }
 
@@ -170,10 +212,14 @@ namespace Volleyball.Presentation
             ContactSurfaceFrame current,
             bool active,
             int contactGroupId,
-            bool twoSided = false)
+            bool twoSided,
+            bool recordHistory)
         {
             var previous = _previous.TryGetValue(key, out var stored) ? stored : current;
-            _previous[key] = current;
+            if (recordHistory)
+            {
+                _previous[key] = current;
+            }
             return new ContactSurfaceSnapshot(previous, current, active, contactGroupId, twoSided);
         }
 
