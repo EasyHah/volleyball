@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Volleyball.AI;
 using Volleyball.Domain.Players;
@@ -478,6 +479,30 @@ namespace Volleyball.EditModeTests
                 Assert.That(second.Candidates[index].IsFeasible, Is.EqualTo(first.Candidates[index].IsFeasible));
                 Assert.That(second.Candidates[index].Score, Is.EqualTo(first.Candidates[index].Score));
             }
+        }
+
+        [Test]
+        public void OrderedCandidates_ReversedInputProducesTheSameStableOrder()
+        {
+            var players = new[]
+            {
+                Snapshot(PlayerRole.OutsideHitter, 4, 0.25f),
+                Snapshot(PlayerRole.Setter, 3, 1f),
+                Snapshot(PlayerRole.Defender, 5, 0f),
+                Snapshot(PlayerRole.Attacker, 1, 0.5f)
+            };
+            var reversed = players.Reverse().ToArray();
+            var planner = new TeamRallyDecisionPlanner(17);
+
+            var first = planner.OrderedCandidates(CreateRawInput(players));
+            var second = planner.OrderedCandidates(CreateRawInput(reversed));
+
+            Assert.That(
+                second.Select(candidate => candidate.Actor),
+                Is.EqualTo(first.Select(candidate => candidate.Actor)));
+            Assert.That(
+                ((IList<RallyDecisionCandidate>)first).IsReadOnly,
+                Is.True);
         }
 
         [Test]
