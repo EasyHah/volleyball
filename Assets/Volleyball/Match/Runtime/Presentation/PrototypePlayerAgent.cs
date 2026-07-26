@@ -115,6 +115,7 @@ namespace Volleyball.Presentation
         }
 
         private readonly PlayerActionTimeline _actionTimelineState = new PlayerActionTimeline();
+        private readonly PlayerTechniqueExecutor _techniqueExecutor = new PlayerTechniqueExecutor();
         private PlayerPresentation _presentation;
         private TechniqueAction _scheduledAction;
         private SkillExecutionError _executionError;
@@ -196,48 +197,6 @@ namespace Volleyball.Presentation
         public void ScheduleContact(
             TechniqueAction action,
             float scheduledSimulationTime,
-            ExecutionEnvelopeV4 plannedEnvelope,
-            ExecutionSampleV4 executionSample,
-            SkillExecutionError executionError,
-            int contactGroupId,
-            SimVector3? plannedContactCenter = null,
-            bool emergencyOneHand = false,
-            Vector3? movementTarget = null,
-            float movementStartSimulationTime = 0f,
-            AttackApproachPlan? attackApproach = null,
-            AttackContactPlan? attackContactPlan = null,
-            SetRoute? normalSetRoute = null,
-            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
-        {
-            if (plannedEnvelope == null)
-            {
-                throw new ArgumentNullException(nameof(plannedEnvelope));
-            }
-
-            if (executionSample == null)
-            {
-                throw new ArgumentNullException(nameof(executionSample));
-            }
-
-            ScheduleContact(
-                action,
-                scheduledSimulationTime,
-                plannedEnvelope.Classify(executionSample),
-                executionError,
-                contactGroupId,
-                plannedContactCenter,
-                emergencyOneHand,
-                movementTarget,
-                movementStartSimulationTime,
-                attackApproach,
-                attackContactPlan,
-                normalSetRoute,
-                trajectoryArtifact);
-        }
-
-        public void ScheduleContact(
-            TechniqueAction action,
-            float scheduledSimulationTime,
             ExecutionSampleClassificationV4 executionClassification,
             SkillExecutionError executionError,
             int contactGroupId,
@@ -250,46 +209,11 @@ namespace Volleyball.Presentation
             SetRoute? normalSetRoute = null,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
-            if (executionClassification == null)
-            {
-                throw new ArgumentNullException(nameof(executionClassification));
-            }
-
-            if (executionClassification.Kind ==
-                    ExecutionSampleClassificationKindV4.UnexpectedExecutionSample ||
-                executionClassification.Kind ==
-                    ExecutionSampleClassificationKindV4.EnvelopeExceeded)
-            {
-                throw new InvalidOperationException(
-                    "Only accepted or explicitly expanded V4 execution samples may be scheduled.");
-            }
-
-            var executableEnvelope = executionClassification.ExecutableEnvelope ??
-                throw new InvalidOperationException(
-                    "Executable V4 envelope is required.");
-            var executableSample = executionClassification.ExecutableSample ??
-                throw new InvalidOperationException(
-                    "Executable V4 sample is required.");
-            if (executableEnvelope.Classify(executableSample).Kind !=
-                ExecutionSampleClassificationKindV4.Accepted)
-            {
-                throw new InvalidOperationException(
-                    "Expanded V4 execution must be accepted by its new envelope identity.");
-            }
-
-            var consumedVelocityError = new SkillExecutionError(
-                executionError.ReactionDelay,
-                executionError.ContactPositionError,
-                executionError.ContactNormalErrorDegrees,
-                executionError.ContactTimingError,
-                executionError.SurfaceSpeedScale,
-                SimVector3.Zero,
-                executionError.MaximumTechniqueControl);
-            ScheduleContact(
+            _techniqueExecutor.ScheduleV4(
                 action,
                 scheduledSimulationTime,
-                executableSample.Velocity,
-                consumedVelocityError,
+                executionClassification,
+                executionError,
                 contactGroupId,
                 plannedContactCenter,
                 emergencyOneHand,
@@ -297,18 +221,31 @@ namespace Volleyball.Presentation
                 movementStartSimulationTime,
                 attackApproach,
                 attackContactPlan,
-                normalSetRoute);
-
-            // The V4 sample is already the fully resolved command. The legacy
-            // overload applies an attack multiplier, so overwrite that
-            // compatibility transform instead of mutating the sample.
-            _targetVelocity = executableSample.Velocity;
-            ScheduledExecutionEnvelopeV4 = executableEnvelope;
-            ScheduledExecutionSampleV4 = executableSample;
-            ScheduledExecutionClassificationV4 = executionClassification;
-            ScheduledTrajectoryPredictionArtifactV4 = trajectoryArtifact;
+                normalSetRoute,
+                trajectoryArtifact);
+            var command = _techniqueExecutor.ExecutionCommand;
+            ScheduleContactCore(
+                command.Action,
+                command.ScheduledSimulationTime,
+                command.TargetVelocity,
+                command.Error,
+                command.ContactGroupId,
+                command.PlannedContactCenter,
+                command.EmergencyOneHand,
+                command.MovementTarget,
+                command.MovementStartSimulationTime,
+                command.AttackApproach,
+                command.AttackContactPlan,
+                command.NormalSetRoute,
+                applyLegacyAttackPowerScale: false);
+            ScheduledExecutionEnvelopeV4 = _techniqueExecutor.ExecutionEnvelope;
+            ScheduledExecutionSampleV4 = _techniqueExecutor.ExecutionSample;
+            ScheduledExecutionClassificationV4 = _techniqueExecutor.ExecutionClassification;
+            ScheduledTrajectoryPredictionArtifactV4 = command.TrajectoryArtifact;
         }
 
+        // Compatibility path for legacy 3v3 callers. Formal V4 scheduling is
+        // routed through PlayerTechniqueExecutor.ScheduleV4 above.
         public void ScheduleContact(
             TechniqueAction action,
             float scheduledSimulationTime,
@@ -327,6 +264,37 @@ namespace Volleyball.Presentation
             ScheduledExecutionSampleV4 = null;
             ScheduledExecutionClassificationV4 = null;
             ScheduledTrajectoryPredictionArtifactV4 = null;
+            ScheduleContactCore(
+                action,
+                scheduledSimulationTime,
+                targetVelocity,
+                executionError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute,
+                applyLegacyAttackPowerScale: true);
+        }
+
+        private void ScheduleContactCore(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            SimVector3 targetVelocity,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter,
+            bool emergencyOneHand,
+            Vector3? movementTarget,
+            float movementStartSimulationTime,
+            AttackApproachPlan? attackApproach,
+            AttackContactPlan? attackContactPlan,
+            SetRoute? normalSetRoute,
+            bool applyLegacyAttackPowerScale)
+        {
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
                 throw new ArgumentException("Only attack contacts may include an approach plan.", nameof(attackApproach));
@@ -357,7 +325,7 @@ namespace Volleyball.Presentation
             _scheduledAction = action;
             _observedAttackTakeoff = default;
             _hasObservedAttackTakeoff = false;
-            var powerScale = action == TechniqueAction.Attack
+            var powerScale = applyLegacyAttackPowerScale && action == TechniqueAction.Attack
                 ? 0.90f + (Ability.AttackPowerCapacity * 0.10f)
                 : 1f;
             _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;

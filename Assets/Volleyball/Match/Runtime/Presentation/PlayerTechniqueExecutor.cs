@@ -1,0 +1,133 @@
+using System;
+using UnityEngine;
+using Volleyball.AI;
+using Volleyball.Domain.Players;
+using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
+
+namespace Volleyball.Presentation
+{
+    internal sealed class PlayerExecutionCommand
+    {
+        public PlayerExecutionCommand(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            SkillExecutionError error,
+            int contactGroupId,
+            SimVector3? plannedContactCenter,
+            bool emergencyOneHand,
+            Vector3? movementTarget,
+            float movementStartSimulationTime,
+            AttackApproachPlan? attackApproach,
+            AttackContactPlan? attackContactPlan,
+            SetRoute? normalSetRoute,
+            bool controlledHandling,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
+            SimVector3 targetVelocity)
+        {
+            Action = action;
+            ScheduledSimulationTime = scheduledSimulationTime;
+            ActualContactTime = scheduledSimulationTime + error.ContactTimingError;
+            Error = error;
+            ContactGroupId = contactGroupId;
+            PlannedContactCenter = plannedContactCenter;
+            EmergencyOneHand = emergencyOneHand;
+            MovementTarget = movementTarget;
+            MovementStartSimulationTime = movementStartSimulationTime;
+            AttackApproach = attackApproach;
+            AttackContactPlan = attackContactPlan;
+            NormalSetRoute = normalSetRoute;
+            ControlledHandling = controlledHandling;
+            TrajectoryArtifact = trajectoryArtifact;
+            TargetVelocity = targetVelocity;
+        }
+
+        public TechniqueAction Action { get; }
+        public float ScheduledSimulationTime { get; }
+        public float ActualContactTime { get; }
+        public SkillExecutionError Error { get; }
+        public int ContactGroupId { get; }
+        public SimVector3? PlannedContactCenter { get; }
+        public bool EmergencyOneHand { get; }
+        public Vector3? MovementTarget { get; }
+        public float MovementStartSimulationTime { get; }
+        public AttackApproachPlan? AttackApproach { get; }
+        public AttackContactPlan? AttackContactPlan { get; }
+        public SetRoute? NormalSetRoute { get; }
+        public bool ControlledHandling { get; }
+        public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
+        public SimVector3 TargetVelocity { get; }
+    }
+
+    public sealed class PlayerTechniqueExecutor
+    {
+        public ExecutionEnvelopeV4 ExecutionEnvelope { get; private set; }
+        public ExecutionSampleV4 ExecutionSample { get; private set; }
+        public ExecutionSampleClassificationV4 ExecutionClassification { get; private set; }
+        internal PlayerExecutionCommand ExecutionCommand { get; private set; }
+
+        public void ScheduleV4(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            ExecutionSampleClassificationV4 classification,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
+            bool controlledHandling = false)
+        {
+            if (classification == null)
+            {
+                throw new ArgumentNullException(nameof(classification));
+            }
+
+            if (classification.Kind is ExecutionSampleClassificationKindV4.UnexpectedExecutionSample
+                or ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+            {
+                throw new InvalidOperationException("Only accepted or expanded V4 samples may be scheduled.");
+            }
+
+            var executableEnvelope = classification.ExecutableEnvelope ??
+                throw new InvalidOperationException("Executable V4 envelope is required.");
+            var executableSample = classification.ExecutableSample ??
+                throw new InvalidOperationException("Executable V4 sample is required.");
+            if (executableSample.EnvelopeIdentity != executableEnvelope.Identity)
+            {
+                throw new InvalidOperationException("Executable V4 sample must retain its envelope identity.");
+            }
+
+            var consumedVelocityError = new SkillExecutionError(
+                executionError.ReactionDelay,
+                executionError.ContactPositionError,
+                executionError.ContactNormalErrorDegrees,
+                executionError.ContactTimingError,
+                executionError.SurfaceSpeedScale,
+                SimVector3.Zero,
+                executionError.MaximumTechniqueControl);
+            ExecutionEnvelope = executableEnvelope;
+            ExecutionSample = executableSample;
+            ExecutionClassification = classification;
+            ExecutionCommand = new PlayerExecutionCommand(
+                action,
+                scheduledSimulationTime,
+                consumedVelocityError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute,
+                controlledHandling,
+                trajectoryArtifact,
+                executableSample.Velocity);
+        }
+    }
+}

@@ -241,6 +241,9 @@ namespace Volleyball.EditModeTests
                     player.ScheduledExecutionEnvelopeV4,
                     Is.SameAs(classification.ExpandedEnvelope));
                 Assert.That(
+                    player.ScheduledExecutionSampleV4,
+                    Is.SameAs(classification.ExecutableSample));
+                Assert.That(
                     player.ScheduledExecutionSampleV4.EnvelopeIdentity,
                     Is.EqualTo(classification.ExpandedEnvelopeIdentity));
                 Assert.That(player.ScheduledExecutionSampleV4.Target, Is.EqualTo(sample.Target));
