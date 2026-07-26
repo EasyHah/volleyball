@@ -39,6 +39,25 @@ namespace Volleyball.Match.Domain.FullRallyV3
             int expansionDepth,
             RallyPlanBranchV3? activatedDeclaredBranch = null)
         {
+            if (!Enum.IsDefined(typeof(PlanCoverageDecisionKind), kind))
+            {
+                throw new ArgumentOutOfRangeException(nameof(kind));
+            }
+
+            if (!Enum.IsDefined(typeof(PlanCoverageReason), reason))
+            {
+                throw new ArgumentOutOfRangeException(nameof(reason));
+            }
+
+            if (activatedDeclaredBranch.HasValue &&
+                !Enum.IsDefined(
+                    typeof(RallyPlanBranchV3),
+                    activatedDeclaredBranch.Value))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(activatedDeclaredBranch));
+            }
+
             if (expansionDepth < 0)
             {
                 throw new ArgumentOutOfRangeException(nameof(expansionDepth), "Expansion depth cannot be negative.");
