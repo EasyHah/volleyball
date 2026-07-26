@@ -94,7 +94,7 @@ namespace Volleyball.Shared.Contracts
             SourceIntentIdentity = ReplayContractGuardV4.Required(
                 sourceIntentIdentity,
                 nameof(sourceIntentIdentity));
-            CandidateCategory = ReplayContractGuardV4.EventKind(
+            CandidateCategory = ReplayContractGuardV4.ExecutionCandidateCategory(
                 candidateCategory,
                 nameof(candidateCategory));
             BaselineTarget = baselineTarget ??
@@ -139,7 +139,7 @@ namespace Volleyball.Shared.Contracts
             _candidateCategoryOrder = CopyRequired(
                 candidateCategoryOrder,
                 nameof(candidateCategoryOrder),
-                ReplayContractGuardV4.EventKind);
+                ReplayContractGuardV4.ExecutionCandidateCategory);
             _degradationLadder = CopyRequired(
                 degradationLadder,
                 nameof(degradationLadder),

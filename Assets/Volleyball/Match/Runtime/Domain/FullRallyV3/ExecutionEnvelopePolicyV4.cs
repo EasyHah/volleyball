@@ -11,7 +11,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
         Set,
         Attack,
         Block,
-        Serve
+        Serve,
+        SoftAction,
+        Defense
     }
 
     public enum ExecutionDegradationStepV4
@@ -58,6 +60,32 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 ExecutionEnvelopeV4.CurrentVersion,
                 policyVersion: 1,
                 FrozenCandidateOrder,
+                sampleCount: 7,
+                maximumExpansionCount: 2,
+                allowedExpansionCount: 0,
+                perStepExpansionFactor: 1.5f,
+                FrozenDegradationLadder,
+                BoundedErrorDistributionKindV4.BoundedUniform,
+                BoundedErrorDistributionKindV4.BoundedUniform);
+
+        /// <summary>
+        /// Gate I extends the frozen V4 policy with soft-contact and floor-defense
+        /// envelopes. The historical default intentionally remains byte-stable.
+        /// </summary>
+        public static ExecutionEnvelopePolicyV4 GateI { get; } =
+            new ExecutionEnvelopePolicyV4(
+                ExecutionEnvelopeV4.CurrentVersion,
+                policyVersion: 2,
+                new[]
+                {
+                    ExecutionCandidateCategoryV4.Receive,
+                    ExecutionCandidateCategoryV4.Set,
+                    ExecutionCandidateCategoryV4.Attack,
+                    ExecutionCandidateCategoryV4.Block,
+                    ExecutionCandidateCategoryV4.Serve,
+                    ExecutionCandidateCategoryV4.SoftAction,
+                    ExecutionCandidateCategoryV4.Defense
+                },
                 sampleCount: 7,
                 maximumExpansionCount: 2,
                 allowedExpansionCount: 0,
@@ -297,10 +325,10 @@ namespace Volleyball.Match.Domain.FullRallyV3
             }
 
             var copy = new List<ExecutionCandidateCategoryV4>(source);
-            if (copy.Count != Enum.GetValues(typeof(ExecutionCandidateCategoryV4)).Length)
+            if (copy.Count == 0)
             {
                 throw new ArgumentException(
-                    "Candidate order must contain every V4 category exactly once.",
+                    "Candidate order cannot be empty.",
                     nameof(source));
             }
 

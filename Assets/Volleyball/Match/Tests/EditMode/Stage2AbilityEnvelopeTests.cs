@@ -1,3 +1,4 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using Volleyball.Domain.Players;
@@ -78,6 +79,69 @@ namespace Volleyball.EditModeTests
                 classification.ExecutableEnvelope
                     .AbilityConsumptions[0],
                 Is.SameAs(envelope.AbilityConsumptions[0]));
+        }
+
+        [TestCase(
+            ExecutionCandidateCategoryV4.SoftAction,
+            "Set.SoftTouch")]
+        [TestCase(
+            ExecutionCandidateCategoryV4.Defense,
+            "Defense.PlatformControl")]
+        public void Create_GateICategoryConsumesOnlyDeclaredControl(
+            ExecutionCandidateCategoryV4 category,
+            string expectedControl)
+        {
+            var envelope = ExecutionEnvelopeFactoryV4.Create(
+                MatchV4TestFixture.CreateDerived(),
+                new ExecutionIntentV4(
+                    "gate-i-" + category,
+                    category,
+                    new SimVector3(1f, 2f, 3f),
+                    new SimVector3(1f, 1f, 1f),
+                    0.1f),
+                "gate-i-category-" + category,
+                ExecutionEnvelopePolicyV4.GateI);
+
+            Assert.That(
+                envelope.AbilityConsumptions.Select(value => value.AttributeName),
+                Does.Contain(expectedControl));
+            Assert.That(
+                envelope.AbilityConsumptions.Select(value => value.AttributeName),
+                Does.Not.Contain("Receive.FirstTouchControl"));
+        }
+
+        [Test]
+        public void HistoricalDefaultPolicyIdentityRemainsStable()
+        {
+            var historical = new ExecutionEnvelopePolicyV4(
+                ExecutionEnvelopeV4.CurrentVersion,
+                1,
+                new[]
+                {
+                    ExecutionCandidateCategoryV4.Receive,
+                    ExecutionCandidateCategoryV4.Set,
+                    ExecutionCandidateCategoryV4.Attack,
+                    ExecutionCandidateCategoryV4.Block,
+                    ExecutionCandidateCategoryV4.Serve
+                },
+                7,
+                2,
+                0,
+                1.5f,
+                new[]
+                {
+                    ExecutionDegradationStepV4.FullSampling,
+                    ExecutionDegradationStepV4.ReducedSampleCount,
+                    ExecutionDegradationStepV4.CachedCoarseDistribution,
+                    ExecutionDegradationStepV4.DeterministicSafeFallback
+                },
+                BoundedErrorDistributionKindV4.BoundedUniform,
+                BoundedErrorDistributionKindV4.BoundedUniform);
+
+            Assert.That(ExecutionEnvelopePolicyV4.Default, Is.EqualTo(historical));
+            CollectionAssert.AreEqual(
+                ExecutionEnvelopePolicyV4.Default.ToCanonicalBytes(),
+                historical.ToCanonicalBytes());
         }
 
         [Test]

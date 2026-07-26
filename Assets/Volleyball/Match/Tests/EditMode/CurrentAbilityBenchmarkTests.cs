@@ -6,6 +6,12 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using DerivedMatchAttributesV4 = Volleyball.Shared.Contracts.DerivedMatchAttributesV4;
+using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
+using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
+using MatchAttributeDerivationV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationV4;
+using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
+using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
 
 namespace Volleyball.EditModeTests
 {
@@ -269,6 +275,63 @@ namespace Volleyball.EditModeTests
                     0.1f),
                 "gate-h-fixed-key-" + category,
                 ExecutionEnvelopePolicyV4.Default);
+        }
+
+        [Test]
+        public void FixedKey_SoftTouchChangesOnlySoftActionError()
+        {
+            var low = GateIDerived(softTouch: 0.1f);
+            var high = GateIDerived(softTouch: 0.9f);
+            var lowSoft = GateIEnvelope(low, ExecutionCandidateCategoryV4.SoftAction);
+            var highSoft = GateIEnvelope(high, ExecutionCandidateCategoryV4.SoftAction);
+
+            Assert.That(
+                highSoft.TargetError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(lowSoft.TargetError.MaximumAbsoluteError.Magnitude));
+            Assert.That(
+                GateIEnvelope(high, ExecutionCandidateCategoryV4.Attack).TargetError,
+                Is.EqualTo(GateIEnvelope(low, ExecutionCandidateCategoryV4.Attack).TargetError));
+        }
+
+        [Test]
+        public void FixedKey_DefensePlatformChangesDefenseErrorNotCapacity()
+        {
+            var low = GateIDerived(defenseTechnique: 0.1f);
+            var high = GateIDerived(defenseTechnique: 0.9f);
+            var lowDefense = GateIEnvelope(low, ExecutionCandidateCategoryV4.Defense);
+            var highDefense = GateIEnvelope(high, ExecutionCandidateCategoryV4.Defense);
+
+            Assert.That(
+                highDefense.TargetError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(lowDefense.TargetError.MaximumAbsoluteError.Magnitude));
+            Assert.That(highDefense.MaximumVelocity, Is.EqualTo(lowDefense.MaximumVelocity));
+        }
+
+        private static ExecutionEnvelopeV4 GateIEnvelope(
+            DerivedMatchAttributesV4 derived,
+            ExecutionCandidateCategoryV4 category)
+        {
+            return ExecutionEnvelopeFactoryV4.Create(
+                derived,
+                new ExecutionIntentV4(
+                    "gate-i-benchmark-" + category,
+                    category,
+                    new SimVector3(1f, 2f, 3f),
+                    new SimVector3(1f, 1f, 1f),
+                    0.1f),
+                "gate-i-benchmark-key-" + category,
+                ExecutionEnvelopePolicyV4.GateI);
+        }
+
+        private static DerivedMatchAttributesV4 GateIDerived(
+            float softTouch = .72f,
+            float defenseTechnique = .72f)
+        {
+            return MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(1.91f, 2.43f, .73f, .71f, .72f, .70f),
+                new TechnicalBaseAttributesV4(.76f, .77f, .72f, defenseTechnique, .74f, .75f, .76f, softTouch, .78f),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
         }
 
         private static TeamRallyDecision AttackDecisionFor(PlayerAbilityProfile attackerAbility)

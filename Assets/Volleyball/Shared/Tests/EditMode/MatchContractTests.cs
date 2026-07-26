@@ -96,6 +96,46 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void ReplayEventCategoryCompatibility_AllowsOnlyGateISoftAndDefensePairs()
+        {
+            var hash = new string('a', 64);
+            Assert.That(
+                new ReplayActualSampleRecordV4(
+                    hash,
+                    "gate-i-sample",
+                    "SoftAction",
+                    new ReplayVector3RecordV4(1f, 2f, 3f),
+                    new ReplayVector3RecordV4(1f, 1f, 1f),
+                    .1f).CandidateCategory,
+                Is.EqualTo("SoftAction"));
+            Assert.That(
+                new ReplayActualSampleRecordV4(
+                    hash,
+                    "gate-i-defense-sample",
+                    "Defense",
+                    new ReplayVector3RecordV4(1f, 2f, 3f),
+                    new ReplayVector3RecordV4(1f, 1f, 1f),
+                    .1f).CandidateCategory,
+                Is.EqualTo("Defense"));
+            Assert.That(
+                MatchReplayEventV4.IsCandidateCategoryCompatibleWithEventKind(
+                    "Attack", "SoftAction"),
+                Is.True);
+            Assert.That(
+                MatchReplayEventV4.IsCandidateCategoryCompatibleWithEventKind(
+                    "Receive", "Defense"),
+                Is.True);
+            Assert.That(
+                MatchReplayEventV4.IsCandidateCategoryCompatibleWithEventKind(
+                    "Serve", "Defense"),
+                Is.False);
+            Assert.That(
+                MatchReplayEventV4.IsCandidateCategoryCompatibleWithEventKind(
+                    "Set", "SoftAction"),
+                Is.False);
+        }
+
+        [Test]
         public void DominantHandV4_DeclaresExactlyBothValidHands()
         {
             Assert.That(DominantHandV4.Left, Is.EqualTo((DominantHandV4)0));

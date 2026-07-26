@@ -23,7 +23,7 @@ namespace Volleyball.Shared.Contracts
             SamplingKey = ReplayContractGuardV4.Required(
                 samplingKey,
                 nameof(samplingKey));
-            CandidateCategory = ReplayContractGuardV4.EventKind(
+            CandidateCategory = ReplayContractGuardV4.ExecutionCandidateCategory(
                 candidateCategory,
                 nameof(candidateCategory));
             Target = target ??
@@ -669,12 +669,18 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException("classification is required.");
             RuleDecision = ruleDecision ??
                 throw new ContractValidationException("ruleDecision is required.");
-            if (TestedEnvelope.CandidateCategory != EventKind ||
-                ExecutableEnvelope.CandidateCategory != EventKind ||
-                Classification.ActualSample.CandidateCategory != EventKind)
+            if (!IsCandidateCategoryCompatibleWithEventKind(
+                    EventKind,
+                    TestedEnvelope.CandidateCategory) ||
+                !IsCandidateCategoryCompatibleWithEventKind(
+                    EventKind,
+                    ExecutableEnvelope.CandidateCategory) ||
+                !IsCandidateCategoryCompatibleWithEventKind(
+                    EventKind,
+                    Classification.ActualSample.CandidateCategory))
             {
                 throw new ContractValidationException(
-                    "Event kind must match both envelopes and the actual-sample category.");
+                    "Event kind is incompatible with an envelope or actual-sample category.");
             }
 
             if (TestedEnvelope.Identity !=
@@ -862,6 +868,21 @@ namespace Volleyball.Shared.Contracts
                         "An accepted Set cannot use NoLegalOrganizer.");
                 }
             }
+        }
+
+        public static bool IsCandidateCategoryCompatibleWithEventKind(
+            string eventKind,
+            string candidateCategory)
+        {
+            if (string.Equals(eventKind, candidateCategory, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
+            return (string.Equals(eventKind, "Attack", StringComparison.Ordinal) &&
+                    string.Equals(candidateCategory, "SoftAction", StringComparison.Ordinal)) ||
+                (string.Equals(eventKind, "Receive", StringComparison.Ordinal) &&
+                    string.Equals(candidateCategory, "Defense", StringComparison.Ordinal));
         }
 
         private static ReplayAbilityConsumptionRecordV4[] CopyAndSortConsumptions(
@@ -1281,6 +1302,20 @@ namespace Volleyball.Shared.Contracts
         public static string EventKind(string value, string name)
         {
             return OneOf(value, name, "Receive", "Set", "Attack", "Block", "Serve");
+        }
+
+        public static string ExecutionCandidateCategory(string value, string name)
+        {
+            return OneOf(
+                value,
+                name,
+                "Receive",
+                "Set",
+                "Attack",
+                "Block",
+                "Serve",
+                "SoftAction",
+                "Defense");
         }
 
         public static string DegradationStep(string value, string name)

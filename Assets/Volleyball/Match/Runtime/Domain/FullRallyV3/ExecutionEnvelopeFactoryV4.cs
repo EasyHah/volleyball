@@ -225,6 +225,26 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Serve.SpeedControl", serveSpeed),
                         ("Serve.PowerCapacity", servePower));
                     return;
+                case ExecutionCandidateCategoryV4.SoftAction:
+                    var softTouch = attributes.Set.SoftTouch;
+                    directionControl = softTouch;
+                    speedControl = softTouch;
+                    powerCapacity = softTouch;
+                    baseMaximumSpeed = 12f;
+                    abilityConsumptions = Consumptions(
+                        ("Set.SoftTouch", softTouch));
+                    return;
+                case ExecutionCandidateCategoryV4.Defense:
+                    var platformControl = attributes.Defense.PlatformControl;
+                    var coverageMobility = attributes.Defense.CoverageMobility;
+                    directionControl = platformControl;
+                    speedControl = platformControl;
+                    powerCapacity = coverageMobility;
+                    baseMaximumSpeed = 14f;
+                    abilityConsumptions = Consumptions(
+                        ("Defense.PlatformControl", platformControl),
+                        ("Defense.CoverageMobility", coverageMobility));
+                    return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(category), category, null);
             }
