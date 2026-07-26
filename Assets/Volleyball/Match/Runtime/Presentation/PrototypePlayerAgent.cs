@@ -136,6 +136,7 @@ namespace Volleyball.Presentation
         private bool _continueAttackPreparation;
         private bool _physicalBlockActivationLogged;
         private BlockArmContactVolumes _blockArmContactVolumes;
+        private PlayerContactSurfaceProvider _contactSurfaceProvider;
         private bool _isControlledHandling;
         private float _courtHalfLength = CourtBuilder.HalfLength;
         private PlayerLocomotion _locomotion;
@@ -162,6 +163,9 @@ namespace Volleyball.Presentation
             Ability = PlayerAbilityProfile.Default;
             ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
             _blockArmContactVolumes = new BlockArmContactVolumes(Rig);
+            _contactSurfaceProvider = new PlayerContactSurfaceProvider(
+                ContactSurfaces,
+                _blockArmContactVolumes);
             _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
         }
 
@@ -366,6 +370,7 @@ namespace Volleyball.Presentation
             _hasPlannedContactCenter = authoritativeContactCenter.HasValue;
             _plannedContactCenter = authoritativeContactCenter.GetValueOrDefault();
             MinimumActiveSurfacePlanError = float.PositiveInfinity;
+            _contactSurfaceProvider.Begin();
             _actionTimelineState.DisableSupport();
             _supportActionActivated = false;
         }
@@ -480,6 +485,7 @@ namespace Volleyball.Presentation
             _continueAttackPreparation = false;
             _actionTimelineState.CancelContact();
             _actionTimelineState.DisableSupport();
+            _contactSurfaceProvider.Clear();
             _supportActionActivated = false;
             _isControlledHandling = false;
             _hasAttackContactCommand = false;
@@ -575,6 +581,7 @@ namespace Volleyball.Presentation
                 blockContactHeight: _physicalBlockContactRootHeight);
             _physicalBlockTargetVelocity = targetVelocity;
             _physicalBlockContactGroupId = contactGroupId;
+            _contactSurfaceProvider.Begin();
             _hasPhysicalBlockContact = true;
             PhysicalBlockContactTime = scheduledSimulationTime;
             _physicalBlockActivationLogged = false;
@@ -823,15 +830,7 @@ namespace Volleyball.Presentation
                 SetRootPosition(worldPosition);
                 return _presentation.WithPreviewPose(action, _setDecision.ExecutedStyle, () =>
                 {
-                    var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
-                        .Capture(action, true, 0);
-                    var frames = new ContactSurfaceFrame[previewSurfaces.Count];
-                    for (var index = 0; index < previewSurfaces.Count; index++)
-                    {
-                        frames[index] = previewSurfaces[index].Current;
-                    }
-
-                    return frames;
+                    return new PlayerContactSurfaceProvider(Rig, transform).PreviewFrames(action);
                 });
             }
             finally
@@ -886,32 +885,6 @@ namespace Volleyball.Presentation
             var surfaceAction = _isControlledHandling
                 ? TechniqueAction.Set
                 : _scheduledAction;
-            var surfaces = ContactSurfaces.Capture(
-                surfaceAction,
-                sample.SurfaceActive,
-                _contactGroupId,
-                setContactHand: CurrentSetContactHand());
-            LastScheduledSurfaceCenter = SimVector3.Zero;
-            LastScheduledSurfaceNormal = SimVector3.Zero;
-            foreach (var surface in surfaces)
-            {
-                LastScheduledSurfaceCenter += surface.Current.Origin +
-                                              (surface.Current.Normal * SimulatedBall.DefaultRadius);
-                LastScheduledSurfaceNormal += surface.Current.Normal;
-            }
-
-            LastScheduledSurfaceCenter /= surfaces.Count;
-            LastScheduledSurfaceNormal = (LastScheduledSurfaceNormal / surfaces.Count).Normalized;
-            if (sample.SurfaceActive && _hasPlannedContactCenter)
-            {
-                MinimumActiveSurfacePlanError = Mathf.Min(
-                    MinimumActiveSurfacePlanError,
-                    (LastScheduledSurfaceCenter - _plannedContactCenter).Magnitude);
-            }
-            var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
-                ? _targetVelocity.Normalized
-                : SimVector3.Up;
-            var response = ResponseFor(contactAction);
             // AI assistance resolves the physical impulse toward this action's already-imperfect
             // execution target. Ability still changes that target, reaction time, reachable position,
             // contact pose and set-style availability before technique control is applied.
@@ -925,17 +898,21 @@ namespace Volleyball.Presentation
                 playerTechnique *= _setDecision.ControlScale;
             }
 
-            foreach (var surface in surfaces)
-            {
-                contacts.Add(new BallContactCandidate(
-                    surface,
-                    contactAction,
+            _contactSurfaceProvider.Collect(
+                new PlayerContactInput(
                     Id,
+                    contactAction,
+                    surfaceAction,
+                    sample,
+                    _contactGroupId,
                     playerTechnique,
                     _targetVelocity,
-                    strikeDirection,
-                    response));
-            }
+                    CurrentSetContactHand(),
+                    _hasPlannedContactCenter ? _plannedContactCenter : (SimVector3?)null),
+                contacts);
+            LastScheduledSurfaceCenter = _contactSurfaceProvider.LastScheduledSurfaceCenter;
+            LastScheduledSurfaceNormal = _contactSurfaceProvider.LastScheduledSurfaceNormal;
+            MinimumActiveSurfacePlanError = _contactSurfaceProvider.MinimumActiveSurfacePlanError;
 
             if (sample.Phase == ActionPhase.Complete)
             {
@@ -957,8 +934,8 @@ namespace Volleyball.Presentation
                 ? StickFigurePose.Ready
                 : StickFigurePose.Block;
             _presentation.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
-            var armVolumes = _blockArmContactVolumes.Capture(
-                sample.SurfaceActive,
+            var armVolumes = _contactSurfaceProvider.CaptureBlock(
+                sample,
                 _physicalBlockContactGroupId);
 
             if (sample.SurfaceActive)
@@ -975,21 +952,15 @@ namespace Volleyball.Presentation
                         $"{armVolumes[2].Current.End.Z:0.00})");
                 }
 
-                var strikeDirection = _physicalBlockTargetVelocity.SqrMagnitude > 0.000001f
-                    ? _physicalBlockTargetVelocity.Normalized
-                    : -new SimVector3(transform.forward.x, transform.forward.y, transform.forward.z);
-                var response = ResponseFor(TechniqueAction.Block);
-                foreach (var armVolume in armVolumes)
-                {
-                    contacts.Add(new BallContactCandidate(
-                        armVolume,
-                        TechniqueAction.Block,
-                        Id,
-                        Ability.TechniqueFor(TechniqueAction.Block),
-                        _physicalBlockTargetVelocity,
-                        strikeDirection,
-                        response));
-                }
+                _contactSurfaceProvider.CollectBlock(
+                    Id,
+                    sample,
+                    _physicalBlockContactGroupId,
+                    Ability.TechniqueFor(TechniqueAction.Block),
+                    _physicalBlockTargetVelocity,
+                    -new SimVector3(transform.forward.x, transform.forward.y, transform.forward.z),
+                    armVolumes,
+                    contacts);
             }
 
             if (sample.Phase == ActionPhase.Complete)
@@ -1022,26 +993,18 @@ namespace Volleyball.Presentation
 
             _presentation.SetPose(StickFigurePose.Receive, Mathf.Clamp01(deltaSeconds * 18f));
             var targetVelocity = _actionTimelineState.EmergencyReceiveTargetVelocity;
-            var strikeDirection = targetVelocity.SqrMagnitude > 0.000001f
-                ? targetVelocity.Normalized
-                : SimVector3.Up;
-            var response = ResponseFor(TechniqueAction.Receive);
             var playerTechnique = Ability.TechniqueFor(TechniqueAction.Receive);
-            var surfaces = ContactSurfaces.Capture(
-                TechniqueAction.Receive,
-                true,
-                _actionTimelineState.EmergencyReceiveContactGroupId);
-            foreach (var surface in surfaces)
-            {
-                contacts.Add(new BallContactCandidate(
-                    surface,
-                    TechniqueAction.Receive,
+            _contactSurfaceProvider.Collect(
+                new PlayerContactInput(
                     Id,
+                    TechniqueAction.Receive,
+                    TechniqueAction.Receive,
+                    new ActionTimelineSample(ActionPhase.Contact, 0f, 0f, 1f, true),
+                    _actionTimelineState.EmergencyReceiveContactGroupId,
                     playerTechnique,
                     targetVelocity,
-                    strikeDirection,
-                    response));
-            }
+                    SetContactHand.Both),
+                contacts);
 
             return true;
         }
@@ -1528,19 +1491,6 @@ namespace Volleyball.Presentation
                 SetTechniqueStyle.OneHandLeft => SetContactHand.Left,
                 SetTechniqueStyle.OneHandRight => SetContactHand.Right,
                 _ => SetContactHand.Both
-            };
-        }
-
-        private static ContactResponseParameters ResponseFor(TechniqueAction action)
-        {
-            return action switch
-            {
-                TechniqueAction.Receive => new ContactResponseParameters(0.85f, 1f, 0.12f, 0.08f),
-                TechniqueAction.Set => new ContactResponseParameters(0.75f, 1f, 0.08f, 0.08f),
-                TechniqueAction.Attack => new ContactResponseParameters(0.55f, 0.42f, 0.18f, 0.08f),
-                TechniqueAction.Block => new ContactResponseParameters(0.65f, 0.8f, 0.22f, 0.08f),
-                TechniqueAction.Serve => new ContactResponseParameters(0.72f, 1f, 0.15f, 0.08f),
-                _ => new ContactResponseParameters(0.75f, 1f, 0.1f, 0.08f)
             };
         }
 

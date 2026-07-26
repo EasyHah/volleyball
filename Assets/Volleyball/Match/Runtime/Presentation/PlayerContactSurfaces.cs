@@ -67,6 +67,11 @@ namespace Volleyball.Presentation
             };
         }
 
+        public void Clear()
+        {
+            _previous.Clear();
+        }
+
         private IReadOnlyList<ContactSurfaceSnapshot> CaptureSet(
             bool active,
             int contactGroupId,
