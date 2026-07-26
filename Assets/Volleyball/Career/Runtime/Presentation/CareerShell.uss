@@ -66,6 +66,27 @@
 .card-detail { font-size: 13px; color: rgb(182, 196, 209); margin-bottom: 6px; }
 .form-card { max-width: 620px; }
 .field { margin-top: 7px; margin-bottom: 7px; }
+
+.field #unity-text-input,
+.field .unity-base-popup-field__input {
+    min-height: 38px;
+    background-color: rgb(232, 239, 245);
+    color: rgb(19, 31, 45);
+    border-width: 1px;
+    border-color: rgb(94, 127, 151);
+    border-radius: 3px;
+}
+
+.field .unity-base-popup-field__text {
+    color: rgb(19, 31, 45);
+}
+
+.field #unity-text-input:focus,
+.field:focus .unity-base-popup-field__input {
+    border-width: 2px;
+    border-color: rgb(255, 214, 104);
+}
+
 .button-row { flex-direction: row; flex-wrap: wrap; margin-top: 10px; }
 
 Button {

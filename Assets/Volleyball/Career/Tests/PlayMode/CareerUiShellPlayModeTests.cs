@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -55,6 +56,33 @@ namespace Volleyball.Career.PlayModeTests
                 Assert.That(map.FindAction("Submit", true).enabled, Is.True);
                 Assert.That(map.FindAction("PageLeft", true).enabled, Is.True);
                 Assert.That(map.FindAction("PageRight", true).enabled, Is.True);
+
+                var profileName = document.rootVisualElement.Q<TextField>();
+                var jerseyNumber = document.rootVisualElement.Q<IntegerField>();
+                var dropdown = new DropdownField(
+                    "Contrast test",
+                    new List<string> { "First", "Second" },
+                    0);
+                dropdown.AddToClassList("field");
+                document.rootVisualElement.Add(dropdown);
+                try
+                {
+                    foreach (var field in new VisualElement[]
+                             {
+                                 profileName,
+                                 jerseyNumber,
+                                 dropdown
+                             })
+                    {
+                        field.Focus();
+                        yield return null;
+                        AssertReadableInputContrast(field);
+                    }
+                }
+                finally
+                {
+                    dropdown.RemoveFromHierarchy();
+                }
 
                 var submitCount = 0;
                 var submitTarget = new Button(() => submitCount++)
@@ -144,6 +172,45 @@ namespace Volleyball.Career.PlayModeTests
             Assert.That(root.layout.width, Is.GreaterThan(0f));
             Assert.That(root.layout.height, Is.GreaterThan(0f));
         }
+
+        private static void AssertReadableInputContrast(VisualElement field)
+        {
+            Assert.That(field, Is.Not.Null);
+            var input = field.Q<VisualElement>("unity-text-input") ??
+                        field.Q<VisualElement>(
+                            className: "unity-base-popup-field__input");
+            Assert.That(input, Is.Not.Null, field.GetType().Name);
+
+            var foreground = input.resolvedStyle.color;
+            var background = input.resolvedStyle.backgroundColor;
+            var contrast = ContrastRatio(foreground, background);
+            Assert.That(
+                contrast,
+                Is.GreaterThanOrEqualTo(4.5f),
+                $"{field.GetType().Name} foreground {foreground} and " +
+                $"background {background} only provide {contrast:F2}:1 contrast.");
+        }
+
+        private static float ContrastRatio(Color foreground, Color background)
+        {
+            var lighter = Mathf.Max(
+                RelativeLuminance(foreground),
+                RelativeLuminance(background));
+            var darker = Mathf.Min(
+                RelativeLuminance(foreground),
+                RelativeLuminance(background));
+            return (lighter + 0.05f) / (darker + 0.05f);
+        }
+
+        private static float RelativeLuminance(Color color) =>
+            (0.2126f * LinearChannel(color.r)) +
+            (0.7152f * LinearChannel(color.g)) +
+            (0.0722f * LinearChannel(color.b));
+
+        private static float LinearChannel(float channel) =>
+            channel <= 0.04045f
+                ? channel / 12.92f
+                : Mathf.Pow((channel + 0.055f) / 1.055f, 2.4f);
 
         private static T Required<T>(string path) where T : UnityEngine.Object
         {
