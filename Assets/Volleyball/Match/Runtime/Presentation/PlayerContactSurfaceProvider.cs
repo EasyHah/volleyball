@@ -66,6 +66,8 @@ namespace Volleyball.Presentation
         public SimVector3 LastScheduledSurfaceNormal { get; private set; }
         public float MinimumActiveSurfacePlanError { get; private set; } = float.PositiveInfinity;
 
+        public PlayerContactSurfaces Surfaces => _surfaces;
+
         public void Begin()
         {
             _cleared = false;

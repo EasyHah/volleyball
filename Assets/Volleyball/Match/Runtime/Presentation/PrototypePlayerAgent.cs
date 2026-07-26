@@ -49,13 +49,15 @@ namespace Volleyball.Presentation
 
         public PlayerAbilityProfile Ability { get; private set; }
 
-        public PlayerContactSurfaces ContactSurfaces { get; private set; }
+        public PlayerContactSurfaces ContactSurfaces => _contactSurfaceProvider == null
+            ? null
+            : _contactSurfaceProvider.Surfaces;
 
-        public SetTechniqueStyle CurrentSetStyle => _setDecision.ExecutedStyle;
+        public SetTechniqueStyle CurrentSetStyle => State.SetDecision.ExecutedStyle;
 
-        public SetTechniqueStyle RequestedSetStyle => _setDecision.RequestedStyle;
+        public SetTechniqueStyle RequestedSetStyle => State.SetDecision.RequestedStyle;
 
-        public SimVector3 PreparedForward { get; private set; }
+        public SimVector3 PreparedForward { get => State.PreparedForward; private set => State.PreparedForward = value; }
 
         public Vector3 ScheduledMovementTarget => _hasPhysicalBlockContact || _actionTimelineState.HasSupportAction
             ? _locomotion.SupportTarget
@@ -73,19 +75,19 @@ namespace Volleyball.Presentation
 
         public float ScheduledMovementDistance => _locomotion == null ? 0f : _locomotion.ScheduledMovementDistance;
 
-        public int PhysicalBlockContactAssignments { get; private set; }
+        public int PhysicalBlockContactAssignments { get => State.PhysicalBlockContactAssignments; private set => State.PhysicalBlockContactAssignments = value; }
 
-        public float BlockRetargetDistance { get; private set; }
+        public float BlockRetargetDistance { get => State.BlockRetargetDistance; private set => State.BlockRetargetDistance = value; }
 
-        public float BlockRetargetTimeShift { get; private set; }
+        public float BlockRetargetTimeShift { get => State.BlockRetargetTimeShift; private set => State.BlockRetargetTimeShift = value; }
 
-        public float PhysicalBlockContactTime { get; private set; }
+        public float PhysicalBlockContactTime { get => State.PhysicalBlockContactTime; private set => State.PhysicalBlockContactTime = value; }
 
         public float MaximumAppliedContactCorrection => _locomotion == null ? 0f : _locomotion.MaximumAppliedContactCorrection;
 
-        public SimVector3 LastScheduledSurfaceCenter { get; private set; }
+        public SimVector3 LastScheduledSurfaceCenter => _contactSurfaceProvider == null ? SimVector3.Zero : _contactSurfaceProvider.LastScheduledSurfaceCenter;
 
-        public SimVector3 LastScheduledSurfaceNormal { get; private set; }
+        public SimVector3 LastScheduledSurfaceNormal => _contactSurfaceProvider == null ? SimVector3.Zero : _contactSurfaceProvider.LastScheduledSurfaceNormal;
 
         public ExecutionEnvelopeV4 ScheduledExecutionEnvelopeV4 => _techniqueExecutor.ExecutionEnvelope;
 
@@ -97,7 +99,7 @@ namespace Volleyball.Presentation
         public BallTrajectoryPredictionArtifactV4
             ScheduledTrajectoryPredictionArtifactV4 => _techniqueExecutor.TrajectoryArtifact;
 
-        internal float MinimumActiveSurfacePlanError { get; private set; }
+        internal float MinimumActiveSurfacePlanError => _contactSurfaceProvider == null ? float.PositiveInfinity : _contactSurfaceProvider.MinimumActiveSurfacePlanError;
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
@@ -114,35 +116,34 @@ namespace Volleyball.Presentation
         private readonly PlayerActionTimeline _actionTimelineState = new PlayerActionTimeline();
         private readonly PlayerTechniqueExecutor _techniqueExecutor = new PlayerTechniqueExecutor();
         private PlayerPresentation _presentation;
-        private TechniqueAction _scheduledAction;
-        private SkillExecutionError _executionError;
-        private SimVector3 _targetVelocity;
-        private int _contactGroupId;
-        private Vector3 _motionOrigin;
-        private Vector3 _motionForward;
-        private SimVector3 _plannedContactCenter;
-        private bool _hasPlannedContactCenter;
-        private SetTechniqueDecision _setDecision;
-        private bool _isMovingThisStep;
-        private bool _supportActionActivated;
-        private bool _hasPhysicalBlockContact;
-        private SimVector3 _physicalBlockTargetVelocity;
-        private int _physicalBlockContactGroupId;
-        private float _physicalBlockContactRootHeight;
-        private AttackContactPlan _attackContactPlan;
-        private bool _hasAttackContactCommand;
-        private ObservedAttackTakeoff _observedAttackTakeoff;
-        private bool _hasObservedAttackTakeoff;
-        private bool _continueAttackPreparation;
-        private bool _physicalBlockActivationLogged;
-        private BlockArmContactVolumes _blockArmContactVolumes;
+        private TechniqueAction _scheduledAction { get => State.ScheduledAction; set => State.ScheduledAction = value; }
+        private SkillExecutionError _executionError { get => State.ExecutionError; set => State.ExecutionError = value; }
+        private SimVector3 _targetVelocity { get => State.TargetVelocity; set => State.TargetVelocity = value; }
+        private int _contactGroupId { get => State.ContactGroupId; set => State.ContactGroupId = value; }
+        private Vector3 _motionOrigin { get => State.MotionOrigin; set => State.MotionOrigin = value; }
+        private Vector3 _motionForward { get => State.MotionForward; set => State.MotionForward = value; }
+        private SimVector3 _plannedContactCenter { get => State.PlannedContactCenter; set => State.PlannedContactCenter = value; }
+        private bool _hasPlannedContactCenter { get => State.HasPlannedContactCenter; set => State.HasPlannedContactCenter = value; }
+        private SetTechniqueDecision _setDecision { get => State.SetDecision; set => State.SetDecision = value; }
+        private bool _isMovingThisStep { get => State.IsMovingThisStep; set => State.IsMovingThisStep = value; }
+        private bool _supportActionActivated { get => State.SupportActionActivated; set => State.SupportActionActivated = value; }
+        private bool _hasPhysicalBlockContact { get => State.HasPhysicalBlockContact; set => State.HasPhysicalBlockContact = value; }
+        private SimVector3 _physicalBlockTargetVelocity { get => State.PhysicalBlockTargetVelocity; set => State.PhysicalBlockTargetVelocity = value; }
+        private int _physicalBlockContactGroupId { get => State.PhysicalBlockContactGroupId; set => State.PhysicalBlockContactGroupId = value; }
+        private float _physicalBlockContactRootHeight { get => State.PhysicalBlockContactRootHeight; set => State.PhysicalBlockContactRootHeight = value; }
+        private AttackContactPlan _attackContactPlan { get => State.AttackContactPlan; set => State.AttackContactPlan = value; }
+        private bool _hasAttackContactCommand { get => State.HasAttackContactCommand; set => State.HasAttackContactCommand = value; }
+        private ObservedAttackTakeoff _observedAttackTakeoff { get => State.ObservedAttackTakeoff; set => State.ObservedAttackTakeoff = value; }
+        private bool _hasObservedAttackTakeoff { get => State.HasObservedAttackTakeoff; set => State.HasObservedAttackTakeoff = value; }
+        private bool _continueAttackPreparation { get => State.ContinueAttackPreparation; set => State.ContinueAttackPreparation = value; }
+        private bool _physicalBlockActivationLogged { get => State.PhysicalBlockActivationLogged; set => State.PhysicalBlockActivationLogged = value; }
         private PlayerContactSurfaceProvider _contactSurfaceProvider;
-        private ScheduledContactExecution _contactExecution;
-        private bool _isControlledHandling;
+        private ScheduledContactExecution _contactExecution { get => State.ContactExecution; set => State.ContactExecution = value; }
+        private bool _isControlledHandling { get => State.IsControlledHandling; set => State.IsControlledHandling = value; }
         private float _courtHalfLength = CourtBuilder.HalfLength;
         private PlayerLocomotion _locomotion;
 
-        private readonly struct ScheduledContactExecution
+        internal readonly struct ScheduledContactExecution
         {
             public ScheduledContactExecution(
                 TechniqueAction contactAction,
@@ -185,6 +186,8 @@ namespace Volleyball.Presentation
             }
         }
 
+        private PlayerAgentRuntimeState State => _actionTimelineState.Runtime;
+
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
             var prefix = id.Team == TeamId.Blue ? "home-" : "away-";
@@ -205,11 +208,11 @@ namespace Volleyball.Presentation
             StableId = stableId;
             _presentation = new PlayerPresentation(transform, color, jerseyNumber);
             Ability = PlayerAbilityProfile.Default;
-            ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
-            _blockArmContactVolumes = new BlockArmContactVolumes(Rig);
+            var surfaces = new PlayerContactSurfaces(Rig, transform);
+            var blockArmContactVolumes = new BlockArmContactVolumes(Rig);
             _contactSurfaceProvider = new PlayerContactSurfaceProvider(
-                ContactSurfaces,
-                _blockArmContactVolumes);
+                surfaces,
+                blockArmContactVolumes);
             _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
         }
 
@@ -439,7 +442,6 @@ namespace Volleyball.Presentation
                 _targetVelocity,
                 CurrentSetContactHand(),
                 authoritativeContactCenter);
-            MinimumActiveSurfacePlanError = float.PositiveInfinity;
             _contactSurfaceProvider.Begin();
             _actionTimelineState.DisableSupport();
             _supportActionActivated = false;
@@ -566,9 +568,6 @@ namespace Volleyball.Presentation
             _actionTimelineState.DisableSupport();
             _contactSurfaceProvider.Clear();
             _contactExecution = default;
-            LastScheduledSurfaceCenter = SimVector3.Zero;
-            LastScheduledSurfaceNormal = SimVector3.Zero;
-            MinimumActiveSurfacePlanError = float.PositiveInfinity;
             _supportActionActivated = false;
             _isControlledHandling = false;
             _hasAttackContactCommand = false;
@@ -965,9 +964,6 @@ namespace Volleyball.Presentation
             _contactSurfaceProvider.Collect(
                 _contactExecution.WithSample(Id, sample),
                 contacts);
-            LastScheduledSurfaceCenter = _contactSurfaceProvider.LastScheduledSurfaceCenter;
-            LastScheduledSurfaceNormal = _contactSurfaceProvider.LastScheduledSurfaceNormal;
-            MinimumActiveSurfacePlanError = _contactSurfaceProvider.MinimumActiveSurfacePlanError;
 
             if (sample.Phase == ActionPhase.Complete)
             {

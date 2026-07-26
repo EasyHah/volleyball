@@ -482,6 +482,7 @@ namespace Volleyball.PlayModeTests
             }
 
             CollectionAssert.AreEqual(payloads[0], payloads[1]);
+            Assert.That(second.ReplayHash, Is.EqualTo(first.ReplayHash));
             Assert.That(second.Events.Count, Is.EqualTo(first.Events.Count));
             for (var eventIndex = 0;
                  eventIndex < first.Events.Count;
@@ -506,6 +507,15 @@ namespace Volleyball.PlayModeTests
                 Assert.That(
                     right.Classification.Kind,
                     Is.EqualTo(left.Classification.Kind));
+                Assert.That(right.HomeScore, Is.EqualTo(left.HomeScore));
+                Assert.That(right.AwayScore, Is.EqualTo(left.AwayScore));
+                Assert.That(right.ActorPlayerId, Is.EqualTo(left.ActorPlayerId));
+                Assert.That(right.EventKind, Is.EqualTo(left.EventKind));
+                Assert.That(right.Shadow, Is.Not.Null);
+                Assert.That(left.Shadow, Is.Not.Null);
+                Assert.That(
+                    right.Shadow.ArtifactIdentity,
+                    Is.EqualTo(left.Shadow.ArtifactIdentity));
                 Assert.That(
                     right.AbilityConsumptions.Count,
                     Is.EqualTo(left.AbilityConsumptions.Count));

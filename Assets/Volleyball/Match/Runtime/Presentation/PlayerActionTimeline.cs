@@ -1,9 +1,46 @@
 using System;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Simulation;
+using Volleyball.AI;
+using Volleyball.Match.Domain.FullRallyV3;
+using UnityEngine;
 
 namespace Volleyball.Presentation
 {
+    // The facade coordinates these values; their lifetime is owned by the action component.
+    // Keeping them here prevents the MonoBehaviour facade from becoming a second runtime store.
+    internal sealed class PlayerAgentRuntimeState
+    {
+        public TechniqueAction ScheduledAction;
+        public SkillExecutionError ExecutionError;
+        public SimVector3 TargetVelocity;
+        public int ContactGroupId;
+        public SimVector3 PreparedForward;
+        public Vector3 MotionOrigin;
+        public Vector3 MotionForward;
+        public SimVector3 PlannedContactCenter;
+        public bool HasPlannedContactCenter;
+        public SetTechniqueDecision SetDecision;
+        public bool IsMovingThisStep;
+        public bool SupportActionActivated;
+        public bool HasPhysicalBlockContact;
+        public SimVector3 PhysicalBlockTargetVelocity;
+        public int PhysicalBlockContactGroupId;
+        public float PhysicalBlockContactRootHeight;
+        public AttackContactPlan AttackContactPlan;
+        public bool HasAttackContactCommand;
+        public ObservedAttackTakeoff ObservedAttackTakeoff;
+        public bool HasObservedAttackTakeoff;
+        public bool ContinueAttackPreparation;
+        public bool PhysicalBlockActivationLogged;
+        public int PhysicalBlockContactAssignments;
+        public float BlockRetargetDistance;
+        public float BlockRetargetTimeShift;
+        public float PhysicalBlockContactTime;
+        public PrototypePlayerAgent.ScheduledContactExecution ContactExecution;
+        public bool IsControlledHandling;
+    }
+
     public sealed class PlayerActionTimeline
     {
         private ActionTimeline _contactTimeline;
@@ -15,6 +52,8 @@ namespace Volleyball.Presentation
         private float _emergencyReceiveEndSimulationTime;
         private SimVector3 _emergencyReceiveTargetVelocity;
         private int _emergencyReceiveContactGroupId;
+
+        internal PlayerAgentRuntimeState Runtime { get; } = new PlayerAgentRuntimeState();
 
         public bool HasScheduledContact => _contactTimeline != null;
 

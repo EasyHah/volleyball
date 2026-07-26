@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 using Volleyball.AI;
@@ -12,6 +13,35 @@ namespace Volleyball.EditModeTests
 {
     public sealed class PrototypePlayerContactSourceTests
     {
+        [Test]
+        public void Facade_DeclaresOnlyIdentityConfigurationAndComponentFields()
+        {
+            var allowed = new HashSet<string>
+            {
+                "_moveSpeed",
+                "_courtHalfLength",
+                "<Id>k__BackingField",
+                "<StableId>k__BackingField",
+                "<Ability>k__BackingField",
+                "_actionTimelineState",
+                "_techniqueExecutor",
+                "_presentation",
+                "_contactSurfaceProvider",
+                "_locomotion",
+                "SupportActionActivated"
+            };
+            var fields = typeof(PrototypePlayerAgent).GetFields(
+                BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+
+            foreach (var field in fields)
+            {
+                Assert.That(
+                    allowed.Contains(field.Name),
+                    Is.True,
+                    "Facade-owned business state: " + field.Name);
+            }
+        }
+
         [Test]
         public void CancelScheduledContact_ClearsContactDiagnosticsAndFutureCandidates()
         {
