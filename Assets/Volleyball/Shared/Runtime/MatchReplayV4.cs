@@ -354,6 +354,157 @@ namespace Volleyball.Shared.Contracts
         public string ActivatedDeclaredBranch { get; }
     }
 
+    public sealed class ReplayOrganizationAuthorityRecordV4
+    {
+        public ReplayOrganizationAuthorityRecordV4(
+            int planRevision,
+            int sourceSequenceNumber,
+            string authorityPhase,
+            ReplayVector3RecordV4 organizationTarget,
+            ReplayVector3RecordV4 actualFirstPassLanding,
+            string zoneGrade,
+            string registeredSetterPlayerId,
+            string setterStatus,
+            float setterMovementMeters,
+            float setterReactionDelaySeconds,
+            float setterReachMarginMeters,
+            string organizerPlayerId,
+            string fallbackReason,
+            string activatedBranch,
+            string testedEnvelopeIdentity,
+            string executableEnvelopeIdentity,
+            string sampleEnvelopeIdentity,
+            string trajectoryArtifactIdentity,
+            ReplayCoverageDecisionRecordV4 coverage)
+        {
+            PlanRevision = ReplayContractGuardV4.NonNegative(
+                planRevision,
+                nameof(planRevision));
+            SourceSequenceNumber = ReplayContractGuardV4.Positive(
+                sourceSequenceNumber,
+                nameof(sourceSequenceNumber));
+            AuthorityPhase = ReplayContractGuardV4.OneOf(
+                authorityPhase,
+                nameof(authorityPhase),
+                "Receive",
+                "Organize");
+            OrganizationTarget = organizationTarget ??
+                throw new ContractValidationException(
+                    "organizationTarget is required.");
+            ActualFirstPassLanding = actualFirstPassLanding;
+            ZoneGrade = ReplayContractGuardV4.OneOf(
+                zoneGrade,
+                nameof(zoneGrade),
+                "Best",
+                "Secondary",
+                "Poor");
+            RegisteredSetterPlayerId = ReplayContractGuardV4.Required(
+                registeredSetterPlayerId,
+                nameof(registeredSetterPlayerId));
+            SetterStatus = ReplayContractGuardV4.OneOf(
+                setterStatus,
+                nameof(setterStatus),
+                "Reachable",
+                "PreviousTouch",
+                "Unavailable",
+                "Illegal",
+                "Unreachable");
+            SetterMovementMeters = NonNegativeFinite(
+                setterMovementMeters,
+                nameof(setterMovementMeters));
+            SetterReactionDelaySeconds = NonNegativeFinite(
+                setterReactionDelaySeconds,
+                nameof(setterReactionDelaySeconds));
+            SetterReachMarginMeters = ReplayContractGuardV4.Finite(
+                setterReachMarginMeters,
+                nameof(setterReachMarginMeters));
+            OrganizerPlayerId = string.IsNullOrWhiteSpace(organizerPlayerId)
+                ? null
+                : ReplayContractGuardV4.Required(
+                    organizerPlayerId,
+                    nameof(organizerPlayerId));
+            FallbackReason = ReplayContractGuardV4.OneOf(
+                fallbackReason,
+                nameof(fallbackReason),
+                "None",
+                "SetterPreviousTouch",
+                "SetterUnavailable",
+                "SetterIllegal",
+                "SetterUnreachable",
+                "NoLegalOrganizer");
+            ActivatedBranch = activatedBranch == null
+                ? null
+                : ReplayContractGuardV4.OneOf(
+                    activatedBranch,
+                    nameof(activatedBranch),
+                    "Primary",
+                    "Contingency");
+            TestedEnvelopeIdentity = ReplayContractGuardV4.Hash(
+                testedEnvelopeIdentity,
+                nameof(testedEnvelopeIdentity));
+            ExecutableEnvelopeIdentity = ReplayContractGuardV4.Hash(
+                executableEnvelopeIdentity,
+                nameof(executableEnvelopeIdentity));
+            SampleEnvelopeIdentity = ReplayContractGuardV4.Hash(
+                sampleEnvelopeIdentity,
+                nameof(sampleEnvelopeIdentity));
+            TrajectoryArtifactIdentity = ReplayContractGuardV4.Hash(
+                trajectoryArtifactIdentity,
+                nameof(trajectoryArtifactIdentity));
+            Coverage = coverage ??
+                throw new ContractValidationException("coverage is required.");
+
+            if (FallbackReason == "None" &&
+                !string.Equals(
+                    OrganizerPlayerId,
+                    RegisteredSetterPlayerId,
+                    StringComparison.Ordinal))
+            {
+                throw new ContractValidationException(
+                    "None fallback requires the registered setter organizer.");
+            }
+
+            if (FallbackReason == "NoLegalOrganizer" &&
+                OrganizerPlayerId != null)
+            {
+                throw new ContractValidationException(
+                    "NoLegalOrganizer cannot identify an organizer.");
+            }
+        }
+
+        public int PlanRevision { get; }
+        public int SourceSequenceNumber { get; }
+        public string AuthorityPhase { get; }
+        public ReplayVector3RecordV4 OrganizationTarget { get; }
+        public ReplayVector3RecordV4 ActualFirstPassLanding { get; }
+        public string ZoneGrade { get; }
+        public string RegisteredSetterPlayerId { get; }
+        public string SetterStatus { get; }
+        public float SetterMovementMeters { get; }
+        public float SetterReactionDelaySeconds { get; }
+        public float SetterReachMarginMeters { get; }
+        public string OrganizerPlayerId { get; }
+        public string FallbackReason { get; }
+        public string ActivatedBranch { get; }
+        public string TestedEnvelopeIdentity { get; }
+        public string ExecutableEnvelopeIdentity { get; }
+        public string SampleEnvelopeIdentity { get; }
+        public string TrajectoryArtifactIdentity { get; }
+        public ReplayCoverageDecisionRecordV4 Coverage { get; }
+
+        private static float NonNegativeFinite(float value, string parameterName)
+        {
+            value = ReplayContractGuardV4.Finite(value, parameterName);
+            if (value < 0f)
+            {
+                throw new ContractValidationException(
+                    parameterName + " must be non-negative.");
+            }
+
+            return value;
+        }
+    }
+
     public sealed class ReplayShadowRecordV4
     {
         public ReplayShadowRecordV4(
@@ -426,6 +577,7 @@ namespace Volleyball.Shared.Contracts
                 classification,
                 observedP6Geometry,
                 ruleDecision,
+                null,
                 null)
         {
         }
@@ -445,6 +597,41 @@ namespace Volleyball.Shared.Contracts
             ReplayObservedP6GeometryRecordV4 observedP6Geometry,
             ReplayRuleDecisionRecordV4 ruleDecision,
             ReplayShadowRecordV4 shadow)
+            : this(
+                sequenceNumber,
+                eventKind,
+                actorPlayerId,
+                simulationTimeSeconds,
+                homeScore,
+                awayScore,
+                testedEnvelope,
+                executableEnvelope,
+                trajectory,
+                abilityConsumptions,
+                classification,
+                observedP6Geometry,
+                ruleDecision,
+                shadow,
+                null)
+        {
+        }
+
+        public MatchReplayEventV4(
+            int sequenceNumber,
+            string eventKind,
+            string actorPlayerId,
+            float simulationTimeSeconds,
+            int homeScore,
+            int awayScore,
+            ReplayExecutionEnvelopeRecordV4 testedEnvelope,
+            ReplayExecutionEnvelopeRecordV4 executableEnvelope,
+            ReplayTrajectoryArtifactRecordV4 trajectory,
+            IReadOnlyList<ReplayAbilityConsumptionRecordV4> abilityConsumptions,
+            ReplaySampleClassificationRecordV4 classification,
+            ReplayObservedP6GeometryRecordV4 observedP6Geometry,
+            ReplayRuleDecisionRecordV4 ruleDecision,
+            ReplayShadowRecordV4 shadow,
+            ReplayOrganizationAuthorityRecordV4 organizationAuthority)
         {
             SequenceNumber = ReplayContractGuardV4.NonNegative(
                 sequenceNumber,
@@ -586,6 +773,9 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException(
                     "Shadow artifact identity must match the event trajectory.");
             }
+
+            OrganizationAuthority = organizationAuthority;
+            ValidateOrganizationAuthority();
         }
 
         public int SequenceNumber { get; }
@@ -604,6 +794,75 @@ namespace Volleyball.Shared.Contracts
         public ReplayObservedP6GeometryRecordV4 ObservedP6Geometry { get; }
         public ReplayRuleDecisionRecordV4 RuleDecision { get; }
         public ReplayShadowRecordV4 Shadow { get; }
+        public ReplayOrganizationAuthorityRecordV4 OrganizationAuthority { get; }
+
+        private void ValidateOrganizationAuthority()
+        {
+            if (OrganizationAuthority == null)
+            {
+                return;
+            }
+
+            if (EventKind != "Receive" && EventKind != "Set")
+            {
+                throw new ContractValidationException(
+                    "Organization authority is valid only for Receive or Set events.");
+            }
+
+            var expectedPhase = EventKind == "Receive"
+                ? "Receive"
+                : "Organize";
+            if (OrganizationAuthority.AuthorityPhase != expectedPhase)
+            {
+                throw new ContractValidationException(
+                    "Organization authority phase must match the replay event kind.");
+            }
+
+            if (OrganizationAuthority.TestedEnvelopeIdentity !=
+                    TestedEnvelope.Identity ||
+                OrganizationAuthority.ExecutableEnvelopeIdentity !=
+                    ExecutableEnvelope.Identity ||
+                OrganizationAuthority.SampleEnvelopeIdentity !=
+                    Classification.ActualSample.EnvelopeIdentity ||
+                OrganizationAuthority.TrajectoryArtifactIdentity !=
+                    Trajectory.ArtifactIdentity)
+            {
+                throw new ContractValidationException(
+                    "Organization authority identities must match event-owned evidence.");
+            }
+
+            if (EventKind == "Receive" &&
+                OrganizationAuthority.ActualFirstPassLanding != null)
+            {
+                throw new ContractValidationException(
+                    "Receive authority cannot contain an actual first-pass landing.");
+            }
+
+            if (EventKind == "Set")
+            {
+                if (OrganizationAuthority.ActualFirstPassLanding == null)
+                {
+                    throw new ContractValidationException(
+                        "Set authority requires the actual first-pass landing.");
+                }
+
+                if (!string.Equals(
+                        ActorPlayerId,
+                        OrganizationAuthority.OrganizerPlayerId,
+                        StringComparison.Ordinal))
+                {
+                    throw new ContractValidationException(
+                        "Set event actor must match the authority organizer.");
+                }
+
+                if (OrganizationAuthority.FallbackReason ==
+                    "NoLegalOrganizer")
+                {
+                    throw new ContractValidationException(
+                        "An accepted Set cannot use NoLegalOrganizer.");
+                }
+            }
+        }
 
         private static ReplayAbilityConsumptionRecordV4[] CopyAndSortConsumptions(
             IReadOnlyList<ReplayAbilityConsumptionRecordV4> source)
@@ -1282,13 +1541,20 @@ namespace Volleyball.Shared.Contracts
                 ParseRuleDecision(
                     StrictJsonV4.RequiredObject(value, "ruleDecision")),
                 ParseShadow(
-                    StrictJsonV4.OptionalNullableObject(value, "shadow")));
+                    StrictJsonV4.OptionalNullableObject(value, "shadow")),
+                ParseOrganizationAuthority(
+                    StrictJsonV4.OptionalNullableObject(
+                        value,
+                        "organizationAuthority")));
         }
 
         private static void RequireEventProperties(StrictJsonObjectV4 value)
         {
             var hasShadow = value.Properties.ContainsKey("shadow");
-            if (value.Properties.Count != (hasShadow ? 14 : 13))
+            var hasAuthority =
+                value.Properties.ContainsKey("organizationAuthority");
+            if (value.Properties.Count !=
+                13 + (hasShadow ? 1 : 0) + (hasAuthority ? 1 : 0))
             {
                 throw new ContractValidationException(
                     "JSON object fields do not match the native V4 schema.");
@@ -1310,6 +1576,76 @@ namespace Volleyball.Shared.Contracts
                         "Required native V4 JSON field is missing: " + required[index] + ".");
                 }
             }
+        }
+
+        private static ReplayOrganizationAuthorityRecordV4
+            ParseOrganizationAuthority(StrictJsonObjectV4 value)
+        {
+            if (value == null) return null;
+            StrictJsonV4.RequireExactProperties(
+                value,
+                "planRevision",
+                "sourceSequenceNumber",
+                "authorityPhase",
+                "organizationTarget",
+                "actualFirstPassLanding",
+                "zoneGrade",
+                "registeredSetterPlayerId",
+                "setterStatus",
+                "setterMovementMeters",
+                "setterReactionDelaySeconds",
+                "setterReachMarginMeters",
+                "organizerPlayerId",
+                "fallbackReason",
+                "activatedBranch",
+                "testedEnvelopeIdentity",
+                "executableEnvelopeIdentity",
+                "sampleEnvelopeIdentity",
+                "trajectoryArtifactIdentity",
+                "coverage");
+            var landing = StrictJsonV4.RequiredNullableObject(
+                value,
+                "actualFirstPassLanding");
+            return new ReplayOrganizationAuthorityRecordV4(
+                StrictJsonV4.RequiredInt(value, "planRevision"),
+                StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"),
+                StrictJsonV4.RequiredString(value, "authorityPhase"),
+                ParseVector(
+                    StrictJsonV4.RequiredObject(
+                        value,
+                        "organizationTarget")),
+                landing == null ? null : ParseVector(landing),
+                StrictJsonV4.RequiredString(value, "zoneGrade"),
+                StrictJsonV4.RequiredString(
+                    value,
+                    "registeredSetterPlayerId"),
+                StrictJsonV4.RequiredString(value, "setterStatus"),
+                StrictJsonV4.RequiredFloat(value, "setterMovementMeters"),
+                StrictJsonV4.RequiredFloat(
+                    value,
+                    "setterReactionDelaySeconds"),
+                StrictJsonV4.RequiredFloat(value, "setterReachMarginMeters"),
+                StrictJsonV4.RequiredNullableString(
+                    value,
+                    "organizerPlayerId"),
+                StrictJsonV4.RequiredString(value, "fallbackReason"),
+                StrictJsonV4.RequiredNullableString(
+                    value,
+                    "activatedBranch"),
+                StrictJsonV4.RequiredString(
+                    value,
+                    "testedEnvelopeIdentity"),
+                StrictJsonV4.RequiredString(
+                    value,
+                    "executableEnvelopeIdentity"),
+                StrictJsonV4.RequiredString(
+                    value,
+                    "sampleEnvelopeIdentity"),
+                StrictJsonV4.RequiredString(
+                    value,
+                    "trajectoryArtifactIdentity"),
+                ParseCoverage(
+                    StrictJsonV4.RequiredObject(value, "coverage")));
         }
 
         private static ReplayShadowRecordV4 ParseShadow(StrictJsonObjectV4 value)
@@ -1786,7 +2122,103 @@ namespace Volleyball.Shared.Contracts
                 AppendShadow(output, replayEvent.Shadow, legacyShadowCoverage);
             }
 
+            if (replayEvent.OrganizationAuthority != null)
+            {
+                output.Append(",\"organizationAuthority\":");
+                AppendOrganizationAuthority(
+                    output,
+                    replayEvent.OrganizationAuthority);
+            }
+
             output.Append('}');
+        }
+
+        private static void AppendOrganizationAuthority(
+            StringBuilder output,
+            ReplayOrganizationAuthorityRecordV4 authority)
+        {
+            output.Append("{\"planRevision\":")
+                .Append(authority.PlanRevision);
+            output.Append(",\"sourceSequenceNumber\":")
+                .Append(authority.SourceSequenceNumber);
+            output.Append(",\"authorityPhase\":")
+                .Append(Quote(authority.AuthorityPhase));
+            output.Append(",\"organizationTarget\":");
+            Vector(output, authority.OrganizationTarget);
+            output.Append(",\"actualFirstPassLanding\":");
+            if (authority.ActualFirstPassLanding == null)
+            {
+                output.Append("null");
+            }
+            else
+            {
+                Vector(output, authority.ActualFirstPassLanding);
+            }
+
+            output.Append(",\"zoneGrade\":")
+                .Append(Quote(authority.ZoneGrade));
+            output.Append(",\"registeredSetterPlayerId\":")
+                .Append(Quote(authority.RegisteredSetterPlayerId));
+            output.Append(",\"setterStatus\":")
+                .Append(Quote(authority.SetterStatus));
+            output.Append(",\"setterMovementMeters\":");
+            Float(output, authority.SetterMovementMeters);
+            output.Append(",\"setterReactionDelaySeconds\":");
+            Float(output, authority.SetterReactionDelaySeconds);
+            output.Append(",\"setterReachMarginMeters\":");
+            Float(output, authority.SetterReachMarginMeters);
+            output.Append(",\"organizerPlayerId\":");
+            AppendNullableString(output, authority.OrganizerPlayerId);
+            output.Append(",\"fallbackReason\":")
+                .Append(Quote(authority.FallbackReason));
+            output.Append(",\"activatedBranch\":");
+            AppendNullableString(output, authority.ActivatedBranch);
+            output.Append(",\"testedEnvelopeIdentity\":")
+                .Append(Quote(authority.TestedEnvelopeIdentity));
+            output.Append(",\"executableEnvelopeIdentity\":")
+                .Append(Quote(authority.ExecutableEnvelopeIdentity));
+            output.Append(",\"sampleEnvelopeIdentity\":")
+                .Append(Quote(authority.SampleEnvelopeIdentity));
+            output.Append(",\"trajectoryArtifactIdentity\":")
+                .Append(Quote(authority.TrajectoryArtifactIdentity));
+            output.Append(",\"coverage\":");
+            AppendCoverage(output, authority.Coverage);
+            output.Append('}');
+        }
+
+        private static void AppendCoverage(
+            StringBuilder output,
+            ReplayCoverageDecisionRecordV4 coverage)
+        {
+            output.Append("{\"decision\":")
+                .Append(Quote(coverage.Decision));
+            output.Append(",\"score\":");
+            Float(output, coverage.Score);
+            output.Append(",\"reason\":")
+                .Append(Quote(coverage.Reason));
+            output.Append(",\"invalidationSet\":");
+            Strings(output, coverage.InvalidationSet);
+            output.Append(",\"expansionDepth\":")
+                .Append(coverage.ExpansionDepth);
+            output.Append(",\"activatedDeclaredBranch\":");
+            AppendNullableString(
+                output,
+                coverage.ActivatedDeclaredBranch);
+            output.Append('}');
+        }
+
+        private static void AppendNullableString(
+            StringBuilder output,
+            string value)
+        {
+            if (value == null)
+            {
+                output.Append("null");
+            }
+            else
+            {
+                output.Append(Quote(value));
+            }
         }
 
         private static void AppendShadow(

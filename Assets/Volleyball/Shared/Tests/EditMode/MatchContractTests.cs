@@ -38,6 +38,64 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void ReplayOrganizationAuthority_UsesStrictGateHValueSets()
+        {
+            var hash = new string('a', 64);
+            var coverage = new ReplayCoverageDecisionRecordV4(
+                "Covered",
+                0f,
+                "WithinConditionalEnvelope",
+                Array.Empty<string>(),
+                0,
+                "Primary");
+            var authority = new ReplayOrganizationAuthorityRecordV4(
+                7,
+                3,
+                "Receive",
+                new ReplayVector3RecordV4(1.5f, 0f, -1.1f),
+                null,
+                "Best",
+                "home-setter",
+                "Reachable",
+                1.2f,
+                0.04f,
+                0.3f,
+                "home-setter",
+                "None",
+                "Primary",
+                hash,
+                hash,
+                hash,
+                hash,
+                coverage);
+
+            Assert.That(authority.PlanRevision, Is.EqualTo(7));
+            Assert.That(authority.Coverage, Is.SameAs(coverage));
+            Assert.That(
+                () => new ReplayOrganizationAuthorityRecordV4(
+                    7,
+                    3,
+                    "Unknown",
+                    authority.OrganizationTarget,
+                    null,
+                    authority.ZoneGrade,
+                    authority.RegisteredSetterPlayerId,
+                    authority.SetterStatus,
+                    authority.SetterMovementMeters,
+                    authority.SetterReactionDelaySeconds,
+                    authority.SetterReachMarginMeters,
+                    authority.OrganizerPlayerId,
+                    authority.FallbackReason,
+                    authority.ActivatedBranch,
+                    hash,
+                    hash,
+                    hash,
+                    hash,
+                    coverage),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
         public void DominantHandV4_DeclaresExactlyBothValidHands()
         {
             Assert.That(DominantHandV4.Left, Is.EqualTo((DominantHandV4)0));

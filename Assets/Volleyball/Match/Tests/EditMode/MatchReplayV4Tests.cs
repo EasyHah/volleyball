@@ -412,6 +412,69 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void OrganizationAuthority_RoundTripsCanonicallyAndChangesReplayHash()
+        {
+            var baseline = Event(0, "Receive");
+            var authority = OrganizationAuthority(baseline);
+            var replay = CreateReplay(EventWithAuthority(baseline, authority));
+            var json = ContractJson.SerializeV4(replay);
+
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+            var restoredAuthority = restored.Events[0].OrganizationAuthority;
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restoredAuthority.PlanRevision, Is.EqualTo(7));
+            Assert.That(restoredAuthority.SourceSequenceNumber, Is.EqualTo(3));
+            Assert.That(restoredAuthority.OrganizationTarget.X, Is.EqualTo(1.5f));
+            Assert.That(restoredAuthority.RegisteredSetterPlayerId, Is.EqualTo("home-setter"));
+            Assert.That(
+                restoredAuthority.ExecutableEnvelopeIdentity,
+                Is.EqualTo(baseline.ExecutableEnvelope.Identity));
+            Assert.That(
+                restoredAuthority.TrajectoryArtifactIdentity,
+                Is.EqualTo(baseline.Trajectory.ArtifactIdentity));
+
+            var fallback = OrganizationAuthority(
+                baseline,
+                organizer: "home-outside-a",
+                fallbackReason: "SetterUnreachable",
+                setterStatus: "Unreachable");
+            Assert.That(
+                CreateReplay(EventWithAuthority(baseline, fallback)).ReplayHash,
+                Is.Not.EqualTo(replay.ReplayHash));
+        }
+
+        [Test]
+        public void OrganizationAuthority_RejectsIdentityMismatchAndNonReceiveSetEvent()
+        {
+            var receive = Event(0, "Receive");
+            var mismatched = OrganizationAuthority(
+                receive,
+                executableEnvelopeIdentity: HashC);
+
+            Assert.That(
+                () => EventWithAuthority(receive, mismatched),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => EventWithAuthority(
+                    Event(0, "Attack"),
+                    OrganizationAuthority(receive)),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void Deserialize_HistoricalV4WithoutOrganizationAuthorityPreservesBytes()
+        {
+            var historical = ContractJson.SerializeV4(
+                CreateReplay(Event(0, "Receive")));
+
+            var restored = ContractJson.DeserializeMatchReplayV4(historical);
+
+            Assert.That(restored.Events[0].OrganizationAuthority, Is.Null);
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(historical));
+        }
+
+        [Test]
         public void Create_RejectsShadowWhoseArtifactDiffersFromTrajectory()
         {
             var baseline = Event(0, "Attack");
@@ -851,6 +914,64 @@ namespace Volleyball.EditModeTests
                 baseline.ObservedP6Geometry,
                 baseline.RuleDecision,
                 Shadow(sequence + 1, revision));
+        }
+
+        private static MatchReplayEventV4 EventWithAuthority(
+            MatchReplayEventV4 baseline,
+            ReplayOrganizationAuthorityRecordV4 authority)
+        {
+            return new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                baseline.Shadow,
+                authority);
+        }
+
+        private static ReplayOrganizationAuthorityRecordV4 OrganizationAuthority(
+            MatchReplayEventV4 replayEvent,
+            string organizer = "home-setter",
+            string fallbackReason = "None",
+            string setterStatus = "Reachable",
+            string executableEnvelopeIdentity = null)
+        {
+            return new ReplayOrganizationAuthorityRecordV4(
+                7,
+                3,
+                "Receive",
+                new ReplayVector3RecordV4(1.5f, 0f, -1.1f),
+                null,
+                "Best",
+                "home-setter",
+                setterStatus,
+                1.2f,
+                0.04f,
+                0.3f,
+                organizer,
+                fallbackReason,
+                "Primary",
+                replayEvent.TestedEnvelope.Identity,
+                executableEnvelopeIdentity ??
+                replayEvent.ExecutableEnvelope.Identity,
+                replayEvent.Classification.ActualSample.EnvelopeIdentity,
+                replayEvent.Trajectory.ArtifactIdentity,
+                new ReplayCoverageDecisionRecordV4(
+                    "Covered",
+                    0f,
+                    "WithinConditionalEnvelope",
+                    Array.Empty<string>(),
+                    0,
+                    "Primary"));
         }
 
         private static MatchReplayEventV4 EventWithShadow(
