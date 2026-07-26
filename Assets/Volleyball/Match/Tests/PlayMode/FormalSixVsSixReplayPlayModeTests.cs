@@ -171,6 +171,29 @@ namespace Volleyball.PlayModeTests
                 Assert.That(
                     replayEvent.EventKind == "Attack",
                     Is.EqualTo(replayEvent.ObservedP6Geometry != null));
+                if (replayEvent.EventKind == "Receive" ||
+                    replayEvent.EventKind == "Set")
+                {
+                    Assert.That(
+                        replayEvent.OrganizationAuthority,
+                        Is.Not.Null);
+                    Assert.That(
+                        replayEvent.OrganizationAuthority
+                            .ExecutableEnvelopeIdentity,
+                        Is.EqualTo(
+                            replayEvent.ExecutableEnvelope.Identity));
+                    Assert.That(
+                        replayEvent.OrganizationAuthority
+                            .TrajectoryArtifactIdentity,
+                        Is.EqualTo(
+                            replayEvent.Trajectory.ArtifactIdentity));
+                }
+                else
+                {
+                    Assert.That(
+                        replayEvent.OrganizationAuthority,
+                        Is.Null);
+                }
             }
             Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
             Assert.That(restored.ReplayHash, Is.EqualTo(replay.ReplayHash));

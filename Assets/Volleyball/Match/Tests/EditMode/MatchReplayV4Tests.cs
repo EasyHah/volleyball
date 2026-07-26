@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Reflection;
 using NUnit.Framework;
+using Volleyball.AI;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
@@ -638,6 +639,51 @@ namespace Volleyball.EditModeTests
                     TeamSide.Home,
                     RallyContactClassificationV3.TeamContact,
                     17));
+            var setter = new StablePlayerId("home-setter");
+            var plan = new ReceiveOrganizationPlanV3(
+                TeamSide.Home,
+                7,
+                actor,
+                setter,
+                new[] { new StablePlayerId("home-outside") },
+                new[] { new StablePlayerId("home-libero") },
+                new StablePlayerId("home-middle"),
+                new SimVector3(1.5f, 0f, -1.1f));
+            var evidence = new ReceiveOrganizationAuthorityEvidenceV3(
+                7,
+                9,
+                ReceiveOrganizationAuthorityPhaseV3.ReceivePlanned,
+                plan,
+                new SetterReachabilityEvidenceV3(
+                    new Volleyball.Domain.Prototype.PlayerId(
+                        PrototypeTeamId.Blue,
+                        Volleyball.Domain.Prototype.PlayerRole.Setter),
+                    true,
+                    true,
+                    false,
+                    true,
+                    1.25f,
+                    0.04f,
+                    0.35f),
+                OrganizationFallbackReasonV3.None,
+                new PlanCoverageDecision(
+                    PlanCoverageDecisionKind.CoveredActivateBranch,
+                    "7",
+                    PlanCoverageReason.WithinConditionalEnvelope,
+                    Array.Empty<string>(),
+                    0,
+                    RallyPlanBranchV3.Primary),
+                null);
+            var receipt = new ReceiveOrganizationAuthorityReceipt(
+                7,
+                9,
+                ReceiveOrganizationCommandKind.PrimaryReceive,
+                actor,
+                RallyPlanBranchV3.Primary,
+                TechniqueAction.Receive,
+                classification,
+                trajectory,
+                evidence);
             var replayEvent = MatchReplayRecorder.CreateContactRecordV4(
                 0,
                 new ReplayContactEvent(
@@ -648,7 +694,8 @@ namespace Volleyball.EditModeTests
                     TechniqueAction.Receive,
                     ruleTransition: transition,
                     executionClassification: classification,
-                    trajectoryArtifact: trajectory),
+                    trajectoryArtifact: trajectory,
+                    organizationAuthority: receipt),
                 0,
                 0);
 
@@ -669,6 +716,26 @@ namespace Volleyball.EditModeTests
                 replayEvent.AbilityConsumptions,
                 Has.All.Property("EvidenceKind")
                     .EqualTo("ExecutionEnvelopeFactoryRead"));
+            Assert.That(replayEvent.OrganizationAuthority.PlanRevision, Is.EqualTo(7));
+            Assert.That(replayEvent.OrganizationAuthority.SourceSequenceNumber, Is.EqualTo(9));
+            Assert.That(
+                replayEvent.OrganizationAuthority.TestedEnvelopeIdentity,
+                Is.EqualTo(classification.TestedEnvelope.Identity));
+            Assert.That(
+                replayEvent.OrganizationAuthority.ExecutableEnvelopeIdentity,
+                Is.EqualTo(classification.ExecutableEnvelope.Identity));
+            Assert.That(
+                replayEvent.OrganizationAuthority.SampleEnvelopeIdentity,
+                Is.EqualTo(classification.Sample.EnvelopeIdentity));
+            Assert.That(
+                replayEvent.OrganizationAuthority.TrajectoryArtifactIdentity,
+                Is.EqualTo(trajectory.ArtifactIdentity));
+            Assert.That(
+                replayEvent.OrganizationAuthority.Coverage.Reason,
+                Is.EqualTo("WithinConditionalEnvelope"));
+            Assert.That(
+                replayEvent.OrganizationAuthority.Coverage.ActivatedDeclaredBranch,
+                Is.EqualTo("Primary"));
         }
 
         [Test]

@@ -134,7 +134,8 @@ namespace Volleyball.Presentation
             AttackGeometryFactV3 observedAttackGeometry = null,
             RuleTransitionV3 ruleTransition = null,
             ExecutionSampleClassificationV4 executionClassification = null,
-            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
+            ReceiveOrganizationAuthorityReceipt organizationAuthority = null)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
             Action = action;
@@ -143,6 +144,7 @@ namespace Volleyball.Presentation
             RuleTransition = ruleTransition;
             ExecutionClassification = executionClassification;
             TrajectoryArtifact = trajectoryArtifact;
+            OrganizationAuthority = organizationAuthority;
         }
 
         public TechniqueAction Action { get; }
@@ -151,6 +153,7 @@ namespace Volleyball.Presentation
         public RuleTransitionV3 RuleTransition { get; }
         public ExecutionSampleClassificationV4 ExecutionClassification { get; }
         public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
+        public ReceiveOrganizationAuthorityReceipt OrganizationAuthority { get; }
     }
 
     public sealed class ReplaySetChainEvent
@@ -278,6 +281,10 @@ namespace Volleyball.Presentation
         private readonly Dictionary<TeamId, ReceiveOrganizationAuthorityController>
             _receiveOrganizationControllers =
                 new Dictionary<TeamId, ReceiveOrganizationAuthorityController>();
+        private readonly Dictionary<string, ReceiveOrganizationAuthorityReceipt>
+            _pendingGateHContactReceipts =
+                new Dictionary<string, ReceiveOrganizationAuthorityReceipt>(
+                    StringComparer.Ordinal);
         private long _gateHPlanRevision;
         private long _gateHSourceSequence;
         private string _status = "Preparing dynamic physical 3v3";
@@ -827,8 +834,7 @@ namespace Volleyball.Presentation
                         .ToArray();
                     var controller =
                         new ReceiveOrganizationAuthorityController(formalPlayers);
-                    controller.AuthorityCommitted += receipt =>
-                        ReceiveOrganizationAuthorityCommitted?.Invoke(receipt);
+                    controller.AuthorityCommitted += HandleGateHAuthorityCommitted;
                     _receiveOrganizationControllers.Add(team, controller);
                 }
             }
@@ -1185,6 +1191,15 @@ namespace Volleyball.Presentation
                     receiveSeconds),
                 _touchState.CountedTeamTouches,
                 _touchState.LastCountedActor);
+            if (!_decisionPlanner.OrderedCandidates(receiveInput)
+                    .Any(candidate => candidate.IsFeasible))
+            {
+                _scheduledDecision = null;
+                _scheduledPrimaryActor = null;
+                _contactDeadlineActive = false;
+                return;
+            }
+
             var organizationInput = CreateDecisionInput(
                 team,
                 RallyDecisionStage.Organize,
@@ -1206,7 +1221,7 @@ namespace Volleyball.Presentation
                     SetFlightSolver.PreferredFlightSeconds(
                         TacticFor(team).SetRhythm)),
                 2,
-                null);
+                FindPlayer(team, role => role == PlayerRole.Setter).Id);
             var bindings = _players
                 .Where(pair => pair.Key.Team == team)
                 .OrderBy(pair => pair.Key.RosterSlot)
@@ -1756,8 +1771,8 @@ namespace Volleyball.Presentation
                             _ball.SimulationTime,
                             executionError,
                             NextContactGroup(),
-                            null,
-                            null,
+                            _lastExecutionSampleClassificationV4,
+                            trajectoryArtifact,
                             _expectedContactTime - ContactWindowLead,
                             _expectedContactTime + ContactWindowTail,
                             outgoing)));
@@ -1841,6 +1856,51 @@ namespace Volleyball.Presentation
                 _expectedContactTime + ContactWindowTail,
                 eligibleActors));
             _contactDeadlineActive = true;
+        }
+
+        private void HandleGateHAuthorityCommitted(
+            ReceiveOrganizationAuthorityReceipt receipt)
+        {
+            if (receipt.Kind ==
+                    ReceiveOrganizationCommandKind.PrimaryReceive ||
+                receipt.Kind ==
+                    ReceiveOrganizationCommandKind.EmergencyReceive ||
+                receipt.Kind ==
+                    ReceiveOrganizationCommandKind.OrganizationContact)
+            {
+                _pendingGateHContactReceipts[
+                    GateHReceiptKey(receipt.Actor, receipt.Action)] = receipt;
+            }
+
+            ReceiveOrganizationAuthorityCommitted?.Invoke(receipt);
+        }
+
+        private ReceiveOrganizationAuthorityReceipt TakeGateHContactReceipt(
+            StablePlayerId actor,
+            TechniqueAction action)
+        {
+            if (!GateHAuthorityEnabled)
+            {
+                return null;
+            }
+
+            var key = GateHReceiptKey(actor, action);
+            if (!_pendingGateHContactReceipts.TryGetValue(
+                    key,
+                    out var receipt))
+            {
+                return null;
+            }
+
+            _pendingGateHContactReceipts.Remove(key);
+            return receipt;
+        }
+
+        private static string GateHReceiptKey(
+            StablePlayerId actor,
+            TechniqueAction action)
+        {
+            return actor.Value + ":" + action;
         }
 
         private void PrepareSetterForReceive(TeamRallyDecision receiveDecision)
@@ -2246,6 +2306,13 @@ namespace Volleyball.Presentation
                 actor.ScheduledExecutionClassificationV4;
             var acceptedTrajectoryArtifact =
                 actor.ScheduledTrajectoryPredictionArtifactV4;
+            var gateHAuthorityReceipt = TakeGateHContactReceipt(
+                StableId(actorId),
+                contact.Candidate.Action);
+            acceptedExecutionClassification ??=
+                gateHAuthorityReceipt?.ExecutionClassification;
+            acceptedTrajectoryArtifact ??=
+                gateHAuthorityReceipt?.TrajectoryArtifact;
 
             switch (contact.Candidate.Action)
             {
@@ -2351,7 +2418,8 @@ namespace Volleyball.Presentation
                     authorityContact?.ObservedAttackGeometry,
                     authorityContact?.Transition,
                     acceptedExecutionClassification,
-                    acceptedTrajectoryArtifact));
+                    acceptedTrajectoryArtifact,
+                    gateHAuthorityReceipt));
         }
 
         private void AdvanceGateHAfterReceive(

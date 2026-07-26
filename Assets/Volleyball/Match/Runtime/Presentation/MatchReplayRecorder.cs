@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
+using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
@@ -154,6 +155,16 @@ namespace Volleyball.Presentation
             }
 
             var sequenceNumber = _events.Count;
+            if (_director.GateHAuthorityEnabled &&
+                (replayEvent.Action == TechniqueAction.Receive ||
+                 replayEvent.Action == TechniqueAction.Set) &&
+                replayEvent.OrganizationAuthority == null)
+            {
+                InvalidateCapture(
+                    "Gate H Receive/Set replay events require event-owned organization authority.");
+                return;
+            }
+
             // V3 transitions are one-based; native replay contact indexes are zero-based.
             ReplayShadowRecordV4 shadow = null;
             if (_pendingShadowPlans.TryTakeForReplaySequence(
@@ -240,7 +251,106 @@ namespace Volleyball.Presentation
                     RulesVersions.FullRallyV3,
                     ruleTransition.Accepted,
                     ruleTransition.RejectionReason.ToString()),
-                shadow);
+                shadow,
+                ToReplayOrganizationAuthority(
+                    replayEvent.OrganizationAuthority,
+                    replayEvent,
+                    classification,
+                    trajectory));
+        }
+
+        private static ReplayOrganizationAuthorityRecordV4
+            ToReplayOrganizationAuthority(
+                ReceiveOrganizationAuthorityReceipt receipt,
+                ReplayContactEvent replayEvent,
+                ExecutionSampleClassificationV4 classification,
+                BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            if (receipt == null)
+            {
+                return null;
+            }
+
+            var evidence = receipt.Evidence;
+            var plan = evidence.Plan;
+            var assessmentPoint =
+                evidence.ActualFirstPassLanding ??
+                plan.OrganizationTarget;
+            var runtimeTeam = plan.Side == TeamSide.Home
+                ? Volleyball.Domain.Prototype.TeamId.Blue
+                : Volleyball.Domain.Prototype.TeamId.Orange;
+            var assessment = SetterOrganizationZone.AssessWorldTarget(
+                runtimeTeam,
+                assessmentPoint);
+            var zoneGrade =
+                assessment.LateralGrade == SetterOrganizationZoneGrade.Poor ||
+                assessment.DepthGrade == SetterOrganizationZoneGrade.Poor
+                    ? SetterOrganizationZoneGrade.Poor
+                    : assessment.LateralGrade ==
+                      SetterOrganizationZoneGrade.Best &&
+                      assessment.DepthGrade ==
+                      SetterOrganizationZoneGrade.Best
+                        ? SetterOrganizationZoneGrade.Best
+                        : SetterOrganizationZoneGrade.Secondary;
+            var setterStatus = evidence.SetterEvidence.WasPreviousTouch
+                ? "PreviousTouch"
+                : !evidence.SetterEvidence.IsAvailable
+                    ? "Unavailable"
+                    : !evidence.SetterEvidence.IsLegal
+                        ? "Illegal"
+                        : evidence.SetterEvidence.IsReachable
+                            ? "Reachable"
+                            : "Unreachable";
+            var coverage = evidence.CoverageDecision;
+            return new ReplayOrganizationAuthorityRecordV4(
+                CheckedInt(receipt.PlanRevision, nameof(receipt.PlanRevision)),
+                CheckedInt(
+                    receipt.SourceSequence,
+                    nameof(receipt.SourceSequence)),
+                replayEvent.Action == TechniqueAction.Receive
+                    ? "Receive"
+                    : "Organize",
+                Vector(plan.OrganizationTarget),
+                evidence.ActualFirstPassLanding.HasValue
+                    ? Vector(
+                        evidence.ActualFirstPassLanding.Value)
+                    : null,
+                zoneGrade.ToString(),
+                plan.RegisteredSetter.Value,
+                setterStatus,
+                evidence.SetterEvidence.MovementMeters,
+                evidence.SetterEvidence.ReactionDelaySeconds,
+                evidence.SetterEvidence.ReachMarginMeters,
+                replayEvent.Action == TechniqueAction.Receive
+                    ? plan.RegisteredSetter.Value
+                    : receipt.Actor.Value,
+                evidence.FallbackReason.ToString(),
+                receipt.Branch.ToString(),
+                classification.TestedEnvelope.Identity,
+                classification.ExecutableEnvelope.Identity,
+                classification.Sample.EnvelopeIdentity,
+                trajectory.ArtifactIdentity,
+                new ReplayCoverageDecisionRecordV4(
+                    ToReplayCoverageKind(coverage.Kind),
+                    0f,
+                    coverage.Reason.ToString(),
+                    coverage.InvalidationSet,
+                    coverage.ExpansionDepth,
+                    coverage.ActivatedDeclaredBranch?.ToString()));
+        }
+
+        private static string ToReplayCoverageKind(
+            PlanCoverageDecisionKind kind)
+        {
+            return kind switch
+            {
+                PlanCoverageDecisionKind.CoveredActivateBranch => "Covered",
+                PlanCoverageDecisionKind.LocalRevision => "Local",
+                PlanCoverageDecisionKind.ScopedReplan => "Scoped",
+                PlanCoverageDecisionKind.GlobalReplan => "Global",
+                PlanCoverageDecisionKind.TerminalNoPlan => "Terminal",
+                _ => throw new ArgumentOutOfRangeException(nameof(kind))
+            };
         }
 
         private void RecordResolution(ReplayRallyResolvedEvent replayEvent)

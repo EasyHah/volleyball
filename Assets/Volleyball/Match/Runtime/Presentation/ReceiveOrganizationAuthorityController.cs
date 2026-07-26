@@ -18,6 +18,7 @@ namespace Volleyball.Presentation
             long sourceSequence,
             ReceiveOrganizationCommandKind kind,
             StablePlayerId actor,
+            RallyPlanBranchV3 branch,
             TechniqueAction action,
             ExecutionSampleClassificationV4 executionClassification,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
@@ -27,6 +28,7 @@ namespace Volleyball.Presentation
             SourceSequence = sourceSequence;
             Kind = kind;
             Actor = actor;
+            Branch = branch;
             Action = action;
             ExecutionClassification = executionClassification;
             TrajectoryArtifact = trajectoryArtifact;
@@ -40,6 +42,8 @@ namespace Volleyball.Presentation
         public ReceiveOrganizationCommandKind Kind { get; }
 
         public StablePlayerId Actor { get; }
+
+        public RallyPlanBranchV3 Branch { get; }
 
         public TechniqueAction Action { get; }
 
@@ -413,6 +417,7 @@ namespace Volleyball.Presentation
                 prepared.Command.SourceSequence,
                 prepared.Command.Kind,
                 prepared.Command.Actor,
+                prepared.Command.Branch,
                 prepared.Action,
                 prepared.Command.Execution?.ExecutionClassification,
                 prepared.Command.Execution?.TrajectoryArtifact,
