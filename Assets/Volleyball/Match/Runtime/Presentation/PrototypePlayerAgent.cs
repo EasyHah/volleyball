@@ -45,7 +45,7 @@ namespace Volleyball.Presentation
 
         public StablePlayerId StableId { get; private set; }
 
-        public StickFigureRig Rig { get; private set; }
+        public StickFigureRig Rig => _presentation == null ? null : _presentation.Rig;
 
         public PlayerAbilityProfile Ability { get; private set; }
 
@@ -115,6 +115,7 @@ namespace Volleyball.Presentation
         }
 
         private readonly PlayerActionTimeline _actionTimelineState = new PlayerActionTimeline();
+        private PlayerPresentation _presentation;
         private TechniqueAction _scheduledAction;
         private SkillExecutionError _executionError;
         private SimVector3 _targetVelocity;
@@ -171,7 +172,7 @@ namespace Volleyball.Presentation
         {
             Id = id;
             StableId = stableId;
-            Rig = StickFigureRig.Create(transform, color, jerseyNumber);
+            _presentation = new PlayerPresentation(transform, color, jerseyNumber);
             Ability = PlayerAbilityProfile.Default;
             ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
             _blockArmContactVolumes = new BlockArmContactVolumes(Rig);
@@ -666,7 +667,7 @@ namespace Volleyball.Presentation
             var constrained = ConstrainToOwnCourt(worldPosition);
             transform.position = constrained;
             _motionOrigin = constrained;
-            Rig.SetPose(StickFigurePose.Ready, 1f);
+            _presentation.SetPose(StickFigurePose.Ready, 1f);
         }
 
         public void SetPreparedFacing(TeamCourtFrame frame, SetRoute route)
@@ -737,26 +738,26 @@ namespace Volleyball.Presentation
 
             var savedPosition = transform.position;
             var savedRotation = transform.rotation;
-            var savedRotations = Rig.CaptureLocalRotations();
             try
             {
                 transform.position = ConstrainToOwnCourt(rootPosition);
                 transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
-                Rig.SetPose(StickFigurePose.Block, 1f);
-                var snapshots = new BlockArmContactVolumes(Rig).Capture(false, 0);
-                var frames = new ContactCapsuleFrame[snapshots.Count];
-                for (var index = 0; index < snapshots.Count; index++)
+                return _presentation.WithPreviewPose(StickFigurePose.Block, () =>
                 {
-                    frames[index] = snapshots[index].Current;
-                }
+                    var snapshots = new BlockArmContactVolumes(Rig).Capture(false, 0);
+                    var frames = new ContactCapsuleFrame[snapshots.Count];
+                    for (var index = 0; index < snapshots.Count; index++)
+                    {
+                        frames[index] = snapshots[index].Current;
+                    }
 
-                return frames;
+                    return frames;
+                });
             }
             finally
             {
                 transform.position = savedPosition;
                 transform.rotation = savedRotation;
-                Rig.RestoreLocalRotations(savedRotations);
             }
         }
 
@@ -828,25 +829,25 @@ namespace Volleyball.Presentation
             Vector3 worldPosition)
         {
             var savedPosition = transform.position;
-            var savedRotations = Rig.CaptureLocalRotations();
             try
             {
                 transform.position = ConstrainToOwnCourt(worldPosition);
-                Rig.SetPose(ContactPoseFor(action), 1f);
-                var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
-                    .Capture(action, true, 0);
-                var frames = new ContactSurfaceFrame[previewSurfaces.Count];
-                for (var index = 0; index < previewSurfaces.Count; index++)
+                return _presentation.WithPreviewPose(action, _setDecision.ExecutedStyle, () =>
                 {
-                    frames[index] = previewSurfaces[index].Current;
-                }
+                    var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
+                        .Capture(action, true, 0);
+                    var frames = new ContactSurfaceFrame[previewSurfaces.Count];
+                    for (var index = 0; index < previewSurfaces.Count; index++)
+                    {
+                        frames[index] = previewSurfaces[index].Current;
+                    }
 
-                return frames;
+                    return frames;
+                });
             }
             finally
             {
                 transform.position = savedPosition;
-                Rig.RestoreLocalRotations(savedRotations);
             }
         }
 
@@ -963,7 +964,7 @@ namespace Volleyball.Presentation
             var pose = sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete
                 ? StickFigurePose.Ready
                 : StickFigurePose.Block;
-            Rig.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
+            _presentation.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
             var armVolumes = _blockArmContactVolumes.Capture(
                 sample.SurfaceActive,
                 _physicalBlockContactGroupId);
@@ -1027,7 +1028,7 @@ namespace Volleyball.Presentation
                 return false;
             }
 
-            Rig.SetPose(StickFigurePose.Receive, Mathf.Clamp01(deltaSeconds * 18f));
+            _presentation.SetPose(StickFigurePose.Receive, Mathf.Clamp01(deltaSeconds * 18f));
             var targetVelocity = _actionTimelineState.EmergencyReceiveTargetVelocity;
             var strikeDirection = targetVelocity.SqrMagnitude > 0.000001f
                 ? targetVelocity.Normalized
@@ -1081,7 +1082,7 @@ namespace Volleyball.Presentation
                 pose = StickFigurePose.Ready;
             }
 
-            Rig.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
+            _presentation.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
             if (sample.Phase == ActionPhase.Complete)
             {
                 _actionTimelineState.DisableSupport();
@@ -1094,7 +1095,7 @@ namespace Volleyball.Presentation
         {
             if (_isMovingThisStep && sample.Phase == ActionPhase.Prepare)
             {
-                Rig.SetPose(StickFigurePose.Run, Mathf.Clamp01(deltaSeconds * 12f));
+                _presentation.SetPose(StickFigurePose.Run, Mathf.Clamp01(deltaSeconds * 12f));
                 return;
             }
 
@@ -1104,7 +1105,7 @@ namespace Volleyball.Presentation
                                    sample.Phase == ActionPhase.Complete
                     ? StickFigurePose.Ready
                     : StickFigurePose.Set;
-                Rig.SetPoseWithContactError(
+                _presentation.SetPoseWithContactError(
                     handlingPose,
                     Mathf.Clamp01(deltaSeconds * 14f),
                     TechniqueAction.Set,
@@ -1146,7 +1147,7 @@ namespace Volleyball.Presentation
                 ? 1f
                 : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
             var blend = Mathf.Clamp01(deltaSeconds * 18f * _executionError.SurfaceSpeedScale);
-            Rig.SetPoseWithContactError(
+            _presentation.SetPoseWithContactError(
                 pose,
                 blend,
                 _scheduledAction,
@@ -1157,14 +1158,14 @@ namespace Volleyball.Presentation
 
         private bool ApplySetPose(ActionTimelineSample sample, float deltaSeconds)
         {
-            var contactPose = SetContactPose(_setDecision.ExecutedStyle);
+            var contactPose = _presentation.SetContactPose(_setDecision.ExecutedStyle);
             var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
                 ? 1f
                 : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
             switch (sample.Phase)
             {
                 case ActionPhase.Prepare:
-                    Rig.SetPoseWithContactError(
+                    _presentation.SetPoseWithContactError(
                         StickFigurePose.SetDraw,
                         Mathf.Clamp01(deltaSeconds * 12f),
                         TechniqueAction.Set,
@@ -1173,7 +1174,7 @@ namespace Volleyball.Presentation
                         0f);
                     return true;
                 case ActionPhase.Power:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         StickFigurePose.SetDraw,
                         contactPose,
                         sample.PhaseProgress * 0.8f,
@@ -1183,7 +1184,7 @@ namespace Volleyball.Presentation
                         errorWeight);
                     return true;
                 case ActionPhase.Contact:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         StickFigurePose.SetDraw,
                         contactPose,
                         0.8f + (sample.PhaseProgress * 0.2f),
@@ -1193,7 +1194,7 @@ namespace Volleyball.Presentation
                         errorWeight);
                     return true;
                 case ActionPhase.FollowThrough:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         contactPose,
                         StickFigurePose.Ready,
                         sample.PhaseProgress,
@@ -1215,7 +1216,7 @@ namespace Volleyball.Presentation
             switch (sample.Phase)
             {
                 case ActionPhase.Prepare:
-                    Rig.SetPoseWithContactError(
+                    _presentation.SetPoseWithContactError(
                         StickFigurePose.SpikeWindup,
                         Mathf.Clamp01(deltaSeconds * 10f),
                         TechniqueAction.Attack,
@@ -1224,7 +1225,7 @@ namespace Volleyball.Presentation
                         0f);
                     return true;
                 case ActionPhase.Power:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         StickFigurePose.SpikeWindup,
                         StickFigurePose.Spike,
                         sample.PhaseProgress,
@@ -1234,7 +1235,7 @@ namespace Volleyball.Presentation
                         errorWeight);
                     return true;
                 case ActionPhase.Contact when sample.PhaseProgress <= 0.5f:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         StickFigurePose.SpikeWindup,
                         StickFigurePose.Spike,
                         1f,
@@ -1244,7 +1245,7 @@ namespace Volleyball.Presentation
                         errorWeight);
                     return true;
                 case ActionPhase.Contact:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         StickFigurePose.Spike,
                         StickFigurePose.Landing,
                         (sample.PhaseProgress - 0.5f) * 0.5f,
@@ -1254,7 +1255,7 @@ namespace Volleyball.Presentation
                         errorWeight);
                     return true;
                 case ActionPhase.FollowThrough:
-                    Rig.SetPoseTransition(
+                    _presentation.SetPoseTransition(
                         StickFigurePose.Spike,
                         StickFigurePose.Landing,
                         0.25f + (sample.PhaseProgress * 0.75f),
@@ -1720,32 +1721,6 @@ namespace Volleyball.Presentation
             return ConstrainToOwnCourt(takeoff + new Vector3(correction.X, correction.Y, correction.Z));
         }
 
-        private static StickFigurePose ContactPoseFor(TechniqueAction action)
-        {
-            return action switch
-            {
-                TechniqueAction.Receive => StickFigurePose.Receive,
-                TechniqueAction.Set => StickFigurePose.Set,
-                TechniqueAction.Attack => StickFigurePose.Spike,
-                TechniqueAction.Block => StickFigurePose.Block,
-                TechniqueAction.Serve => StickFigurePose.Serve,
-                _ => StickFigurePose.Ready
-            };
-        }
-
-        private static StickFigurePose SetContactPose(SetTechniqueStyle style)
-        {
-            return style switch
-            {
-                SetTechniqueStyle.SideLeftTwoHand => StickFigurePose.SetSideLeft,
-                SetTechniqueStyle.SideRightTwoHand => StickFigurePose.SetSideRight,
-                SetTechniqueStyle.BackTwoHand => StickFigurePose.SetBack,
-                SetTechniqueStyle.OneHandLeft => StickFigurePose.SetOneHandLeft,
-                SetTechniqueStyle.OneHandRight => StickFigurePose.SetOneHandRight,
-                _ => StickFigurePose.Set
-            };
-        }
-
         private SetContactHand CurrentSetContactHand()
         {
             if (_scheduledAction != TechniqueAction.Set)
@@ -1781,7 +1756,7 @@ namespace Volleyball.Presentation
             const float acceleration = 24f;
             while ((transform.position - destination).sqrMagnitude > 0.01f)
             {
-                Rig.SetPose(StickFigurePose.Run, Time.deltaTime * 8f);
+                _presentation.SetPose(StickFigurePose.Run, Time.deltaTime * 8f);
                 var distance = Vector3.Distance(transform.position, destination);
                 var brakingSpeed = Mathf.Sqrt(2f * acceleration * distance);
                 var targetSpeed = Mathf.Min(_moveSpeed * (0.65f + (Ability.Mobility * 0.5f)), brakingSpeed);
@@ -1792,7 +1767,7 @@ namespace Volleyball.Presentation
             }
 
             transform.position = ConstrainToOwnCourt(destination);
-            Rig.SetPose(StickFigurePose.Ready, 0.25f);
+            _presentation.SetPose(StickFigurePose.Ready, 0.25f);
         }
     }
 }
