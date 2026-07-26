@@ -43,6 +43,9 @@ namespace Volleyball.Presentation
         private float _attackJumpLead;
         private float _attackJumpQuality;
         private float _appliedAttackCorrection;
+        private Vector3 _attackAlignmentOffset;
+        private float _lastSampleSimulationTime = float.NaN;
+        private float _lastSampleDeltaSeconds;
         private TechniqueAction _scheduledAction;
         private PlayerAbilityProfile _scheduledAbility;
         private Vector3 _attackMotionOrigin;
@@ -103,6 +106,8 @@ namespace Volleyball.Presentation
         public float ScheduledMovementDistance { get; private set; }
 
         public float MaximumAppliedContactCorrection { get; private set; }
+
+        public Vector3 CurrentAttackAlignmentOffset => _attackAlignmentOffset;
 
         public Vector3 ScheduledMovementTarget => _movementTargetPosition;
 
@@ -277,12 +282,21 @@ namespace Volleyball.Presentation
 
         public PlayerLocomotionSample Sample(float simulationTime)
         {
+            if (!float.IsNaN(_lastSampleSimulationTime))
+            {
+                _lastSampleDeltaSeconds = Mathf.Max(0f, simulationTime - _lastSampleSimulationTime);
+            }
+            _lastSampleSimulationTime = simulationTime;
             var movementPosition = EvaluateScheduledMovement(simulationTime, out var complete);
             var position = _hasAttackApproach
                 ? EvaluatePlannedAttackPosition(simulationTime, movementPosition)
                 : _scheduledAction == TechniqueAction.Attack
                     ? EvaluateUnplannedAttackPosition(simulationTime, movementPosition)
                     : movementPosition;
+            if (_scheduledAction == TechniqueAction.Attack)
+            {
+                position += _attackAlignmentOffset;
+            }
             return new PlayerLocomotionSample(ConstrainToOwnCourt(position), complete);
         }
 
@@ -309,15 +323,35 @@ namespace Volleyball.Presentation
 
         public Vector3 ApplyAttackContactAlignment(Vector3 requested)
         {
-            var requestedPosition = ConstrainToOwnCourt(_root.position + requested);
-            var applied = ApplyAttackContactCorrection(requestedPosition - _root.position);
-            SetRootPosition(_root.position + applied);
-            return applied;
+            return ApplyAttackContactAlignment(requested, _lastSampleDeltaSeconds);
+        }
+
+        public Vector3 ApplyAttackContactAlignment(Vector3 requested, float elapsedStepSeconds)
+        {
+            var desiredOffset = Vector3.ClampMagnitude(
+                _attackAlignmentOffset + requested,
+                PrototypePlayerAgent.NetClearance);
+            var maximumStep = MaximumSpeed * Mathf.Max(0f, elapsedStepSeconds);
+            var nextOffset = Vector3.MoveTowards(
+                _attackAlignmentOffset,
+                desiredOffset,
+                maximumStep);
+            var requestedStep = nextOffset - _attackAlignmentOffset;
+            var constrainedStep = ConstrainToOwnCourt(_root.position + requestedStep) - _root.position;
+            _attackAlignmentOffset += constrainedStep;
+            _appliedAttackCorrection = _attackAlignmentOffset.magnitude;
+            MaximumAppliedContactCorrection = Mathf.Max(
+                MaximumAppliedContactCorrection,
+                _attackAlignmentOffset.magnitude);
+            MovementShortfall += Mathf.Max(0f, requested.magnitude - constrainedStep.magnitude);
+            SetRootPosition(_root.position + constrainedStep);
+            return constrainedStep;
         }
 
         private void ResetAttackCorrectionAccounting()
         {
             _appliedAttackCorrection = 0f;
+            _attackAlignmentOffset = Vector3.zero;
             MaximumAppliedContactCorrection = 0f;
         }
 

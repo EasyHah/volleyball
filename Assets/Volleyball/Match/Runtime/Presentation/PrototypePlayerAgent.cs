@@ -875,7 +875,7 @@ namespace Volleyball.Presentation
             ApplyScheduledRootMotion(sample, simulationTime);
             CaptureObservedAttackTakeoff(simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
-            ApplyLimitedContactAlignment(sample);
+            ApplyLimitedContactAlignment(sample, deltaSeconds);
             SetRootPosition(transform.position);
             _contactSurfaceProvider.Collect(
                 _contactSurfaceProvider.ScheduledContact.WithSample(Id, sample),
@@ -1218,7 +1218,7 @@ namespace Volleyball.Presentation
             SetRootPosition(position);
         }
 
-        private void ApplyLimitedContactAlignment(ActionTimelineSample sample)
+        private void ApplyLimitedContactAlignment(ActionTimelineSample sample, float deltaSeconds)
         {
             if (!_contactSurfaceProvider.HasPlannedContactCenter ||
                 sample.Phase != ActionPhase.Power && sample.Phase != ActionPhase.Contact)
@@ -1255,16 +1255,20 @@ namespace Volleyball.Presentation
                 correction = correction.Normalized * (maximumCorrection - 0.0001f);
             }
 
+            if (!_techniqueExecutor.IsControlledHandling && _techniqueExecutor.ScheduledAction == TechniqueAction.Attack)
+            {
+                if (sample.Phase != ActionPhase.Contact)
+                {
+                    return;
+                }
+                var requestedCorrection = new Vector3(correction.X, correction.Y, correction.Z);
+                var appliedCorrection = _locomotion.ApplyAttackContactAlignment(requestedCorrection, deltaSeconds);
+                correction = new SimVector3(appliedCorrection.x, appliedCorrection.y, appliedCorrection.z);
+                return;
+            }
             if (sample.Phase == ActionPhase.Power)
             {
                 correction *= Mathf.SmoothStep(0f, 1f, sample.PhaseProgress);
-            }
-            if (!_techniqueExecutor.IsControlledHandling && _techniqueExecutor.ScheduledAction == TechniqueAction.Attack)
-            {
-                var requestedCorrection = new Vector3(correction.X, correction.Y, correction.Z);
-                var appliedCorrection = _locomotion.ApplyAttackContactAlignment(requestedCorrection);
-                correction = new SimVector3(appliedCorrection.x, appliedCorrection.y, appliedCorrection.z);
-                return;
             }
             SetRootPosition(transform.position + new Vector3(correction.X, correction.Y, correction.Z));
         }

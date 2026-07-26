@@ -1463,6 +1463,7 @@ namespace Volleyball.EditModeTests
                     attackApproach: approach,
                     attackContactPlan: plan);
 
+                Collect(player, 2.025f);
                 var contacts = Collect(player, 2.033f);
                 var palmCenter = contacts[0].Surface.Current.Origin +
                                  (contacts[0].Surface.Current.Normal * SimulatedBall.DefaultRadius);
