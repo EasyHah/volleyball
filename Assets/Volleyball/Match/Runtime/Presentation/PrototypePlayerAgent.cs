@@ -151,6 +151,7 @@ namespace Volleyball.Presentation
         private BlockArmContactVolumes _blockArmContactVolumes;
         private bool _isControlledHandling;
         private float _courtHalfLength = CourtBuilder.HalfLength;
+        private PlayerLocomotion _locomotion;
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -174,6 +175,7 @@ namespace Volleyball.Presentation
             Ability = PlayerAbilityProfile.Default;
             ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
             _blockArmContactVolumes = new BlockArmContactVolumes(Rig);
+            _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
         }
 
         public void SetAbility(PlayerAbilityProfile ability)
@@ -189,6 +191,7 @@ namespace Volleyball.Presentation
             }
 
             _courtHalfLength = courtHalfLength;
+            _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
         }
 
         public void ScheduleContact(
@@ -1646,11 +1649,21 @@ namespace Volleyball.Presentation
 
         private Vector3 ConstrainGroundPosition(Vector3 position)
         {
-            position.y = 0f;
-            return ConstrainToOwnCourt(position);
+            return _locomotion == null ? LegacyConstrainGroundPosition(position) : _locomotion.ConstrainGroundPosition(position);
         }
 
         private Vector3 ConstrainToOwnCourt(Vector3 position)
+        {
+            return _locomotion == null ? LegacyConstrainToOwnCourt(position) : _locomotion.ConstrainToOwnCourt(position);
+        }
+
+        private Vector3 LegacyConstrainGroundPosition(Vector3 position)
+        {
+            position.y = 0f;
+            return LegacyConstrainToOwnCourt(position);
+        }
+
+        private Vector3 LegacyConstrainToOwnCourt(Vector3 position)
         {
             position.x = Mathf.Clamp(
                 position.x,
@@ -1759,22 +1772,18 @@ namespace Volleyball.Presentation
 
         public IEnumerator MoveTo(Vector3 destination)
         {
-            destination = ConstrainGroundPosition(destination);
-            var speed = 0f;
-            const float acceleration = 24f;
-            while ((transform.position - destination).sqrMagnitude > 0.01f)
+            if (_locomotion == null)
+            {
+                _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
+            }
+
+            var movement = _locomotion.MoveTo(destination, Ability);
+            while (movement.MoveNext())
             {
                 _presentation.SetPose(StickFigurePose.Run, Time.deltaTime * 8f);
-                var distance = Vector3.Distance(transform.position, destination);
-                var brakingSpeed = Mathf.Sqrt(2f * acceleration * distance);
-                var targetSpeed = Mathf.Min(_moveSpeed * (0.65f + (Ability.Mobility * 0.5f)), brakingSpeed);
-                speed = Mathf.MoveTowards(speed, targetSpeed, acceleration * Time.deltaTime);
-                transform.position = ConstrainToOwnCourt(
-                    Vector3.MoveTowards(transform.position, destination, speed * Time.deltaTime));
                 yield return null;
             }
 
-            transform.position = ConstrainToOwnCourt(destination);
             _presentation.SetPose(StickFigurePose.Ready, 0.25f);
         }
     }

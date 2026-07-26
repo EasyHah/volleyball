@@ -717,7 +717,9 @@ namespace Volleyball.EditModeTests
 
                 Collect(player, 2f);
 
-                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.18f));
+                Assert.That(
+                    player.MaximumAppliedContactCorrection,
+                    Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance));
             }
             finally
             {
@@ -1274,7 +1276,9 @@ namespace Volleyball.EditModeTests
                 Assert.That(
                     (palmCenter - plan.ContactCenter).Magnitude,
                     Is.LessThan(0.01f));
-                Assert.That(player.MaximumAppliedContactCorrection, Is.LessThanOrEqualTo(0.18f));
+                Assert.That(
+                    player.MaximumAppliedContactCorrection,
+                    Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance));
             }
             finally
             {
