@@ -93,6 +93,10 @@ namespace Volleyball.EditModeTests
                 result.FallbackReason,
                 Is.EqualTo(OrganizationFallbackReasonV3.SetterPreviousTouch));
             Assert.That(result.Plan.BackupOrganizers[0], Is.EqualTo(fixture.StableFor(expected)));
+            Assert.That(
+                result.AttackPreparationDecision.Actor,
+                Is.Not.EqualTo(result.Decision.Actor),
+                "The fallback organizer cannot also own the next counted attack.");
         }
 
         [Test]

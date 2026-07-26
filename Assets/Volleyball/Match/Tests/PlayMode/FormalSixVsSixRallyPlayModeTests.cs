@@ -35,31 +35,69 @@ namespace Volleyball.PlayModeTests
                 Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
             Assert.That(director, Is.Not.Null);
             var traces = new List<ReceiveOrganizationAuthorityReceipt>();
+            var acceptedActions = new List<TechniqueAction>();
             director.ReceiveOrganizationAuthorityCommitted += traces.Add;
+            director.ReplayContactAccepted += replayEvent =>
+                acceptedActions.Add(replayEvent.Action);
 
             var timeout = Time.realtimeSinceStartup + 90f;
-            while (!traces.Any(trace =>
-                       trace.Kind ==
-                       ReceiveOrganizationCommandKind.OrganizationContact) &&
+            while (!acceptedActions.Contains(TechniqueAction.Attack) &&
                    Time.realtimeSinceStartup < timeout)
             {
                 yield return null;
             }
 
+            var primary = traces.First(trace =>
+                trace.Kind ==
+                ReceiveOrganizationCommandKind.PrimaryReceive);
+            var organization = traces.First(trace =>
+                trace.Kind ==
+                ReceiveOrganizationCommandKind.OrganizationContact);
+            var attackPreparation = traces.First(trace =>
+                trace.Kind ==
+                ReceiveOrganizationCommandKind.AttackPreparation &&
+                trace.SourceSequence == organization.SourceSequence);
             Assert.That(director.GateHAuthorityEnabled, Is.True);
+            Assert.That(primary.Actor, Is.EqualTo(primary.Evidence.Plan.PrimaryReceiver));
             Assert.That(
-                traces.Any(trace =>
-                    trace.Kind ==
-                    ReceiveOrganizationCommandKind.PrimaryReceive),
+                primary.ExecutionClassification,
+                Is.Not.Null);
+            Assert.That(primary.TrajectoryArtifact, Is.Not.Null);
+            Assert.That(
+                organization.Actor.Equals(
+                    organization.Evidence.Plan.RegisteredSetter) ||
+                organization.Evidence.Plan.BackupOrganizers.Contains(
+                    organization.Actor),
                 Is.True);
             Assert.That(
-                traces.Any(trace =>
-                    trace.Kind ==
-                    ReceiveOrganizationCommandKind.OrganizationContact),
-                Is.True);
+                organization.Evidence.Phase,
+                Is.EqualTo(
+                    ReceiveOrganizationAuthorityPhaseV3.OrganizationPlanned));
+            Assert.That(
+                attackPreparation.Actor,
+                Is.Not.EqualTo(organization.Actor));
             Assert.That(
                 traces.Select(trace => trace.PlanRevision),
                 Is.Ordered.Ascending);
+            Assert.That(
+                traces.GroupBy(trace => string.Join(
+                        ":",
+                        trace.PlanRevision,
+                        trace.SourceSequence,
+                        trace.Kind,
+                        trace.Actor.Value))
+                    .All(group => group.Count() == 1),
+                Is.True);
+            Assert.That(
+                acceptedActions.Take(3),
+                Is.EqualTo(new[]
+                {
+                    TechniqueAction.Receive,
+                    TechniqueAction.Set,
+                    TechniqueAction.Attack
+                }));
+            Assert.That(director.SuccessfulContacts, Is.GreaterThanOrEqualTo(3));
+            Assert.That(director.V3RuleTransitions, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.GateHLegacyWriterInvocations, Is.Zero);
         }
 

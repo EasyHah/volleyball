@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 
 namespace Volleyball.EditModeTests
 {
@@ -47,6 +49,83 @@ namespace Volleyball.EditModeTests
 
             Assert.That(ReachabilityFor(Profile(mobility: 0.1f)), Is.EqualTo(low));
             Assert.That(high, Is.GreaterThan(low));
+        }
+
+        [TestCase(RallyDecisionStage.Receive, ExecutionCandidateCategoryV4.Receive)]
+        [TestCase(RallyDecisionStage.Organize, ExecutionCandidateCategoryV4.Set)]
+        public void FixedInput_MovementRaisesReachWithoutChangingControlErrorBounds(
+            RallyDecisionStage stage,
+            ExecutionCandidateCategoryV4 category)
+        {
+            var low = Profile(mobility: 0.1f);
+            var high = Profile(mobility: 0.9f);
+            var lowEnvelope = Envelope(low, category);
+            var highEnvelope = Envelope(high, category);
+
+            Assert.That(
+                ReachMargin(low, stage),
+                Is.LessThan(ReachMargin(high, stage)));
+            Assert.That(
+                highEnvelope.TargetError,
+                Is.EqualTo(lowEnvelope.TargetError));
+            Assert.That(
+                highEnvelope.VelocityError,
+                Is.EqualTo(lowEnvelope.VelocityError));
+            Assert.That(
+                highEnvelope.MaximumVelocity.Magnitude,
+                Is.GreaterThan(lowEnvelope.MaximumVelocity.Magnitude));
+        }
+
+        [Test]
+        public void FixedInput_FirstTouchControlReducesReceiveErrorsWithoutChangingReach()
+        {
+            var low = Profile(receiveTechnique: 0.1f);
+            var high = Profile(receiveTechnique: 0.9f);
+            var lowEnvelope = Envelope(
+                low,
+                ExecutionCandidateCategoryV4.Receive);
+            var highEnvelope = Envelope(
+                high,
+                ExecutionCandidateCategoryV4.Receive);
+
+            Assert.That(
+                ReachMargin(high, RallyDecisionStage.Receive),
+                Is.EqualTo(ReachMargin(low, RallyDecisionStage.Receive)));
+            Assert.That(
+                highEnvelope.TargetError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(
+                    lowEnvelope.TargetError.MaximumAbsoluteError.Magnitude));
+            Assert.That(
+                highEnvelope.VelocityError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(
+                    lowEnvelope.VelocityError.MaximumAbsoluteError.Magnitude));
+            Assert.That(
+                highEnvelope.MaximumVelocity,
+                Is.EqualTo(lowEnvelope.MaximumVelocity));
+        }
+
+        [Test]
+        public void FixedInput_SetControlChangesOnlySetErrorBounds()
+        {
+            var low = Profile(setTechnique: 0.1f);
+            var high = Profile(setTechnique: 0.9f);
+            var lowEnvelope = Envelope(low, ExecutionCandidateCategoryV4.Set);
+            var highEnvelope = Envelope(high, ExecutionCandidateCategoryV4.Set);
+
+            Assert.That(
+                ReachMargin(high, RallyDecisionStage.Organize),
+                Is.EqualTo(ReachMargin(low, RallyDecisionStage.Organize)));
+            Assert.That(
+                highEnvelope.TargetError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(
+                    lowEnvelope.TargetError.MaximumAbsoluteError.Magnitude));
+            Assert.That(
+                highEnvelope.VelocityError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(
+                    lowEnvelope.VelocityError.MaximumAbsoluteError.Magnitude));
+            Assert.That(
+                highEnvelope.MaximumVelocity,
+                Is.EqualTo(lowEnvelope.MaximumVelocity));
         }
 
         [Test]
@@ -136,6 +215,60 @@ namespace Volleyball.EditModeTests
         {
             var decision = new TeamRallyDecisionPlanner(FixedSeed).Plan(CreateAttackInput(attackerAbility));
             return CandidateFor(decision, PlayerRole.Attacker).Score.Reachability;
+        }
+
+        private static float ReachMargin(
+            PlayerAbilityProfile ability,
+            RallyDecisionStage stage)
+        {
+            var actor = new PlayerId(TeamId.Blue, PlayerRole.Attacker);
+            var input = new TeamRallyDecisionInput(
+                TeamId.Blue,
+                CreateAttackInput(ability).Tactic,
+                new[]
+                {
+                    new RallyPlayerSnapshot(
+                        actor,
+                        new SimVector3(0f, 0f, -4f),
+                        ability),
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.Setter),
+                        new SimVector3(8f, 0f, -5f),
+                        ability),
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.Defender),
+                        new SimVector3(8f, 0f, -4f),
+                        ability)
+                },
+                new SimVector3(2.5f, 2f, -1.5f),
+                0.5f,
+                5f,
+                stage == RallyDecisionStage.Receive ? 0 : 1,
+                null,
+                0,
+                0,
+                stage,
+                RallyTacticalWeights.Default);
+            return new TeamRallyDecisionPlanner(FixedSeed)
+                .OrderedCandidates(input)
+                .Single(candidate => candidate.Actor.Equals(actor))
+                .Score.Reachability;
+        }
+
+        private static ExecutionEnvelopeV4 Envelope(
+            PlayerAbilityProfile ability,
+            ExecutionCandidateCategoryV4 category)
+        {
+            return ExecutionEnvelopeFactoryV4.Create(
+                ability.Derived,
+                new ExecutionIntentV4(
+                    "gate-h-ability-" + category,
+                    category,
+                    new SimVector3(1f, 2f, 3f),
+                    new SimVector3(1f, 1f, 1f),
+                    0.1f),
+                "gate-h-fixed-key-" + category,
+                ExecutionEnvelopePolicyV4.Default);
         }
 
         private static TeamRallyDecision AttackDecisionFor(PlayerAbilityProfile attackerAbility)
