@@ -43,6 +43,7 @@ namespace Volleyball.Presentation
         private float _attackContactTime;
         private float _attackJumpLead;
         private float _attackJumpQuality;
+        private float _appliedAttackCorrection;
 
         public PlayerLocomotion(Transform root, TeamId team, float courtHalfLength, float moveSpeed)
         {
@@ -173,9 +174,23 @@ namespace Volleyball.Presentation
         public void ApplyLimitedContactAlignment(SimVector3 plannedCenter, SimVector3 actualCenter)
         {
             var requested = plannedCenter - actualCenter;
-            var applied = Vector3.ClampMagnitude(ToUnity(requested), PrototypePlayerAgent.NetClearance);
+            var applied = ApplyAttackContactCorrection(ToUnity(requested));
             _root.position += applied;
-            MaximumAppliedContactCorrection = Mathf.Max(MaximumAppliedContactCorrection, applied.magnitude);
+        }
+
+        public Vector3 ApplyAttackContactCorrection(Vector3 requested)
+        {
+            var remaining = Mathf.Max(0f, PrototypePlayerAgent.NetClearance - _appliedAttackCorrection);
+            var applied = Vector3.ClampMagnitude(requested, remaining);
+            _appliedAttackCorrection += applied.magnitude;
+            MaximumAppliedContactCorrection = Mathf.Max(MaximumAppliedContactCorrection, _appliedAttackCorrection);
+            MovementShortfall += Mathf.Max(0f, requested.magnitude - applied.magnitude);
+            return applied;
+        }
+
+        public void SetRootPosition(Vector3 position)
+        {
+            _root.position = ConstrainToOwnCourt(position);
         }
 
         public IEnumerator MoveTo(Vector3 destination, PlayerAbilityProfile ability)

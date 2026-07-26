@@ -24,6 +24,25 @@ namespace Volleyball.EditModeTests
             Object.DestroyImmediate(locomotion.Root.gameObject);
         }
 
+        [Test]
+        public void AttackCorrection_CapsCumulativeRootMovementAndRecordsUnresolvedShortfall()
+        {
+            var locomotion = CreateAttackLocomotion();
+            var initial = locomotion.Root.position;
+
+            locomotion.ApplyLimitedContactAlignment(
+                new Volleyball.Domain.Simulation.SimVector3(1f, 0f, -1f),
+                Volleyball.Domain.Simulation.SimVector3.Zero);
+            locomotion.ApplyLimitedContactAlignment(
+                new Volleyball.Domain.Simulation.SimVector3(1f, 0f, -1f),
+                Volleyball.Domain.Simulation.SimVector3.Zero);
+
+            Assert.That(Vector3.Distance(initial, locomotion.Root.position),
+                Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance + 0.0001f));
+            Assert.That(locomotion.MovementShortfall, Is.GreaterThan(0f));
+            Object.DestroyImmediate(locomotion.Root.gameObject);
+        }
+
         private static PlayerLocomotion CreateAttackLocomotion()
         {
             var root = new GameObject("LocomotionAttacker");

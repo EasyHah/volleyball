@@ -676,7 +676,7 @@ namespace Volleyball.Presentation
         {
             CancelScheduledContact();
             var constrained = ConstrainToOwnCourt(worldPosition);
-            transform.position = constrained;
+            SetRootPosition(constrained);
             _motionOrigin = constrained;
             _presentation.SetPose(StickFigurePose.Ready, 1f);
         }
@@ -700,7 +700,7 @@ namespace Volleyball.Presentation
         public void ApplyCrowdingOffset(Vector3 worldOffset)
         {
             worldOffset.y = 0f;
-            transform.position = ConstrainToOwnCourt(transform.position + worldOffset);
+            SetRootPosition(transform.position + worldOffset);
         }
 
         public IReadOnlyList<ContactSurfaceFrame> PreviewContactFrames(TechniqueAction action)
@@ -751,7 +751,7 @@ namespace Volleyball.Presentation
             var savedRotation = transform.rotation;
             try
             {
-                transform.position = ConstrainToOwnCourt(rootPosition);
+                SetRootPosition(rootPosition);
                 transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
                 return _presentation.WithPreviewPose(StickFigurePose.Block, () =>
                 {
@@ -767,7 +767,7 @@ namespace Volleyball.Presentation
             }
             finally
             {
-                transform.position = savedPosition;
+                SetRootPosition(savedPosition);
                 transform.rotation = savedRotation;
             }
         }
@@ -842,7 +842,7 @@ namespace Volleyball.Presentation
             var savedPosition = transform.position;
             try
             {
-                transform.position = ConstrainToOwnCourt(worldPosition);
+                SetRootPosition(worldPosition);
                 return _presentation.WithPreviewPose(action, _setDecision.ExecutedStyle, () =>
                 {
                     var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
@@ -858,7 +858,7 @@ namespace Volleyball.Presentation
             }
             finally
             {
-                transform.position = savedPosition;
+                SetRootPosition(savedPosition);
             }
         }
 
@@ -872,7 +872,7 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            transform.position = ConstrainToOwnCourt(transform.position);
+            SetRootPosition(transform.position);
 
             if (_hasPhysicalBlockContact && !_actionTimelineState.HasScheduledContact)
             {
@@ -901,7 +901,7 @@ namespace Volleyball.Presentation
             CaptureObservedAttackTakeoff(simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
             ApplyLimitedContactAlignment(sample);
-            transform.position = ConstrainToOwnCourt(transform.position);
+            SetRootPosition(transform.position);
             var contactAction = _isControlledHandling
                 ? TechniqueAction.Receive
                 : _scheduledAction;
@@ -971,7 +971,7 @@ namespace Volleyball.Presentation
             ICollection<BallContactCandidate> contacts)
         {
             _actionTimelineState.TrySampleSupport(simulationTime, out var sample);
-            transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
+            SetRootPosition(EvaluateSupportPosition(simulationTime));
             var pose = sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete
                 ? StickFigurePose.Ready
                 : StickFigurePose.Block;
@@ -1013,7 +1013,7 @@ namespace Volleyball.Presentation
 
             if (sample.Phase == ActionPhase.Complete)
             {
-                transform.position = ConstrainToOwnCourt(_supportTargetPosition);
+                SetRootPosition(_supportTargetPosition);
                 DisableBlockContactWindow();
             }
         }
@@ -1068,7 +1068,7 @@ namespace Volleyball.Presentation
         private void ApplySupportAction(float simulationTime, float deltaSeconds)
         {
             _actionTimelineState.TrySampleSupport(simulationTime, out var sample);
-            transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
+            SetRootPosition(EvaluateSupportPosition(simulationTime));
             if (!_supportActionActivated &&
                 (sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact))
             {
@@ -1098,7 +1098,7 @@ namespace Volleyball.Presentation
             {
                 _actionTimelineState.DisableSupport();
                 _supportActionActivated = false;
-                transform.position = ConstrainToOwnCourt(_supportTargetPosition);
+                SetRootPosition(_supportTargetPosition);
             }
         }
 
@@ -1288,7 +1288,7 @@ namespace Volleyball.Presentation
             {
                 if (_hasScheduledMovement)
                 {
-                    transform.position = ConstrainToOwnCourt(movementPosition);
+                    SetRootPosition(movementPosition);
                 }
 
                 return;
@@ -1300,7 +1300,7 @@ namespace Volleyball.Presentation
                 position.y = _motionOrigin.y;
             }
 
-            transform.position = ConstrainToOwnCourt(position);
+            SetRootPosition(position);
         }
 
         private void ApplyLimitedContactAlignment(ActionTimelineSample sample)
@@ -1344,11 +1344,19 @@ namespace Volleyball.Presentation
             {
                 correction *= Mathf.SmoothStep(0f, 1f, sample.PhaseProgress);
             }
+            if (!_isControlledHandling && _scheduledAction == TechniqueAction.Attack)
+            {
+                var requestedCorrection = new Vector3(correction.X, correction.Y, correction.Z);
+                var appliedCorrection = _locomotion.ApplyAttackContactCorrection(requestedCorrection);
+                MovementShortfall += Mathf.Max(0f, requestedCorrection.magnitude - appliedCorrection.magnitude);
+                correction = new SimVector3(appliedCorrection.x, appliedCorrection.y, appliedCorrection.z);
+            }
             MaximumAppliedContactCorrection = Mathf.Max(
                 MaximumAppliedContactCorrection,
-                correction.Magnitude);
-            transform.position = ConstrainToOwnCourt(
-                transform.position + new Vector3(correction.X, correction.Y, correction.Z));
+                _scheduledAction == TechniqueAction.Attack
+                    ? _locomotion.MaximumAppliedContactCorrection
+                    : correction.Magnitude);
+            SetRootPosition(transform.position + new Vector3(correction.X, correction.Y, correction.Z));
         }
 
         private Vector3 EvaluateAttackPosition(float simulationTime, Vector3 movementPosition)
@@ -1650,6 +1658,15 @@ namespace Volleyball.Presentation
         private Vector3 ConstrainGroundPosition(Vector3 position)
         {
             return _locomotion == null ? LegacyConstrainGroundPosition(position) : _locomotion.ConstrainGroundPosition(position);
+        }
+
+        private void SetRootPosition(Vector3 position)
+        {
+            if (_locomotion == null)
+            {
+                _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
+            }
+            _locomotion.SetRootPosition(position);
         }
 
         private Vector3 ConstrainToOwnCourt(Vector3 position)
