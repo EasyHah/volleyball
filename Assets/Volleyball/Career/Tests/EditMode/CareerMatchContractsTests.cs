@@ -144,7 +144,13 @@ namespace Volleyball.Career.EditModeTests
         [Test]
         public void Launch_PreservesAllInputFieldsWithoutDefaultsOrInference()
         {
-            var versions = CareerMatchTestData.Versions(2, 7, 8, 9, null, null);
+            var versions = CareerMatchTestData.Versions(
+                CareerMatchVersions.ContractV3,
+                7,
+                8,
+                9,
+                null,
+                null);
             var format = CareerMatchTestData.Format("indoor_6v6", 6, 3, 15, 2);
             var launch = CareerMatchTestData.Launch(
                 versions: versions,
@@ -170,10 +176,10 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [TestCase(0, 1, 1, 1)]
-        [TestCase(2, 0, 1, 1)]
-        [TestCase(2, 1, 0, 1)]
-        [TestCase(2, 1, 1, 0)]
-        [TestCase(3, 1, 1, 1)]
+        [TestCase(3, 0, 1, 1)]
+        [TestCase(3, 1, 0, 1)]
+        [TestCase(3, 1, 1, 0)]
+        [TestCase(2, 1, 1, 1)]
         public void Versions_RejectUnsupportedOrNonPositiveAxes(
             int contract, int content, int ruleset, int careerRandom)
         {

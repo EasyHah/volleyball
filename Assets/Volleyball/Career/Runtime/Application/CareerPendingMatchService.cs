@@ -120,7 +120,7 @@ namespace Volleyball.Career.Application
                 }
 
                 var versions = new CareerMatchVersions(
-                    snapshot.Versions.ContractVersion,
+                    CareerMatchVersions.ContractV3,
                     snapshot.Versions.ContentVersion,
                     snapshot.Versions.RulesetVersion,
                     snapshot.Versions.CareerRandomAlgorithmVersion,

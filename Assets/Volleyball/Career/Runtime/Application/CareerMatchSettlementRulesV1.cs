@@ -134,13 +134,13 @@ namespace Volleyball.Career.Application
             CareerMatchFacts completedFacts)
         {
             var pending = pendingMatch.Versions;
-            if (pending.ContractVersion != CareerMatchLifecycleVersions.ContractV2 ||
+            if (pending.ContractVersion != CareerMatchLifecycleVersions.ContractV3 ||
                 pending.ContentVersion != SupportedContentVersion ||
                 pending.RulesetVersion != SupportedRulesetVersion)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(pendingMatch),
-                    "Match settlement V1 requires contract 2, content 1 and ruleset 1.");
+                    "Match settlement V1 requires Match contract 3, content 1 and ruleset 1.");
             }
 
             var facts = completedFacts.Versions;

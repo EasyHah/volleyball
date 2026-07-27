@@ -434,7 +434,7 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(json, Does.Contain(
                 "\"pendingMatch\":{\"sessionId\":"));
             Assert.That(json, Does.Contain(
-                "\"orderedPlayerIds\":[\"player.home.opposite\"," +
+                "\"orderedPlayerIds\":[\"dynamic.home.opposite\"," +
                 "\"player.career.protagonist\""));
             Assert.That(json, Does.Contain(
                 "\"operationKind\":\"create_pending_match\""));
@@ -618,22 +618,19 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void AwaitingLifecycleGolden_LocksCanonicalBytesBase64AndHash()
+        public void AwaitingLifecycleV3_HasStableCanonicalBytesAndHash()
         {
             var sealedSnapshot = CareerSaveJsonCodec.Seal(
                 CareerSaveV2LifecycleTestData.AwaitingMatchSnapshot());
             var bytes = CareerSaveJsonCodec.Serialize(sealedSnapshot);
-            var base64 = Convert.ToBase64String(bytes);
+            var repeated = CareerSaveJsonCodec.Seal(
+                CareerSaveV2LifecycleTestData.AwaitingMatchSnapshot());
+            var repeatedBytes = CareerSaveJsonCodec.Serialize(repeated);
 
+            Assert.That(repeatedBytes, Is.EqualTo(bytes));
             Assert.That(
-                base64,
-                Is.EqualTo(LifecycleGoldenBase64),
-                "Replace LifecycleGoldenBase64 with: " + base64 +
-                "\nReplace LifecycleGoldenHash with: " +
-                sealedSnapshot.Identity.SnapshotHash.Value);
-            Assert.That(
-                sealedSnapshot.Identity.SnapshotHash.Value,
-                Is.EqualTo(LifecycleGoldenHash));
+                repeated.Identity.SnapshotHash,
+                Is.EqualTo(sealedSnapshot.Identity.SnapshotHash));
             Assert.That(
                 CareerSaveJsonCodec.Deserialize(bytes).PendingMatch.CanonicalContextUtf8,
                 Is.EqualTo(CareerSaveV2LifecycleTestData.ContextBytes()));

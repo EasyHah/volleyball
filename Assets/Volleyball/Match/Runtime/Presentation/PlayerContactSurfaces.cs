@@ -48,7 +48,11 @@ namespace Volleyball.Presentation
                     setContactHand),
                 TechniqueAction.Attack => new[]
                 {
-                    Snapshot("AttackPalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId)
+                    Snapshot("AttackPalm", BuildPalm(
+                        "RightPalm",
+                        localPositionError,
+                        localNormalErrorDegrees,
+                        true), active, contactGroupId, true)
                 },
                 TechniqueAction.Block => new[]
                 {
@@ -121,17 +125,19 @@ namespace Volleyball.Presentation
             string palmName,
             Vector3 localPositionError,
             Vector3 normalErrorDegrees,
-            bool striking)
+            bool striking,
+            float width = 0.22f,
+            float height = 0.20f)
         {
             var palm = _rig.GetJoint(palmName);
             var normal = striking
-                ? (_playerRoot.forward - (Vector3.up * 0.35f)).normalized
+                ? (_playerRoot.forward + (Vector3.up * 0.35f)).normalized
                 : (Vector3.up + (_playerRoot.forward * 0.22f)).normalized;
             normal = ApplyNormalError(normal, normalErrorDegrees);
             var right = Vector3.ProjectOnPlane(_playerRoot.right, normal).normalized;
             var up = Vector3.Cross(normal, right).normalized;
             var origin = palm.position + _playerRoot.TransformVector(localPositionError);
-            return ToFrame(origin, normal, right, up, 0.22f, 0.20f);
+            return ToFrame(origin, normal, right, up, width, height);
         }
 
         private ContactSurfaceFrame BuildBlockPalm(
@@ -158,11 +164,12 @@ namespace Volleyball.Presentation
             string key,
             ContactSurfaceFrame current,
             bool active,
-            int contactGroupId)
+            int contactGroupId,
+            bool twoSided = false)
         {
             var previous = _previous.TryGetValue(key, out var stored) ? stored : current;
             _previous[key] = current;
-            return new ContactSurfaceSnapshot(previous, current, active, contactGroupId);
+            return new ContactSurfaceSnapshot(previous, current, active, contactGroupId, twoSided);
         }
 
         private static ContactSurfaceFrame ToFrame(

@@ -73,6 +73,10 @@ Never track `Library/`, `TestResults/`, Python caches or build output.
 
 ## Testing
 
+`docs/rules.md` is the canonical Match-rule source. Before changing match
+behavior, update its applicable rule ID and follow its modification checklist;
+specifications and change records must link to it rather than duplicate rules.
+
 Write pure rule, scoring, rotation and statistics tests as EditMode tests. Keep
 PlayMode regression coverage for complete 3v3 and formal 6v6 sets with Unity scene
 integration. Use a fixed random seed for deterministic simulation tests. Record
@@ -152,12 +156,15 @@ six-player physical rally director pass their own acceptance tests.
 
 Open `Assets/Volleyball/Match/Scenes/Physical3v3Rally.unity` and enter Play Mode.
 One simulated ball runs position-aware possessions until one team reaches 15 points
-with a two-point lead. All three players are evaluated for receive, set and attack
+with a two-point lead, or reaches the absolute 50-point cap first. At 50 points the
+set ends immediately even if the lead is only one point. All three players are
+evaluated for receive, set and attack
 from their actual world positions, available time and abilities. Defender, setter
 and attacker are scoring preferences rather than action locks, so a reachable
 non-setter can organize and a reachable defender can attack.
-The scene then stops and displays `RESULT READY`; `ThreeVsThreeRallyDirector.Result`
-contains one `MatchResultV1` with all six player statistics. A legal opponent-court
+The scene then stops and displays `RESULT READY`; new matches expose one validated
+`MatchResultV2` with all six player statistics, while the explicit legacy initializer
+still exposes `MatchResultV1`. A legal opponent-court
 landing after the final touch scores, while an own-court landing, out-of-bounds
 opponent-court landing, antenna fault or contact timeout gives the point away.
 Net contact itself is legal when the ball later crosses the net inside the antenna
@@ -165,8 +172,10 @@ interval and above net height.
 
 Receive, Set and Attack consume the current team's normal three-touch allowance.
 The fourth counted touch and same-player consecutive counted contact are rejected
-before the ball response is applied. A scheduled Block is a real physical palm
-contact, but it consumes zero team touches. Whichever team controls the rebound
+before the ball response is applied. A scheduled Block uses six swept capsules that
+follow the visible left/right upper arms, forearms and palms; head, torso, hips, legs
+and feet are excluded. It consumes zero team touches. Whichever team controls the
+rebound
 starts a fresh possession at zero counted touches; the remaining defenders can
 move into non-contact coverage positions.
 
@@ -182,8 +191,10 @@ between teams. Logs expose the selected actor/action, score terms, approach qual
 block assignment/contact, post-block possession and complete result for review.
 
 Player roots are clamped to their own court with a small net and sideline margin,
-and all six tactical roots are reset at the start of every rally. Arms may still
-reach across the net during a legal spike or block; the player root may not cross.
+and all six tactical roots are reset at the start of every rally. A scheduled blocker
+stands 0.18 metres from the centre line, squares to the net, and uses a visible
+forward/inward arm pose; arms may reach across during a legal spike or block while
+the player root and visible torso remain on their own side.
 Blue and Orange use the same role ability profiles, while seeded execution error
 continues to model ordinary imperfect contacts without a team-specific advantage.
 
@@ -205,11 +216,20 @@ sets require `0.90`; unavailable techniques fall back to a simpler visible pose
 and receive an additional control penalty. One-hand setting is an explicit
 emergency request, not the automatic result of an ordinary wide set.
 
+New physical matches use `MatchContextV2` and carry each player's metre-based
+`MaxAttackReach`. `AttackContactPlan` is the shared source for the planned takeoff,
+setter target and actual striking-palm centre. Set flight time is solved inside the
+selected rhythm's bounds; after the real set contact, the attacker replans from the
+actual trajectory. A-E set quality, fallback, responsibility and counters are
+recorded through the existing replay pipeline. Legacy V1 initialization remains a
+separate supported path and produces a V1 result.
+
 ## Formal indoor 6v6 loop
 
 Open `Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity` and enter Play Mode.
 The scene creates one 9×18 metre court, one simulated ball and twelve visible players.
-It plays a 25-point, win-by-two set and stops at `RESULT READY`; the result contains
+It plays a 25-point, win-by-two set, applies the same immediate 50-point cap, and
+stops at `RESULT READY`; the result contains
 one statistics entry for every player in the injected context.
 
 The bottom roster panels show P1–P6, front/back row and the current server. A side-out
@@ -227,6 +247,70 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
   -testResults "$PWD/TestResults/Formal6v6.xml" \
   -logFile "$PWD/TestResults/Formal6v6.log"
 ```
+
+Formal 6v6 configures `V3RulesMode.Authority`; the legacy 3v3 scene remains
+`Disabled` with no V3 adapter. Run the Phase 1 authority gate and retain its
+local XML evidence with Unity `6000.0.43f1`:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+mkdir -p TestResults
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
+  -testResults "$PWD/TestResults/FullRallyV3-Phase1-final-edit.xml" \
+  -logFile "$PWD/TestResults/FullRallyV3-Phase1-final-edit.log"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testResults "$PWD/TestResults/FullRallyV3-Phase1-final-play.xml" \
+  -logFile "$PWD/TestResults/FullRallyV3-Phase1-final-play.log"
+```
+
+The expected local artifacts are
+`TestResults/FullRallyV3-Phase1-final-edit.xml` and
+`TestResults/FullRallyV3-Phase1-final-play.xml`. The formal PlayMode assertions
+require one V3 transition and replay event per committed accepted contact, zero
+unexpected mismatches, and one score advance per completed rally.
+
+Run the unified attack-chain calibration (100 in-system setter contacts in each
+scene plus 20 symmetric formal sets) with:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testFilter "Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests" \
+  -testResults "$PWD/TestResults/AttackChainCalibration.xml" \
+  -logFile "$PWD/TestResults/AttackChainCalibration.log"
+```
+
+## Match Replay V1 artifacts
+
+The formal 6v6 replay test captures its first completed rally as validated
+`MatchReplayV1` JSON and writes an interactive viewer beside it under the ignored
+`TestResults/decision-replay/<run>/` directory. Sampling uses simulation time at
+10 Hz plus an exact snapshot for each recorded event. These files are local
+diagnostics; do not commit `TestResults/` or treat it as a save-game location.
+
+Run the replay contract and artifact checks with Unity `6000.0.43f1`:
+
+```bash
+UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+mkdir -p TestResults
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
+  -testFilter "Volleyball.EditModeTests.MatchReplayV1Tests" \
+  -testResults "$PWD/TestResults/MatchReplayV1.xml" \
+  -logFile "$PWD/TestResults/MatchReplayV1.log"
+"$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
+  -testFilter "Volleyball.PlayModeTests.FormalSixVsSixReplayPlayModeTests" \
+  -testResults "$PWD/TestResults/FormalReplay.xml" \
+  -logFile "$PWD/TestResults/FormalReplay.log"
+find "$PWD/TestResults/decision-replay" -mindepth 2 -maxdepth 2 \
+  -name index.html -print
+```
+
+Open one printed `index.html` path in a browser. The page loads its sibling
+`replay.json`; direct local-file viewing also has an embedded fallback. Confirm
+twelve player labels, score/server/rotation state, event navigation, decision
+auto-pause and the six-row candidate table. Readers reject any format version
+other than `1`; a future contract change must add a new version rather than
+silently changing V1 semantics.
 
 ## Physics-contact upgrade baseline
 

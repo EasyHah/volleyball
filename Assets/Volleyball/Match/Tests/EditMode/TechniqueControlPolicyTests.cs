@@ -56,6 +56,57 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Apply_FirstAndSecondContactQualityDegradeSmoothlyWithoutEmergencyScale()
+        {
+            var physical = new SimVector3(0f, 5f, -3f);
+            var target = new SimVector3(2f, 7f, 1f);
+            var full = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Set, physical, target, SimVector3.Up, 1f, 1f));
+            var partial = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Set, physical, target, SimVector3.Up, 1f, 0.81f));
+            var missed = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Set, physical, target, SimVector3.Up, 1f, 0f));
+
+            Assert.That(full.AppliedControl, Is.EqualTo(1f));
+            Assert.That(partial.AppliedControl, Is.EqualTo(0.9f).Within(0.0001f));
+            Assert.That(missed.AppliedControl, Is.Zero);
+
+            var receive = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Receive, physical, target, SimVector3.Up, 1f, 0.81f));
+            Assert.That(receive.AppliedControl, Is.EqualTo(0.9f).Within(0.0001f));
+        }
+
+        [Test]
+        public void Apply_FullQualityAttackAllowsASixtyDegreeTargetCorrection()
+        {
+            var target = new SimVector3(0f, 0f, 10f);
+            var result = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Attack,
+                new SimVector3(8.660254f, 0f, 5f),
+                target,
+                target.Normalized,
+                1f,
+                1f));
+
+            Assert.That((result.FinalOutgoing - target).Magnitude, Is.LessThan(0.0001f));
+        }
+
+        [Test]
+        public void Apply_PerfectAttackContactCanCorrectPastSixtyDegrees()
+        {
+            var target = new SimVector3(0f, -6f, 23f);
+            var result = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                TechniqueAction.Attack,
+                new SimVector3(0f, 8f, -2f),
+                target,
+                target.Normalized,
+                1f,
+                1f));
+
+            Assert.That((result.FinalOutgoing - target).Magnitude, Is.LessThan(0.0001f));
+        }
+
+        [Test]
         public void Apply_DoesNotUseTargetThatOpposesActualStrikeDirection()
         {
             var physical = new SimVector3(0f, 8f, 0f);

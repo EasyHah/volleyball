@@ -21,7 +21,8 @@ namespace Volleyball.Domain.Players
             float receiveTechnique,
             float setTechnique,
             float attackTechnique,
-            float attackPower)
+            float attackPower,
+            float maxAttackReach = 3.20f)
         {
             Mobility = Validate(mobility, nameof(mobility));
             Reaction = Validate(reaction, nameof(reaction));
@@ -30,6 +31,7 @@ namespace Volleyball.Domain.Players
             SetTechnique = Validate(setTechnique, nameof(setTechnique));
             AttackTechnique = Validate(attackTechnique, nameof(attackTechnique));
             AttackPower = Validate(attackPower, nameof(attackPower));
+            MaxAttackReach = ValidateAttackReach(maxAttackReach, nameof(maxAttackReach));
         }
 
         public PlayerAbilityProfile(PlayerAbilitySnapshotV1 snapshot)
@@ -40,7 +42,21 @@ namespace Volleyball.Domain.Players
                 snapshot.ReceiveTechnique,
                 snapshot.SetTechnique,
                 snapshot.AttackTechnique,
-                snapshot.AttackPower)
+                snapshot.AttackPower,
+                3.20f)
+        {
+        }
+
+        public PlayerAbilityProfile(PlayerAbilitySnapshotV2 snapshot)
+            : this(
+                snapshot?.Mobility ?? throw new ArgumentNullException(nameof(snapshot)),
+                snapshot.Reaction,
+                snapshot.Jump,
+                snapshot.ReceiveTechnique,
+                snapshot.SetTechnique,
+                snapshot.AttackTechnique,
+                snapshot.AttackPower,
+                snapshot.MaxAttackReach)
         {
         }
 
@@ -61,6 +77,8 @@ namespace Volleyball.Domain.Players
 
         public float AttackPower { get; }
 
+        public float MaxAttackReach { get; }
+
         public PlayerAbilitySnapshotV1 ToSnapshot()
         {
             return new PlayerAbilitySnapshotV1(
@@ -71,6 +89,19 @@ namespace Volleyball.Domain.Players
                 SetTechnique,
                 AttackTechnique,
                 AttackPower);
+        }
+
+        public PlayerAbilitySnapshotV2 ToSnapshotV2()
+        {
+            return new PlayerAbilitySnapshotV2(
+                Mobility,
+                Reaction,
+                Jump,
+                ReceiveTechnique,
+                SetTechnique,
+                AttackTechnique,
+                AttackPower,
+                MaxAttackReach);
         }
 
         public float TechniqueFor(TechniqueAction action)
@@ -91,6 +122,19 @@ namespace Volleyball.Domain.Players
             if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f || value > 1f)
             {
                 throw new ArgumentOutOfRangeException(parameterName, value, "Ability must be finite and in the range [0, 1].");
+            }
+
+            return value;
+        }
+
+        private static float ValidateAttackReach(float value, string parameterName)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) || value < 3.20f || value > 3.55f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    parameterName,
+                    value,
+                    "Max attack reach must be finite and in the range [3.20, 3.55].");
             }
 
             return value;

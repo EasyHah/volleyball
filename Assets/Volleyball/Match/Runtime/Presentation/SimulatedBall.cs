@@ -38,6 +38,46 @@ namespace Volleyball.Presentation
             ContactResponseParameters responseParameters)
         {
             Surface = surface;
+            Capsule = default;
+            IsCapsule = false;
+            Action = action;
+            Actor = actor;
+            PlayerTechnique = playerTechnique;
+            TargetVelocity = targetVelocity;
+            StrikeDirection = strikeDirection;
+            ResponseParameters = responseParameters;
+        }
+
+        public BallContactCandidate(
+            ContactCapsuleSnapshot capsule,
+            TechniqueAction action,
+            float playerTechnique,
+            SimVector3 targetVelocity,
+            SimVector3 strikeDirection,
+            ContactResponseParameters responseParameters)
+            : this(
+                capsule,
+                action,
+                null,
+                playerTechnique,
+                targetVelocity,
+                strikeDirection,
+                responseParameters)
+        {
+        }
+
+        public BallContactCandidate(
+            ContactCapsuleSnapshot capsule,
+            TechniqueAction action,
+            PlayerId? actor,
+            float playerTechnique,
+            SimVector3 targetVelocity,
+            SimVector3 strikeDirection,
+            ContactResponseParameters responseParameters)
+        {
+            Surface = default;
+            Capsule = capsule;
+            IsCapsule = true;
             Action = action;
             Actor = actor;
             PlayerTechnique = playerTechnique;
@@ -47,6 +87,10 @@ namespace Volleyball.Presentation
         }
 
         public ContactSurfaceSnapshot Surface { get; }
+
+        public ContactCapsuleSnapshot Capsule { get; }
+
+        public bool IsCapsule { get; }
 
         public TechniqueAction Action { get; }
 
@@ -244,8 +288,14 @@ namespace Volleyball.Presentation
 
         public event Action<NetPlaneCrossingEvent> NetPlaneCrossed;
 
+        // Observers use this fixed-step boundary to capture state with its exact simulation time.
+        public event Action<float> SimulationStepped;
+
         public Func<BallContactCandidate, SweptBallHit, float, BallContactResolution>
             ContactCandidateResolver { get; set; }
+
+        public Func<BallContactCandidate, SweptBallHit, float, BallContactResolution>
+            SelectedContactCommitter { get; set; }
 
         public BallState State { get; private set; }
 
@@ -387,24 +437,44 @@ namespace Volleyball.Presentation
                 if (crossingEvent.IsRemainingStepConsumed)
                 {
                     UpdateMaximumSpeed();
+                    SimulationStepped?.Invoke(_simulationTime);
                     return;
                 }
             }
 
             if (hasPlayer && playerHit.TimeFraction <= environmentFraction)
             {
-                if (playerResolution.Disposition == BallContactDisposition.Fault)
+                var selectedResolution = SelectedContactCommitter?.Invoke(
+                                             playerCandidate,
+                                             playerHit,
+                                             contactSimulationTime) ??
+                                         playerResolution;
+                if (selectedResolution.Disposition == BallContactDisposition.Fault)
                 {
                     PlayerContactRejected?.Invoke(new PlayerContactRejectedEvent(
                         playerCandidate,
                         playerHit,
                         contactSimulationTime,
-                        playerResolution.Reason));
+                        selectedResolution.Reason));
+                    UpdateMaximumSpeed();
+                    return;
+                }
+                if (selectedResolution.Disposition == BallContactDisposition.Ignore)
+                {
                     UpdateMaximumSpeed();
                     return;
                 }
 
-                var physical = ContactResponse.Apply(State, playerHit, playerCandidate.ResponseParameters);
+                var physical = playerCandidate.Action == TechniqueAction.Attack
+                    ? ContactResponse.ApplyWithSurfaceVelocity(
+                        State,
+                        playerHit,
+                        SimVector3.Zero,
+                        playerCandidate.ResponseParameters)
+                    : ContactResponse.Apply(
+                        State,
+                        playerHit,
+                        playerCandidate.ResponseParameters);
                 var technique = TechniqueControlPolicy.Apply(new TechniqueControlInput(
                     playerCandidate.Action,
                     physical.PhysicalOutgoing,
@@ -435,6 +505,7 @@ namespace Volleyball.Presentation
             }
 
             UpdateMaximumSpeed();
+            SimulationStepped?.Invoke(_simulationTime);
         }
 
         private bool TryFindEarliestPlayerContact(
@@ -458,7 +529,19 @@ namespace Volleyball.Presentation
             var found = false;
             foreach (var candidate in _contactCandidates)
             {
-                if (!SweptBallCollision.TryFindContact(State, candidate.Surface, deltaSeconds, out var hit))
+                SweptBallHit hit;
+                var hasContact = candidate.IsCapsule
+                    ? SweptBallCapsuleCollision.TryFindContact(
+                        State,
+                        candidate.Capsule,
+                        deltaSeconds,
+                        out hit)
+                    : SweptBallCollision.TryFindContact(
+                        State,
+                        candidate.Surface,
+                        deltaSeconds,
+                        out hit);
+                if (!hasContact)
                 {
                     continue;
                 }

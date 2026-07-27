@@ -1,5 +1,10 @@
 # 比赛与生涯模块统一 Unity 仓库规划
 
+> 2026-07-27 更新：单仓库、单 Unity 工程和模块化依赖结论不变；公共比赛契约以
+> 搭档维护的 `Volleyball.Shared` V3 为唯一权威，不再保留 Career 侧创建的
+> `Shared.MatchV2` 兄弟程序集。完整决策见
+> [CHG-20260727-001](2026-07-27-001-career-shared-v3-integration.md)。
+
 ## 结论
 
 采用**一个 Git 仓库、一个 Unity 工程、一个最终游戏构建**。比赛与生涯不是两个独立 Unity

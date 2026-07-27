@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
@@ -83,6 +84,31 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AdvanceSimulation_AttackResponseIgnoresVisualPalmVelocityWithoutChangingSweptHit()
+        {
+            var gameObject = new GameObject("SimulatedBallStableAttackResponse");
+            try
+            {
+                gameObject.transform.position = new Vector3(0f, 1.3f, 0f);
+                var ball = gameObject.AddComponent<SimulatedBall>();
+                ball.RegisterContactSource(new MovingAttackContactSource());
+                PlayerBallContactEvent accepted = default;
+                ball.PlayerContact += contact => accepted = contact;
+                ball.Launch(new Vector3(0f, -40f, 0f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(accepted.Hit.Normal, Is.EqualTo(SimVector3.Up));
+                Assert.That(accepted.Hit.SurfaceVelocity.Z, Is.GreaterThan(5f));
+                Assert.That(accepted.PhysicalResponse.PhysicalOutgoing.Z, Is.EqualTo(0f).Within(0.0001f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void AdvanceSimulation_IgnoresRejectedEarlyCandidateBeforeApplyingResponse()
         {
             var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
@@ -132,6 +158,69 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AdvanceSimulation_EvaluatesEveryCollisionButCommitsOnlyChosenEarliestContact()
+        {
+            var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
+            try
+            {
+                var evaluatedGroups = new List<int>();
+                var committedGroups = new List<int>();
+                ball.ContactCandidateResolver = (_, hit, __) =>
+                {
+                    evaluatedGroups.Add(hit.ContactGroupId);
+                    return BallContactResolution.Accept();
+                };
+                ball.SelectedContactCommitter = (_, hit, __) =>
+                {
+                    committedGroups.Add(hit.ContactGroupId);
+                    return BallContactResolution.Accept();
+                };
+                ball.Launch(new Vector3(0f, -40f, 0f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(evaluatedGroups, Is.EquivalentTo(new[] { 77, 78 }));
+                Assert.That(committedGroups, Is.EqualTo(new[] { 77 }));
+                Assert.That(ball.State.LastContactGroupId, Is.EqualTo(77));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void AdvanceSimulation_SelectedCommitRejectionRaisesFaultBeforeVelocityResponse()
+        {
+            var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
+            try
+            {
+                var commits = 0;
+                PlayerContactRejectedEvent rejected = default;
+                ball.ContactCandidateResolver = (_, __, ___) => BallContactResolution.Accept();
+                ball.SelectedContactCommitter = (_, __, ___) =>
+                {
+                    commits++;
+                    return BallContactResolution.Fault("authority fourth counted contact");
+                };
+                ball.PlayerContactRejected += value => rejected = value;
+                ball.Launch(new Vector3(0f, -40f, 0f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(commits, Is.EqualTo(1));
+                Assert.That(rejected.Reason, Is.EqualTo("authority fourth counted contact"));
+                Assert.That(rejected.Candidate.Actor.Value.Role, Is.EqualTo(PlayerRole.Defender));
+                Assert.That(ball.State.LastContactGroupId, Is.Null);
+                Assert.That(ball.State.Velocity.Y, Is.LessThan(0f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
         public void AdvanceSimulation_BlockBeforeNetPlaneSuppressesCrossingEvent()
         {
             var gameObject = new GameObject("SimulatedBallBlockOrdering");
@@ -153,6 +242,38 @@ namespace Volleyball.EditModeTests
                 Assert.That(crossings, Is.Zero);
                 Assert.That(ball.State.LastContactGroupId, Is.EqualTo(79));
                 Assert.That(ball.State.Velocity.Z, Is.LessThan(0f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void AdvanceSimulation_OverlappingArmCapsulesEmitOneBlockContact()
+        {
+            var gameObject = new GameObject("SimulatedBallArmCapsules");
+            try
+            {
+                gameObject.transform.position = new Vector3(0f, 1.3f, 0.3f);
+                var ball = gameObject.AddComponent<SimulatedBall>();
+                ball.RegisterContactSource(new OverlappingArmCapsuleSource());
+                ball.ContactCandidateResolver = (_, __, ___) => BallContactResolution.Accept();
+                var contacts = 0;
+                PlayerBallContactEvent accepted = default;
+                ball.PlayerContact += value =>
+                {
+                    contacts++;
+                    accepted = value;
+                };
+                ball.Launch(new Vector3(0f, 0f, -40f));
+
+                ball.AdvanceSimulation(1d / 120d);
+
+                Assert.That(contacts, Is.EqualTo(1));
+                Assert.That(accepted.Candidate.Action, Is.EqualTo(TechniqueAction.Block));
+                Assert.That(accepted.Hit.ContactGroupId, Is.EqualTo(81));
+                Assert.That(ball.State.LastContactGroupId, Is.EqualTo(81));
             }
             finally
             {
@@ -225,6 +346,37 @@ namespace Volleyball.EditModeTests
                     new SimVector3(0f, 8f, 2f),
                     SimVector3.Up,
                     new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+            }
+        }
+
+        private sealed class MovingAttackContactSource : IBallContactSource
+        {
+            public void CollectContacts(
+                float simulationTime,
+                float deltaSeconds,
+                System.Collections.Generic.ICollection<BallContactCandidate> contacts)
+            {
+                var previous = new ContactSurfaceFrame(
+                    new SimVector3(0f, 1f, 0f),
+                    SimVector3.Up,
+                    new SimVector3(1f, 0f, 0f),
+                    new SimVector3(0f, 0f, 1f),
+                    1f,
+                    1f);
+                var current = new ContactSurfaceFrame(
+                    new SimVector3(0f, 1f, 0.1f),
+                    SimVector3.Up,
+                    new SimVector3(1f, 0f, 0f),
+                    new SimVector3(0f, 0f, 1f),
+                    1f,
+                    1f);
+                contacts.Add(new BallContactCandidate(
+                    new ContactSurfaceSnapshot(previous, current, true, 82),
+                    TechniqueAction.Attack,
+                    1f,
+                    new SimVector3(0f, -6f, 23f),
+                    new SimVector3(0f, -1f, 4f).Normalized,
+                    new ContactResponseParameters(0.55f, 0.42f, 0.18f, 0.08f)));
             }
         }
 
@@ -301,6 +453,32 @@ namespace Volleyball.EditModeTests
                     new SimVector3(0f, 2f, -12f),
                     new SimVector3(0f, 0f, -1f),
                     new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+            }
+        }
+
+        private sealed class OverlappingArmCapsuleSource : IBallContactSource
+        {
+            public void CollectContacts(
+                float simulationTime,
+                float deltaSeconds,
+                System.Collections.Generic.ICollection<BallContactCandidate> contacts)
+            {
+                var frame = new ContactCapsuleFrame(
+                    new SimVector3(-0.3f, 1.3f, 0f),
+                    new SimVector3(0.3f, 1.3f, 0f),
+                    0.065f);
+                var capsule = new ContactCapsuleSnapshot(frame, frame, true, 81);
+                for (var index = 0; index < 2; index++)
+                {
+                    contacts.Add(new BallContactCandidate(
+                        capsule,
+                        TechniqueAction.Block,
+                        new PlayerId(TeamId.Orange, PlayerRole.Attacker),
+                        0.8f,
+                        new SimVector3(0f, 2f, 12f),
+                        new SimVector3(0f, 0f, 1f),
+                        new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+                }
             }
         }
     }

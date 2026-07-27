@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using Volleyball.Domain;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.EditModeTests
@@ -86,6 +87,58 @@ namespace Volleyball.EditModeTests
                 NetHeight);
 
             Assert.That(outcome.HasValue, Is.False);
+        }
+
+        [Test]
+        public void BoundaryAndNetRulesV3_LegalAntennaCrossingContinuesTheRally()
+        {
+            var outcome = BoundaryAndNetRulesV3.ResolveNetCrossing(
+                TeamSide.Home,
+                new SimVector3(HalfWidth, NetHeight + 0.1f, 0f),
+                HalfWidth,
+                NetHeight);
+
+            Assert.That(outcome.HasValue, Is.False);
+        }
+
+        [Test]
+        public void BoundaryAndNetRulesV3_IllegalAntennaCrossingAwardsOpponent()
+        {
+            var outcome = BoundaryAndNetRulesV3.ResolveNetCrossing(
+                TeamSide.Home,
+                new SimVector3(HalfWidth + 0.01f, NetHeight + 0.1f, 0f),
+                HalfWidth,
+                NetHeight);
+
+            Assert.That(outcome.HasValue, Is.True);
+            Assert.That(outcome.Value.Winner, Is.EqualTo(TeamSide.Away));
+            Assert.That(outcome.Value.IsFault, Is.True);
+        }
+
+        [Test]
+        public void BoundaryAndNetRulesV3_OwnCourtLandingAwardsOpponent()
+        {
+            var outcome = BoundaryAndNetRulesV3.ResolveGroundLanding(
+                TeamSide.Home,
+                new SimVector3(0f, 0f, -3f),
+                HalfWidth,
+                HalfLength);
+
+            Assert.That(outcome.Winner, Is.EqualTo(TeamSide.Away));
+            Assert.That(outcome.IsFault, Is.True);
+        }
+
+        [Test]
+        public void BoundaryAndNetRulesV3_OpponentCourtLandingAwardsFinalTouchSide()
+        {
+            var outcome = BoundaryAndNetRulesV3.ResolveGroundLanding(
+                TeamSide.Home,
+                new SimVector3(0f, 0f, 3f),
+                HalfWidth,
+                HalfLength);
+
+            Assert.That(outcome.Winner, Is.EqualTo(TeamSide.Home));
+            Assert.That(outcome.IsFault, Is.False);
         }
     }
 }

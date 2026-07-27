@@ -12,22 +12,27 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260727-001 | 2026-07-27 | 已自动验证，待人工验收 | Shared / Career / Bootstrap / Tests / Docs | **跨模块（重点）** | [Career 接入 Shared V3 并移除并行 Match V2](2026-07-27-001-career-shared-v3-integration.md) |
+| CHG-20260723-005 | 2026-07-23 | 已完成 | Career.Domain / Career.Application / Career.MatchIntegration / Tests / Docs | **跨模块（重点）** | [Career 首场比赛持久化生命周期](2026-07-23-005-career-first-match-lifecycle.md) |
 | CHG-20260723-004 | 2026-07-23 | 进行中 | Career.Application / Career.Persistence / Career.Presentation / Bootstrap / Tests / Tools / Docs | **跨模块（重点）** | [Career 恢复、开发诊断与 Windows 构建](2026-07-23-004-career-recovery-windows-build.md) |
 | CHG-20260723-003 | 2026-07-23 | 已完成 | Career.Application / Career.Presentation / Bootstrap / Project Settings / Tests / Docs | **跨模块（重点）** | [Career 首周 UI 可玩垂直切片](2026-07-23-003-career-ui-vertical-slice.md) |
 | CHG-20260723-002 | 2026-07-23 | 已完成 | Packages / Project Settings / Career.Presentation / Career.EditModeTests / Tools / Docs | **跨模块（重点）** | [Career 菜单输入基线](2026-07-23-002-career-input-system-baseline.md) |
-| CHG-20260723-001 | 2026-07-23 | 已完成 | Career.Domain / Career.Application / Career.MatchIntegration / Tests / Docs | **跨模块（重点）** | [Career 首场比赛持久化生命周期](2026-07-23-001-career-first-match-lifecycle.md) |
+| CHG-20260723-001 | 2026-07-23 | 已完成 | Shared / Match / Career / Docs | **跨模块（重点）** | [Full Rally V3 架构与 Shared 契约预留](2026-07-23-001-full-rally-v3-architecture.md) |
+| CHG-20260722-008 | 2026-07-22 | 已完成 | Career.Domain / Application / Persistence / Tests / Docs | 模块内部 | [第一周领域与持久化基础](2026-07-22-008-career-week-domain-foundation.md) |
 | CHG-20260722-007 | 2026-07-22 | 已完成 | Career.Application / Career.MatchIntegration / Shared.MatchV2 / Docs | **跨模块（重点）** | [Career Match V2 自有端口、映射与动态 fixture runner](2026-07-22-007-career-match-integration.md) |
 | CHG-20260722-006 | 2026-07-22 | 已完成 | Shared.MatchV2 / Career.MatchIntegration / Match / Docs | **跨模块（重点）** | [Shared Match V2 规范契约、golden fixture 与复核证据加固](2026-07-22-006-shared-match-v2-contract.md) |
 | CHG-20260722-005 | 2026-07-22 | 已完成 | Career.Application / Persistence integration tests / Docs | 模块内部 | [第一周事件选择、真实持久化赛前管线与八轴应用证明](2026-07-22-005-career-week-event-pipeline.md) |
 | CHG-20260722-004 | 2026-07-22 | 已完成 | Career.Application / Tests / Docs | 模块内部 | [第一周普通行动执行与固定事件冻结（含 restore/RNG/frontier 复核加固）](2026-07-22-004-career-week-action-execution.md) |
 | CHG-20260722-003 | 2026-07-22 | 已完成 | Career.Domain / Application / Tests / Docs | 模块内部 | [第一周计划原子确认（含独立复核边界加固）](2026-07-22-003-career-week-plan-confirmation.md) |
-| CHG-20260722-002 | 2026-07-22 | 已完成 | Career.Domain / Application / Persistence / Tests / Docs | 模块内部 | [第一周领域与持久化基础](2026-07-22-002-career-week-domain-foundation.md) |
+| CHG-20260722-002 | 2026-07-22 | 已完成 | Match / Docs | 模块内部 | [几何进攻与拦网对抗](2026-07-22-002-geometric-attack-block-counterplay.md) |
 | CHG-20260722-001 | 2026-07-22 | 已完成 | Career.Domain / Application / Persistence / Tests / Docs | 模块内部 | [实现生涯球员创建与大学试训](2026-07-22-001-career-player-tryout.md) |
+| CHG-20260721-005 | 2026-07-21 | 已完成 | Repository / CI / Docs / Shared / Match | **跨模块（重点）** | [首里程碑单负责人协作与冻结基线](2026-07-21-005-solo-integration-and-collaboration-baseline.md) |
 | CHG-20260721-004 | 2026-07-21 | 已完成 | Career.Application / Persistence / Tests / Docs | **跨模块（重点）** | [实现本地档案与生涯持久化](2026-07-21-004-career-local-persistence.md) |
 | CHG-20260721-003 | 2026-07-21 | 已完成 | Career.Domain / Application / Persistence / Tests / Bootstrap | **跨模块（重点）** | [建立正式生涯快照模型](2026-07-21-003-career-save-model.md) |
 | CHG-20260721-002 | 2026-07-21 | 已完成 | Career.Domain / Career.EditModeTests | 模块内部 | [对齐球员生涯周行动计划领域规则](2026-07-21-002-career-week-plan-alignment.md) |
-| CHG-20260721-001 | 2026-07-21 | 已完成 | Repository / CI / Docs / Shared / Match | **跨模块（重点）** | [首里程碑单负责人协作与冻结基线](2026-07-21-001-solo-integration-and-collaboration-baseline.md) |
-| CHG-20260720-001 | 2026-07-20 | 已完成 | Project Settings / Packages / Docs / Build | **跨模块（重点）** | [升级并锁定 Unity 6000.3.20f1](2026-07-20-001-unity-6000.3.20f1-upgrade.md) |
+| CHG-20260721-001 | 2026-07-21 | 已完成 | Shared / Match / Docs | **跨模块（重点）** | [统一进攻链 V2、50 分封顶与全手臂拦网](2026-07-21-001-unified-attack-chain.md) |
+| CHG-20260720-002 | 2026-07-20 | 已完成 | Project Settings / Packages / Docs / Build | **跨模块（重点）** | [升级并锁定 Unity 6000.3.20f1](2026-07-20-002-unity-6000.3.20f1-upgrade.md) |
+| CHG-20260720-001 | 2026-07-20 | 已完成 | Match / Docs | 模块内部 | [Match Replay V1 回放产物与 HTML 查看器](2026-07-20-001-match-replay-v1.md) |
 | CHG-20260719-005 | 2026-07-19 | 已完成 | Match / Docs / Build Settings | 模块内部 | [正式室内 6v6 单局](2026-07-19-005-formal-indoor-6v6.md) |
 | CHG-20260719-004 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [3v3 半场边界、对局平衡与 AI 等待减速](2026-07-19-004-rally-boundaries-ai-time.md) |
 | CHG-20260719-003 | 2026-07-19 | 已完成 | Match / Docs | 模块内部 | [Physical3v3Rally 拦网命中反馈](2026-07-19-003-physical-block-impact-feedback.md) |

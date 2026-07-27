@@ -1,5 +1,10 @@
 # 球员生涯首个垂直切片规格
 
+> 2026-07-27 契约更新：本文中 `Shared.MatchV2`/`IMatchRunnerV2` 是已被取代的早期
+> 实现路径。当前切片直接消费搭档维护的 `Volleyball.Shared` V3，开发期比赛由
+> `DeterministicFixtureMatchRunnerV3` 产生 `MatchResultV3`；真实物理比赛接线仍延期，
+> Career Domain/Application 的所有权和“比赛报告事实、生涯计算后果”原则不变。
+
 ## 1. 文档目的
 
 本文定义球员生涯模块的首个“一周技术闭环”。它是开发、联调和验收的共同依据，目标是证明以下能力能够在同一个 Unity 客户端中可靠协作：

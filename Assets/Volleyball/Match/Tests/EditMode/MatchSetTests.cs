@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using Volleyball.Domain;
 using Volleyball.Shared.Contracts;
+using Volleyball.Presentation;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.EditModeTests
@@ -61,6 +62,45 @@ namespace Volleyball.EditModeTests
             Assert.That(set.IsComplete, Is.True);
             Assert.That(set.HomeScore, Is.EqualTo(16));
             Assert.That(set.AwayScore, Is.EqualTo(14));
+        }
+
+        [Test]
+        public void ResolveRally_AtFiftyEndsSetWithoutATwoPointLead()
+        {
+            var set = new MatchSet(
+                CreateContext(),
+                TeamSide.Home,
+                new MatchSetRules(15, 2, 50));
+            for (var point = 0; point < 49; point++)
+            {
+                set.ResolveRally(TeamSide.Home, null, null);
+                set.ResolveRally(TeamSide.Away, null, null);
+            }
+
+            Assert.That(set.IsComplete, Is.False);
+            set.ResolveRally(TeamSide.Home, null, null);
+
+            Assert.That(set.IsComplete, Is.True);
+            Assert.That(set.HomeScore, Is.EqualTo(50));
+            Assert.That(set.AwayScore, Is.EqualTo(49));
+            Assert.That(set.WinnerSide, Is.EqualTo(TeamSide.Home));
+        }
+
+        [Test]
+        public void CalibrationConfiguration_CannotRaiseTheAbsoluteFiftyPointCap()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                PhysicalMatchConfiguration.CreateCalibration(
+                    PhysicalMatchConfiguration.FormalIndoorSixVsSix,
+                    51,
+                    1));
+        }
+
+        [Test]
+        public void MatchSetRules_RejectsMaximumAboveTheAbsoluteFiftyPointCap()
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new MatchSetRules(15, 2, 51));
         }
 
         [Test]
@@ -135,6 +175,45 @@ namespace Volleyball.EditModeTests
             Assert.That(set.HomeScore, Is.EqualTo(26));
             Assert.That(set.AwayScore, Is.EqualTo(24));
             Assert.That(set.CreateResult().PlayerStats, Has.Count.EqualTo(12));
+        }
+
+        [Test]
+        public void V2Context_ProducesAV2ResultWithTheSameContextIdentity()
+        {
+            var context = MatchContextV2.UpgradeFromV1(CreateContext());
+            var set = new MatchSet(context, TeamSide.Home);
+            Resolve(set, TeamSide.Home, 15);
+
+            var result = set.CreateResultV2();
+
+            Assert.That(set.Context, Is.Null);
+            Assert.That(set.ContextV2, Is.SameAs(context));
+            Assert.That(result.ContractVersion, Is.EqualTo(ContractVersions.MatchV2));
+            Assert.DoesNotThrow(() => result.ValidateAgainst(context));
+        }
+
+        [Test]
+        public void PhysicalDirector_ExposesOnlyTheLegacyInitializeSignature()
+        {
+            var initializeMethods = typeof(PhysicalMatchRallyDirector).GetMethods();
+            var v1Overloads = 0;
+            foreach (var method in initializeMethods)
+            {
+                if (method.Name == "Initialize" && method.GetParameters().Length >= 3 &&
+                    method.GetParameters()[2].ParameterType == typeof(MatchContextV1))
+                {
+                    v1Overloads++;
+                }
+
+                Assert.That(
+                    method.Name == "Initialize" && method.GetParameters().Length >= 3 &&
+                    method.GetParameters()[2].ParameterType == typeof(MatchContextV2),
+                    Is.False,
+                    "V2 initialization must not overload the V1 API because literal null becomes ambiguous.");
+            }
+
+            Assert.That(v1Overloads, Is.EqualTo(1));
+            Assert.That(typeof(PhysicalMatchRallyDirector).GetMethod("InitializeV2"), Is.Not.Null);
         }
 
         private static void Resolve(MatchSet set, TeamSide winner, int count)

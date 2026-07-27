@@ -2,7 +2,6 @@
   "name": "Volleyball.Career.EditModeTests",
   "references": [
     "Volleyball.Shared",
-    "Volleyball.Shared.MatchV2",
     "Volleyball.Career.Domain",
     "Volleyball.Career.Application",
     "Volleyball.Career.MatchIntegration",

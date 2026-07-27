@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -9,6 +10,14 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Presentation;
+using MatchContextV1 = Volleyball.Shared.Contracts.MatchContextV1;
+using PlayerAbilitySnapshotV1 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV1;
+using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
+using PlayerSnapshotV1 = Volleyball.Shared.Contracts.PlayerSnapshotV1;
+using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using StableTeamId = Volleyball.Shared.Contracts.TeamId;
+using TeamSide = Volleyball.Shared.Contracts.TeamSide;
+using TeamSnapshotV1 = Volleyball.Shared.Contracts.TeamSnapshotV1;
 
 namespace Volleyball.PlayModeTests
 {
@@ -29,6 +38,21 @@ namespace Volleyball.PlayModeTests
             Assert.That(cameras, Is.Not.Null);
             Assert.That(blockFeedback, Is.Not.Null);
             Assert.That(players, Has.Length.EqualTo(6));
+            Assert.That(director.MatchContextV2, Is.Not.Null);
+            Assert.That(director.MatchContext, Is.Null);
+            Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
+            Assert.That(director.V3RuleTransitions, Is.Zero);
+            Assert.That(director.V3RuleParityMatches, Is.Zero);
+            Assert.That(director.V3RuleIntentionalCorrections, Is.Zero);
+            Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero);
+            Assert.That(director.LastV3RuleDiagnostic, Is.Empty);
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector)
+                    .GetField("_v3RulesAdapter", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(director),
+                Is.Null);
+            Assert.That(players, Has.Some.Matches<PrototypePlayerAgent>(
+                player => player.Id.Role == PlayerRole.Attacker && player.Ability.MaxAttackReach == 3.42f));
             Assert.That(
                 Object.FindObjectsByType<SimulatedBall>(FindObjectsSortMode.None),
                 Has.Length.EqualTo(1));
@@ -43,7 +67,7 @@ namespace Volleyball.PlayModeTests
             var timeout = Time.realtimeSinceStartup + 120f;
             var sawActiveBlockFeedback = false;
             var sawPlayerOutsideOwnCourt = false;
-            while (director.Result == null && Time.realtimeSinceStartup < timeout)
+            while (director.ResultV2 == null && Time.realtimeSinceStartup < timeout)
             {
                 sawActiveBlockFeedback |= blockFeedback.IsPlaying;
                 foreach (var player in players)
@@ -53,17 +77,18 @@ namespace Volleyball.PlayModeTests
                 yield return null;
             }
 
-            Assert.That(director.Result, Is.Not.Null);
+            Assert.That(director.ResultV2, Is.Not.Null);
             Assert.That(
-                Mathf.Max(director.Result.HomeScore, director.Result.AwayScore),
+                Mathf.Max(director.ResultV2.HomeScore, director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(15));
             Assert.That(
-                Mathf.Abs(director.Result.HomeScore - director.Result.AwayScore),
+                Mathf.Abs(director.ResultV2.HomeScore - director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(2));
             Assert.That(
-                Mathf.Min(director.Result.HomeScore, director.Result.AwayScore),
+                Mathf.Min(director.ResultV2.HomeScore, director.ResultV2.AwayScore),
                 Is.GreaterThanOrEqualTo(5));
-            Assert.That(director.Result.PlayerStats, Has.Count.EqualTo(6));
+            Assert.That(director.ResultV2.PlayerStats, Has.Count.EqualTo(6));
+            Assert.DoesNotThrow(() => director.ResultV2.ValidateAgainst(director.MatchContextV2));
             Assert.That(director.IsLoopRunning, Is.False);
             Assert.That(director.GroundResolvedRallies, Is.GreaterThan(0));
             Assert.That(director.PhysicalBlockContacts, Is.GreaterThan(0));
@@ -73,13 +98,13 @@ namespace Volleyball.PlayModeTests
             Assert.That(blockFeedback.LastReboundSpeed, Is.GreaterThan(0f));
             Assert.That(blockFeedback.VisibleElementCount, Is.GreaterThanOrEqualTo(3));
             Assert.That(director.PostBlockContinuations, Is.GreaterThan(0));
+            Assert.That(director.ScheduledMultiBlockUnits, Is.GreaterThan(0));
             Assert.That(director.BlueAttackContacts, Is.GreaterThan(0));
             Assert.That(director.OrangeAttackContacts, Is.GreaterThan(0));
             Assert.That(director.AiDecisionRequests, Is.GreaterThan(0));
             Assert.That(director.AiDecisionRequests, Is.EqualTo(aiSource.RequestCount));
             Assert.That(director.AiDecisionFallbacks, Is.Zero);
             Assert.That(Time.timeScale, Is.EqualTo(originalTimeScale).Within(0.001f));
-            Assert.That(director.NonSetterSetContacts, Is.GreaterThan(0));
             Assert.That(director.DefenderAttackContacts, Is.GreaterThan(0));
             Assert.That(director.IllegalContactFaults, Is.GreaterThanOrEqualTo(0));
             Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(0.70f));
@@ -103,6 +128,119 @@ namespace Volleyball.PlayModeTests
 
         }
 
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator AcceptedBlock_DefersReceiveUntilCrossingAndLetsGroundRefereeScore()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            var originalTimeScale = Time.timeScale;
+            try
+            {
+                var timeout = Time.realtimeSinceStartup + 120f;
+                while (director.PostBlockGroundPoints == 0 &&
+                       director.ResultV2 == null &&
+                       Time.realtimeSinceStartup < timeout)
+                {
+                    Time.timeScale = 8f;
+                    yield return null;
+                }
+
+                Assert.That(director.PostBlockPossessionDeferrals, Is.GreaterThan(0));
+                Assert.That(director.PrematurePostBlockReceiveWindows, Is.Zero);
+                Assert.That(director.PrematurePostBlockEmergencyWindows, Is.Zero);
+                Assert.That(director.PostBlockGroundPoints, Is.GreaterThan(0));
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator InfeasibleSetters_ProduceARealNonSetterOrganizationContact()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            var originalTimeScale = Time.timeScale;
+            foreach (var player in players)
+            {
+                if (player.Id.Role != PlayerRole.Setter)
+                {
+                    continue;
+                }
+
+                var ability = player.Ability;
+                player.SetAbility(new PlayerAbilityProfile(
+                    mobility: 0f,
+                    reaction: 0f,
+                    jump: ability.Jump,
+                    receiveTechnique: ability.ReceiveTechnique,
+                    setTechnique: 0f,
+                    attackTechnique: ability.AttackTechnique,
+                    attackPower: ability.AttackPower,
+                    maxAttackReach: ability.MaxAttackReach));
+            }
+
+            director.ConfigureAiDecisionSource(
+                new ImmediateLocalWeightSource(),
+                realTimeTimeoutSeconds: 0.5f,
+                restoreDurationSeconds: 0.04f);
+            try
+            {
+                var timeout = Time.realtimeSinceStartup + 120f;
+                while (director.NonSetterSetContacts == 0 &&
+                       director.ResultV2 == null &&
+                       Time.realtimeSinceStartup < timeout)
+                {
+                    yield return null;
+                }
+
+                Assert.That(director.NonSetterSetContacts, Is.GreaterThan(0));
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator LegacyV1Context_InitializesAndProducesAV1Result()
+        {
+            yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
+            var v2Director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
+            var ball = Object.FindFirstObjectByType<SimulatedBall>();
+            var scoreDisplay = Object.FindFirstObjectByType<ScoreDisplay>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+
+            Assert.That(v2Director, Is.Not.Null);
+            var directorObject = v2Director.gameObject;
+            Object.Destroy(v2Director);
+            yield return null;
+
+            var director = directorObject.AddComponent<ThreeVsThreeRallyDirector>();
+            director.Initialize(
+                ball,
+                players,
+                CreateLegacyContext(),
+                scoreDisplay,
+                new ImmediateLocalWeightSource());
+
+            var timeout = Time.realtimeSinceStartup + 120f;
+            while (director.Result == null && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
+            Assert.That(director.Result, Is.Not.Null);
+            Assert.That(director.ResultV2, Is.Null);
+            Assert.That(director.MatchContext, Is.Not.Null);
+            Assert.That(director.MatchContextV2, Is.Null);
+            Assert.DoesNotThrow(() => director.Result.ValidateAgainst(director.MatchContext));
+        }
+
         private sealed class ImmediateLocalWeightSource : IRallyTacticalWeightSource
         {
             public int RequestCount { get; private set; }
@@ -116,6 +254,47 @@ namespace Volleyball.PlayModeTests
                 return Task.FromResult(
                     new RallyTacticalWeightProposal(rolePreference, 1.15f, 1f, 1f));
             }
+        }
+
+        private static MatchContextV1 CreateLegacyContext()
+        {
+            return MatchContextV1.Create(
+                new System.Guid("11111111-2222-3333-4444-555555555555"),
+                7351,
+                CreateLegacyTeam("legacy-home", "Blue", TeamSide.Home, "home"),
+                CreateLegacyTeam("legacy-away", "Orange", TeamSide.Away, "away"));
+        }
+
+        private static TeamSnapshotV1 CreateLegacyTeam(
+            string id,
+            string name,
+            TeamSide side,
+            string prefix)
+        {
+            return new TeamSnapshotV1(
+                new StableTeamId(id),
+                name,
+                side,
+                new[]
+                {
+                    CreateLegacyPlayer(prefix + "-setter", "Setter", 1, PlayerPosition.Setter),
+                    CreateLegacyPlayer(prefix + "-attacker", "Attacker", 2, PlayerPosition.OutsideHitter),
+                    CreateLegacyPlayer(prefix + "-defender", "Defender", 3, PlayerPosition.Defender)
+                });
+        }
+
+        private static PlayerSnapshotV1 CreateLegacyPlayer(
+            string id,
+            string name,
+            int number,
+            PlayerPosition position)
+        {
+            return new PlayerSnapshotV1(
+                new StablePlayerId(id),
+                name,
+                number,
+                position,
+                new PlayerAbilitySnapshotV1(0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f, 0.85f));
         }
 
         private static void AssertMirroredRoleAbilities(PrototypePlayerAgent[] players)

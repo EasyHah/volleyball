@@ -24,10 +24,6 @@ namespace Volleyball.Bootstrap.Editor
             "Assets/Volleyball/Career/Runtime/Presentation/Input/CareerMenuRuntime.asset";
         private const string ThemePath =
             "Assets/Volleyball/Career/Runtime/Presentation/CareerDefaultRuntimeTheme.tss";
-        private const string ContextPath =
-            "Assets/Volleyball/Shared/MatchV2/Fixtures/V2/career-u1w1-6v6-v1/golden-context.json";
-        private const string ResultPath =
-            "Assets/Volleyball/Shared/MatchV2/Fixtures/V2/career-u1w1-6v6-v1/golden-result.json";
 
         [MenuItem("Volleyball/Career/Rebuild vertical slice scene")]
         public static void Build()
@@ -36,8 +32,6 @@ namespace Volleyball.Bootstrap.Editor
             var panelSettings = LoadOrCreatePanelSettings();
             var shell = Required<VisualTreeAsset>(ShellPath);
             var actions = BuildRuntimeInputAsset(Required<InputActionAsset>(InputPath));
-            var context = Required<TextAsset>(ContextPath);
-            var result = Required<TextAsset>(ResultPath);
 
             var scene = EditorSceneManager.NewScene(
                 NewSceneSetup.EmptyScene,
@@ -50,8 +44,6 @@ namespace Volleyball.Bootstrap.Editor
             var bootstrap = root.AddComponent<CareerVerticalSliceBootstrap>();
             var serialized = new SerializedObject(bootstrap);
             serialized.FindProperty("menuActions").objectReferenceValue = actions;
-            serialized.FindProperty("canonicalContextFixture").objectReferenceValue = context;
-            serialized.FindProperty("canonicalResultFixture").objectReferenceValue = result;
             serialized.ApplyModifiedPropertiesWithoutUndo();
 
             if (!EditorSceneManager.SaveScene(scene, ScenePath))

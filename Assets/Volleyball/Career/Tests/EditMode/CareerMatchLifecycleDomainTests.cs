@@ -910,7 +910,13 @@ namespace Volleyball.Career.EditModeTests
                 new OperationId(Guid.NewGuid()),
                 new LineageId(Guid.NewGuid()),
                 9,
-                new CareerMatchLifecycleVersions(2, 1, 1, 1, null, null),
+                new CareerMatchLifecycleVersions(
+                    CareerMatchLifecycleVersions.ContractV3,
+                    1,
+                    1,
+                    1,
+                    null,
+                    null),
                 mode,
                 fixtureId,
                 fixtureVersion,
@@ -1005,7 +1011,13 @@ namespace Volleyball.Career.EditModeTests
                 operationId,
                 identity.LineageId,
                 identity.Revision,
-                new CareerMatchLifecycleVersions(2, 1, 1, 1, null, null),
+                new CareerMatchLifecycleVersions(
+                    CareerMatchLifecycleVersions.ContractV3,
+                    1,
+                    1,
+                    1,
+                    null,
+                    null),
                 CareerMatchLifecycleExecutionMode.Fixture,
                 "fixture.career.u1w1.6v6",
                 1,
@@ -1368,7 +1380,15 @@ namespace Volleyball.Career.EditModeTests
                 case "session": session = Guid.NewGuid(); break;
                 case "lineage": lineage = new LineageId(Guid.NewGuid()); break;
                 case "revision": revision--; break;
-                case "versions": versions = new CareerMatchLifecycleVersions(2, 2, 1, 1, null, null); break;
+                case "versions":
+                    versions = new CareerMatchLifecycleVersions(
+                        CareerMatchLifecycleVersions.ContractV3,
+                        2,
+                        1,
+                        1,
+                        null,
+                        null);
+                    break;
                 case "plan": plan = new WeekPlanId(Guid.NewGuid()); break;
                 case "slot": slot = new SlotActionId(Guid.NewGuid()); break;
                 case "occurrence": occurrence = new OccurrenceId(Guid.NewGuid()); break;
@@ -1438,7 +1458,13 @@ namespace Volleyball.Career.EditModeTests
                     OperationId = new OperationId(Guid.NewGuid()),
                     LineageId = new LineageId(Guid.NewGuid()),
                     Revision = 9,
-                    Versions = new CareerMatchLifecycleVersions(2, 1, 1, 1, null, null),
+                    Versions = new CareerMatchLifecycleVersions(
+                        CareerMatchLifecycleVersions.ContractV3,
+                        1,
+                        1,
+                        1,
+                        null,
+                        null),
                     Mode = CareerMatchLifecycleExecutionMode.Fixture,
                     FixtureId = "fixture.career.u1w1.6v6",
                     FixtureVersion = 1,

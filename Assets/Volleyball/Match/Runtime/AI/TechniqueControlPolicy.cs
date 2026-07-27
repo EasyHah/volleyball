@@ -88,7 +88,11 @@ namespace Volleyball.AI
         public static TechniqueControlResult Apply(TechniqueControlInput input)
         {
             var profile = ProfileFor(input.Action);
-            var appliedControl = profile.MaximumControl * input.PlayerTechnique * input.ContactQuality;
+            var contactControl = input.Action == TechniqueAction.Receive ||
+                                 input.Action == TechniqueAction.Set
+                ? (float)Math.Sqrt(input.ContactQuality)
+                : input.ContactQuality;
+            var appliedControl = profile.MaximumControl * input.PlayerTechnique * contactControl;
             if (appliedControl <= 0f)
             {
                 return new TechniqueControlResult(
@@ -113,10 +117,17 @@ namespace Volleyball.AI
                 requestedDirection = input.StrikeDirection;
             }
 
+            var maximumDirectionCorrection = profile.MaximumDirectionCorrectionDegrees;
+            if (input.Action == TechniqueAction.Attack && input.ContactQuality > 0.75f)
+            {
+                var centeredControl = Math.Min(1f, (input.ContactQuality - 0.75f) / 0.25f);
+                maximumDirectionCorrection += (180f - maximumDirectionCorrection) * centeredControl;
+            }
+
             var constrainedDirection = RotateTowards(
                 physicalDirection,
                 requestedDirection,
-                profile.MaximumDirectionCorrectionDegrees);
+                maximumDirectionCorrection);
             var minimumSpeed = Math.Max(0f, physicalSpeed - profile.MaximumSpeedChange);
             var maximumSpeed = Math.Min(profile.MaximumOutgoingSpeed, physicalSpeed + profile.MaximumSpeedChange);
             var constrainedSpeed = Math.Max(minimumSpeed, Math.Min(maximumSpeed, requestedSpeed));
@@ -162,7 +173,7 @@ namespace Volleyball.AI
             {
                 TechniqueAction.Receive => new TechniqueControlProfile(1f, 180f, 30f, 30f),
                 TechniqueAction.Set => new TechniqueControlProfile(1f, 180f, 30f, 30f),
-                TechniqueAction.Attack => new TechniqueControlProfile(1f, 45f, 24f, 30f),
+                TechniqueAction.Attack => new TechniqueControlProfile(1f, 60f, 24f, 30f),
                 TechniqueAction.Block => new TechniqueControlProfile(0.05f, 5f, 2f, 24f),
                 TechniqueAction.Serve => new TechniqueControlProfile(0.35f, 18f, 7f, 24f),
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)

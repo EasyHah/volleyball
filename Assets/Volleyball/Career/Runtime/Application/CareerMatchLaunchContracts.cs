@@ -44,7 +44,7 @@ namespace Volleyball.Career.Application
 
     public sealed class CareerMatchVersions : IEquatable<CareerMatchVersions>
     {
-        public const int ContractV2 = 2;
+        public const int ContractV3 = 3;
 
         public CareerMatchVersions(
             int contractVersion,
@@ -54,10 +54,10 @@ namespace Volleyball.Career.Application
             int? matchSimulationVersion,
             int? matchRandomAlgorithmVersion)
         {
-            if (contractVersion != ContractV2)
+            if (contractVersion != ContractV3)
             {
                 throw new ArgumentOutOfRangeException(
-                    nameof(contractVersion), contractVersion, "The match contract version must be 2.");
+                    nameof(contractVersion), contractVersion, "The match contract version must be 3.");
             }
 
             ContractVersion = contractVersion;
@@ -125,7 +125,7 @@ namespace Volleyball.Career.Application
             if (!string.Equals(kind, "indoor_6v6", StringComparison.Ordinal) || teamSize != 6)
             {
                 throw new ArgumentException(
-                    "Career match V2 requires the indoor_6v6 format and a team size of six.",
+                    "Career match V3 requires the indoor_6v6 format and a team size of six.",
                     nameof(kind));
             }
 

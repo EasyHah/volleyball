@@ -8,6 +8,7 @@ using Volleyball.Career.Domain;
 using Volleyball.Career.Persistence;
 using Volleyball.Career.Presentation;
 using Volleyball.Presentation;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.EditModeTests
 {
@@ -64,6 +65,17 @@ namespace Volleyball.Career.EditModeTests
                         assembly.GetName().Name + " publicly exposes legacy match type " + fullName + ".");
                 }
             }
+        }
+
+        [Test]
+        public void SharedMatchContracts_ExposeExplicitVersionedInterfaces()
+        {
+            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV1)), Is.True);
+            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV2)), Is.True);
+            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV3)), Is.True);
+            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV1)), Is.True);
+            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV2)), Is.True);
+            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV3)), Is.True);
         }
 
         private static void AssertReferences(System.Type type, string assemblyName)

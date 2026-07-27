@@ -16,8 +16,6 @@ namespace Volleyball.Bootstrap
     public sealed class CareerVerticalSliceBootstrap : MonoBehaviour
     {
         [SerializeField] private InputActionAsset menuActions;
-        [SerializeField] private TextAsset canonicalContextFixture;
-        [SerializeField] private TextAsset canonicalResultFixture;
 
         public CareerUiSessionController Controller { get; private set; }
 
@@ -32,11 +30,8 @@ namespace Volleyball.Bootstrap
                 var profileRepository = new LocalPlayerProfileRepository(paths, fileSystem);
                 var catalogRepository = new LocalProfileCatalogRepository(paths, fileSystem);
                 var random = new CareerDeterministicRandom();
-                var executor = new CareerMatchExecutorV2(
-                    new FixtureMatchRunnerV2(
-                        new VersionedMatchFixtureRepository(
-                            canonicalContextFixture.bytes,
-                            canonicalResultFixture.bytes)));
+                var executor = new CareerMatchExecutorV3(
+                    new DeterministicFixtureMatchRunnerV3());
                 var adapter = new CareerUiUseCasesAdapter(
                     new CareerLocalUiWorkflow(
                         profileRepository,
@@ -75,11 +70,10 @@ namespace Volleyball.Bootstrap
 
         private void RequireAssets()
         {
-            if (menuActions == null || canonicalContextFixture == null ||
-                canonicalResultFixture == null)
+            if (menuActions == null)
             {
                 throw new InvalidOperationException(
-                    "Career UI requires its input asset and canonical fixture pair.");
+                    "Career UI requires its input asset.");
             }
         }
 

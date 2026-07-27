@@ -159,7 +159,7 @@ namespace Volleyball.Shared.Contracts
     }
 
     [DataContract]
-    public sealed class MatchContextV1
+    public sealed class MatchContextV1 : IMatchContext
     {
         [DataMember(Name = "contractVersion", Order = 1)]
         private int _contractVersion;

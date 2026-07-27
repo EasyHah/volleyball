@@ -23,6 +23,7 @@ namespace Volleyball.Career.Domain
     public sealed class CareerMatchLifecycleVersions : IEquatable<CareerMatchLifecycleVersions>
     {
         public const int ContractV2 = 2;
+        public const int ContractV3 = 3;
 
         public CareerMatchLifecycleVersions(
             int contractVersion,
@@ -32,12 +33,12 @@ namespace Volleyball.Career.Domain
             int? matchSimulationVersion,
             int? matchRandomAlgorithmVersion)
         {
-            if (contractVersion != ContractV2)
+            if (contractVersion != ContractV2 && contractVersion != ContractV3)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(contractVersion),
                     contractVersion,
-                    "The durable match lifecycle requires contract version 2.");
+                    "The durable match lifecycle supports explicit contract versions 2 and 3.");
             }
 
             var hasSimulation = matchSimulationVersion.HasValue;

@@ -1,11 +1,18 @@
 # 球员生涯开发路线图
 
+> 2026-07-27 集成基线：本路线图中关于新增 `Volleyball.Shared.MatchV2`、冻结旧
+> `Volleyball.Shared/Runtime` 和由 Career 定义第二套比赛 DTO 的内容已被
+> [CHG-20260727-001](changes/2026-07-27-001-career-shared-v3-integration.md) 取代。
+> 搭档在 `origin/main@3b59772` 提供的 `Volleyball.Shared` V3 是唯一比赛契约权威；
+> Career 只保留自己的启动、事实和结算模型，并在 `Career.MatchIntegration` 中映射
+> `MatchContextV3`/`MatchResultV3`。下一阶段优先完善当前一周离线闭环，不另建 V2 程序集。
+
 - 状态：已确认，实施中
 - 适用范围：离线首版的首个一周技术闭环
 - Unity 基线目标：`6000.3.20f1`
-- 已同步上游基线：`origin/main@4bf9e4b`（2026-07-19 正式室内 6v6 单局）
-- 当前里程碑 Match 冻结树：`1f0bbe976355ded867dcefadba61d538f77905b9`
-- 当前里程碑 Shared V1 冻结树：`61c7a928f2bf4740defea34c67e5cb108f6dfe76`
+- 已同步上游基线：`origin/main@3b59772`（Full Rally V3 与 Shared V3）
+- 当前里程碑 Match 冻结树：`5ea19d4ae54fe3c8ee34d7c579f638de5460f43f`
+- 当前里程碑 Shared Runtime 冻结树：`d30088e882276769aaef79c86fafbee761b7db41`
 - 对应目录 `.meta` blob：Match `23d5e66a3e4158bd421c4d3ee573e0d4e7339627`；Shared V1
   `9085d85a3a423a82a6303df4ca3fe3819d8d30ea`
 - 发布日期：无硬性日期；完成存档模型与本地持久化后再依据实际速度估算

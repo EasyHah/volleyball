@@ -1,6 +1,8 @@
+using System.Reflection;
 using System.Linq;
 using NUnit.Framework;
 using Volleyball.Domain.Players;
+using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
 using PrototypePlayerRole = Volleyball.Domain.Prototype.PlayerRole;
 using PrototypeTeamId = Volleyball.Domain.Prototype.TeamId;
@@ -76,6 +78,19 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlayerAbilityProfile_ProjectsV1ToDeterministicSafeReachAndPreservesV2Reach()
+        {
+            var legacy = new PlayerAbilityProfile(new PlayerAbilitySnapshotV1(
+                0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f));
+            var v2 = new PlayerAbilityProfile(new PlayerAbilitySnapshotV2(
+                0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 3.42f));
+
+            Assert.That(legacy.MaxAttackReach, Is.EqualTo(3.20f));
+            Assert.That(v2.MaxAttackReach, Is.EqualTo(3.42f));
+            Assert.That(v2.ToSnapshotV2().MaxAttackReach, Is.EqualTo(3.42f));
+        }
+
+        [Test]
         public void MatchPlayerBinding_RejectsInvalidPrototypeSlot()
         {
             var snapshot = new PlayerAbilitySnapshotV1(
@@ -95,6 +110,45 @@ namespace Volleyball.EditModeTests
                         PrototypePlayerRole.Setter),
                     snapshot),
                 Throws.TypeOf<System.ArgumentException>());
+        }
+
+        [Test]
+        public void PhysicalDirector_AddsDistinctV3ConfigurationWithoutChangingInitializeApis()
+        {
+            var publicDeclaredMethods = typeof(PhysicalMatchRallyDirector)
+                .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            var configure = publicDeclaredMethods.SingleOrDefault(method =>
+                method.Name == "ConfigureV3Rules");
+
+            Assert.That(publicDeclaredMethods.Count(method => method.Name == "Initialize"), Is.EqualTo(1));
+            Assert.That(publicDeclaredMethods.Count(method => method.Name == "InitializeV2"), Is.EqualTo(1));
+            Assert.That(configure, Is.Not.Null);
+            Assert.That(
+                configure.GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[] { typeof(MatchContextV3), typeof(V3RulesMode) }));
+        }
+
+        [Test]
+        public void PhysicalDirector_ExposesReadOnlyV3ShadowDiagnostics()
+        {
+            var expectedProperties = new[]
+            {
+                "V3RulesMode",
+                "V3RuleTransitions",
+                "V3RuleParityMatches",
+                "V3RuleIntentionalCorrections",
+                "V3RuleUnexpectedMismatches",
+                "LastV3RuleDiagnostic"
+            };
+
+            foreach (var propertyName in expectedProperties)
+            {
+                var property = typeof(PhysicalMatchRallyDirector).GetProperty(propertyName);
+
+                Assert.That(property, Is.Not.Null, propertyName);
+                Assert.That(property.GetMethod, Is.Not.Null, propertyName);
+                Assert.That(property.GetSetMethod(false), Is.Null, propertyName);
+            }
         }
     }
 }

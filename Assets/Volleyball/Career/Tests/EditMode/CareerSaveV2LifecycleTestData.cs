@@ -1,23 +1,22 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
+using System.Threading;
+using Volleyball.Career.Application;
 using Volleyball.Career.Domain;
+using Volleyball.Career.MatchIntegration;
 using Volleyball.Shared.Contracts;
-using Volleyball.Shared.Contracts.V2;
 
 namespace Volleyball.Career.EditModeTests
 {
     internal static class CareerSaveV2LifecycleTestData
     {
-        private const string FixtureDirectory =
-            "Assets/Volleyball/Shared/MatchV2/Fixtures/V2/career-u1w1-6v6-v1";
-
         public static CareerSaveSnapshot AwaitingMatchSnapshot()
         {
             var before = MatchReadyBase();
             var contextBytes = ContextBytes();
-            var context = MatchContractV2Json.DeserializeContext(contextBytes);
+            var context = ContractJson.DeserializeContextV3(
+                System.Text.Encoding.UTF8.GetString(contextBytes));
             var identity = NextIdentity(before, 9);
             var operationId = new OperationId(
                 Guid.Parse("99999999-9999-9999-9999-999999999999"));
@@ -35,27 +34,27 @@ namespace Volleyball.Career.EditModeTests
                 identity.LineageId,
                 identity.Revision,
                 new CareerMatchLifecycleVersions(
-                    context.Versions.ContractVersion,
-                    context.Versions.ContentVersion,
-                    context.Versions.RulesetVersion,
-                    context.Versions.CareerRandomAlgorithmVersion,
-                    context.Versions.MatchSimulationVersion,
-                    context.Versions.MatchRandomAlgorithmVersion),
+                    CareerMatchLifecycleVersions.ContractV3,
+                    CareerMatchV3Mapper.ContentVersion,
+                    CareerMatchV3Mapper.RulesetVersion,
+                    CareerMatchV3Mapper.CareerRandomAlgorithmVersion,
+                    null,
+                    null),
                 CareerMatchLifecycleExecutionMode.Fixture,
-                context.FixtureId,
-                context.FixtureVersion,
-                context.MatchSeed,
-                context.CompetitionId,
-                context.ScheduleItemId,
+                CareerMatchTestData.FixtureId,
+                CareerMatchTestData.FixtureVersion,
+                CareerMatchTestData.MatchSeed,
+                CareerMatchTestData.CompetitionId,
+                CareerMatchTestData.ScheduleItemId,
                 plan.PlanId,
                 plan.Slots[2].SlotActionId,
                 plan.Slots[2].OccurrenceId,
                 CareerMatchPriority.AttackFirst,
                 contextDigest,
                 contextBytes,
-                context.Teams[0].TeamId,
-                context.Teams[1].TeamId,
-                context.Teams.SelectMany(team => team.Players)
+                context.Home.TeamId,
+                context.Away.TeamId,
+                context.Home.Players.Concat(context.Away.Players)
                     .Select(player => player.PlayerId),
                 before.Player.PlayerId,
                 frozen);
@@ -69,7 +68,7 @@ namespace Volleyball.Career.EditModeTests
                         plan.Slots[2].SlotActionId,
                         plan.Slots[2].OccurrenceId,
                         context.SessionId,
-                        context.ScheduleItemId,
+                        CareerMatchTestData.ScheduleItemId,
                         contextDigest),
                     new Sha256Digest(new string('f', 64)),
                     identity.LineageId,
@@ -112,11 +111,17 @@ namespace Volleyball.Career.EditModeTests
             var awaiting = AwaitingMatchSnapshot();
             var contextBytes = awaiting.PendingMatch.CanonicalContextUtf8;
             var resultBytes = ResultBytes();
-            var context = MatchContractV2Json.DeserializeContext(contextBytes);
-            var result = MatchContractV2Json.DeserializeResult(resultBytes, context);
-            var summary = Summary(awaiting, result);
+            var execution = Executor().DecodeAndValidate(contextBytes, resultBytes);
+            var summary = CareerMatchSettlementRulesV1.Calculate(
+                awaiting.PendingMatch,
+                execution.Facts,
+                awaiting.Player,
+                awaiting.PotentialGrade.Value,
+                awaiting.Fatigue.Value,
+                awaiting.Mindset.Value,
+                awaiting.CoachTrust.Value);
             var identity = NextIdentity(awaiting, 10);
-            var resultDigest = new Sha256Digest(result.ResultHash);
+            var resultDigest = execution.ResultDigest;
             var history = new CareerMatchHistoryEntry(
                 awaiting.PendingMatch.SessionId,
                 awaiting.PendingMatch.ScheduleItemId,
@@ -173,18 +178,17 @@ namespace Volleyball.Career.EditModeTests
 
         public static byte[] ContextBytes()
         {
-            return File.ReadAllBytes(Path.Combine(
-                Directory.GetCurrentDirectory(),
-                FixtureDirectory,
-                "golden-context.json"));
+            return Executor().Encode(CareerMatchTestData.Launch()).CanonicalContextUtf8;
         }
 
         public static byte[] ResultBytes()
         {
-            return File.ReadAllBytes(Path.Combine(
-                Directory.GetCurrentDirectory(),
-                FixtureDirectory,
-                "golden-result.json"));
+            var executor = Executor();
+            var context = executor.Encode(CareerMatchTestData.Launch());
+            return executor.ExecuteAsync(context, CancellationToken.None)
+                .GetAwaiter()
+                .GetResult()
+                .CanonicalResultUtf8;
         }
 
         private static CareerSaveSnapshot MatchReadyBase()
@@ -392,106 +396,6 @@ namespace Volleyball.Career.EditModeTests
                 "00000000-0000-0000-0000-" + value.ToString("D12"));
         }
 
-        private static CareerSettlementSummary Summary(
-            CareerSaveSnapshot awaiting,
-            MatchResultV2 result)
-        {
-            var facts = result.PlayerFacts.Single(
-                item => item.PlayerId.Equals(awaiting.Player.PlayerId));
-            var growth = new CareerAttributeGrowthChange[8];
-            for (var index = 0; index < growth.Length; index++)
-            {
-                var kind = (CareerAttributeKind)index;
-                var before = Attribute(awaiting.Player.Attributes, kind);
-                growth[index] = new CareerAttributeGrowthChange(
-                    kind,
-                    "match.growth." + AttributeToken(kind),
-                    before,
-                    5,
-                    5,
-                    new CareerAttributeProgress(
-                        before.AbilityBasisPoints,
-                        before.GrowthExperience + 5));
-            }
-
-            var matchFatigue = new CareerReasonedIntegerChange(
-                "match.fatigue",
-                awaiting.Fatigue.Value,
-                1,
-                1,
-                awaiting.Fatigue.Value + 1);
-            var matchMindset = new CareerReasonedIntegerChange(
-                "match.mindset",
-                awaiting.Mindset.Value,
-                2,
-                2,
-                awaiting.Mindset.Value + 2);
-            var matchTrust = new CareerReasonedIntegerChange(
-                "match.coach_trust",
-                awaiting.CoachTrust.Value,
-                3,
-                3,
-                awaiting.CoachTrust.Value + 3);
-            return new CareerSettlementSummary(
-                result.Sets.Select(set => new CareerMatchSetScoreSummary(
-                    set.SetNumber,
-                    set.HomePoints,
-                    set.AwayPoints,
-                    set.IsComplete)),
-                new CareerProtagonistMatchFacts(
-                    new CareerSpikeFactSummary(
-                        facts.Spike.Attempts,
-                        facts.Spike.Points,
-                        facts.Spike.Errors),
-                    new CareerServeFactSummary(
-                        facts.Serve.Attempts,
-                        facts.Serve.Aces,
-                        facts.Serve.Errors),
-                    new CareerReceptionFactSummary(
-                        facts.Reception.Attempts,
-                        facts.Reception.Perfect,
-                        facts.Reception.Positive,
-                        facts.Reception.Neutral,
-                        facts.Reception.Negative,
-                        facts.Reception.Errors),
-                    new CareerDefenseFactSummary(
-                        facts.Defense.Attempts,
-                        facts.Defense.Successes),
-                    new CareerBlockFactSummary(
-                        facts.Block.Attempts,
-                        facts.Block.EffectiveTouches,
-                        facts.Block.Points),
-                    new CareerMatchLoadFactSummary(
-                        facts.Load.RalliesPlayed,
-                        facts.Load.ActiveDurationMilliseconds,
-                        facts.Load.MovementDistanceMillimeters,
-                        facts.Load.JumpCount,
-                        facts.Load.HighLoadJumpCount,
-                        facts.Load.LandingLoadBasisPoints,
-                        facts.Load.TotalWorkloadBasisPoints),
-                    new CareerStabilityFactSummary(
-                        facts.Stability.CriticalActions,
-                        facts.Stability.CriticalSuccesses,
-                        facts.Stability.CriticalErrors,
-                        facts.Stability.ErrorStreakEpisodes,
-                        facts.Stability.LongestErrorStreak)),
-                CareerMatchPriority.AttackFirst,
-                true,
-                result.WinnerTeamId.Value.Equals(awaiting.TeamId.Value),
-                growth,
-                matchFatigue,
-                matchMindset,
-                matchTrust,
-                ZeroWeekend("weekend.fatigue", matchFatigue.NewValue),
-                ZeroWeekend("weekend.mindset", matchMindset.NewValue),
-                ZeroWeekend("weekend.coach_trust", matchTrust.NewValue));
-        }
-
-        private static CareerReasonedIntegerChange ZeroWeekend(string reason, int value)
-        {
-            return new CareerReasonedIntegerChange(reason, value, 0, 0, value);
-        }
-
         private static CareerPlayerAttributes FixtureAttributes()
         {
             return new CareerPlayerAttributes(
@@ -505,27 +409,9 @@ namespace Volleyball.Career.EditModeTests
                 new CareerAttributeProgress(6890, 808));
         }
 
-        private static CareerAttributeProgress Attribute(
-            CareerPlayerAttributes attributes,
-            CareerAttributeKind kind)
+        private static CareerMatchExecutorV3 Executor()
         {
-            switch (kind)
-            {
-                case CareerAttributeKind.Spike: return attributes.Spike;
-                case CareerAttributeKind.Serve: return attributes.Serve;
-                case CareerAttributeKind.Reception: return attributes.Reception;
-                case CareerAttributeKind.Defense: return attributes.Defense;
-                case CareerAttributeKind.Block: return attributes.Block;
-                case CareerAttributeKind.Movement: return attributes.Movement;
-                case CareerAttributeKind.Jump: return attributes.Jump;
-                case CareerAttributeKind.Stamina: return attributes.Stamina;
-                default: throw new ArgumentOutOfRangeException(nameof(kind));
-            }
-        }
-
-        private static string AttributeToken(CareerAttributeKind kind)
-        {
-            return kind.ToString().ToLowerInvariant();
+            return new CareerMatchExecutorV3(new DeterministicFixtureMatchRunnerV3());
         }
 
         private static CareerSaveIdentity NextIdentity(

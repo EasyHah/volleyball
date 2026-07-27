@@ -1,12 +1,15 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Volleyball.Career.Domain;
-using Volleyball.Shared.Contracts.V2;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.Persistence
 {
     internal static class CareerMatchPayloadValidator
     {
+        private static readonly UTF8Encoding StrictUtf8 = new UTF8Encoding(false, true);
+
         public static void Validate(CareerSaveSnapshot snapshot)
         {
             if (snapshot == null)
@@ -26,10 +29,12 @@ namespace Volleyball.Career.Persistence
                     ValidateHistory(snapshot, snapshot.MatchHistory[index], index);
                 }
             }
-            catch (MatchV2ContractException exception)
+            catch (Exception exception) when (
+                exception is ContractValidationException ||
+                exception is DecoderFallbackException)
             {
                 throw new ArgumentException(
-                    "Career match payload failed the Shared.MatchV2 contract.",
+                    "Career match payload failed the authoritative Shared Match V3 contract.",
                     nameof(snapshot),
                     exception);
             }
@@ -39,43 +44,34 @@ namespace Volleyball.Career.Persistence
             CareerSaveSnapshot snapshot,
             PendingCareerMatch pending)
         {
-            var bytes = pending.CanonicalContextUtf8;
-            var context = MatchContractV2Json.DeserializeContext(bytes);
-            RequireSameBytes(
-                bytes,
-                MatchContractV2Json.SerializeContext(context),
+            var context = DecodeContext(
+                pending.CanonicalContextUtf8,
                 "pendingMatch.canonicalContextUtf8");
+            RequireEqual(
+                pending.Versions.ContractVersion,
+                CareerMatchLifecycleVersions.ContractV3,
+                "pendingMatch.versions.contractVersion");
+            RequireEqual(context.ContractVersion, pending.Versions.ContractVersion, "pendingMatch.contractVersion");
             RequireEqual(context.ContextHash, pending.ContextDigest.Value, "pendingMatch.contextHash");
             RequireEqual(context.SessionId, pending.SessionId, "pendingMatch.sessionId");
-            RequireVersions(context.Versions, pending.Versions, "pendingMatch.versions");
             RequireEqual(
-                context.Versions.ContractVersion,
-                snapshot.Versions.ContractVersion,
-                "pendingMatch.versions.contractVersion");
-            RequireEqual(
-                context.Versions.ContentVersion,
-                snapshot.Versions.ContentVersion,
-                "pendingMatch.versions.contentVersion");
-            RequireEqual(
-                context.Versions.RulesetVersion,
-                snapshot.Versions.RulesetVersion,
-                "pendingMatch.versions.rulesetVersion");
-            RequireEqual(
-                context.Versions.CareerRandomAlgorithmVersion,
-                snapshot.Versions.CareerRandomAlgorithmVersion,
-                "pendingMatch.versions.careerRandomAlgorithmVersion");
-            RequireEqual(context.ExecutionMode, ToShared(pending.ExecutionMode), "pendingMatch.executionMode");
-            RequireEqual(context.FixtureId, pending.FixtureId, "pendingMatch.fixtureId");
-            RequireEqual(context.FixtureVersion, pending.FixtureVersion, "pendingMatch.fixtureVersion");
-            RequireEqual(context.MatchSeed, pending.MatchSeed, "pendingMatch.matchSeed");
-            RequireEqual(context.CompetitionId, pending.CompetitionId, "pendingMatch.competitionId");
-            RequireEqual(context.ScheduleItemId, pending.ScheduleItemId, "pendingMatch.scheduleItemId");
-            RequireEqual(
-                context.PreMatchPriority,
-                ToShared(pending.PreMatchPriority),
-                "pendingMatch.preMatchPriority");
-            RequireRoster(context, pending, snapshot);
-            RequireCurrentPlayer(context, snapshot, compareFitness: true, "pendingMatch");
+                context.Seed,
+                unchecked((int)pending.MatchSeed),
+                "pendingMatch.matchSeed");
+            RequireEqual(context.Home.TeamId.Value, pending.HomeTeamId.Value, "pendingMatch.homeTeamId");
+            RequireEqual(context.Away.TeamId.Value, pending.AwayTeamId.Value, "pendingMatch.awayTeamId");
+
+            var players = FlattenPlayers(context);
+            RequireEqual(players.Count, pending.OrderedPlayerIds.Count, "pendingMatch.orderedPlayerIds.count");
+            for (var index = 0; index < players.Count; index++)
+            {
+                RequireEqual(
+                    players[index].PlayerId.Value,
+                    pending.OrderedPlayerIds[index].Value,
+                    "pendingMatch.orderedPlayerIds[" + index + "]");
+            }
+
+            RequireCurrentPlayer(context, snapshot, "pendingMatch");
         }
 
         private static void ValidateHistory(
@@ -84,71 +80,89 @@ namespace Volleyball.Career.Persistence
             int index)
         {
             var path = "matchHistory[" + index + "]";
-            var contextBytes = history.CanonicalContextUtf8;
-            var context = MatchContractV2Json.DeserializeContext(contextBytes);
-            RequireSameBytes(
-                contextBytes,
-                MatchContractV2Json.SerializeContext(context),
-                path + ".canonicalContextUtf8");
-
-            var resultBytes = history.CanonicalResultUtf8;
-            var result = MatchContractV2Json.DeserializeResult(resultBytes, context);
-            RequireSameBytes(
-                resultBytes,
-                MatchContractV2Json.SerializeResult(result),
+            var context = DecodeContext(history.CanonicalContextUtf8, path + ".canonicalContextUtf8");
+            var result = DecodeResult(
+                history.CanonicalResultUtf8,
+                context,
                 path + ".canonicalResultUtf8");
-            RequireEqual(result.Status, MatchStatusV2.Completed, path + ".status");
+
             RequireEqual(context.SessionId, history.SessionId, path + ".sessionId");
-            RequireEqual(context.ScheduleItemId, history.ScheduleItemId, path + ".scheduleItemId");
             RequireEqual(context.ContextHash, history.ContextDigest.Value, path + ".contextHash");
             RequireEqual(result.SessionId, history.SessionId, path + ".result.sessionId");
             RequireEqual(result.ContextHash, history.ContextDigest.Value, path + ".result.contextHash");
             RequireEqual(result.ResultHash, history.ResultDigest.Value, path + ".resultHash");
+            RequireEqual(history.SettlementSummary.Sets.Count, 1, path + ".settlementSummary.sets.count");
             RequireEqual(
-                context.PreMatchPriority,
-                ToShared(history.SettlementSummary.SelectedPriority),
-                path + ".settlementSummary.selectedPriority");
-            RequireSets(result, history.SettlementSummary, path);
-            RequireFacts(result, snapshot.Player.PlayerId.Value, history.SettlementSummary, path);
+                history.SettlementSummary.Sets[0].HomePoints,
+                result.HomeScore,
+                path + ".settlementSummary.sets[0].homePoints");
             RequireEqual(
-                result.WinnerTeamId.HasValue &&
-                result.WinnerTeamId.Value.Value == snapshot.TeamId.Value.Value,
+                history.SettlementSummary.Sets[0].AwayPoints,
+                result.AwayScore,
+                path + ".settlementSummary.sets[0].awayPoints");
+            RequireEqual(
+                result.WinnerTeamId.Value == snapshot.TeamId.Value.Value,
                 history.SettlementSummary.Won,
                 path + ".settlementSummary.won");
-            RequireCurrentPlayer(context, snapshot, compareFitness: false, path);
-        }
 
-        private static void RequireRoster(
-            MatchContextV2 context,
-            PendingCareerMatch pending,
-            CareerSaveSnapshot snapshot)
-        {
-            RequireEqual(context.Teams.Count, 2, "pendingMatch.teams.count");
-            RequireEqual(context.Teams[0].Side, TeamSideV2.Home, "pendingMatch.teams[0].side");
-            RequireEqual(context.Teams[1].Side, TeamSideV2.Away, "pendingMatch.teams[1].side");
-            RequireEqual(context.Teams[0].TeamId.Value, pending.HomeTeamId.Value, "pendingMatch.homeTeamId");
-            RequireEqual(context.Teams[1].TeamId.Value, pending.AwayTeamId.Value, "pendingMatch.awayTeamId");
-
-            var flattened = FlattenPlayers(context);
-            RequireEqual(flattened.Count, pending.OrderedPlayerIds.Count, "pendingMatch.orderedPlayerIds.count");
-            for (var index = 0; index < flattened.Count; index++)
+            var hasProtagonistStats = false;
+            foreach (var stats in result.PlayerStats)
             {
-                RequireEqual(
-                    flattened[index].PlayerId.Value,
-                    pending.OrderedPlayerIds[index].Value,
-                    "pendingMatch.orderedPlayerIds[" + index + "]");
+                if (stats.PlayerId.Equals(snapshot.Player.PlayerId))
+                {
+                    hasProtagonistStats = true;
+                    break;
+                }
             }
 
-            RequireEqual(
-                pending.ProtagonistPlayerId.Value,
-                snapshot.Player.PlayerId.Value,
-                "pendingMatch.protagonistPlayerId");
+            if (!hasProtagonistStats)
+            {
+                throw Contradiction(path + " result omits the current Career player's V3 stats.");
+            }
+
+            RequireCurrentPlayer(context, snapshot, path);
+        }
+
+        private static MatchContextV3 DecodeContext(byte[] bytes, string path)
+        {
+            var context = ContractJson.DeserializeContextV3(StrictUtf8.GetString(bytes));
+            RequireSameBytes(bytes, Serialize(context), path);
+            return context;
+        }
+
+        private static MatchResultV3 DecodeResult(
+            byte[] bytes,
+            MatchContextV3 context,
+            string path)
+        {
+            var result = ContractJson.DeserializeResultV3(StrictUtf8.GetString(bytes));
+            RequireSameBytes(bytes, Serialize(result), path);
+            result.ValidateAgainst(context);
+            return result;
+        }
+
+        private static byte[] Serialize(MatchContextV3 context)
+        {
+            return StrictUtf8.GetBytes(ContractJson.SerializeV3(context));
+        }
+
+        private static byte[] Serialize(MatchResultV3 result)
+        {
+            return StrictUtf8.GetBytes(ContractJson.SerializeV3(result));
+        }
+
+        private static List<PlayerSnapshotV3> FlattenPlayers(MatchContextV3 context)
+        {
+            var players = new List<PlayerSnapshotV3>(
+                context.Home.Players.Count + context.Away.Players.Count);
+            players.AddRange(context.Home.Players);
+            players.AddRange(context.Away.Players);
+            return players;
         }
 
         private static void RequireCurrentPlayer(
-            MatchContextV2 context,
+            MatchContextV3 context,
             CareerSaveSnapshot snapshot,
-            bool compareFitness,
             string path)
         {
             if (snapshot.Player == null || !snapshot.TeamId.HasValue)
@@ -156,14 +170,14 @@ namespace Volleyball.Career.Persistence
                 throw Contradiction(path + " requires the current Career player and team.");
             }
 
-            MatchTeamSnapshotV2 careerTeam = null;
-            for (var teamIndex = 0; teamIndex < context.Teams.Count; teamIndex++)
+            TeamSnapshotV3 careerTeam = null;
+            if (context.Home.TeamId.Equals(snapshot.TeamId.Value))
             {
-                if (context.Teams[teamIndex].TeamId.Value == snapshot.TeamId.Value.Value)
-                {
-                    careerTeam = context.Teams[teamIndex];
-                    break;
-                }
+                careerTeam = context.Home;
+            }
+            else if (context.Away.TeamId.Equals(snapshot.TeamId.Value))
+            {
+                careerTeam = context.Away;
             }
 
             if (careerTeam == null)
@@ -171,12 +185,12 @@ namespace Volleyball.Career.Persistence
                 throw Contradiction(path + " current Career team is absent from context.");
             }
 
-            MatchPlayerSnapshotV2 protagonist = null;
-            for (var playerIndex = 0; playerIndex < careerTeam.Players.Count; playerIndex++)
+            PlayerSnapshotV3 protagonist = null;
+            foreach (var player in careerTeam.Players)
             {
-                if (careerTeam.Players[playerIndex].PlayerId.Value == snapshot.Player.PlayerId.Value)
+                if (player.PlayerId.Equals(snapshot.Player.PlayerId))
                 {
-                    protagonist = careerTeam.Players[playerIndex];
+                    protagonist = player;
                     break;
                 }
             }
@@ -186,141 +200,10 @@ namespace Volleyball.Career.Persistence
                 throw Contradiction(path + " current Career player is absent from its team segment.");
             }
 
-            RequireEqual(protagonist.JerseyNumber, snapshot.Player.JerseyNumber, path + ".protagonist.jerseyNumber");
-            var abilities = protagonist.Abilities;
-            var career = snapshot.Player.Attributes;
-            RequireEqual(abilities.SpikeBasisPoints, career.Spike.AbilityBasisPoints, path + ".protagonist.abilities.spike");
-            RequireEqual(abilities.ServeBasisPoints, career.Serve.AbilityBasisPoints, path + ".protagonist.abilities.serve");
-            RequireEqual(abilities.ReceptionBasisPoints, career.Reception.AbilityBasisPoints, path + ".protagonist.abilities.reception");
-            RequireEqual(abilities.DefenseBasisPoints, career.Defense.AbilityBasisPoints, path + ".protagonist.abilities.defense");
-            RequireEqual(abilities.BlockBasisPoints, career.Block.AbilityBasisPoints, path + ".protagonist.abilities.block");
-            RequireEqual(abilities.MovementBasisPoints, career.Movement.AbilityBasisPoints, path + ".protagonist.abilities.movement");
-            RequireEqual(abilities.JumpBasisPoints, career.Jump.AbilityBasisPoints, path + ".protagonist.abilities.jump");
-            RequireEqual(abilities.StaminaBasisPoints, career.Stamina.AbilityBasisPoints, path + ".protagonist.abilities.stamina");
-            if (compareFitness)
-            {
-                var expectedFitness = Math.Max(0, Math.Min(10000, 10000 - snapshot.Fatigue.Value * 100));
-                RequireEqual(protagonist.FitnessBasisPoints, expectedFitness, path + ".protagonist.fitnessBasisPoints");
-            }
-        }
-
-        private static List<MatchPlayerSnapshotV2> FlattenPlayers(MatchContextV2 context)
-        {
-            var players = new List<MatchPlayerSnapshotV2>(12);
-            for (var teamIndex = 0; teamIndex < context.Teams.Count; teamIndex++)
-            {
-                for (var playerIndex = 0; playerIndex < context.Teams[teamIndex].Players.Count; playerIndex++)
-                {
-                    players.Add(context.Teams[teamIndex].Players[playerIndex]);
-                }
-            }
-
-            return players;
-        }
-
-        private static void RequireSets(
-            MatchResultV2 result,
-            CareerSettlementSummary summary,
-            string path)
-        {
-            RequireEqual(result.Sets.Count, summary.Sets.Count, path + ".settlementSummary.sets.count");
-            for (var index = 0; index < result.Sets.Count; index++)
-            {
-                var actual = result.Sets[index];
-                var expected = summary.Sets[index];
-                RequireEqual(actual.SetNumber, expected.SetNumber, path + ".settlementSummary.sets[" + index + "].setNumber");
-                RequireEqual(actual.HomePoints, expected.HomePoints, path + ".settlementSummary.sets[" + index + "].homePoints");
-                RequireEqual(actual.AwayPoints, expected.AwayPoints, path + ".settlementSummary.sets[" + index + "].awayPoints");
-                RequireEqual(actual.IsComplete, expected.IsComplete, path + ".settlementSummary.sets[" + index + "].isComplete");
-            }
-        }
-
-        private static void RequireFacts(
-            MatchResultV2 result,
-            string playerId,
-            CareerSettlementSummary summary,
-            string path)
-        {
-            MatchPlayerFactsV2 actual = null;
-            for (var index = 0; index < result.PlayerFacts.Count; index++)
-            {
-                if (result.PlayerFacts[index].PlayerId.Value == playerId)
-                {
-                    actual = result.PlayerFacts[index];
-                    break;
-                }
-            }
-
-            if (actual == null)
-            {
-                throw Contradiction(path + " result omits the current Career player's facts.");
-            }
-
-            var expected = summary.ProtagonistFacts;
-            RequireEqual(actual.Spike.Attempts, expected.Spike.Attempts, path + ".facts.spike.attempts");
-            RequireEqual(actual.Spike.Points, expected.Spike.Points, path + ".facts.spike.points");
-            RequireEqual(actual.Spike.Errors, expected.Spike.Errors, path + ".facts.spike.errors");
-            RequireEqual(actual.Serve.Attempts, expected.Serve.Attempts, path + ".facts.serve.attempts");
-            RequireEqual(actual.Serve.Aces, expected.Serve.Aces, path + ".facts.serve.aces");
-            RequireEqual(actual.Serve.Errors, expected.Serve.Errors, path + ".facts.serve.errors");
-            RequireEqual(actual.Reception.Attempts, expected.Reception.Attempts, path + ".facts.reception.attempts");
-            RequireEqual(actual.Reception.Perfect, expected.Reception.Perfect, path + ".facts.reception.perfect");
-            RequireEqual(actual.Reception.Positive, expected.Reception.Positive, path + ".facts.reception.positive");
-            RequireEqual(actual.Reception.Neutral, expected.Reception.Neutral, path + ".facts.reception.neutral");
-            RequireEqual(actual.Reception.Negative, expected.Reception.Negative, path + ".facts.reception.negative");
-            RequireEqual(actual.Reception.Errors, expected.Reception.Errors, path + ".facts.reception.errors");
-            RequireEqual(actual.Defense.Attempts, expected.Defense.Attempts, path + ".facts.defense.attempts");
-            RequireEqual(actual.Defense.Successes, expected.Defense.Successes, path + ".facts.defense.successes");
-            RequireEqual(actual.Block.Attempts, expected.Block.Attempts, path + ".facts.block.attempts");
-            RequireEqual(actual.Block.EffectiveTouches, expected.Block.EffectiveTouches, path + ".facts.block.effectiveTouches");
-            RequireEqual(actual.Block.Points, expected.Block.Points, path + ".facts.block.points");
-            RequireEqual(actual.Load.RalliesPlayed, expected.Load.RalliesPlayed, path + ".facts.load.ralliesPlayed");
-            RequireEqual(actual.Load.ActiveDurationMilliseconds, expected.Load.ActiveDurationMilliseconds, path + ".facts.load.activeDurationMilliseconds");
-            RequireEqual(actual.Load.MovementDistanceMillimeters, expected.Load.MovementDistanceMillimeters, path + ".facts.load.movementDistanceMillimeters");
-            RequireEqual(actual.Load.JumpCount, expected.Load.JumpCount, path + ".facts.load.jumpCount");
-            RequireEqual(actual.Load.HighLoadJumpCount, expected.Load.HighLoadJumpCount, path + ".facts.load.highLoadJumpCount");
-            RequireEqual(actual.Load.LandingLoadBasisPoints, expected.Load.LandingLoadBasisPoints, path + ".facts.load.landingLoadBasisPoints");
-            RequireEqual(actual.Load.TotalWorkloadBasisPoints, expected.Load.TotalWorkloadBasisPoints, path + ".facts.load.totalWorkloadBasisPoints");
-            RequireEqual(actual.Stability.CriticalActions, expected.Stability.CriticalActions, path + ".facts.stability.criticalActions");
-            RequireEqual(actual.Stability.CriticalSuccesses, expected.Stability.CriticalSuccesses, path + ".facts.stability.criticalSuccesses");
-            RequireEqual(actual.Stability.CriticalErrors, expected.Stability.CriticalErrors, path + ".facts.stability.criticalErrors");
-            RequireEqual(actual.Stability.ErrorStreakEpisodes, expected.Stability.ErrorStreakEpisodes, path + ".facts.stability.errorStreakEpisodes");
-            RequireEqual(actual.Stability.LongestErrorStreak, expected.Stability.LongestErrorStreak, path + ".facts.stability.longestErrorStreak");
-        }
-
-        private static void RequireVersions(
-            MatchVersionSetV2 actual,
-            CareerMatchLifecycleVersions expected,
-            string path)
-        {
-            RequireEqual(actual.ContractVersion, expected.ContractVersion, path + ".contractVersion");
-            RequireEqual(actual.ContentVersion, expected.ContentVersion, path + ".contentVersion");
-            RequireEqual(actual.RulesetVersion, expected.RulesetVersion, path + ".rulesetVersion");
-            RequireEqual(actual.CareerRandomAlgorithmVersion, expected.CareerRandomAlgorithmVersion, path + ".careerRandomAlgorithmVersion");
-            RequireEqual(actual.MatchSimulationVersion, expected.MatchSimulationVersion, path + ".matchSimulationVersion");
-            RequireEqual(actual.MatchRandomAlgorithmVersion, expected.MatchRandomAlgorithmVersion, path + ".matchRandomAlgorithmVersion");
-        }
-
-        private static MatchExecutionModeV2 ToShared(CareerMatchLifecycleExecutionMode value)
-        {
-            switch (value)
-            {
-                case CareerMatchLifecycleExecutionMode.Fixture: return MatchExecutionModeV2.Fixture;
-                case CareerMatchLifecycleExecutionMode.Direct: return MatchExecutionModeV2.Direct;
-                case CareerMatchLifecycleExecutionMode.QuickSimulation: return MatchExecutionModeV2.QuickSimulation;
-                default: throw Contradiction("Unsupported Career match execution mode.");
-            }
-        }
-
-        private static PreMatchPriorityV2 ToShared(CareerMatchPriority value)
-        {
-            switch (value)
-            {
-                case CareerMatchPriority.AttackFirst: return PreMatchPriorityV2.AttackFirst;
-                case CareerMatchPriority.FirstContactSecurity: return PreMatchPriorityV2.FirstContactSecurity;
-                case CareerMatchPriority.StaminaControl: return PreMatchPriorityV2.StaminaControl;
-                default: throw Contradiction("Unsupported Career match priority.");
-            }
+            RequireEqual(
+                protagonist.JerseyNumber,
+                snapshot.Player.JerseyNumber,
+                path + ".protagonist.jerseyNumber");
         }
 
         private static void RequireSameBytes(byte[] actual, byte[] expected, string path)
@@ -343,7 +226,7 @@ namespace Volleyball.Career.Persistence
         {
             if (!EqualityComparer<T>.Default.Equals(actual, expected))
             {
-                throw Contradiction(path + " contradicts the canonical Shared.MatchV2 payload.");
+                throw Contradiction(path + " contradicts the canonical Shared Match V3 payload.");
             }
         }
 

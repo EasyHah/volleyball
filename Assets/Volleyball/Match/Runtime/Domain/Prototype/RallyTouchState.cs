@@ -279,6 +279,33 @@ namespace Volleyball.Domain.Prototype
             return evaluation;
         }
 
+        public void SynchronizeAuthoritativeContact(
+            PlayerId actor,
+            TechniqueAction action,
+            int authoritativeCountedTouches)
+        {
+            RallyContactWindow.ValidateActor(actor, nameof(actor));
+            RallyContactWindow.ValidateAction(action, nameof(action));
+            if (authoritativeCountedTouches < 0 || authoritativeCountedTouches > 3)
+            {
+                throw new ArgumentOutOfRangeException(nameof(authoritativeCountedTouches));
+            }
+
+            if (IsCountedAction(action))
+            {
+                if (authoritativeCountedTouches == 0)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(authoritativeCountedTouches));
+                }
+
+                PossessionTeam = actor.Team;
+                CountedTeamTouches = authoritativeCountedTouches;
+                LastCountedActor = actor;
+            }
+            LastPhysicalTouch = actor;
+            ContactWindow = null;
+        }
+
         private static bool IsCountedAction(TechniqueAction action)
         {
             return action == TechniqueAction.Receive
