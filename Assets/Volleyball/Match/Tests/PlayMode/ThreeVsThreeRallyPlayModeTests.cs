@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,7 +29,28 @@ namespace Volleyball.PlayModeTests
             yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
             var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
             Assert.That(director, Is.Not.Null);
+            var accepted = new List<ReplayContactEvent>();
+            director.ReplayContactAccepted += accepted.Add;
+            var timeout = Time.realtimeSinceStartup + 30f;
+            while (accepted.Count == 0 && Time.realtimeSinceStartup < timeout)
+            {
+                yield return null;
+            }
+
             Assert.That(director.GateIAuthorityEnabled, Is.False);
+            Assert.That(director.GateHAuthorityEnabled, Is.False);
+            Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
+            Assert.That(accepted, Is.Not.Empty,
+                "The legacy 3v3 fixture did not accept a contact.");
+            Assert.That(accepted.All(contact =>
+                contact.GateISetIntentAuthority == null &&
+                contact.AttackDefenseAuthority == null), Is.True);
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector)
+                    .GetField("_attackDefenseCoordinator",
+                        BindingFlags.Instance | BindingFlags.NonPublic)
+                    .GetValue(director),
+                Is.Null);
         }
 
         [UnityTest]

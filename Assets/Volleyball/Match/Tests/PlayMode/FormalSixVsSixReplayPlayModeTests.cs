@@ -194,7 +194,28 @@ namespace Volleyball.PlayModeTests
                         replayEvent.OrganizationAuthority,
                         Is.Null);
                 }
+                if (replayEvent.EventKind == "Set")
+                {
+                    Assert.That(replayEvent.AttackDefenseAuthority, Is.Not.Null);
+                    Assert.That(replayEvent.AttackDefenseAuthority.Phase,
+                        Is.EqualTo("SetIntentPlanned"));
+                }
+                if (replayEvent.AttackDefenseAuthority != null)
+                {
+                    Assert.That(replayEvent.AttackDefenseAuthority.PlanRevision,
+                        Is.GreaterThanOrEqualTo(0));
+                    Assert.That(replayEvent.AttackDefenseAuthority.SourceSequenceNumber,
+                        Is.GreaterThan(0));
+                    Assert.That(replayEvent.AttackDefenseAuthority.TestedEnvelopeIdentity,
+                        Is.EqualTo(replayEvent.TestedEnvelope.Identity));
+                    Assert.That(replayEvent.AttackDefenseAuthority.ExecutableEnvelopeIdentity,
+                        Is.EqualTo(replayEvent.ExecutableEnvelope.Identity));
+                    Assert.That(replayEvent.AttackDefenseAuthority.TrajectoryArtifactIdentity,
+                        Is.EqualTo(replayEvent.Trajectory.ArtifactIdentity));
+                }
             }
+            Assert.That(restored.Events.Any(replayEvent =>
+                replayEvent.AttackDefenseAuthority != null), Is.True);
             Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
             Assert.That(restored.ReplayHash, Is.EqualTo(replay.ReplayHash));
         }
@@ -454,7 +475,7 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator Capture_TwoIndependentFixedSeedFormalRunsAreByteStable()
+        public IEnumerator Capture_TwoIndependentGateIFixedSeedRunsAreByteStable()
         {
             var payloads = new byte[2][];
             var acceptedSequences = new string[2][];
@@ -552,6 +573,25 @@ namespace Volleyball.PlayModeTests
                 Assert.That(
                     right.Shadow.ArtifactIdentity,
                     Is.EqualTo(left.Shadow.ArtifactIdentity));
+                Assert.That(right.AttackDefenseAuthority == null,
+                    Is.EqualTo(left.AttackDefenseAuthority == null));
+                if (left.AttackDefenseAuthority != null)
+                {
+                    Assert.That(right.AttackDefenseAuthority.PlanRevision,
+                        Is.EqualTo(left.AttackDefenseAuthority.PlanRevision));
+                    Assert.That(right.AttackDefenseAuthority.SourceSequenceNumber,
+                        Is.EqualTo(left.AttackDefenseAuthority.SourceSequenceNumber));
+                    Assert.That(right.AttackDefenseAuthority.Phase,
+                        Is.EqualTo(left.AttackDefenseAuthority.Phase));
+                    Assert.That(right.AttackDefenseAuthority.SelectedCandidateIdentity,
+                        Is.EqualTo(left.AttackDefenseAuthority.SelectedCandidateIdentity));
+                    Assert.That(right.AttackDefenseAuthority.Coverage.Decision,
+                        Is.EqualTo(left.AttackDefenseAuthority.Coverage.Decision));
+                    Assert.That(right.AttackDefenseAuthority.TestedEnvelopeIdentity,
+                        Is.EqualTo(left.AttackDefenseAuthority.TestedEnvelopeIdentity));
+                    Assert.That(right.AttackDefenseAuthority.TrajectoryArtifactIdentity,
+                        Is.EqualTo(left.AttackDefenseAuthority.TrajectoryArtifactIdentity));
+                }
                 Assert.That(
                     right.AbilityConsumptions.Count,
                     Is.EqualTo(left.AbilityConsumptions.Count));

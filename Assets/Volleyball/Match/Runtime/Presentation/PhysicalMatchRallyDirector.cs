@@ -1980,6 +1980,7 @@ namespace Volleyball.Presentation
                     !pair.Value.StableId.Equals(organizer.StableId) &&
                     _v3RulesAdapter.Eligibility.For(pair.Value.StableId)
                         .CanAttackAboveNetFromFrontZone,
+                    _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
                     pair.Value.Ability.Derived)).ToArray();
             var result = _attackDefenseCoordinator.PlanSetIntent(new SetIntentPlanningRequestV3(
                 _gateHPlanRevision, ++_gateHSourceSequence, side, organizer.StableId,
@@ -2071,9 +2072,11 @@ namespace Volleyball.Presentation
                 ? AttackDefenseCommandKind.AttackContact
                 : action == TechniqueAction.Block
                     ? AttackDefenseCommandKind.BlockContact
-                    : action == TechniqueAction.Receive
-                        ? AttackDefenseCommandKind.FloorDefense
-                        : (AttackDefenseCommandKind?)null;
+                    : (AttackDefenseCommandKind?)null;
+            // FloorDefense/AttackCover/Reorganization receipts commit support
+            // movement and responsibility; they are not physical Receive
+            // contact commands.  A V3-accepted dig must own a fresh receipt
+            // built from its actual execution classification and trajectory.
             return kind.HasValue
                 ? TakeGateIContactReceipt(actor, kind.Value)
                 : null;
@@ -2845,6 +2848,7 @@ namespace Volleyball.Presentation
             var players = _players.OrderBy(pair => pair.Key.Team).ThenBy(pair => pair.Key.RosterSlot)
                 .Select(pair => new GateITacticalPlayerV3(pair.Value.StableId, ToSide(pair.Key.Team),
                     ToSimulation(pair.Value.transform.position), pair.Key.Team == actor.Team,
+                    _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
                     pair.Value.Ability.Derived)).ToArray();
             _attackDefenseCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
                 ++_gateHSourceSequence, accepted), new AttackPlanningRequestV3(intent.PlanRevision,

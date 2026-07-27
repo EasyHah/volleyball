@@ -105,23 +105,51 @@ namespace Volleyball.PlayModeTests
             var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
             var traces = new List<AttackDefenseAuthorityReceipt>();
             var intents = new List<GateISetIntentReceiptV3>();
+            var accepted = new List<ReplayContactEvent>();
             director.AttackDefenseAuthorityCommitted += traces.Add;
             director.GateISetIntentCommitted += intents.Add;
+            director.ReplayContactAccepted += accepted.Add;
             var timeout = Time.realtimeSinceStartup + 90f;
-            while (!traces.Any(trace => trace.Kind == AttackDefenseCommandKind.AttackContact) &&
+            while ((!traces.Any(trace => trace.Kind == AttackDefenseCommandKind.AttackContact) ||
+                    !accepted.Any(contact =>
+                        contact.Action == TechniqueAction.Receive &&
+                        contact.AttackDefenseAuthority != null &&
+                        contact.AttackDefenseAuthority.Evidence.CoverageDecision.Kind ==
+                            PlanCoverageDecisionKind.LocalRevision)) &&
                    Time.realtimeSinceStartup < timeout)
                 yield return null;
+            var incidental = accepted.Single(contact =>
+                contact.Action == TechniqueAction.Receive &&
+                contact.AttackDefenseAuthority != null &&
+                contact.AttackDefenseAuthority.Evidence.CoverageDecision.Kind ==
+                    PlanCoverageDecisionKind.LocalRevision);
             Assert.That(director.GateIAuthorityEnabled, Is.True);
             Assert.That(director.GateILegacyWriterInvocations, Is.Zero);
-            Assert.That(intents, Has.Count.EqualTo(1));
-            Assert.That(director.AcceptedSetContactWriterCount, Is.EqualTo(1));
+            var acceptedSets = accepted.Count(contact =>
+                contact.Action == TechniqueAction.Set);
+            Assert.That(intents, Is.Not.Empty);
+            Assert.That(acceptedSets, Is.GreaterThanOrEqualTo(1));
+            Assert.That(intents.Count, Is.GreaterThanOrEqualTo(acceptedSets));
+            Assert.That(director.AcceptedSetContactWriterCount,
+                Is.EqualTo(acceptedSets));
             Assert.That(traces, Has.Some.Property("Kind").EqualTo(AttackDefenseCommandKind.AttackContact));
             Assert.That(traces.Select(trace => trace.PlanRevision), Is.Ordered.Ascending);
+            Assert.That(intents.Select(intent => intent.SourceSequence), Is.Ordered.Ascending);
+            Assert.That(intents.Select(intent => intent.EvidenceIdentity)
+                    .Distinct().Count(),
+                Is.EqualTo(intents.Count));
+            Assert.That(traces.Select(trace => trace.SourceSequence), Is.Ordered.Ascending);
+            Assert.That(incidental.AttackDefenseAuthority.Kind,
+                Is.EqualTo(AttackDefenseCommandKind.FloorDefense));
+            Assert.That(incidental.AttackDefenseAuthority.Evidence.CoverageDecision.Reason,
+                Is.EqualTo(PlanCoverageReason.ResponsibleActorChanged));
+            Assert.That(incidental.AttackDefenseAuthority.SourceSequence,
+                Is.GreaterThan(intents.First().SourceSequence));
         }
 
         [UnityTest]
         [Timeout(180000)]
-        public IEnumerator Formal6v6_ReplayDiagnosticRecordingPreservesFixedSeedAuthority()
+        public IEnumerator Formal6v6_GateIAuthorityIsRecorderInvariant()
         {
             FormalAuthoritySummary baseline = null;
             FormalAuthoritySummary recorded = null;
@@ -149,6 +177,18 @@ namespace Volleyball.PlayModeTests
             CollectionAssert.AreEqual(
                 baseline.AcceptedAuthorityFingerprints,
                 recorded.AcceptedAuthorityFingerprints);
+            CollectionAssert.AreEqual(
+                baseline.GateIAuthorityFingerprints,
+                recorded.GateIAuthorityFingerprints);
+            Assert.That(recorded.GateIAuthorityFingerprints, Is.Not.Empty);
+            Assert.That(recorded.GateILegacyWriterInvocations, Is.Zero);
+            Assert.That(baseline.GateILegacyWriterInvocations, Is.Zero);
+            Assert.That(recorded.GateHLegacyWriterInvocations, Is.Zero);
+            Assert.That(baseline.GateHLegacyWriterInvocations, Is.Zero);
+            Assert.That(recorded.MaximumAppliedMovementCorrection,
+                Is.LessThanOrEqualTo(0.70f));
+            Assert.That(baseline.MaximumAppliedMovementCorrection,
+                Is.LessThanOrEqualTo(0.70f));
 
             Debug.Log(
                 "[Formal6v6AuthorityInvariance] " +
@@ -159,7 +199,9 @@ namespace Volleyball.PlayModeTests
                 ";reasons=" + string.Join(",", baseline.V3ReasonCodes) +
                 ";ballVersions=" + string.Join(",", baseline.AcceptedBallStateVersions) +
                 ";authorityFingerprints=" +
-                string.Join(",", baseline.AcceptedAuthorityFingerprints));
+                string.Join(",", baseline.AcceptedAuthorityFingerprints) +
+                ";gateIFingerprints=" +
+                string.Join(",", baseline.GateIAuthorityFingerprints));
         }
 
         [UnityTest]
@@ -201,7 +243,10 @@ namespace Volleyball.PlayModeTests
                 Object.FindObjectsByType<AiDecisionTimeController>(FindObjectsSortMode.None),
                 Has.Length.EqualTo(1));
 
-            var timeout = Time.realtimeSinceStartup + 300f;
+            // Gate I deliberately permits longer multi-contact rallies than the
+            // Gate H baseline. Keep this real-time lifecycle test unaccelerated,
+            // but leave enough headroom for a legal 25-point fixed-seed set.
+            var timeout = Time.realtimeSinceStartup + 360f;
             var sawOutsideOwnCourt = false;
             var minimumSameTeamSeparation = float.PositiveInfinity;
             var awaitingFirstPostRotationRally = false;
@@ -592,6 +637,8 @@ namespace Volleyball.PlayModeTests
             var v3ReasonCodes = new List<string>();
             var acceptedBallStateVersions = new List<long>();
             var acceptedAuthorityFingerprints = new List<string>();
+            var gateIAuthorityFingerprints = new List<string>();
+            var maximumAcceptedContactCorrection = 0f;
             director.ReplayContactAccepted += replayEvent =>
             {
                 Assert.That(replayEvent.RuleTransition, Is.Not.Null);
@@ -603,6 +650,27 @@ namespace Volleyball.PlayModeTests
                     replayEvent.TrajectoryArtifact.Key.BallStateVersion);
                 acceptedAuthorityFingerprints.Add(
                     AcceptedAuthorityFingerprint(replayEvent));
+                if (replayEvent.GateISetIntentAuthority != null)
+                {
+                    gateIAuthorityFingerprints.Add(
+                        "set:" + replayEvent.GateISetIntentAuthority.PlanRevision + ":" +
+                        replayEvent.GateISetIntentAuthority.SourceSequence + ":" +
+                        replayEvent.GateISetIntentAuthority.EvidenceIdentity);
+                }
+                if (replayEvent.AttackDefenseAuthority != null)
+                {
+                    var receipt = replayEvent.AttackDefenseAuthority;
+                    gateIAuthorityFingerprints.Add(
+                        receipt.Kind + ":" + receipt.PlanRevision + ":" +
+                        receipt.SourceSequence + ":" + receipt.Actor.Value + ":" +
+                        receipt.Evidence.CoverageDecision.Kind);
+                }
+                var player = players.Single(value =>
+                    replayEvent.PlayerId.HasValue &&
+                    value.StableId.Equals(replayEvent.PlayerId.Value));
+                maximumAcceptedContactCorrection = Mathf.Max(
+                    maximumAcceptedContactCorrection,
+                    player.MaximumAppliedContactCorrection);
             };
 
             MatchReplayRecorder recorder = null;
@@ -633,6 +701,9 @@ namespace Volleyball.PlayModeTests
             Assert.That(
                 acceptedAuthorityFingerprints,
                 Has.Count.EqualTo(director.SuccessfulContacts));
+            Assert.That(gateIAuthorityFingerprints, Is.Not.Empty);
+            Assert.That(maximumAcceptedContactCorrection,
+                Is.LessThanOrEqualTo(PrototypePlayerAgent.NetClearance + .0001f));
             if (recorder != null)
             {
                 Assert.That(recorder.IsComplete, Is.True);
@@ -647,8 +718,12 @@ namespace Volleyball.PlayModeTests
                 v3ReasonCodes,
                 acceptedBallStateVersions,
                 acceptedAuthorityFingerprints,
+                gateIAuthorityFingerprints,
                 recorder != null,
-                recorder == null ? 0 : recorder.Complete().Events.Count));
+                recorder == null ? 0 : recorder.Complete().Events.Count,
+                director.GateILegacyWriterInvocations,
+                director.GateHLegacyWriterInvocations,
+                director.MaximumAppliedMovementCorrection));
         }
 
         private static string AcceptedAuthorityFingerprint(ReplayContactEvent replayEvent)
@@ -698,8 +773,12 @@ namespace Volleyball.PlayModeTests
                 IReadOnlyList<string> v3ReasonCodes,
                 IReadOnlyList<long> acceptedBallStateVersions,
                 IReadOnlyList<string> acceptedAuthorityFingerprints,
+                IReadOnlyList<string> gateIAuthorityFingerprints,
                 bool hasDiagnosticReplay,
-                int diagnosticRecordCount)
+                int diagnosticRecordCount,
+                int gateILegacyWriterInvocations,
+                int gateHLegacyWriterInvocations,
+                float maximumAppliedMovementCorrection)
             {
                 WinnerTeamId = winnerTeamId;
                 HomeScore = homeScore;
@@ -709,8 +788,12 @@ namespace Volleyball.PlayModeTests
                 V3ReasonCodes = v3ReasonCodes;
                 AcceptedBallStateVersions = acceptedBallStateVersions;
                 AcceptedAuthorityFingerprints = acceptedAuthorityFingerprints;
+                GateIAuthorityFingerprints = gateIAuthorityFingerprints;
                 HasDiagnosticReplay = hasDiagnosticReplay;
                 DiagnosticRecordCount = diagnosticRecordCount;
+                GateILegacyWriterInvocations = gateILegacyWriterInvocations;
+                GateHLegacyWriterInvocations = gateHLegacyWriterInvocations;
+                MaximumAppliedMovementCorrection = maximumAppliedMovementCorrection;
             }
 
             public string WinnerTeamId { get; }
@@ -721,8 +804,12 @@ namespace Volleyball.PlayModeTests
             public IReadOnlyList<string> V3ReasonCodes { get; }
             public IReadOnlyList<long> AcceptedBallStateVersions { get; }
             public IReadOnlyList<string> AcceptedAuthorityFingerprints { get; }
+            public IReadOnlyList<string> GateIAuthorityFingerprints { get; }
             public bool HasDiagnosticReplay { get; }
             public int DiagnosticRecordCount { get; }
+            public int GateILegacyWriterInvocations { get; }
+            public int GateHLegacyWriterInvocations { get; }
+            public float MaximumAppliedMovementCorrection { get; }
         }
 
         private sealed class FourthContactSource : IBallContactSource
