@@ -105,17 +105,23 @@ namespace Volleyball.Shared.EditModeTests
                 "attack-7-line", "home-attacker", "PowerLine",
                 new ReplayVector3RecordV4(1f, 3f, -1f),
                 0.7f, 0.9f, true, string.Empty, hash, hash, string.Empty);
+            var fallback = new ReplayAttackDefenseCandidateRecordV4(
+                "attack-7-tip", "home-attacker", "Tip",
+                new ReplayVector3RecordV4(1f, 2.8f, -1f),
+                0.5f, 1f, false, "NotPower", hash, hash, string.Empty);
             var authority = new ReplayAttackDefenseAuthorityRecordV4(
                 7, 19, "AttackCommitted", "Primary",
                 new ReplayVector3RecordV4(1f, 3f, -1f),
-                new[] { candidate },
+                new[] { fallback, candidate },
                 new[] { new ReplayPublicAttackThreatRecordV4("PowerLine", "Line", 1f, 1.2f) },
                 new[] { new ReplayDefenseResponsibilityRecordV4(
                     "away-blocker", "PrimaryBlock", "Line", "Primary") },
                 "attack-7-line", hash, hash, hash, hash, null, coverage);
 
             Assert.That(authority.SelectedCandidateIdentity, Is.EqualTo("attack-7-line"));
-            Assert.That(authority.Candidates.Single().ActorPlayerId, Is.EqualTo("home-attacker"));
+            Assert.That(authority.Candidates.First().ActorPlayerId, Is.EqualTo("home-attacker"));
+            Assert.That(authority.Candidates.Select(value => value.CandidateIdentity),
+                Is.Ordered.Ascending);
             Assert.That(
                 () => new ReplayAttackDefenseAuthorityRecordV4(
                     7, 19, "AttackCommitted", "Primary",
@@ -123,6 +129,99 @@ namespace Volleyball.Shared.EditModeTests
                     authority.DefenseResponsibilities, "attack-7-line", hash, hash, hash,
                     hash, null, coverage),
                 Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void ReplayAttackDefenseAuthority_SetCoexistsWithGateHAndRoundTripsCanonically()
+        {
+            var context = CreateContextV4(Guid.NewGuid(), 7351);
+            var baseline = CreateGateISetEvent(context);
+            var authority = CreateSetIntentAuthority(baseline, 7);
+            var organization = CreateSetOrganizationAuthority(baseline);
+            var replay = MatchReplayV4.Create("gate-i-set-replay", context,
+                new[] { WithGateIAuthority(baseline, organization, authority) });
+            var json = ContractJson.SerializeV4(replay);
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restored.Events[0].OrganizationAuthority, Is.Not.Null);
+            Assert.That(restored.Events[0].AttackDefenseAuthority, Is.Not.Null);
+            Assert.That(restored.Events[0].OrganizationAuthority.OrganizerPlayerId,
+                Is.EqualTo(restored.Events[0].ActorPlayerId));
+            Assert.That(restored.Events[0].AttackDefenseAuthority.TestedEnvelopeIdentity,
+                Is.EqualTo(restored.Events[0].TestedEnvelope.Identity));
+            Assert.That(restored.Events[0].AttackDefenseAuthority.TrajectoryArtifactIdentity,
+                Is.EqualTo(restored.Events[0].Trajectory.ArtifactIdentity));
+
+            var changed = MatchReplayV4.Create("gate-i-set-replay", context,
+                new[] { WithGateIAuthority(baseline, organization,
+                    CreateSetIntentAuthority(baseline, 8)) });
+            Assert.That(changed.ReplayHash, Is.Not.EqualTo(replay.ReplayHash));
+        }
+
+        [Test]
+        public void ReplayAttackDefenseAuthority_PreservesHistoricalJsonAndRejectsEventIdentityMismatch()
+        {
+            var context = CreateContextV4(Guid.NewGuid(), 7351);
+            var baseline = CreateGateISetEvent(context);
+            var historical = ContractJson.SerializeV4(
+                MatchReplayV4.Create("historical-gate-i-absent", context,
+                    new[] { baseline }));
+            var restored = ContractJson.DeserializeMatchReplayV4(historical);
+
+            Assert.That(restored.Events[0].AttackDefenseAuthority, Is.Null);
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(historical));
+
+            var mismatched = new ReplayAttackDefenseAuthorityRecordV4(
+                7, 19, "SetIntentPlanned", "Primary",
+                new ReplayVector3RecordV4(1f, 3f, -1f),
+                Array.Empty<ReplayAttackDefenseCandidateRecordV4>(),
+                Array.Empty<ReplayPublicAttackThreatRecordV4>(),
+                Array.Empty<ReplayDefenseResponsibilityRecordV4>(), string.Empty,
+                PredictorConfigurationHashV4, baseline.ExecutableEnvelope.Identity,
+                baseline.Classification.ActualSample.EnvelopeIdentity,
+                baseline.Trajectory.ArtifactIdentity, null,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f));
+            Assert.That(
+                () => WithGateIAuthority(baseline,
+                    CreateSetOrganizationAuthority(baseline), mismatched),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void ReplayPublicAttackThreat_HasNoFinalRouteOrSampleSurface()
+        {
+            var names = typeof(ReplayPublicAttackThreatRecordV4).GetProperties()
+                .Select(property => property.Name).ToArray();
+
+            Assert.That(names, Has.None.Matches<string>(name =>
+                name.IndexOf("route", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("sample", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("candidate", StringComparison.OrdinalIgnoreCase) >= 0));
+        }
+
+        [Test]
+        public void ReplayAttackDefenseAuthority_DefenseEvidenceKeepsPublicPlanWithoutFinalCandidateBinding()
+        {
+            var hash = new string('c', 64);
+            var candidate = new ReplayAttackDefenseCandidateRecordV4(
+                "attack-8-cross", "home-attacker", "PowerCross",
+                new ReplayVector3RecordV4(2f, 3f, -1f), .6f, .8f, true,
+                string.Empty, hash, hash, string.Empty);
+            var authority = new ReplayAttackDefenseAuthorityRecordV4(
+                8, 20, "DefenseCommitted", "Primary",
+                new ReplayVector3RecordV4(1f, 3f, -1f), new[] { candidate },
+                new[] { new ReplayPublicAttackThreatRecordV4("PowerCross", "Cross", 1f, 1.1f) },
+                new[] { new ReplayDefenseResponsibilityRecordV4(
+                    "away-defender", "CrossDefense", "Cross", "Primary") },
+                string.Empty, hash, hash, hash, hash, null,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f));
+
+            Assert.That(authority.SelectedCandidateIdentity, Is.Empty);
+            Assert.That(authority.Candidates, Has.Count.EqualTo(1));
+            Assert.That(authority.PublicThreat, Has.Count.EqualTo(1));
+            Assert.That(authority.DefenseResponsibilities.Single().ActorPlayerId,
+                Is.EqualTo("away-defender"));
         }
 
         [Test]
@@ -1061,6 +1160,91 @@ namespace Volleyball.Shared.EditModeTests
 
         private const string AlternatePredictorConfigurationHashV4 =
             "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+
+        private static MatchReplayEventV4 CreateGateISetEvent(MatchContextV4 context)
+        {
+            var actor = context.Home.RotationOrder[0];
+            var envelope = new ReplayExecutionEnvelopeRecordV4(
+                4, PhysicsConfigurationHashV4, actor.Derived.ResultFingerprint,
+                PredictorConfigurationHashV4, "gate-i-set-intent", "Set",
+                new ReplayVector3RecordV4(1f, 3f, -1f),
+                new ReplayVector3RecordV4(1f, 2f, -1f),
+                new ReplayVector3RecordV4(2f, 4f, -2f),
+                new ReplayBoundedErrorRecordV4("BoundedUniform",
+                    new ReplayVector3RecordV4(-.1f, -.1f, -.1f),
+                    new ReplayVector3RecordV4(.1f, .1f, .1f)),
+                new ReplayBoundedErrorRecordV4("SymmetricTriangular",
+                    new ReplayVector3RecordV4(-.1f, -.1f, -.1f),
+                    new ReplayVector3RecordV4(.1f, .1f, .1f)),
+                .7f, .8f, "gate-i-set-sampling", 1, 1,
+                new[] { "Set" }, new[] { "FullSampling" }, 0, 0, 0, 1f);
+            var trajectory = new ReplayTrajectoryArtifactRecordV4(
+                AlternatePredictorConfigurationHashV4, "formal-v4",
+                context.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                new ReplayTrajectoryCacheKeyRecordV4(
+                    PredictorConfigurationHashV4, 42, PhysicsConfigurationHashV4,
+                    context.PhysicsConfigurationHash, "gate-i-set-sampling",
+                    context.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                    context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                    PhysicsConfigurationHashV4, "FullSampling"));
+            var classification = new ReplaySampleClassificationRecordV4(
+                "Accepted", PhysicsConfigurationHashV4, string.Empty,
+                new ReplayActualSampleRecordV4(PhysicsConfigurationHashV4,
+                    "gate-i-set-sampling", "Set",
+                    new ReplayVector3RecordV4(1f, 3f, -1f),
+                    new ReplayVector3RecordV4(1f, 2f, -1f), .7f),
+                Array.Empty<string>());
+            return new MatchReplayEventV4(0, "Set", actor.PlayerId.Value, 1f, 0, 0,
+                envelope, envelope, trajectory,
+                new[] { new ReplayAbilityConsumptionRecordV4(actor.PlayerId.Value,
+                    actor.Derived.ResultFingerprint, "Set.PlacementControl", .7f,
+                    "ExecutionEnvelopeFactoryRead") }, classification, null,
+                new ReplayRuleDecisionRecordV4(RulesVersions.FullRallyV3, true, "None"));
+        }
+
+        private static ReplayOrganizationAuthorityRecordV4 CreateSetOrganizationAuthority(
+            MatchReplayEventV4 replayEvent)
+        {
+            return new ReplayOrganizationAuthorityRecordV4(7, 3, "Organize",
+                new ReplayVector3RecordV4(1f, 3f, -1f),
+                new ReplayVector3RecordV4(0f, 2f, -2f), "Best",
+                replayEvent.ActorPlayerId, "Reachable", 0f, 0f, .3f,
+                replayEvent.ActorPlayerId, "None", "Primary",
+                replayEvent.TestedEnvelope.Identity, replayEvent.ExecutableEnvelope.Identity,
+                replayEvent.Classification.ActualSample.EnvelopeIdentity,
+                replayEvent.Trajectory.ArtifactIdentity,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f));
+        }
+
+        private static ReplayAttackDefenseAuthorityRecordV4 CreateSetIntentAuthority(
+            MatchReplayEventV4 replayEvent, int revision)
+        {
+            return new ReplayAttackDefenseAuthorityRecordV4(revision, 19,
+                "SetIntentPlanned", "Primary", new ReplayVector3RecordV4(1f, 3f, -1f),
+                Array.Empty<ReplayAttackDefenseCandidateRecordV4>(),
+                Array.Empty<ReplayPublicAttackThreatRecordV4>(),
+                Array.Empty<ReplayDefenseResponsibilityRecordV4>(), string.Empty,
+                replayEvent.TestedEnvelope.Identity, replayEvent.ExecutableEnvelope.Identity,
+                replayEvent.Classification.ActualSample.EnvelopeIdentity,
+                replayEvent.Trajectory.ArtifactIdentity, null,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f));
+        }
+
+        private static MatchReplayEventV4 WithGateIAuthority(
+            MatchReplayEventV4 replayEvent,
+            ReplayOrganizationAuthorityRecordV4 organization,
+            ReplayAttackDefenseAuthorityRecordV4 authority)
+        {
+            return new MatchReplayEventV4(replayEvent.SequenceNumber,
+                replayEvent.EventKind, replayEvent.ActorPlayerId,
+                replayEvent.SimulationTimeSeconds, replayEvent.HomeScore,
+                replayEvent.AwayScore, replayEvent.TestedEnvelope,
+                replayEvent.ExecutableEnvelope, replayEvent.Trajectory,
+                replayEvent.AbilityConsumptions, replayEvent.Classification,
+                replayEvent.ObservedP6Geometry, replayEvent.RuleDecision,
+                replayEvent.Shadow, organization, authority);
+        }
 
         private static MatchContextV4 CreateContextV4(
             Guid sessionId,
