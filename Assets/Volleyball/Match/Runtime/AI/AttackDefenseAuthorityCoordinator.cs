@@ -260,10 +260,51 @@ namespace Volleyball.AI
             var coverage = Coverage(contact.CoverageReason);
             if (coverage.Kind == PlanCoverageDecisionKind.TerminalNoPlan) { _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Terminal, State.Revision, _attackingSide, State.Plan, coverage); return State; }
             ValidateContactEvidence(contact);
+            if (State.Phase == AttackDefenseAuthorityPhaseV3.AttackCommitted)
+            {
+                if (contact.ActionKind != AttackDefenseCommandKind.AttackContact)
+                    throw new InvalidOperationException("The committed attack must be accepted before defensive coverage.");
+                _lastSequence = contact.SourceSequence;
+                State = new AttackDefenseAuthorityStateV3(
+                    AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
+                    State.Revision, _attackingSide, State.Plan, coverage);
+                return State;
+            }
+
+            if (contact.ActionKind != AttackDefenseCommandKind.BlockContact &&
+                contact.ActionKind != AttackDefenseCommandKind.FloorDefense &&
+                contact.ActionKind != AttackDefenseCommandKind.AttackCover)
+                throw new InvalidOperationException("Awaiting Gate I coverage requires a defensive contact.");
             var exit = State.Plan.ReorganizationExits.OrderBy(x => x.Identity, StringComparer.Ordinal).FirstOrDefault(x => x.Identity == contact.ReorganizationExitIdentity);
             if (exit == null) throw new InvalidOperationException("Actual contact does not select a declared reorganization exit.");
             _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned, State.Revision, _attackingSide, State.Plan, coverage);
             Publish(contact.SourceSequence, State, new[] { new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence, AttackDefenseCommandKind.Reorganization, exit.Actor, true, ExecutionFor(exit.Actor, AttackDefenseCommandKind.Reorganization), contact.Branch, reorganizationExitIdentity: exit.Identity) });
+            return State;
+        }
+
+        public AttackDefenseAuthorityStateV3 CompleteReorganizationAndReset(
+            long revision, long sourceSequence)
+        {
+            if (State.Phase != AttackDefenseAuthorityPhaseV3.ReorganizationPlanned ||
+                revision != State.Revision ||
+                sourceSequence <= _lastSequence)
+                throw new InvalidOperationException(
+                    "Only the current Gate I reorganization may hand off.");
+
+            _lastSequence = sourceSequence;
+            // Preserve the ordered handoff as a semantic state boundary before
+            // clearing immutable opportunity data for the next possession.
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.HandedOff,
+                State.Revision,
+                _attackingSide,
+                State.Plan,
+                State.CoverageDecision);
+            _intent = null;
+            _attack = null;
+            _defense = null;
+            _players = null;
+            State = AttackDefenseAuthorityStateV3.Idle;
             return State;
         }
 

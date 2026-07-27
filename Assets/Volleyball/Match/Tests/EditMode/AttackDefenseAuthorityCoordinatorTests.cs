@@ -74,6 +74,65 @@ namespace Volleyball.EditModeTests
             Assert.That(evidence.ReorganizationExitIdentity, Is.EqualTo("declared-exit"));
         }
 
+        [Test]
+        public void AcceptedAttack_WaitsForDefenseBeforePublishingReorganization()
+        {
+            var sink = new Sink();
+            var coordinator = Fixture.CommittedAttack(sink, out var plan);
+
+            coordinator.AcceptContact(Fixture.Contact(
+                plan,
+                6,
+                plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact,
+                ""));
+
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.AwaitingActualContact));
+            Assert.That(sink.Batches, Has.Count.EqualTo(2));
+            Assert.That(sink.Batches.Last().Commands.Single().Kind,
+                Is.EqualTo(AttackDefenseCommandKind.AttackContact));
+
+            var defender = plan.Defense.Responsibilities.First(value =>
+                value.Kind == DefenseResponsibilityKindV3.LineDefense);
+            coordinator.AcceptContact(Fixture.Contact(
+                plan,
+                7,
+                defender.Actor,
+                AttackDefenseCommandKind.FloorDefense,
+                plan.ReorganizationExits[0].Identity));
+
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
+            Assert.That(sink.Batches.Last().Commands.Single().Kind,
+                Is.EqualTo(AttackDefenseCommandKind.Reorganization));
+        }
+
+        [Test]
+        public void CompleteReorganization_ResetsOpportunityButRetainsSequenceFloor()
+        {
+            var sink = new Sink();
+            var coordinator = Fixture.CommittedAttack(sink, out var plan);
+            coordinator.AcceptContact(Fixture.Contact(plan, 6, plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact, ""));
+            var defender = plan.Defense.Responsibilities.First(value =>
+                value.Kind == DefenseResponsibilityKindV3.LineDefense);
+            coordinator.AcceptContact(Fixture.Contact(plan, 7, defender.Actor,
+                AttackDefenseCommandKind.FloorDefense,
+                plan.ReorganizationExits[0].Identity));
+
+            Assert.That(() => coordinator.CompleteReorganizationAndReset(5, 8),
+                Throws.InvalidOperationException);
+            coordinator.CompleteReorganizationAndReset(4, 8);
+
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.Idle));
+            Assert.That(() => coordinator.PlanSetIntent(Fixture.Request(5, 8)),
+                Throws.InvalidOperationException);
+            Assert.That(() => coordinator.PlanSetIntent(Fixture.Request(5, 9)),
+                Throws.Nothing);
+        }
+
         private sealed class Sink : IAttackDefenseAuthorityCommandSink
         {
             public List<AttackDefenseCommandBatch> Batches { get; } = new List<AttackDefenseCommandBatch>();
@@ -102,6 +161,90 @@ namespace Volleyball.EditModeTests
                     new BallState(new SimVector3(0f, 3f, -2f), new SimVector3(0f, 4f, 1f), .12f),
                     new[] { new GateITacticalPlayerV3(new Volleyball.Shared.Contracts.PlayerId("home-attacker"), attackingSide,
                         new SimVector3(0f, 2f, 1f), true, derived) }, derived, artifact);
+            }
+
+            public static AttackDefenseAuthorityCoordinator CommittedAttack(
+                Sink sink, out AttackDefensePlanV3 plan)
+            {
+                var coordinator = new AttackDefenseAuthorityCoordinator(
+                    new AttackDefensePlanner(), sink);
+                var result = coordinator.PlanSetIntent(Request(4, 1));
+                var accepted = new AcceptedSetEvidenceV3(
+                    result.Intent.Organizer,
+                    result.Intent.ExecutionClassification.ExecutableEnvelope.Identity,
+                    result.Intent.TrajectoryArtifact.ArtifactIdentity);
+                coordinator.AcceptSet(new GateIAcceptedSetV3(4, 2, accepted),
+                    new AttackPlanningRequestV3(4, result.Intent, accepted,
+                        Players()));
+                coordinator.PublishThreat(4, 3);
+                var defenders = Players().Where(value =>
+                    value.Side == Volleyball.Shared.Contracts.TeamSide.Away).ToArray();
+                var responsibilities = defenders.Select((value, index) =>
+                    new DefenseResponsibilityV3(value.Player,
+                        index == 0 ? DefenseResponsibilityKindV3.PrimaryBlock :
+                        index == 1 ? DefenseResponsibilityKindV3.SupportingBlock :
+                        DefenseResponsibilityKindV3.LineDefense,
+                        "zone-" + index,
+                        RallyPlanBranchV3.Primary)).ToArray();
+                var exits = new[] { new ReorganizationExitV3(
+                    "defense-exit", defenders[2].Player, "organize") };
+                coordinator.CommitDefense(4, 4, new JointDefensePlanV3(
+                    coordinator.PublicThreat.ThreatIdentity,
+                    responsibilities,
+                    exits,
+                    new[] { "zone-0" },
+                    new[] { "zone-1" }));
+                coordinator.CommitFinalAttack(4, 5);
+                plan = coordinator.State.Plan;
+                return coordinator;
+            }
+
+            public static GateIContactEvidenceV3 Contact(
+                AttackDefensePlanV3 plan,
+                long sequence,
+                Volleyball.Shared.Contracts.PlayerId actor,
+                AttackDefenseCommandKind kind,
+                string exit)
+            {
+                var candidate = plan.SelectedAction;
+                var envelope = kind == AttackDefenseCommandKind.AttackContact
+                    ? candidate.EnvelopeIdentity
+                    : "gate-i-" + plan.Revision + "-" + (int)kind + "-" + actor.Value;
+                var trajectory = kind == AttackDefenseCommandKind.AttackContact
+                    ? candidate.TrajectoryArtifactIdentity
+                    : plan.SetIntent.TrajectoryArtifact.ArtifactIdentity;
+                return new GateIContactEvidenceV3(
+                    plan.Revision,
+                    sequence,
+                    actor,
+                    PlanCoverageReason.WithinConditionalEnvelope,
+                    kind,
+                    RallyPlanBranchV3.Primary,
+                    envelope,
+                    trajectory,
+                    true,
+                    exit);
+            }
+
+            private static GateITacticalPlayerV3[] Players()
+            {
+                var attributes = MatchV4TestFixture.CreateDerived();
+                return Enumerable.Range(0, 6)
+                    .Select(index => new GateITacticalPlayerV3(
+                        new Volleyball.Shared.Contracts.PlayerId(
+                            index == 0 ? "home-attacker" : "home-" + index),
+                        Volleyball.Shared.Contracts.TeamSide.Home,
+                        new SimVector3(index - 2, 0f, -2f),
+                        index == 0,
+                        attributes))
+                    .Concat(Enumerable.Range(0, 6).Select(index =>
+                        new GateITacticalPlayerV3(
+                            new Volleyball.Shared.Contracts.PlayerId("away-" + index),
+                            Volleyball.Shared.Contracts.TeamSide.Away,
+                            new SimVector3(index - 2, 0f, 2f),
+                            false,
+                            attributes)))
+                    .ToArray();
             }
         }
     }
