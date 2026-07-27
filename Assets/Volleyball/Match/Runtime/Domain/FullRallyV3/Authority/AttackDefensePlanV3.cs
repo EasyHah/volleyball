@@ -51,7 +51,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
             if (toolRecoveryEvidence != null &&
                 (toolRecoveryEvidence.CandidateIdentity != CandidateIdentity ||
                  toolRecoveryEvidence.EnvelopeIdentity != EnvelopeIdentity ||
-                 toolRecoveryEvidence.TrajectoryArtifactIdentity != TrajectoryArtifactIdentity ||
+                 toolRecoveryEvidence.OutboundTrajectoryArtifactIdentity != TrajectoryArtifactIdentity ||
                  toolRecoveryEvidence.ReorganizationExitIdentity != ReorganizationExitIdentity))
                 throw new ArgumentException("Tool recovery evidence must exactly bind the candidate execution and exit.", nameof(toolRecoveryEvidence));
             if (toolRecoveryEvidence != null && toolRecoveryEvidence.RecoveryActor.Equals(Actor))
@@ -80,7 +80,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public ToolRecoveryEvidenceV3(string candidateIdentity, PlayerId blocker,
             TeamSide reboundSide, PlayerId recoveryActor, int remainingTouches,
             string reorganizationExitIdentity, string envelopeIdentity,
-            string trajectoryArtifactIdentity, string sampleIdentity,
+            string outboundTrajectoryArtifactIdentity,
+            string reboundTrajectoryArtifactIdentity, string reboundSampleIdentity,
             string blockContactIdentity)
         {
             CandidateIdentity = Text(candidateIdentity, nameof(candidateIdentity));
@@ -92,8 +93,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
             RemainingTouches = remainingTouches;
             ReorganizationExitIdentity = Text(reorganizationExitIdentity, nameof(reorganizationExitIdentity));
             EnvelopeIdentity = Text(envelopeIdentity, nameof(envelopeIdentity));
-            TrajectoryArtifactIdentity = Text(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
-            SampleIdentity = Text(sampleIdentity, nameof(sampleIdentity));
+            OutboundTrajectoryArtifactIdentity = Text(outboundTrajectoryArtifactIdentity, nameof(outboundTrajectoryArtifactIdentity));
+            ReboundTrajectoryArtifactIdentity = Text(reboundTrajectoryArtifactIdentity, nameof(reboundTrajectoryArtifactIdentity));
+            ReboundSampleIdentity = Text(reboundSampleIdentity, nameof(reboundSampleIdentity));
             BlockContactIdentity = Text(blockContactIdentity, nameof(blockContactIdentity));
         }
         public string CandidateIdentity { get; }
@@ -103,8 +105,11 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public int RemainingTouches { get; }
         public string ReorganizationExitIdentity { get; }
         public string EnvelopeIdentity { get; }
-        public string TrajectoryArtifactIdentity { get; }
-        public string SampleIdentity { get; }
+        // The outbound attack remains candidate-owned execution evidence.  The
+        // rebound is a separate prediction and must never relabel that attack.
+        public string OutboundTrajectoryArtifactIdentity { get; }
+        public string ReboundTrajectoryArtifactIdentity { get; }
+        public string ReboundSampleIdentity { get; }
         public string BlockContactIdentity { get; }
     }
 

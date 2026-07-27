@@ -228,7 +228,7 @@ namespace Volleyball.AI
             _defense = defense; _lastSequence = sourceSequence;
             var defensePlan = new AttackDefensePlanV3(_attackingSide, revision,
                 "gate-i-plan-" + revision, _intent, _attack.Candidates,
-                _attack.PublicThreat, defense, null, defense.ReorganizationExits);
+                _attack.PublicThreat, defense, null, MergeExits(defense));
             State = new AttackDefenseAuthorityStateV3(
                 AttackDefenseAuthorityPhaseV3.DefenseCommitted, revision,
                 _attackingSide, defensePlan, State.CoverageDecision);
@@ -246,11 +246,17 @@ namespace Volleyball.AI
         {
             Require(AttackDefenseAuthorityPhaseV3.DefenseCommitted, revision, sourceSequence);
             var selected = _planner.ChooseFinal(_attack, _defense).Candidate; _lastSequence = sourceSequence;
-            var plan = new AttackDefensePlanV3(_attackingSide, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, _defense.ReorganizationExits);
+            var plan = new AttackDefensePlanV3(_attackingSide, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, MergeExits(_defense));
             State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, _attackingSide, plan, State.CoverageDecision);
             Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true, ExecutionFor(selected.Actor, AttackDefenseCommandKind.AttackContact), candidateIdentity: selected.CandidateIdentity) });
             return State;
         }
+
+        private IReadOnlyList<ReorganizationExitV3> MergeExits(JointDefensePlanV3 defense) =>
+            defense.ReorganizationExits.Concat(_attack.ReorganizationExits)
+                .GroupBy(value => value.Identity, StringComparer.Ordinal)
+                .OrderBy(group => group.Key, StringComparer.Ordinal)
+                .Select(group => group.First()).ToArray();
 
         // An actual V3-accepted dig may be made by a player whose committed
         // Gate I responsibility was block/coverage rather than a scheduled

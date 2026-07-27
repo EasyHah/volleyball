@@ -17,13 +17,19 @@ namespace Volleyball.AI
     {
         public GateITacticalPlayerV3(PlayerId player, TeamSide side, SimVector3 worldPosition,
             bool canAttack, DerivedMatchAttributesV4 attributes)
+            : this(player, side, worldPosition, canAttack, false, attributes) { }
+        // Block eligibility is a captured V3 rule fact (for example front-row
+        // status), not a geometry inference.  Compatibility callers stay safe
+        // by defaulting it to false until presentation supplies the fact.
+        public GateITacticalPlayerV3(PlayerId player, TeamSide side, SimVector3 worldPosition,
+            bool canAttack, bool canBlock, DerivedMatchAttributesV4 attributes)
         {
             Player = player; Side = side; WorldPosition = worldPosition;
-            CanAttack = canAttack; Attributes = attributes ?? throw new ArgumentNullException(nameof(attributes));
+            CanAttack = canAttack; CanBlock = canBlock; Attributes = attributes ?? throw new ArgumentNullException(nameof(attributes));
             if (!worldPosition.IsFinite || !Enum.IsDefined(typeof(TeamSide), side)) throw new ArgumentOutOfRangeException(!worldPosition.IsFinite ? nameof(worldPosition) : nameof(side));
         }
         public PlayerId Player { get; } public TeamSide Side { get; } public SimVector3 WorldPosition { get; }
-        public bool CanAttack { get; } public DerivedMatchAttributesV4 Attributes { get; }
+        public bool CanAttack { get; } public bool CanBlock { get; } public DerivedMatchAttributesV4 Attributes { get; }
     }
 
     public sealed class SetIntentPlanningRequestV3
@@ -89,7 +95,7 @@ namespace Volleyball.AI
     public sealed class AttackPlanningRequestV3
     {
         public AttackPlanningRequestV3(long revision, GateISetIntentV3 setIntent, AcceptedSetEvidenceV3 actualSet,
-            IReadOnlyList<GateITacticalPlayerV3> players)
+            IReadOnlyList<GateITacticalPlayerV3> players, ToolRecoveryPlanningFactsV3 toolRecoveryFacts = null)
             : this(revision, setIntent, actualSet, players,
                 new BallTrajectoryPredictionProviderV4(new TrajectoryPredictionProviderConfigurationV4(
                     32, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
@@ -97,7 +103,7 @@ namespace Volleyball.AI
                     setIntent?.TrajectoryArtifact.PredictorConfigurationHash ?? BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash)),
                 new BallSimulationParameters(-9.8f, .9995f),
                 BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(new BallSimulationParameters(-9.8f, .9995f)),
-                setIntent?.TrajectoryArtifact.Key.BallStateVersion + 1 ?? 0)
+                setIntent?.TrajectoryArtifact.Key.BallStateVersion + 1 ?? 0, toolRecoveryFacts)
         {
         }
 
@@ -105,7 +111,7 @@ namespace Volleyball.AI
             IReadOnlyList<GateITacticalPlayerV3> players,
             BallTrajectoryPredictionProviderV4 trajectoryProvider,
             BallSimulationParameters simulationParameters, string physicsConfigurationHash,
-            long attackBallStateVersion)
+            long attackBallStateVersion, ToolRecoveryPlanningFactsV3 toolRecoveryFacts = null)
         {
             if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision)); Revision = revision;
             SetIntent = setIntent ?? throw new ArgumentNullException(nameof(setIntent)); ActualSet = actualSet ?? throw new ArgumentNullException(nameof(actualSet));
@@ -115,6 +121,9 @@ namespace Volleyball.AI
             PhysicsConfigurationHash = string.IsNullOrWhiteSpace(physicsConfigurationHash) ? throw new ArgumentException("Value is required.", nameof(physicsConfigurationHash)) : physicsConfigurationHash;
             if (attackBallStateVersion < 0) throw new ArgumentOutOfRangeException(nameof(attackBallStateVersion));
             AttackBallStateVersion = attackBallStateVersion;
+            // Existing production callers do not supply test facts.  Derive the
+            // bounded, deterministic continuation facts from the captured roster.
+            ToolRecoveryFacts = toolRecoveryFacts ?? ToolRecoveryPlanningFactsV3.Auto;
         }
         public long Revision { get; } public GateISetIntentV3 SetIntent { get; } public AcceptedSetEvidenceV3 ActualSet { get; }
         public IReadOnlyList<GateITacticalPlayerV3> Players { get; }
@@ -125,18 +134,39 @@ namespace Volleyball.AI
         public BallSimulationParameters SimulationParameters { get; }
         public string PhysicsConfigurationHash { get; }
         public long AttackBallStateVersion { get; }
+        public ToolRecoveryPlanningFactsV3 ToolRecoveryFacts { get; }
+    }
+
+    public sealed class ToolRecoveryPlanningFactsV3
+    {
+        public static ToolRecoveryPlanningFactsV3 None { get; } = new ToolRecoveryPlanningFactsV3(0, Array.Empty<ReorganizationExitV3>());
+        public static ToolRecoveryPlanningFactsV3 Auto { get; } = new ToolRecoveryPlanningFactsV3(3, Array.Empty<ReorganizationExitV3>(), true);
+        public ToolRecoveryPlanningFactsV3(int remainingTouches, IReadOnlyList<ReorganizationExitV3> reorganizationExits)
+            : this(remainingTouches, reorganizationExits, false) { }
+        private ToolRecoveryPlanningFactsV3(int remainingTouches, IReadOnlyList<ReorganizationExitV3> reorganizationExits, bool auto)
+        {
+            if (remainingTouches < 0) throw new ArgumentOutOfRangeException(nameof(remainingTouches));
+            RemainingTouches = remainingTouches;
+            IsAuto = auto;
+            ReorganizationExits = new ReadOnlyCollection<ReorganizationExitV3>((reorganizationExits ?? throw new ArgumentNullException(nameof(reorganizationExits))).Select(value => value ?? throw new ArgumentException("Exits cannot contain null.", nameof(reorganizationExits))).ToArray());
+        }
+        public int RemainingTouches { get; }
+        public bool IsAuto { get; }
+        public IReadOnlyList<ReorganizationExitV3> ReorganizationExits { get; }
     }
 
     public sealed class AttackPlanningResultV3
     {
-        public AttackPlanningResultV3(IReadOnlyList<AttackCandidateV3> candidates, IReadOnlyList<AttackCandidateV3> qualifiedPowerRoutes, IReadOnlyList<AttackCandidateV3> fallbackCandidates, IReadOnlyList<GateIAttackExecutionEvidenceV3> executionEvidence, PublicAttackThreatV3 publicThreat)
-        { Candidates = Copy(candidates, nameof(candidates)); QualifiedPowerRoutes = Copy(qualifiedPowerRoutes, nameof(qualifiedPowerRoutes)); FallbackCandidates = Copy(fallbackCandidates, nameof(fallbackCandidates)); ExecutionEvidence = CopyEvidence(executionEvidence); PublicThreat = publicThreat ?? throw new ArgumentNullException(nameof(publicThreat)); }
+        public AttackPlanningResultV3(IReadOnlyList<AttackCandidateV3> candidates, IReadOnlyList<AttackCandidateV3> qualifiedPowerRoutes, IReadOnlyList<AttackCandidateV3> fallbackCandidates, IReadOnlyList<GateIAttackExecutionEvidenceV3> executionEvidence, PublicAttackThreatV3 publicThreat, IReadOnlyList<ReorganizationExitV3> reorganizationExits)
+        { Candidates = Copy(candidates, nameof(candidates)); QualifiedPowerRoutes = Copy(qualifiedPowerRoutes, nameof(qualifiedPowerRoutes)); FallbackCandidates = Copy(fallbackCandidates, nameof(fallbackCandidates)); ExecutionEvidence = CopyEvidence(executionEvidence); PublicThreat = publicThreat ?? throw new ArgumentNullException(nameof(publicThreat)); ReorganizationExits = CopyExits(reorganizationExits); }
         public IReadOnlyList<AttackCandidateV3> Candidates { get; } public IReadOnlyList<AttackCandidateV3> QualifiedPowerRoutes { get; } public IReadOnlyList<AttackCandidateV3> FallbackCandidates { get; } public PublicAttackThreatV3 PublicThreat { get; }
         // Pure domain lookup for the coordinator; no Presentation command types leak here.
         public IReadOnlyList<GateIAttackExecutionEvidenceV3> ExecutionEvidence { get; }
+        public IReadOnlyList<ReorganizationExitV3> ReorganizationExits { get; }
         public GateIAttackExecutionEvidenceV3 EvidenceFor(AttackCandidateV3 candidate) => ExecutionEvidence.Single(x => x.CandidateIdentity == (candidate ?? throw new ArgumentNullException(nameof(candidate))).CandidateIdentity);
         private static IReadOnlyList<AttackCandidateV3> Copy(IReadOnlyList<AttackCandidateV3> values, string name) => new ReadOnlyCollection<AttackCandidateV3>((values ?? throw new ArgumentNullException(name)).ToArray());
         private static IReadOnlyList<GateIAttackExecutionEvidenceV3> CopyEvidence(IReadOnlyList<GateIAttackExecutionEvidenceV3> values) => new ReadOnlyCollection<GateIAttackExecutionEvidenceV3>((values ?? throw new ArgumentNullException(nameof(values))).ToArray());
+        private static IReadOnlyList<ReorganizationExitV3> CopyExits(IReadOnlyList<ReorganizationExitV3> values) => new ReadOnlyCollection<ReorganizationExitV3>((values ?? throw new ArgumentNullException(nameof(values))).ToArray());
     }
 
     public sealed class GateIAttackExecutionEvidenceV3
@@ -199,18 +229,153 @@ namespace Volleyball.AI
             var actor = request.Players.FirstOrDefault(x => x.Player.Equals(request.SetIntent.PreparedAttacker) && x.CanAttack);
             if (actor == null) throw new ArgumentException("Accepted Set attacker is not eligible.", nameof(request));
             var generatedEvidence = Generate(actor, request).OrderByDescending(c => c.Candidate.IsQualifiedPowerRoute).ThenByDescending(c => c.Candidate.ExpectedRallyValue).ThenBy(c => c.Candidate.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.Candidate.ActionClass).ThenBy(c => c.Candidate.CandidateIdentity, StringComparer.Ordinal).ToArray();
+            var tool = generatedEvidence.Single(value => value.Candidate.ActionClass == AttackActionClassV3.BlockToolRecovery);
+            var qualifiedTool = QualifyToolRecovery(request, actor, tool);
+            // Always retain the source outbound execution identity.  A rejected
+            // tool is still diagnostic evidence, while a qualified tool carries
+            // a second rebound artifact through ToolRecoveryEvidenceV3.
+            generatedEvidence = generatedEvidence.Where(value => value.Candidate.ActionClass != AttackActionClassV3.BlockToolRecovery)
+                .Concat(new[] { qualifiedTool.Execution }).ToArray();
             var generated = generatedEvidence.Select(x => x.Candidate).ToArray();
             var power = generated.Where(c => IsPower(c.ActionClass) && c.IsQualifiedPowerRoute && c.LegalSampleRatio >= .6f).ToArray();
-            // Tool recovery stays visible as an eliminated tactical branch, but does not
-            // become a comparable fallback until AddQualifiedToolRecoveryFallback.
-            var fallback = generated.Where(c => !IsPower(c.ActionClass) && c.ActionClass != AttackActionClassV3.BlockToolRecovery).ToArray();
+            var fallback = generated.Where(c => !IsPower(c.ActionClass) &&
+                (c.ActionClass != AttackActionClassV3.BlockToolRecovery || c.ToolRecoveryEvidence != null)).ToArray();
             var threatSource = power.Length > 0 ? power : fallback;
             var min = threatSource.Min(c => c.ExpectedRallyValue); var total = threatSource.Sum(c => Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f));
             var entries = threatSource.Select(c => new PublicAttackThreatEntryV3(c.ActionClass, Zone(c.Target), Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f) / total, ArrivalTime(c, request.SetIntent))).ToArray();
-            return new AttackPlanningResultV3(generated, power, fallback, generatedEvidence, new PublicAttackThreatV3("gate-i-threat-" + request.Revision, entries));
+            var exits = qualifiedTool.Recovery != null && qualifiedTool.Recovery.IsQualified
+                ? new[] { qualifiedTool.Recovery.ReorganizationExit }
+                : Array.Empty<ReorganizationExitV3>();
+            return new AttackPlanningResultV3(generated, power, fallback, generatedEvidence,
+                new PublicAttackThreatV3("gate-i-threat-" + request.Revision, entries), exits);
         }
 
-        public FinalAttackChoiceV3 ChooseFinal(AttackPlanningResultV3 result, JointDefensePlanV3 committedDefense) { if (result == null) throw new ArgumentNullException(nameof(result)); if (committedDefense == null) throw new ArgumentNullException(nameof(committedDefense)); var pool = result.QualifiedPowerRoutes.Count > 0 ? result.QualifiedPowerRoutes : result.FallbackCandidates; if (pool.Count == 0) throw new InvalidOperationException("No attack candidate is available."); return new FinalAttackChoiceV3(pool.OrderByDescending(c => c.ExpectedRallyValue).ThenBy(c => c.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.ActionClass).ThenBy(c => c.CandidateIdentity, StringComparer.Ordinal).First(), result.FallbackCandidates); }
+        private sealed class ToolQualification
+        {
+            public ToolQualification(GateIAttackExecutionEvidenceV3 execution, BlockToolRecoveryResultV3 recovery) { Execution = execution; Recovery = recovery; }
+            public GateIAttackExecutionEvidenceV3 Execution { get; } public BlockToolRecoveryResultV3 Recovery { get; }
+        }
+
+        private static ToolQualification QualifyToolRecovery(AttackPlanningRequestV3 request,
+            GateITacticalPlayerV3 attacker, GateIAttackExecutionEvidenceV3 source)
+        {
+            var candidate = source.Candidate;
+            var blocker = request.Players.Where(value => value.Side != attacker.Side && value.CanBlock)
+                .OrderBy(value => DistanceToNetTrajectory(value.WorldPosition, source.TrajectoryArtifact))
+                .ThenBy(value => value.Player.ToString(), StringComparer.Ordinal).FirstOrDefault();
+            var reboundEvidence = default(BallTrajectoryPredictionArtifactV4);
+            ToolRecoveryFailure failure = ToolRecoveryFailure.NoBlockContact;
+            if (blocker != null && IsBlockReachable(blocker, source.TrajectoryArtifact))
+            {
+                var contact = NetCrossing(source.TrajectoryArtifact, attacker.Side);
+                if (contact.HasValue)
+                {
+                    var frame = new TeamCourtFrame(attacker.Side == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
+                    var reboundTarget = frame.ToWorld(new SimVector3(contact.Value.X, .12f, -3f));
+                    var reboundVelocity = ReturnVelocitySolver.Solve(contact.Value, reboundTarget, .5f,
+                        FixedSimulationStepSeconds, request.SimulationParameters).InitialVelocity;
+                    reboundEvidence = PredictTrajectory(request, attacker.Side, contact.Value, reboundVelocity,
+                        candidate.CandidateIdentity + ":tool-rebound", candidate.EnvelopeIdentity);
+                    var reboundHome = IsAttackingSideLanding(reboundEvidence, attacker.Side);
+                    var teammates = request.Players.Where(value => value.Side == attacker.Side)
+                        .Select(value => new ToolRecoveryTeammateV3(value.Player, true,
+                            value.Player.Equals(attacker.Player) ? 0f : ReachProbability(value, reboundEvidence),
+                            value.Player.Equals(attacker.Player) ? 0f : value.Attributes.Attributes.Defense.PlatformControl)).ToArray();
+                    var exits = ResolveToolRecoveryExits(request, attacker);
+                    var exit = exits.OrderBy(value => value.Identity, StringComparer.Ordinal)
+                        .FirstOrDefault(value => teammates.Any(team => team.Actor.Equals(value.Actor) && team.ReachProbability > 0f));
+                    var blockProbability = blocker.Attributes.Attributes.Block.Timing * blocker.Attributes.Attributes.Block.HandControl;
+                    var homeProbability = reboundHome ? 1f : 0f;
+                    var recoveryActor = teammates.Where(value => value.ReachProbability > 0f && value.ControlMargin > 0f)
+                        .OrderByDescending(value => value.ReachProbability * value.ControlMargin).ThenBy(value => value.Actor.ToString(), StringComparer.Ordinal).FirstOrDefault();
+                    var value = recoveryActor.Actor.Value == null || exit == null ? 0f : blockProbability * homeProbability * recoveryActor.ReachProbability * recoveryActor.ControlMargin;
+                    var provisional = new AttackCandidateV3(candidate.CandidateIdentity, candidate.Actor, candidate.ActionClass,
+                        candidate.ContactCenter, candidate.Target, value, candidate.LegalSampleRatio, false,
+                        string.Empty, candidate.EnvelopeIdentity, source.TrajectoryArtifact.ArtifactIdentity, exit?.Identity ?? string.Empty);
+                    var reboundSample = candidate.CandidateIdentity + ":rebound-sample:" + reboundEvidence.ArtifactIdentity;
+                    var blockContact = candidate.CandidateIdentity + ":block-contact:" + blocker.Player.Value;
+                    var recovery = new BlockToolRecoveryPlanner().Qualify(new BlockToolRecoveryPlanningRequestV3(attacker.Player, attacker.Side,
+                        true, request.ToolRecoveryFacts.RemainingTouches, blockProbability, homeProbability, 0f, teammates,
+                        exits,
+                        new ToolRecoveryReboundEvidenceV3(reboundEvidence.ArtifactIdentity, reboundSample, blocker.Player, blockContact),
+                        candidate.EnvelopeIdentity, provisional));
+                    if (recovery.IsQualified)
+                    {
+                        var qualified = AddQualifiedToolRecoveryFallback(Array.Empty<AttackCandidateV3>(), recovery, provisional).Single();
+                        return new ToolQualification(new GateIAttackExecutionEvidenceV3(qualified, source.ExecutionClassification, source.TrajectoryArtifact), recovery);
+                    }
+                    failure = recovery.Failure;
+                }
+            }
+            var rejected = new AttackCandidateV3(candidate.CandidateIdentity, candidate.Actor, candidate.ActionClass,
+                candidate.ContactCenter, candidate.Target, candidate.ExpectedRallyValue, candidate.LegalSampleRatio, false,
+                failure.ToString(), candidate.EnvelopeIdentity, candidate.TrajectoryArtifactIdentity);
+            return new ToolQualification(new GateIAttackExecutionEvidenceV3(rejected,
+                source.ExecutionClassification, source.TrajectoryArtifact), null);
+        }
+
+        private static IReadOnlyList<ReorganizationExitV3> ResolveToolRecoveryExits(
+            AttackPlanningRequestV3 request, GateITacticalPlayerV3 attacker)
+        {
+            if (!request.ToolRecoveryFacts.IsAuto)
+                return request.ToolRecoveryFacts.ReorganizationExits;
+            return request.Players.Where(value => value.Side == attacker.Side && !value.Player.Equals(attacker.Player))
+                .OrderBy(value => value.Player.ToString(), StringComparer.Ordinal)
+                .Select(value => new ReorganizationExitV3("gate-i-tool-exit-" + value.Player.Value,
+                    value.Player, "ToolRecovery"))
+                .ToArray();
+        }
+
+        private static float DistanceToNetTrajectory(SimVector3 position, BallTrajectoryPredictionArtifactV4 trajectory) =>
+            trajectory.PredictionSnapshot.Samples.Where(sample => Math.Abs(sample.Position.Z) <= .35f)
+                .Select(sample => (sample.Position - position).Magnitude).DefaultIfEmpty(float.MaxValue).Min();
+        private static bool IsBlockReachable(GateITacticalPlayerV3 blocker, BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            var contact = trajectory.PredictionSnapshot.Samples.Where(sample => Math.Abs(sample.Position.Z) <= .35f)
+                .OrderBy(sample => (sample.Position - blocker.WorldPosition).Magnitude).FirstOrDefault();
+            return contact.Position.IsFinite && contact.Position.Y <= blocker.Attributes.Attributes.Block.ReachHeightMeters &&
+                (contact.Position - blocker.WorldPosition).Magnitude <= 3f;
+        }
+        private static SimVector3? NetCrossing(BallTrajectoryPredictionArtifactV4 trajectory, TeamSide side)
+        {
+            var frame = new TeamCourtFrame(side == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
+            var samples = trajectory.PredictionSnapshot.Samples;
+            for (var index = 1; index < samples.Count; index++)
+            {
+                var before = frame.ToLocal(samples[index - 1].Position); var after = frame.ToLocal(samples[index].Position);
+                if (before.Z < 0f && after.Z >= 0f)
+                    return SimVector3.Lerp(samples[index - 1].Position, samples[index].Position, -before.Z / (after.Z - before.Z));
+            }
+            return null;
+        }
+        private static bool IsAttackingSideLanding(BallTrajectoryPredictionArtifactV4 trajectory, TeamSide side)
+        {
+            if (!trajectory.PredictionSnapshot.GroundLanding.HasValue) return false;
+            var frame = new TeamCourtFrame(side == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
+            return frame.ToLocal(trajectory.PredictionSnapshot.GroundLanding.Value.Position).Z < 0f;
+        }
+        private static float ReachProbability(GateITacticalPlayerV3 player, BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            if (!trajectory.PredictionSnapshot.GroundLanding.HasValue) return 0f;
+            var distance = (player.WorldPosition - trajectory.PredictionSnapshot.GroundLanding.Value.Position).Magnitude;
+            return Math.Max(0f, Math.Min(1f, 1f - (distance / 6f)));
+        }
+
+        public FinalAttackChoiceV3 ChooseFinal(AttackPlanningResultV3 result, JointDefensePlanV3 committedDefense)
+        {
+            if (result == null) throw new ArgumentNullException(nameof(result));
+            if (committedDefense == null) throw new ArgumentNullException(nameof(committedDefense));
+            var pool = result.QualifiedPowerRoutes.Count > 0 ? result.QualifiedPowerRoutes : result.FallbackCandidates;
+            // A forecasted blocker only becomes a legal tool branch after the
+            // public-threat phase commits that exact blocker in joint defense.
+            pool = pool.Where(candidate => candidate.ActionClass != AttackActionClassV3.BlockToolRecovery ||
+                committedDefense.Responsibilities.Any(responsibility =>
+                    responsibility.Actor.Equals(candidate.ToolRecoveryEvidence.Blocker) &&
+                    (responsibility.Kind == DefenseResponsibilityKindV3.PrimaryBlock ||
+                     responsibility.Kind == DefenseResponsibilityKindV3.SupportingBlock))).ToArray();
+            if (pool.Count == 0) throw new InvalidOperationException("No attack candidate is available.");
+            return new FinalAttackChoiceV3(pool.OrderByDescending(c => c.ExpectedRallyValue).ThenBy(c => c.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.ActionClass).ThenBy(c => c.CandidateIdentity, StringComparer.Ordinal).First(), result.FallbackCandidates);
+        }
 
         public static IReadOnlyList<AttackCandidateV3> AddQualifiedToolRecoveryFallback(IReadOnlyList<AttackCandidateV3> fallbackCandidates, BlockToolRecoveryResultV3 recovery, AttackCandidateV3 toolRecoveryCandidate)
         {
@@ -226,7 +391,8 @@ namespace Volleyball.AI
                     toolRecoveryCandidate.ActionClass != AttackActionClassV3.BlockToolRecovery ||
                     !toolRecoveryCandidate.Actor.Equals(recovery.Attacker) ||
                     toolRecoveryCandidate.EnvelopeIdentity != recovery.PlanEnvelopeIdentity ||
-                    toolRecoveryCandidate.TrajectoryArtifactIdentity != recovery.ReboundEvidence.TrajectoryArtifactIdentity ||
+                    toolRecoveryCandidate.TrajectoryArtifactIdentity != qualified.TrajectoryArtifactIdentity ||
+                    toolRecoveryCandidate.TrajectoryArtifactIdentity == recovery.ReboundEvidence.TrajectoryArtifactIdentity ||
                     toolRecoveryCandidate.ReorganizationExitIdentity != recovery.ReorganizationExit.Identity ||
                     toolRecoveryCandidate.ExpectedRallyValue != recovery.Value)
                     throw new ArgumentException("Tool recovery candidate must exactly match qualified rebound evidence, exit, and value.", nameof(toolRecoveryCandidate));
@@ -250,6 +416,7 @@ namespace Volleyball.AI
                         recovery.RemainingTouches,
                         recovery.ReorganizationExit.Identity,
                         recovery.PlanEnvelopeIdentity,
+                        qualified.TrajectoryArtifactIdentity,
                         recovery.ReboundEvidence.TrajectoryArtifactIdentity,
                         recovery.ReboundEvidence.SampleIdentity,
                         recovery.ReboundEvidence.BlockContactIdentity)));

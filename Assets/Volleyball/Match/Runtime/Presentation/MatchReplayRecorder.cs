@@ -351,8 +351,9 @@ namespace Volleyball.Presentation
                 "Gate I tool recovery replay requires event-owned rebound evidence.");
             if (evidence.CandidateIdentity != selected.CandidateIdentity ||
                 evidence.EnvelopeIdentity != selected.EnvelopeIdentity ||
-                evidence.TrajectoryArtifactIdentity != selected.TrajectoryArtifactIdentity ||
+                evidence.OutboundTrajectoryArtifactIdentity != selected.TrajectoryArtifactIdentity ||
                 evidence.ReorganizationExitIdentity != selected.ReorganizationExitIdentity ||
+                evidence.ReboundTrajectoryArtifactIdentity == selected.TrajectoryArtifactIdentity ||
                 evidence.RemainingTouches <= 0)
                 throw new InvalidOperationException("Gate I tool recovery evidence does not exactly bind the selected candidate.");
             return new ReplayToolRecoveryRecordV4(
@@ -360,7 +361,11 @@ namespace Volleyball.Presentation
                 evidence.Blocker.Value,
                 evidence.ReboundSide.ToString(),
                 evidence.RecoveryActor.Value,
-                evidence.ReorganizationExitIdentity);
+                evidence.ReorganizationExitIdentity,
+                evidence.ReboundTrajectoryArtifactIdentity,
+                evidence.ReboundSampleIdentity,
+                evidence.BlockContactIdentity,
+                evidence.RemainingTouches);
         }
 
         private static ReplayCoverageDecisionRecordV4 ToReplayCoverage(PlanCoverageDecision coverage)

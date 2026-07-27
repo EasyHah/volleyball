@@ -57,9 +57,9 @@ namespace Volleyball.EditModeTests
         }
 
         [TestCase("wrong-trajectory", "envelope", "recovery-exit", .332f)]
-        [TestCase("trajectory", "wrong-envelope", "recovery-exit", .332f)]
-        [TestCase("trajectory", "envelope", "wrong-exit", .332f)]
-        [TestCase("trajectory", "envelope", "recovery-exit", .331f)]
+        [TestCase("outbound-trajectory", "wrong-envelope", "recovery-exit", .332f)]
+        [TestCase("outbound-trajectory", "envelope", "wrong-exit", .332f)]
+        [TestCase("outbound-trajectory", "envelope", "recovery-exit", .331f)]
         public void AddQualifiedToolRecoveryFallback_RejectsCandidateWithMismatchedEvidence(
             string trajectory, string envelope, string exit, float value)
         {
@@ -107,7 +107,7 @@ namespace Volleyball.EditModeTests
                     new ToolRecoveryReboundEvidenceV3("trajectory", "sample-17", new PlayerId("red-blocker-3"), "block-contact-17"), "envelope", ToolCandidate());
             }
 
-            public static AttackCandidateV3 ToolCandidate(string identity = "tool", string envelope = "envelope", string trajectory = "trajectory", string exit = "recovery-exit", float value = .332f) =>
+            public static AttackCandidateV3 ToolCandidate(string identity = "tool", string envelope = "envelope", string trajectory = "outbound-trajectory", string exit = "recovery-exit", float value = .332f) =>
                 Candidate(identity, AttackActionClassV3.BlockToolRecovery, envelope, trajectory, exit, value);
             public static AttackCandidateV3 RollCandidate() => Candidate("roll", AttackActionClassV3.Roll);
             private static AttackCandidateV3 Candidate(string identity, AttackActionClassV3 action, string envelope = "envelope", string trajectory = "trajectory", string exit = "", float value = .4f) =>

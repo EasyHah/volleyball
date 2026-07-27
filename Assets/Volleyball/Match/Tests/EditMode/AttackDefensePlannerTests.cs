@@ -172,6 +172,98 @@ namespace Volleyball.EditModeTests
             Assert.That(second.PublicThreat.Entries.Select(x => x.ArrivalTime), Is.EqualTo(first.PublicThreat.Entries.Select(x => x.ArrivalTime)));
         }
 
+        [Test]
+        public void PlanAttack_QualifiedToolRecovery_JoinsFallbackWithExactEvidence()
+        {
+            var request = Request(); var planner = new AttackDefensePlanner(); var intent = planner.PlanSetIntent(request);
+            var recovery = new PlayerId("home-recovery");
+            var blocker = new PlayerId("away-blocker");
+            var players = request.Players.Concat(new[]
+            {
+                new GateITacticalPlayerV3(recovery, TeamSide.Home, new SimVector3(0f, 2f, -2.5f), false, request.Players[0].Attributes),
+                new GateITacticalPlayerV3(blocker, TeamSide.Away, new SimVector3(0f, 3f, .05f), false, true, request.Players[0].Attributes)
+            }).ToArray();
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), players,
+                ToolFacts(remainingTouches: 1, new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+            var tool = result.FallbackCandidates.Single(value => value.ActionClass == AttackActionClassV3.BlockToolRecovery);
+
+            Assert.That(tool.ToolRecoveryEvidence, Is.Not.Null);
+            Assert.That(tool.ToolRecoveryEvidence.Blocker, Is.EqualTo(blocker));
+            Assert.That(tool.ToolRecoveryEvidence.RecoveryActor, Is.EqualTo(recovery));
+            Assert.That(tool.ToolRecoveryEvidence.ReorganizationExitIdentity, Is.EqualTo("tool-exit"));
+            Assert.That(tool.ToolRecoveryEvidence.EnvelopeIdentity, Is.EqualTo(tool.EnvelopeIdentity));
+            Assert.That(tool.ToolRecoveryEvidence.OutboundTrajectoryArtifactIdentity, Is.EqualTo(tool.TrajectoryArtifactIdentity));
+            Assert.That(tool.ToolRecoveryEvidence.ReboundTrajectoryArtifactIdentity,
+                Is.Not.EqualTo(tool.TrajectoryArtifactIdentity));
+            Assert.That(tool.ToolRecoveryEvidence.ReboundSampleIdentity, Does.Contain(":rebound-sample:"));
+            Assert.That(result.ExecutionEvidence.Single(value => value.CandidateIdentity == tool.CandidateIdentity)
+                .TrajectoryArtifact.ArtifactIdentity, Is.EqualTo(tool.TrajectoryArtifactIdentity));
+        }
+
+        [TestCase(false, 1, true, ToolRecoveryFailure.NoNonAttackerContinuation)]
+        [TestCase(true, 0, true, ToolRecoveryFailure.NoRemainingTouch)]
+        [TestCase(true, 1, false, ToolRecoveryFailure.NoReorganizationExit)]
+        public void PlanAttack_ToolRecoveryMissingRequiredLink_StaysOutOfFallback(bool includeTeammate,
+            int remainingTouches, bool includeExit, ToolRecoveryFailure expected)
+        {
+            var request = Request(); var planner = new AttackDefensePlanner(); var intent = planner.PlanSetIntent(request);
+            var recovery = new PlayerId("home-recovery"); var blocker = new PlayerId("away-blocker");
+            var players = request.Players.Concat(new[]
+            {
+                new GateITacticalPlayerV3(blocker, TeamSide.Away, new SimVector3(0f, 3f, .05f), false, true, request.Players[0].Attributes)
+            }).Concat(includeTeammate ? new[]
+            {
+                new GateITacticalPlayerV3(recovery, TeamSide.Home, new SimVector3(0f, 2f, -2.5f), false, request.Players[0].Attributes)
+            } : System.Array.Empty<GateITacticalPlayerV3>()).ToArray();
+            var exits = includeExit ? new[] { new ReorganizationExitV3("tool-exit", recovery, "organize") } : System.Array.Empty<ReorganizationExitV3>();
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), players,
+                ToolFacts(remainingTouches, exits)));
+
+            Assert.That(result.FallbackCandidates.Select(value => value.ActionClass), Has.None.EqualTo(AttackActionClassV3.BlockToolRecovery));
+            Assert.That(result.Candidates.Single(value => value.ActionClass == AttackActionClassV3.BlockToolRecovery)
+                .EliminationReason, Is.EqualTo(expected.ToString()));
+        }
+
+        [Test]
+        public void PlanAttack_ToolRecoveryRejectsGeometricallyNearButRuleIneligibleBlocker()
+        {
+            var request = Request(); var planner = new AttackDefensePlanner(); var intent = planner.PlanSetIntent(request);
+            var recovery = new PlayerId("home-recovery"); var backRow = new PlayerId("away-back-row");
+            var players = request.Players.Concat(new[]
+            {
+                new GateITacticalPlayerV3(recovery, TeamSide.Home, new SimVector3(0f, 2f, -2.5f), false, request.Players[0].Attributes),
+                new GateITacticalPlayerV3(backRow, TeamSide.Away, new SimVector3(0f, 3f, .05f), false, request.Players[0].Attributes)
+            }).ToArray();
+
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), players,
+                ToolFacts(3, new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+
+            Assert.That(result.Candidates.Single(value => value.ActionClass == AttackActionClassV3.BlockToolRecovery)
+                .EliminationReason, Is.EqualTo(ToolRecoveryFailure.NoBlockContact.ToString()));
+        }
+
+        [Test]
+        public void ChooseFinal_ToolRecoveryRequiresCommittedMatchingBlocker()
+        {
+            var request = Request(); var planner = new AttackDefensePlanner(); var intent = planner.PlanSetIntent(request);
+            var recovery = new PlayerId("home-recovery"); var blocker = new PlayerId("away-blocker");
+            var players = request.Players.Concat(new[]
+            {
+                new GateITacticalPlayerV3(recovery, TeamSide.Home, new SimVector3(0f, 2f, -2.5f), false, request.Players[0].Attributes),
+                new GateITacticalPlayerV3(blocker, TeamSide.Away, new SimVector3(0f, 3f, .05f), false, true, request.Players[0].Attributes)
+            }).ToArray();
+            var generated = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), players,
+                ToolFacts(3, new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+            var tool = generated.FallbackCandidates.Single(value => value.ActionClass == AttackActionClassV3.BlockToolRecovery);
+            var onlyTool = new AttackPlanningResultV3(generated.Candidates, System.Array.Empty<AttackCandidateV3>(),
+                new[] { tool }, generated.ExecutionEvidence, generated.PublicThreat, generated.ReorganizationExits);
+
+            Assert.That(() => planner.ChooseFinal(onlyTool, DefenseWith(blocker, DefenseResponsibilityKindV3.LineDefense)),
+                Throws.InvalidOperationException);
+            Assert.That(planner.ChooseFinal(onlyTool, DefenseWith(blocker, DefenseResponsibilityKindV3.PrimaryBlock))
+                .Candidate.CandidateIdentity, Is.EqualTo(tool.CandidateIdentity));
+        }
+
         private static SetIntentPlanningRequestV3 Request()
         {
             var derived = MatchV4TestFixture.CreateDerived();
@@ -189,6 +281,25 @@ namespace Volleyball.EditModeTests
 
         private static AcceptedSetEvidenceV3 Evidence(GateISetIntentV3 intent) =>
             new AcceptedSetEvidenceV3(intent.Organizer, intent.ExecutionClassification.ExecutableEnvelope.Identity, intent.TrajectoryArtifact.ArtifactIdentity);
+
+        private static ToolRecoveryPlanningFactsV3 ToolFacts(int remainingTouches,
+            params ReorganizationExitV3[] exits) => new ToolRecoveryPlanningFactsV3(remainingTouches, exits);
+
+        private static JointDefensePlanV3 DefenseWith(PlayerId blocker, DefenseResponsibilityKindV3 blockerKind)
+        {
+            var responsibilities = new[]
+            {
+                new DefenseResponsibilityV3(blocker, blockerKind, "Line", RallyPlanBranchV3.Primary),
+                new DefenseResponsibilityV3(new PlayerId("away-two"), DefenseResponsibilityKindV3.CrossDefense, "Cross", RallyPlanBranchV3.Primary),
+                new DefenseResponsibilityV3(new PlayerId("away-three"), DefenseResponsibilityKindV3.DeepDefense, "Deep", RallyPlanBranchV3.Primary),
+                new DefenseResponsibilityV3(new PlayerId("away-four"), DefenseResponsibilityKindV3.TipDefense, "Tip", RallyPlanBranchV3.Primary),
+                new DefenseResponsibilityV3(new PlayerId("away-five"), DefenseResponsibilityKindV3.BlockShadow, "Line", RallyPlanBranchV3.Primary),
+                new DefenseResponsibilityV3(new PlayerId("away-six"), DefenseResponsibilityKindV3.ReboundCoverage, "Cross", RallyPlanBranchV3.Primary)
+            };
+            return new JointDefensePlanV3("threat", responsibilities,
+                new[] { new ReorganizationExitV3("defense-exit", blocker, "organize") },
+                new[] { "Line" }, new[] { "Cross" });
+        }
 
         private static bool CrossesAndLandsOpponentSide(BallTrajectoryPredictionArtifactV4 artifact,
             TeamSide attackingSide)

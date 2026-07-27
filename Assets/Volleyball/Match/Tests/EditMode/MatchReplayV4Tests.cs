@@ -94,8 +94,9 @@ namespace Volleyball.EditModeTests
                 1,
                 "away-reorganize",
                 "envelope",
-                "trajectory",
-                "sample",
+                HashA,
+                HashB,
+                "rebound-sample",
                 "block-contact");
             var selected = new AttackCandidateV3(
                 "tool-candidate",
@@ -108,7 +109,7 @@ namespace Volleyball.EditModeTests
                 false,
                 string.Empty,
                 "envelope",
-                "trajectory",
+                HashA,
                 "away-reorganize",
                 evidence);
 
@@ -120,6 +121,46 @@ namespace Volleyball.EditModeTests
             Assert.That(replay.RecoveryPlayerId, Is.EqualTo("away-saver"));
             Assert.That(replay.ReorganizationExitIdentity,
                 Is.EqualTo("away-reorganize"));
+            Assert.That(replay.ReboundTrajectoryArtifactIdentity,
+                Is.EqualTo(HashB));
+            Assert.That(replay.ReboundSampleIdentity, Is.EqualTo("rebound-sample"));
+            Assert.That(replay.BlockContactIdentity, Is.EqualTo("block-contact"));
+            Assert.That(replay.RemainingTouches, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GateIToolRecoveryReplay_RoundTripsIndependentReboundEvidence()
+        {
+            var baseline = Event(0, "Attack");
+            var candidate = new ReplayAttackDefenseCandidateRecordV4("tool-candidate", baseline.ActorPlayerId,
+                "BlockToolRecovery", new ReplayVector3RecordV4(0f, 3f, 0f), .5f, 1f, false,
+                string.Empty, baseline.ExecutableEnvelope.Identity, baseline.Trajectory.ArtifactIdentity, "tool-exit");
+            var recovery = new ReplayToolRecoveryRecordV4("tool-candidate", "away-blocker", "Home",
+                "home-saver", "tool-exit", HashA, "rebound-sample", "block-contact", 3);
+            var authority = new ReplayAttackDefenseAuthorityRecordV4(7, 9, "AttackCommitted", "Primary",
+                new ReplayVector3RecordV4(0f, 3f, -1f), new[] { candidate },
+                new[] { new ReplayPublicAttackThreatRecordV4("BlockToolRecovery", "Line", 1f, 1f) },
+                new[] { new ReplayDefenseResponsibilityRecordV4("away-blocker", "PrimaryBlock", "Line", "Primary") },
+                "tool-candidate", baseline.TestedEnvelope.Identity, baseline.ExecutableEnvelope.Identity,
+                baseline.Classification.ActualSample.EnvelopeIdentity, baseline.Trajectory.ArtifactIdentity,
+                recovery, new ReplayCoverageDecisionRecordV4("Covered", 0f, "WithinConditionalEnvelope",
+                    System.Array.Empty<string>(), 0, "Primary"));
+            var recorded = new MatchReplayEventV4(baseline.SequenceNumber, baseline.EventKind,
+                baseline.ActorPlayerId, baseline.SimulationTimeSeconds, baseline.HomeScore, baseline.AwayScore,
+                baseline.TestedEnvelope, baseline.ExecutableEnvelope, baseline.Trajectory,
+                baseline.AbilityConsumptions, baseline.Classification, baseline.ObservedP6Geometry,
+                baseline.RuleDecision, baseline.Shadow, null, authority);
+            var json = ContractJson.SerializeV4(CreateReplay(recorded));
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restored.Events[0].AttackDefenseAuthority.Recovery.ReboundTrajectoryArtifactIdentity,
+                Is.EqualTo(HashA));
+            Assert.That(restored.Events[0].AttackDefenseAuthority.Recovery.ReboundSampleIdentity,
+                Is.EqualTo("rebound-sample"));
+            Assert.That(restored.Events[0].AttackDefenseAuthority.Recovery.BlockContactIdentity,
+                Is.EqualTo("block-contact"));
+            Assert.That(restored.Events[0].AttackDefenseAuthority.Recovery.RemainingTouches, Is.EqualTo(3));
         }
 
         [Test]

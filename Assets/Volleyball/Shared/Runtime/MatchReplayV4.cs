@@ -640,13 +640,19 @@ namespace Volleyball.Shared.Contracts
     {
         public ReplayToolRecoveryRecordV4(string candidateIdentity,
             string blockerPlayerId, string reboundSide, string recoveryPlayerId,
-            string reorganizationExitIdentity)
+            string reorganizationExitIdentity,
+            string reboundTrajectoryArtifactIdentity, string reboundSampleIdentity,
+            string blockContactIdentity, int remainingTouches)
         {
             CandidateIdentity = ReplayContractGuardV4.Required(candidateIdentity, nameof(candidateIdentity));
             BlockerPlayerId = ReplayContractGuardV4.Required(blockerPlayerId, nameof(blockerPlayerId));
             ReboundSide = ReplayContractGuardV4.OneOf(reboundSide, nameof(reboundSide), "Home", "Away");
             RecoveryPlayerId = ReplayContractGuardV4.Required(recoveryPlayerId, nameof(recoveryPlayerId));
             ReorganizationExitIdentity = ReplayContractGuardV4.Required(reorganizationExitIdentity, nameof(reorganizationExitIdentity));
+            ReboundTrajectoryArtifactIdentity = ReplayContractGuardV4.Hash(reboundTrajectoryArtifactIdentity, nameof(reboundTrajectoryArtifactIdentity));
+            ReboundSampleIdentity = ReplayContractGuardV4.Required(reboundSampleIdentity, nameof(reboundSampleIdentity));
+            BlockContactIdentity = ReplayContractGuardV4.Required(blockContactIdentity, nameof(blockContactIdentity));
+            RemainingTouches = ReplayContractGuardV4.Positive(remainingTouches, nameof(remainingTouches));
         }
 
         public string CandidateIdentity { get; }
@@ -654,6 +660,10 @@ namespace Volleyball.Shared.Contracts
         public string ReboundSide { get; }
         public string RecoveryPlayerId { get; }
         public string ReorganizationExitIdentity { get; }
+        public string ReboundTrajectoryArtifactIdentity { get; }
+        public string ReboundSampleIdentity { get; }
+        public string BlockContactIdentity { get; }
+        public int RemainingTouches { get; }
     }
 
     public sealed class ReplayAttackDefenseAuthorityRecordV4
@@ -711,7 +721,8 @@ namespace Volleyball.Shared.Contracts
                 var recoveryCandidate = _candidates.SingleOrDefault(value =>
                     value.CandidateIdentity == Recovery.CandidateIdentity);
                 if (recoveryCandidate == null || recoveryCandidate.ActionClass != "BlockToolRecovery" ||
-                    recoveryCandidate.ReorganizationExitIdentity != Recovery.ReorganizationExitIdentity)
+                    recoveryCandidate.ReorganizationExitIdentity != Recovery.ReorganizationExitIdentity ||
+                    recoveryCandidate.TrajectoryArtifactIdentity == Recovery.ReboundTrajectoryArtifactIdentity)
                     throw new ContractValidationException("Tool recovery must link its declared tool candidate and exit.");
             }
         }
@@ -2041,13 +2052,19 @@ namespace Volleyball.Shared.Contracts
             if (recoveryValue != null)
             {
                 StrictJsonV4.RequireExactProperties(recoveryValue, "candidateIdentity", "blockerPlayerId",
-                    "reboundSide", "recoveryPlayerId", "reorganizationExitIdentity");
+                    "reboundSide", "recoveryPlayerId", "reorganizationExitIdentity",
+                    "reboundTrajectoryArtifactIdentity", "reboundSampleIdentity",
+                    "blockContactIdentity", "remainingTouches");
                 recovery = new ReplayToolRecoveryRecordV4(
                     StrictJsonV4.RequiredString(recoveryValue, "candidateIdentity"),
                     StrictJsonV4.RequiredString(recoveryValue, "blockerPlayerId"),
                     StrictJsonV4.RequiredString(recoveryValue, "reboundSide"),
                     StrictJsonV4.RequiredString(recoveryValue, "recoveryPlayerId"),
-                    StrictJsonV4.RequiredString(recoveryValue, "reorganizationExitIdentity"));
+                    StrictJsonV4.RequiredString(recoveryValue, "reorganizationExitIdentity"),
+                    StrictJsonV4.RequiredString(recoveryValue, "reboundTrajectoryArtifactIdentity"),
+                    StrictJsonV4.RequiredString(recoveryValue, "reboundSampleIdentity"),
+                    StrictJsonV4.RequiredString(recoveryValue, "blockContactIdentity"),
+                    StrictJsonV4.RequiredInt(recoveryValue, "remainingTouches"));
             }
             return new ReplayAttackDefenseAuthorityRecordV4(
                 StrictJsonV4.RequiredInt(value, "planRevision"), StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"),
@@ -2666,6 +2683,10 @@ namespace Volleyball.Shared.Contracts
                 output.Append(",\"reboundSide\":").Append(Quote(recovery.ReboundSide));
                 output.Append(",\"recoveryPlayerId\":").Append(Quote(recovery.RecoveryPlayerId));
                 output.Append(",\"reorganizationExitIdentity\":").Append(Quote(recovery.ReorganizationExitIdentity));
+                output.Append(",\"reboundTrajectoryArtifactIdentity\":").Append(Quote(recovery.ReboundTrajectoryArtifactIdentity));
+                output.Append(",\"reboundSampleIdentity\":").Append(Quote(recovery.ReboundSampleIdentity));
+                output.Append(",\"blockContactIdentity\":").Append(Quote(recovery.BlockContactIdentity));
+                output.Append(",\"remainingTouches\":").Append(recovery.RemainingTouches);
                 output.Append('}');
             }
             output.Append(",\"coverage\":"); AppendCoverage(output, authority.Coverage);

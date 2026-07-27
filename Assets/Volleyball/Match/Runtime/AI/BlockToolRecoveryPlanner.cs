@@ -112,7 +112,7 @@ namespace Volleyball.AI
                 return Failure(request, ToolRecoveryFailure.ReboundsAway, null, 0f, 0f, null);
             if (request.ToolRecoveryCandidate.ActionClass != AttackActionClassV3.BlockToolRecovery ||
                 !request.ToolRecoveryCandidate.Actor.Equals(request.Attacker) || request.ToolRecoveryCandidate.EnvelopeIdentity != request.PlanEnvelopeIdentity ||
-                request.ToolRecoveryCandidate.TrajectoryArtifactIdentity != request.ReboundEvidence.TrajectoryArtifactIdentity)
+                request.ToolRecoveryCandidate.TrajectoryArtifactIdentity == request.ReboundEvidence.TrajectoryArtifactIdentity)
                 return Failure(request, ToolRecoveryFailure.EvidenceMismatch, null, 0f, 0f, null);
 
             var recoveryCandidates = request.Teammates.Where(value => value.IsOnCourt && !value.Actor.Equals(request.Attacker) &&
