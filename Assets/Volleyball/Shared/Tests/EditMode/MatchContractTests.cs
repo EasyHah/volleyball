@@ -1169,7 +1169,7 @@ namespace Volleyball.Shared.EditModeTests
                 PredictorConfigurationHashV4, "gate-i-set-intent", "Set",
                 new ReplayVector3RecordV4(1f, 3f, -1f),
                 new ReplayVector3RecordV4(1f, 2f, -1f),
-                new ReplayVector3RecordV4(2f, 4f, -2f),
+                new ReplayVector3RecordV4(2f, 4f, 2f),
                 new ReplayBoundedErrorRecordV4("BoundedUniform",
                     new ReplayVector3RecordV4(-.1f, -.1f, -.1f),
                     new ReplayVector3RecordV4(.1f, .1f, .1f)),
