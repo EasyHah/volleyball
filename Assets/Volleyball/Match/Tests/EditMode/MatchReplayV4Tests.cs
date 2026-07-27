@@ -73,7 +73,7 @@ namespace Volleyball.EditModeTests
                 "exit");
 
             var exception = Assert.Throws<TargetInvocationException>(
-                () => mapper.Invoke(null, new object[] { null, selected }));
+                () => mapper.Invoke(null, new object[] { null, selected, null }));
 
             Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
             Assert.That(exception.InnerException.Message,
@@ -114,7 +114,7 @@ namespace Volleyball.EditModeTests
                 evidence);
 
             var replay = (ReplayToolRecoveryRecordV4)mapper.Invoke(
-                null, new object[] { null, selected });
+                null, new object[] { null, selected, null });
 
             Assert.That(replay.BlockerPlayerId, Is.EqualTo("away-blocker"));
             Assert.That(replay.ReboundSide, Is.EqualTo("Away"));
@@ -126,6 +126,48 @@ namespace Volleyball.EditModeTests
             Assert.That(replay.ReboundSampleIdentity, Is.EqualTo("rebound-sample"));
             Assert.That(replay.BlockContactIdentity, Is.EqualTo("block-contact"));
             Assert.That(replay.RemainingTouches, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GateIToolRecoveryMapper_BlockObservationOverridesPlannedReboundEvidence()
+        {
+            var mapper = typeof(MatchReplayRecorder).GetMethod("ToReplayRecovery", BindingFlags.Static | BindingFlags.NonPublic);
+            var evidence = new ToolRecoveryEvidenceV3("tool-candidate", new StablePlayerId("away-blocker"), TeamSide.Home,
+                new StablePlayerId("home-saver"), 3, "tool-exit", "envelope", HashA, HashB, "planned-sample", "planned-contact");
+            var selected = new AttackCandidateV3("tool-candidate", new StablePlayerId("home-attacker"),
+                AttackActionClassV3.BlockToolRecovery, new SimVector3(0f, 3f, 0f), new SimVector3(0f, 1f, 3f),
+                .5f, 1f, false, string.Empty, "envelope", HashA, "tool-exit", evidence);
+            var actual = new ToolRecoveryActualObservationV3(TeamSide.Home, HashC, "actual-sample", "actual-contact", 2);
+            var receipt = new AttackDefenseAuthorityReceipt(4, 7,
+                AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive, AttackDefenseCommandKind.BlockContact,
+                new StablePlayerId("away-blocker"), RallyPlanBranchV3.Primary, null, null,
+                new AttackDefenseAuthorityEvidenceV3(4, 7, AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive, null, null), actual);
+
+            var replay = (ReplayToolRecoveryRecordV4)mapper.Invoke(null, new object[] { null, selected, receipt });
+
+            Assert.That(replay.ReboundTrajectoryArtifactIdentity, Is.EqualTo(HashC));
+            Assert.That(replay.ReboundSampleIdentity, Is.EqualTo("actual-sample"));
+            Assert.That(replay.BlockContactIdentity, Is.EqualTo("actual-contact"));
+            Assert.That(replay.RemainingTouches, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void GateIToolRecoveryMapper_BlockObservationMissing_FailsClosed()
+        {
+            var mapper = typeof(MatchReplayRecorder).GetMethod("ToReplayRecovery", BindingFlags.Static | BindingFlags.NonPublic);
+            var evidence = new ToolRecoveryEvidenceV3("tool-candidate", new StablePlayerId("away-blocker"), TeamSide.Home,
+                new StablePlayerId("home-saver"), 3, "tool-exit", "envelope", HashA, HashB, "planned-sample", "planned-contact");
+            var selected = new AttackCandidateV3("tool-candidate", new StablePlayerId("home-attacker"),
+                AttackActionClassV3.BlockToolRecovery, new SimVector3(0f, 3f, 0f), new SimVector3(0f, 1f, 3f),
+                .5f, 1f, false, string.Empty, "envelope", HashA, "tool-exit", evidence);
+            var receipt = new AttackDefenseAuthorityReceipt(4, 7,
+                AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock, AttackDefenseCommandKind.BlockContact,
+                new StablePlayerId("away-blocker"), RallyPlanBranchV3.Primary, null, null,
+                new AttackDefenseAuthorityEvidenceV3(4, 7, AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock, null, null));
+
+            var exception = Assert.Throws<TargetInvocationException>(() => mapper.Invoke(null, new object[] { null, selected, receipt }));
+            Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
+            Assert.That(exception.InnerException.Message, Does.Contain("event-owned actual rebound"));
         }
 
         [Test]

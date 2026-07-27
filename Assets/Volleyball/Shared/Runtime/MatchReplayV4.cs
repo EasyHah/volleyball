@@ -687,7 +687,8 @@ namespace Volleyball.Shared.Contracts
             SourceSequenceNumber = ReplayContractGuardV4.Positive(sourceSequenceNumber, nameof(sourceSequenceNumber));
             Phase = ReplayContractGuardV4.OneOf(phase, nameof(phase), "SetIntentPlanned",
                 "AttackPlanned", "ThreatPublished", "DefenseCommitted", "AttackCommitted",
-                "AwaitingActualContact", "ReorganizationPlanned", "HandedOff", "Terminal");
+                "AwaitingActualContact", "ToolRecoveryAwaitingBlock", "ToolRecoveryAwaitingReceive",
+                "ReorganizationPlanned", "HandedOff", "Terminal");
             Branch = ReplayContractGuardV4.OneOf(branch, nameof(branch), "Primary", "Contingency");
             SetTarget = setTarget ?? throw new ContractValidationException("setTarget is required.");
             _candidates = CopyCandidates(candidates);
@@ -714,7 +715,8 @@ namespace Volleyball.Shared.Contracts
             else if (_candidates.Length == 0)
                 throw new ContractValidationException("Post-Set authority requires candidates.");
 
-            if ((Phase == "AttackCommitted" || Phase == "AwaitingActualContact") && selected == null)
+            if ((Phase == "AttackCommitted" || Phase == "AwaitingActualContact" ||
+                 Phase == "ToolRecoveryAwaitingBlock" || Phase == "ToolRecoveryAwaitingReceive") && selected == null)
                 throw new ContractValidationException("Committed attack authority requires a selected candidate.");
             if (Recovery != null)
             {
@@ -1165,9 +1167,19 @@ namespace Volleyball.Shared.Contracts
             var observedDefense = (AttackDefenseAuthority.Phase ==
                 "AwaitingActualContact" || AttackDefenseAuthority.Phase ==
                 "ReorganizationPlanned") && selected != null;
-            if (!plannedDefense && !observedDefense)
+            var observedToolBlock = EventKind == "Block" &&
+                AttackDefenseAuthority.Phase == "ToolRecoveryAwaitingReceive" &&
+                selected?.ActionClass == "BlockToolRecovery" &&
+                AttackDefenseAuthority.Recovery != null &&
+                AttackDefenseAuthority.Recovery.BlockerPlayerId == ActorPlayerId;
+            var observedToolReceive = EventKind == "Receive" &&
+                AttackDefenseAuthority.Phase == "ReorganizationPlanned" &&
+                selected?.ActionClass == "BlockToolRecovery" &&
+                AttackDefenseAuthority.Recovery != null &&
+                AttackDefenseAuthority.Recovery.RecoveryPlayerId == ActorPlayerId;
+            if (!plannedDefense && !observedDefense && !observedToolBlock && !observedToolReceive)
                 throw new ContractValidationException("Gate I defense evidence requires an awaiting or reorganization phase.");
-            if (!AttackDefenseAuthority.DefenseResponsibilities.Any(value =>
+            if (!observedToolReceive && !AttackDefenseAuthority.DefenseResponsibilities.Any(value =>
                 value.ActorPlayerId == ActorPlayerId))
                 throw new ContractValidationException("Gate I defense event actor must have a declared responsibility.");
         }

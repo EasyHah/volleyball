@@ -20,7 +20,15 @@ namespace Volleyball.AI
     public enum AttackDefenseAuthorityPhaseV3
     {
         Idle, SetIntentPlanned, AttackPlanned, ThreatPublished, DefenseCommitted,
-        AttackCommitted, AwaitingActualContact, ReorganizationPlanned, HandedOff, Terminal
+        AttackCommitted, AwaitingActualContact, ToolRecoveryAwaitingBlock,
+        ToolRecoveryAwaitingReceive, ReorganizationPlanned, HandedOff, Terminal
+    }
+
+    public enum ToolRecoveryReboundObservationV3
+    {
+        NotApplicable,
+        ReturnsToAttackingSide,
+        ReturnsAway
     }
 
     public sealed class GateISetIntentReceiptV3
@@ -68,7 +76,9 @@ namespace Volleyball.AI
             PlanCoverageReason coverageReason, AttackDefenseCommandKind actionKind,
             RallyPlanBranchV3 branch, string envelopeIdentity,
             string trajectoryArtifactIdentity, bool v3Accepted,
-            string reorganizationExitIdentity = null)
+            string reorganizationExitIdentity = null,
+            ToolRecoveryReboundObservationV3 toolRecoveryRebound = ToolRecoveryReboundObservationV3.NotApplicable,
+            int remainingTouchesAfterContact = -1)
         {
             if (planRevision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(planRevision < 0 ? nameof(planRevision) : nameof(sourceSequence));
             if (!Enum.IsDefined(typeof(PlanCoverageReason), coverageReason)) throw new ArgumentOutOfRangeException(nameof(coverageReason));
@@ -80,6 +90,12 @@ namespace Volleyball.AI
             TrajectoryArtifactIdentity = trajectoryArtifactIdentity ?? string.Empty;
             V3Accepted = v3Accepted;
             ReorganizationExitIdentity = reorganizationExitIdentity ?? string.Empty;
+            if (!Enum.IsDefined(typeof(ToolRecoveryReboundObservationV3), toolRecoveryRebound))
+                throw new ArgumentOutOfRangeException(nameof(toolRecoveryRebound));
+            if (remainingTouchesAfterContact < -1 || remainingTouchesAfterContact > 3)
+                throw new ArgumentOutOfRangeException(nameof(remainingTouchesAfterContact));
+            ToolRecoveryRebound = toolRecoveryRebound;
+            RemainingTouchesAfterContact = remainingTouchesAfterContact;
         }
         public long PlanRevision { get; } public long SourceSequence { get; } public PlayerId Actor { get; }
         public PlanCoverageReason CoverageReason { get; } public string ReorganizationExitIdentity { get; }
@@ -88,6 +104,8 @@ namespace Volleyball.AI
         public string EnvelopeIdentity { get; }
         public string TrajectoryArtifactIdentity { get; }
         public bool V3Accepted { get; }
+        public ToolRecoveryReboundObservationV3 ToolRecoveryRebound { get; }
+        public int RemainingTouchesAfterContact { get; }
     }
 
     public sealed class AttackDefenseAuthorityCommand
@@ -290,7 +308,11 @@ namespace Volleyball.AI
         public AttackDefenseAuthorityStateV3 AcceptContact(GateIContactEvidenceV3 contact)
         {
             if (contact == null) throw new ArgumentNullException(nameof(contact));
-            if (State.Phase != AttackDefenseAuthorityPhaseV3.AttackCommitted && State.Phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact) throw new InvalidOperationException("No Gate I contact is awaiting acceptance.");
+            if (State.Phase != AttackDefenseAuthorityPhaseV3.AttackCommitted &&
+                State.Phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact &&
+                State.Phase != AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock &&
+                State.Phase != AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive)
+                throw new InvalidOperationException("No Gate I contact is awaiting acceptance.");
             if (contact.PlanRevision != State.Revision || contact.SourceSequence <= _lastSequence) throw new InvalidOperationException("Stale or mismatched contact evidence.");
             var coverage = Coverage(contact.CoverageReason);
             if (coverage.Kind == PlanCoverageDecisionKind.TerminalNoPlan) { _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.Terminal, State.Revision, _attackingSide, State.Plan, coverage); return State; }
@@ -301,16 +323,59 @@ namespace Volleyball.AI
                     throw new InvalidOperationException("The committed attack must be accepted before defensive coverage.");
                 _lastSequence = contact.SourceSequence;
                 State = new AttackDefenseAuthorityStateV3(
-                    AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
+                    IsSelectedToolRecovery() ? AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock : AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
                     State.Revision, _attackingSide, State.Plan, coverage);
                 return State;
+            }
+
+            if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock)
+            {
+                if (!IsExpectedToolBlock(contact) ||
+                    contact.ToolRecoveryRebound != ToolRecoveryReboundObservationV3.ReturnsToAttackingSide ||
+                    contact.RemainingTouchesAfterContact <= 0)
+                    return CompleteOrdinaryDefense(contact, PlanCoverageReason.ResponsibleActorChanged);
+                _lastSequence = contact.SourceSequence;
+                State = new AttackDefenseAuthorityStateV3(
+                    AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive,
+                    State.Revision, _attackingSide, State.Plan, coverage);
+                return State;
+            }
+
+            if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive)
+            {
+                if (contact.ActionKind != AttackDefenseCommandKind.FloorDefense ||
+                    !contact.Actor.Equals(State.Plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor) ||
+                    contact.RemainingTouchesAfterContact <= 0)
+                    throw new InvalidOperationException("Tool recovery requires the declared non-attacker V3-accepted receive.");
+                return CompleteReorganization(contact, coverage,
+                    State.Plan.SelectedAction.ToolRecoveryEvidence.ReorganizationExitIdentity);
             }
 
             if (contact.ActionKind != AttackDefenseCommandKind.BlockContact &&
                 contact.ActionKind != AttackDefenseCommandKind.FloorDefense &&
                 contact.ActionKind != AttackDefenseCommandKind.AttackCover)
                 throw new InvalidOperationException("Awaiting Gate I coverage requires a defensive contact.");
-            var exit = State.Plan.ReorganizationExits.OrderBy(x => x.Identity, StringComparer.Ordinal).FirstOrDefault(x => x.Identity == contact.ReorganizationExitIdentity);
+            return CompleteReorganization(contact, coverage, contact.ReorganizationExitIdentity);
+        }
+
+        private bool IsSelectedToolRecovery() => State.Plan?.SelectedAction?.ToolRecoveryEvidence != null;
+        private bool IsExpectedToolBlock(GateIContactEvidenceV3 contact) =>
+            contact.ActionKind == AttackDefenseCommandKind.BlockContact &&
+            contact.Actor.Equals(State.Plan.SelectedAction.ToolRecoveryEvidence.Blocker);
+
+        private AttackDefenseAuthorityStateV3 CompleteOrdinaryDefense(GateIContactEvidenceV3 contact,
+            PlanCoverageReason reason)
+        {
+            ValidateContactEvidence(contact);
+            var ordinaryExit = State.Plan.Defense.ReorganizationExits.OrderBy(value => value.Identity, StringComparer.Ordinal).FirstOrDefault()
+                ?? throw new InvalidOperationException("Ordinary block coverage requires a declared defense exit.");
+            return CompleteReorganization(contact, Coverage(reason), ordinaryExit.Identity);
+        }
+
+        private AttackDefenseAuthorityStateV3 CompleteReorganization(GateIContactEvidenceV3 contact,
+            PlanCoverageDecision coverage, string exitIdentity)
+        {
+            var exit = State.Plan.ReorganizationExits.OrderBy(x => x.Identity, StringComparer.Ordinal).FirstOrDefault(x => x.Identity == exitIdentity);
             if (exit == null) throw new InvalidOperationException("Actual contact does not select a declared reorganization exit.");
             _lastSequence = contact.SourceSequence; State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned, State.Revision, _attackingSide, State.Plan, coverage);
             Publish(contact.SourceSequence, State, new[] { new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence, AttackDefenseCommandKind.Reorganization, exit.Actor, true, ExecutionFor(exit.Actor, AttackDefenseCommandKind.Reorganization), contact.Branch, reorganizationExitIdentity: exit.Identity) });
@@ -361,6 +426,22 @@ namespace Volleyball.AI
         private void ValidateContactEvidence(GateIContactEvidenceV3 contact)
         {
             if (!contact.V3Accepted) throw new InvalidOperationException("Gate I contacts require a V3-accepted marker.");
+            if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive &&
+                contact.ActionKind == AttackDefenseCommandKind.FloorDefense &&
+                State.Plan?.SelectedAction?.ToolRecoveryEvidence != null &&
+                contact.Actor.Equals(State.Plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor) &&
+                !string.IsNullOrWhiteSpace(contact.EnvelopeIdentity) &&
+                !string.IsNullOrWhiteSpace(contact.TrajectoryArtifactIdentity))
+                return;
+            if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock &&
+                contact.ActionKind == AttackDefenseCommandKind.BlockContact &&
+                State.Plan.Defense.Responsibilities.Any(value =>
+                    value.Actor.Equals(contact.Actor) &&
+                    (value.Kind == DefenseResponsibilityKindV3.PrimaryBlock ||
+                     value.Kind == DefenseResponsibilityKindV3.SupportingBlock)) &&
+                !string.IsNullOrWhiteSpace(contact.EnvelopeIdentity) &&
+                !string.IsNullOrWhiteSpace(contact.TrajectoryArtifactIdentity))
+                return;
             if (contact.ActionKind == AttackDefenseCommandKind.AttackContact)
             {
                 if (!State.Plan.SelectedAction.Actor.Equals(contact.Actor) ||

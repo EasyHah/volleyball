@@ -325,7 +325,7 @@ namespace Volleyball.Presentation
                 ToReplayDefenseResponsibilities(plan.Defense), selected?.CandidateIdentity ?? string.Empty,
                 classification.TestedEnvelope.Identity, classification.ExecutableEnvelope.Identity,
                 classification.Sample.EnvelopeIdentity, trajectory.ArtifactIdentity,
-                ToReplayRecovery(plan, selected), ToReplayCoverage(evidence.CoverageDecision));
+                ToReplayRecovery(plan, selected, receipt), ToReplayCoverage(evidence.CoverageDecision));
         }
 
         private static bool IsReplayActionFor(AttackDefenseCommandKind kind, TechniqueAction action) =>
@@ -344,7 +344,8 @@ namespace Volleyball.Presentation
         private static ReplayDefenseResponsibilityRecordV4[] ToReplayDefenseResponsibilities(JointDefensePlanV3 defense) => defense.Responsibilities.Select(responsibility =>
             new ReplayDefenseResponsibilityRecordV4(responsibility.Actor.Value, responsibility.Kind.ToString(), responsibility.Zone, ToReplayBranch(responsibility.Branch))).ToArray();
 
-        private static ReplayToolRecoveryRecordV4 ToReplayRecovery(AttackDefensePlanV3 plan, AttackCandidateV3 selected)
+        private static ReplayToolRecoveryRecordV4 ToReplayRecovery(AttackDefensePlanV3 plan, AttackCandidateV3 selected,
+            AttackDefenseAuthorityReceipt receipt = null)
         {
             if (selected == null || selected.ActionClass != AttackActionClassV3.BlockToolRecovery) return null;
             var evidence = selected.ToolRecoveryEvidence ?? throw new InvalidOperationException(
@@ -356,16 +357,19 @@ namespace Volleyball.Presentation
                 evidence.ReboundTrajectoryArtifactIdentity == selected.TrajectoryArtifactIdentity ||
                 evidence.RemainingTouches <= 0)
                 throw new InvalidOperationException("Gate I tool recovery evidence does not exactly bind the selected candidate.");
+            var actual = receipt?.ToolRecoveryActualObservation;
+            if (receipt?.Kind == AttackDefenseCommandKind.BlockContact && actual == null)
+                throw new InvalidOperationException("Accepted Gate I tool Block replay requires event-owned actual rebound observation.");
             return new ReplayToolRecoveryRecordV4(
                 evidence.CandidateIdentity,
                 evidence.Blocker.Value,
-                evidence.ReboundSide.ToString(),
+                actual?.ReboundSide.ToString() ?? evidence.ReboundSide.ToString(),
                 evidence.RecoveryActor.Value,
                 evidence.ReorganizationExitIdentity,
-                evidence.ReboundTrajectoryArtifactIdentity,
-                evidence.ReboundSampleIdentity,
-                evidence.BlockContactIdentity,
-                evidence.RemainingTouches);
+                actual?.ReboundTrajectoryArtifactIdentity ?? evidence.ReboundTrajectoryArtifactIdentity,
+                actual?.ReboundSampleIdentity ?? evidence.ReboundSampleIdentity,
+                actual?.BlockContactIdentity ?? evidence.BlockContactIdentity,
+                actual?.RemainingTouches ?? evidence.RemainingTouches);
         }
 
         private static ReplayCoverageDecisionRecordV4 ToReplayCoverage(PlanCoverageDecision coverage)

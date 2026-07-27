@@ -8,9 +8,30 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Presentation
 {
+    public sealed class ToolRecoveryActualObservationV3
+    {
+        public ToolRecoveryActualObservationV3(TeamSide reboundSide,
+            string reboundTrajectoryArtifactIdentity, string reboundSampleIdentity,
+            string blockContactIdentity, int remainingTouches)
+        {
+            ReboundSide = reboundSide;
+            ReboundTrajectoryArtifactIdentity = string.IsNullOrWhiteSpace(reboundTrajectoryArtifactIdentity)
+                ? throw new ArgumentException("Identity is required.", nameof(reboundTrajectoryArtifactIdentity))
+                : reboundTrajectoryArtifactIdentity;
+            ReboundSampleIdentity = string.IsNullOrWhiteSpace(reboundSampleIdentity) ? throw new ArgumentException("Identity is required.", nameof(reboundSampleIdentity)) : reboundSampleIdentity;
+            BlockContactIdentity = string.IsNullOrWhiteSpace(blockContactIdentity) ? throw new ArgumentException("Identity is required.", nameof(blockContactIdentity)) : blockContactIdentity;
+            if (remainingTouches < 0 || remainingTouches > 3) throw new ArgumentOutOfRangeException(nameof(remainingTouches));
+            RemainingTouches = remainingTouches;
+        }
+        public TeamSide ReboundSide { get; } public string ReboundTrajectoryArtifactIdentity { get; }
+        public string ReboundSampleIdentity { get; } public string BlockContactIdentity { get; }
+        public int RemainingTouches { get; }
+    }
+
     public sealed class AttackDefenseAuthorityReceipt
     {
         public AttackDefenseAuthorityReceipt(long planRevision, long sourceSequence,
@@ -18,7 +39,8 @@ namespace Volleyball.Presentation
             StablePlayerId actor, RallyPlanBranchV3 branch,
             ExecutionSampleClassificationV4 executionClassification,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
-            AttackDefenseAuthorityEvidenceV3 evidence)
+            AttackDefenseAuthorityEvidenceV3 evidence,
+            ToolRecoveryActualObservationV3 toolRecoveryActualObservation = null)
         {
             PlanRevision = planRevision;
             SourceSequence = sourceSequence;
@@ -29,6 +51,7 @@ namespace Volleyball.Presentation
             ExecutionClassification = executionClassification;
             TrajectoryArtifact = trajectoryArtifact;
             Evidence = evidence ?? throw new ArgumentNullException(nameof(evidence));
+            ToolRecoveryActualObservation = toolRecoveryActualObservation;
         }
 
         public long PlanRevision { get; }
@@ -40,6 +63,7 @@ namespace Volleyball.Presentation
         public ExecutionSampleClassificationV4 ExecutionClassification { get; }
         public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
         public AttackDefenseAuthorityEvidenceV3 Evidence { get; }
+        public ToolRecoveryActualObservationV3 ToolRecoveryActualObservation { get; }
     }
 
     // Gate I starts after Gate H's Set command.  This controller therefore owns

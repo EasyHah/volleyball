@@ -2594,17 +2594,43 @@ namespace Volleyball.Presentation
                 : null;
             if (gateIContactReceipt == null && GateIAuthorityEnabled &&
                 contact.Candidate.Action == TechniqueAction.Receive &&
-                _attackDefenseCoordinator.State.Phase ==
-                    AttackDefenseAuthorityPhaseV3.AwaitingActualContact)
+                (_attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.AwaitingActualContact ||
+                 _attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive))
             {
-                gateIContactReceipt = CreateIncidentalGateIDefenseReceipt(
-                    StableId(actorId),
-                    acceptedExecutionClassification,
-                    acceptedTrajectoryArtifact);
+                gateIContactReceipt = _attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
+                    ? CreateToolRecoveryReceiveReceipt(StableId(actorId), acceptedExecutionClassification,
+                        acceptedTrajectoryArtifact)
+                    : CreateIncidentalGateIDefenseReceipt(StableId(actorId),
+                        acceptedExecutionClassification, acceptedTrajectoryArtifact);
+            }
+            if (gateIContactReceipt != null && GateIAuthorityEnabled &&
+                contact.Candidate.Action == TechniqueAction.Block &&
+                _attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock)
+            {
+                gateIContactReceipt = CreateActualToolRecoveryBlockReceipt(
+                    gateIContactReceipt, acceptedExecutionClassification,
+                    acceptedTrajectoryArtifact, contact.TechniqueResponse.FinalOutgoing,
+                    authorityContact?.Transition.After.RemainingHits ?? 0);
             }
 
             AdvanceGateIAfterAcceptedContact(
-                actorId, contact.Candidate.Action, gateIContactReceipt);
+                actorId, contact.Candidate.Action, gateIContactReceipt,
+                contact.TechniqueResponse.FinalOutgoing, authorityContact?.Transition);
+            if (gateIContactReceipt != null && GateIAuthorityEnabled &&
+                ((contact.Candidate.Action == TechniqueAction.Block &&
+                  _attackDefenseCoordinator.State.Phase ==
+                      AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive) ||
+                 (contact.Candidate.Action == TechniqueAction.Receive &&
+                  _attackDefenseCoordinator.State.Phase ==
+                      AttackDefenseAuthorityPhaseV3.ReorganizationPlanned &&
+                  _attackDefenseCoordinator.State.Plan?.SelectedAction?.ToolRecoveryEvidence != null)))
+            {
+                gateIContactReceipt = SnapshotToolRecoveryReceipt(gateIContactReceipt);
+            }
 
             switch (contact.Candidate.Action)
             {
@@ -2795,7 +2821,8 @@ namespace Volleyball.Presentation
         }
 
         private void AdvanceGateIAfterAcceptedContact(PlayerId actor,
-            TechniqueAction action, AttackDefenseAuthorityReceipt receipt)
+            TechniqueAction action, AttackDefenseAuthorityReceipt receipt,
+            SimVector3 actualOutgoing, RuleTransitionV3 v3Transition)
         {
             if (!GateIAuthorityEnabled || action == TechniqueAction.Set)
                 return;
@@ -2810,7 +2837,9 @@ namespace Volleyball.Presentation
                 return;
             var phase = _attackDefenseCoordinator?.State.Phase;
             if (phase != AttackDefenseAuthorityPhaseV3.AttackCommitted &&
-                phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact)
+                phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact &&
+                phase != AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock &&
+                phase != AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive)
                 return;
             if (receipt == null)
             {
@@ -2828,7 +2857,75 @@ namespace Volleyball.Presentation
                 receipt.Evidence.CoverageDecision.Reason, receipt.Kind,
                 receipt.Branch,
                 receipt.ExecutionClassification.ExecutableEnvelope.Identity,
-                receipt.TrajectoryArtifact.ArtifactIdentity, true, exit.Identity));
+                receipt.TrajectoryArtifact.ArtifactIdentity, true, exit.Identity,
+                action == TechniqueAction.Block &&
+                phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock
+                    ? (ReturnsToAttackingSide(actualOutgoing,
+                        _attackDefenseCoordinator.State.AttackingSide)
+                        ? ToolRecoveryReboundObservationV3.ReturnsToAttackingSide
+                        : ToolRecoveryReboundObservationV3.ReturnsAway)
+                    : ToolRecoveryReboundObservationV3.NotApplicable,
+                v3Transition?.After.RemainingHits ?? -1));
+        }
+
+        private static bool ReturnsToAttackingSide(SimVector3 outgoing,
+            TeamSide attackingSide) => attackingSide == TeamSide.Home
+            ? outgoing.Z < 0f : outgoing.Z > 0f;
+
+        private AttackDefenseAuthorityReceipt CreateToolRecoveryReceiveReceipt(
+            StablePlayerId actor, ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            var state = _attackDefenseCoordinator.State;
+            var recovery = state.Plan?.SelectedAction?.ToolRecoveryEvidence;
+            if (recovery == null || !actor.Equals(recovery.RecoveryActor) ||
+                classification == null || trajectory == null)
+                throw new InvalidOperationException("Tool recovery Receive requires the declared actual saver evidence.");
+            var source = _gateHSourceSequence + 1;
+            return new AttackDefenseAuthorityReceipt(state.Revision, source, state.Phase,
+                AttackDefenseCommandKind.FloorDefense, actor, RallyPlanBranchV3.Primary,
+                classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
+                    state.Revision, source, state.Phase, state.Plan,
+                    state.CoverageDecision));
+        }
+
+        private AttackDefenseAuthorityReceipt CreateActualToolRecoveryBlockReceipt(
+            AttackDefenseAuthorityReceipt planned,
+            ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory, SimVector3 actualOutgoing,
+            int remainingTouches)
+        {
+            var state = _attackDefenseCoordinator.State;
+            var recovery = state.Plan?.SelectedAction?.ToolRecoveryEvidence;
+            if (planned == null || recovery == null ||
+                !planned.Actor.Equals(recovery.Blocker) || classification == null ||
+                trajectory == null)
+                throw new InvalidOperationException("Tool recovery Block requires the declared blocker and actual accepted evidence.");
+            var source = _gateHSourceSequence + 1;
+            return new AttackDefenseAuthorityReceipt(state.Revision, source, state.Phase,
+                AttackDefenseCommandKind.BlockContact, planned.Actor, planned.Branch,
+                classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
+                    state.Revision, source, state.Phase, state.Plan,
+                    state.CoverageDecision),
+                new ToolRecoveryActualObservationV3(
+                    ReturnsToAttackingSide(actualOutgoing, state.AttackingSide)
+                        ? state.AttackingSide : Opponent(state.AttackingSide),
+                    trajectory.ArtifactIdentity,
+                    classification.Sample.SamplingKey,
+                    "actual-tool-block:" + planned.Actor.Value + ":" + source,
+                    remainingTouches));
+        }
+
+        private AttackDefenseAuthorityReceipt SnapshotToolRecoveryReceipt(
+            AttackDefenseAuthorityReceipt receipt)
+        {
+            var state = _attackDefenseCoordinator.State;
+            return new AttackDefenseAuthorityReceipt(state.Revision, _gateHSourceSequence,
+                state.Phase, receipt.Kind, receipt.Actor, receipt.Branch,
+                receipt.ExecutionClassification, receipt.TrajectoryArtifact,
+                new AttackDefenseAuthorityEvidenceV3(state.Revision,
+                    _gateHSourceSequence, state.Phase, state.Plan,
+                    state.CoverageDecision), receipt.ToolRecoveryActualObservation);
         }
 
         private void AdvanceGateIAfterAcceptedSet(PlayerId actor,
