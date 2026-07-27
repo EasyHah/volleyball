@@ -290,6 +290,8 @@ namespace Volleyball.Presentation
             _attackDefenseControllers = new Dictionary<TeamId, AttackDefenseAuthorityController>();
         private readonly Dictionary<string, GateISetIntentReceiptV3>
             _pendingGateISetIntentReceipts = new Dictionary<string, GateISetIntentReceiptV3>(StringComparer.Ordinal);
+        private readonly Dictionary<string, AttackDefenseAuthorityReceipt>
+            _pendingGateIContactReceipts = new Dictionary<string, AttackDefenseAuthorityReceipt>(StringComparer.Ordinal);
         private GateISetIntentPlanningResultV3 _activeGateISetIntent;
         private long _gateHPlanRevision;
         private long _gateHSourceSequence;
@@ -795,6 +797,7 @@ namespace Volleyball.Presentation
                 _attackDefenseCoordinator = null;
                 _attackDefenseControllers.Clear();
                 _pendingGateISetIntentReceipts.Clear();
+                _pendingGateIContactReceipts.Clear();
                 _pendingV3AuthorityContact = null;
                 if (_ball != null)
                 {
@@ -887,6 +890,7 @@ namespace Volleyball.Presentation
                 _attackDefenseCoordinator = null;
                 _attackDefenseControllers.Clear();
                 _pendingGateISetIntentReceipts.Clear();
+                _pendingGateIContactReceipts.Clear();
             }
             ResetV3Diagnostics();
         }
@@ -1052,6 +1056,7 @@ namespace Volleyball.Presentation
                     new AttackDefensePlanner(), new DirectorAttackDefenseCommandSink(this));
                 _activeGateISetIntent = null;
                 _pendingGateISetIntentReceipts.Clear();
+                _pendingGateIContactReceipts.Clear();
             }
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
@@ -2010,8 +2015,30 @@ namespace Volleyball.Presentation
 
         private void HandleGateIAuthorityCommitted(AttackDefenseAuthorityReceipt receipt)
         {
+            if (receipt.Kind == AttackDefenseCommandKind.AttackContact ||
+                receipt.Kind == AttackDefenseCommandKind.BlockContact ||
+                receipt.Kind == AttackDefenseCommandKind.FloorDefense ||
+                receipt.Kind == AttackDefenseCommandKind.AttackCover)
+            {
+                var key = GateIReceiptKey(receipt.Actor, receipt.Kind);
+                if (!_pendingGateIContactReceipts.TryAdd(key, receipt))
+                    throw new InvalidOperationException("Gate I event-owned receipt cannot be overwritten.");
+            }
             AttackDefenseAuthorityCommitted?.Invoke(receipt);
         }
+
+        private AttackDefenseAuthorityReceipt TakeGateIContactReceipt(
+            StablePlayerId actor, AttackDefenseCommandKind kind)
+        {
+            var key = GateIReceiptKey(actor, kind);
+            if (!_pendingGateIContactReceipts.TryGetValue(key, out var receipt))
+                return null;
+            _pendingGateIContactReceipts.Remove(key);
+            return receipt;
+        }
+
+        private static string GateIReceiptKey(StablePlayerId actor,
+            AttackDefenseCommandKind kind) => actor.Value + ":" + (int)kind;
 
         private void PublishGateIBatch(AttackDefenseCommandBatch batch)
         {
@@ -2439,6 +2466,8 @@ namespace Volleyball.Presentation
             acceptedTrajectoryArtifact ??=
                 gateHAuthorityReceipt?.TrajectoryArtifact;
 
+            AdvanceGateIAfterAcceptedContact(actorId, contact.Candidate.Action);
+
             switch (contact.Candidate.Action)
             {
                 case TechniqueAction.Receive:
@@ -2607,6 +2636,44 @@ namespace Volleyball.Presentation
                     ReceiveFlightSeconds,
                     acceptedTrajectory);
             }
+        }
+
+        private void AdvanceGateIAfterAcceptedContact(PlayerId actor,
+            TechniqueAction action)
+        {
+            if (!GateIAuthorityEnabled || action == TechniqueAction.Set)
+                return;
+            var kind = action == TechniqueAction.Attack
+                ? AttackDefenseCommandKind.AttackContact
+                : action == TechniqueAction.Block
+                    ? AttackDefenseCommandKind.BlockContact
+                    : action == TechniqueAction.Receive
+                        ? AttackDefenseCommandKind.FloorDefense
+                        : (AttackDefenseCommandKind?)null;
+            if (!kind.HasValue)
+                return;
+            var phase = _attackDefenseCoordinator?.State.Phase;
+            if (phase != AttackDefenseAuthorityPhaseV3.AttackCommitted &&
+                phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact)
+                return;
+            var receipt = TakeGateIContactReceipt(StableId(actor), kind.Value);
+            if (receipt == null)
+            {
+                // A formal Gate I contact may not invent command evidence or read
+                // coordinator state back after the fact.
+                throw new InvalidOperationException("Accepted formal Gate I contact has no event-owned receipt.");
+            }
+            var plan = receipt.Evidence.Plan;
+            var exit = plan?.ReorganizationExits.OrderBy(value => value.Identity,
+                StringComparer.Ordinal).FirstOrDefault();
+            if (exit == null)
+                throw new InvalidOperationException("Accepted Gate I contact requires a declared reorganization exit.");
+            _attackDefenseCoordinator.AcceptContact(new GateIContactEvidenceV3(
+                receipt.PlanRevision, ++_gateHSourceSequence, receipt.Actor,
+                PlanCoverageReason.WithinConditionalEnvelope, receipt.Kind,
+                receipt.Branch,
+                receipt.ExecutionClassification.ExecutableEnvelope.Identity,
+                receipt.TrajectoryArtifact.ArtifactIdentity, true, exit.Identity));
         }
 
         private void AdvanceGateIAfterAcceptedSet(PlayerId actor,
