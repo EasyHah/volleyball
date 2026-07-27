@@ -48,6 +48,12 @@ namespace Volleyball.EditModeTests
                 new[] { Fixture.RollCandidate() }, new BlockToolRecoveryPlanner().Qualify(Fixture.PlayableToolRecovery()), candidate);
 
             Assert.That(result.Select(value => value.CandidateIdentity), Is.EqualTo(new[] { "roll", "tool" }));
+            var evidence = result.Last().ToolRecoveryEvidence;
+            Assert.That(evidence, Is.Not.Null);
+            Assert.That(evidence.Blocker, Is.EqualTo(new PlayerId("red-blocker-3")));
+            Assert.That(evidence.RecoveryActor, Is.EqualTo(new PlayerId("blue-defender-2")));
+            Assert.That(evidence.ReboundSide, Is.EqualTo(TeamSide.Home));
+            Assert.That(evidence.RemainingTouches, Is.EqualTo(1));
         }
 
         [TestCase("wrong-trajectory", "envelope", "recovery-exit", .332f)]
@@ -80,7 +86,7 @@ namespace Volleyball.EditModeTests
             private static readonly PlayerId Recovery = new PlayerId("blue-defender-2");
 
             public static BlockToolRecoveryPlanningRequestV3 PlayableToolRecovery() =>
-                new BlockToolRecoveryPlanningRequestV3(Attacker, true, 1, .8f, .75f, .1f,
+                new BlockToolRecoveryPlanningRequestV3(Attacker, TeamSide.Home, true, 1, .8f, .75f, .1f,
                     new[] { new ToolRecoveryTeammateV3(Recovery, true, .9f, .8f) },
                     new[] { new ReorganizationExitV3("recovery-exit", Recovery, "Organize") },
                     new ToolRecoveryReboundEvidenceV3("trajectory", "sample-17", new PlayerId("red-blocker-3"), "block-contact-17"),
@@ -97,7 +103,7 @@ namespace Volleyball.EditModeTests
                 var exits = failure == ToolRecoveryFailure.NoReorganizationExit
                     ? new ReorganizationExitV3[0]
                     : new[] { new ReorganizationExitV3("recovery-exit", Recovery, "Organize") };
-                return new BlockToolRecoveryPlanningRequestV3(Attacker, ruleEligible, remainingTouches, .8f, homeRebound, .1f, teammates, exits,
+                return new BlockToolRecoveryPlanningRequestV3(Attacker, TeamSide.Home, ruleEligible, remainingTouches, .8f, homeRebound, .1f, teammates, exits,
                     new ToolRecoveryReboundEvidenceV3("trajectory", "sample-17", new PlayerId("red-blocker-3"), "block-contact-17"), "envelope", ToolCandidate());
             }
 

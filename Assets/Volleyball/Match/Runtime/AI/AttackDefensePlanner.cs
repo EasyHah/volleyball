@@ -230,7 +230,29 @@ namespace Volleyball.AI
                     toolRecoveryCandidate.ReorganizationExitIdentity != recovery.ReorganizationExit.Identity ||
                     toolRecoveryCandidate.ExpectedRallyValue != recovery.Value)
                     throw new ArgumentException("Tool recovery candidate must exactly match qualified rebound evidence, exit, and value.", nameof(toolRecoveryCandidate));
-                values.Add(qualified);
+                if (!recovery.RecoveryActor.HasValue || recovery.RemainingTouches <= 0 ||
+                    recovery.HomeReboundProbability <= 0f ||
+                    recovery.BlockContactProbability <= 0f ||
+                    recovery.RecoveryActor.Value.Equals(recovery.Attacker))
+                    throw new ArgumentException("Qualified recovery must retain exact legal rebound and non-attacker continuation evidence.", nameof(recovery));
+                values.Add(new AttackCandidateV3(
+                    qualified.CandidateIdentity, qualified.Actor, qualified.ActionClass,
+                    qualified.ContactCenter, qualified.Target, qualified.ExpectedRallyValue,
+                    qualified.LegalSampleRatio, qualified.IsQualifiedPowerRoute,
+                    qualified.EliminationReason, qualified.EnvelopeIdentity,
+                    qualified.TrajectoryArtifactIdentity,
+                    qualified.ReorganizationExitIdentity,
+                    new ToolRecoveryEvidenceV3(
+                        qualified.CandidateIdentity,
+                        recovery.ReboundEvidence.Blocker,
+                        recovery.ReboundSide,
+                        recovery.RecoveryActor.Value,
+                        recovery.RemainingTouches,
+                        recovery.ReorganizationExit.Identity,
+                        recovery.PlanEnvelopeIdentity,
+                        recovery.ReboundEvidence.TrajectoryArtifactIdentity,
+                        recovery.ReboundEvidence.SampleIdentity,
+                        recovery.ReboundEvidence.BlockContactIdentity)));
             }
             return new ReadOnlyCollection<AttackCandidateV3>(values);
         }

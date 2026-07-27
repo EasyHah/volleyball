@@ -81,6 +81,48 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void GateIToolRecoveryMapper_UsesExactQualifiedEvidence()
+        {
+            var mapper = typeof(MatchReplayRecorder).GetMethod(
+                "ToReplayRecovery",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var evidence = new ToolRecoveryEvidenceV3(
+                "tool-candidate",
+                new StablePlayerId("away-blocker"),
+                TeamSide.Away,
+                new StablePlayerId("away-saver"),
+                1,
+                "away-reorganize",
+                "envelope",
+                "trajectory",
+                "sample",
+                "block-contact");
+            var selected = new AttackCandidateV3(
+                "tool-candidate",
+                new StablePlayerId("away-attacker"),
+                AttackActionClassV3.BlockToolRecovery,
+                new SimVector3(0f, 3f, 0f),
+                new SimVector3(0f, 1f, -3f),
+                .5f,
+                1f,
+                false,
+                string.Empty,
+                "envelope",
+                "trajectory",
+                "away-reorganize",
+                evidence);
+
+            var replay = (ReplayToolRecoveryRecordV4)mapper.Invoke(
+                null, new object[] { null, selected });
+
+            Assert.That(replay.BlockerPlayerId, Is.EqualTo("away-blocker"));
+            Assert.That(replay.ReboundSide, Is.EqualTo("Away"));
+            Assert.That(replay.RecoveryPlayerId, Is.EqualTo("away-saver"));
+            Assert.That(replay.ReorganizationExitIdentity,
+                Is.EqualTo("away-reorganize"));
+        }
+
+        [Test]
         public void CanonicalJson_PersistsCompleteV4DiagnosticEvidence()
         {
             var replay = CreateReplay(Event(0, "Attack"));

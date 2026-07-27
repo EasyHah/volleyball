@@ -52,7 +52,7 @@ namespace Volleyball.AI
 
     public sealed class BlockToolRecoveryPlanningRequestV3
     {
-        public BlockToolRecoveryPlanningRequestV3(PlayerId attacker, bool actualRuleEligibleForBlockContact,
+        public BlockToolRecoveryPlanningRequestV3(PlayerId attacker, TeamSide reboundSide, bool actualRuleEligibleForBlockContact,
             int remainingTouches, float blockContactProbability, float homeReboundProbability, float immediateLossRisk,
             IReadOnlyList<ToolRecoveryTeammateV3> teammates, IReadOnlyList<ReorganizationExitV3> reorganizationExits,
             ToolRecoveryReboundEvidenceV3 reboundEvidence, string planEnvelopeIdentity, AttackCandidateV3 toolRecoveryCandidate)
@@ -62,7 +62,7 @@ namespace Volleyball.AI
                 throw new ArgumentOutOfRangeException(nameof(blockContactProbability));
             if (teammates == null) throw new ArgumentNullException(nameof(teammates));
             if (reorganizationExits == null) throw new ArgumentNullException(nameof(reorganizationExits));
-            Attacker = attacker; ActualRuleEligibleForBlockContact = actualRuleEligibleForBlockContact; RemainingTouches = remainingTouches;
+            Attacker = attacker; ReboundSide = reboundSide; ActualRuleEligibleForBlockContact = actualRuleEligibleForBlockContact; RemainingTouches = remainingTouches;
             BlockContactProbability = blockContactProbability; HomeReboundProbability = homeReboundProbability; ImmediateLossRisk = immediateLossRisk;
             Teammates = new ReadOnlyCollection<ToolRecoveryTeammateV3>(teammates.ToArray());
             ReorganizationExits = new ReadOnlyCollection<ReorganizationExitV3>(reorganizationExits.Select(value => value ?? throw new ArgumentException("Exits cannot contain null.", nameof(reorganizationExits))).ToArray());
@@ -70,7 +70,7 @@ namespace Volleyball.AI
             PlanEnvelopeIdentity = Require(planEnvelopeIdentity, nameof(planEnvelopeIdentity));
             ToolRecoveryCandidate = toolRecoveryCandidate ?? throw new ArgumentNullException(nameof(toolRecoveryCandidate));
         }
-        public PlayerId Attacker { get; } public bool ActualRuleEligibleForBlockContact { get; } public int RemainingTouches { get; }
+        public PlayerId Attacker { get; } public TeamSide ReboundSide { get; } public bool ActualRuleEligibleForBlockContact { get; } public int RemainingTouches { get; }
         public float BlockContactProbability { get; } public float HomeReboundProbability { get; } public float ImmediateLossRisk { get; }
         public IReadOnlyList<ToolRecoveryTeammateV3> Teammates { get; } public IReadOnlyList<ReorganizationExitV3> ReorganizationExits { get; }
         public ToolRecoveryReboundEvidenceV3 ReboundEvidence { get; } public string PlanEnvelopeIdentity { get; } public AttackCandidateV3 ToolRecoveryCandidate { get; }
@@ -80,18 +80,18 @@ namespace Volleyball.AI
 
     public sealed class BlockToolRecoveryResultV3
     {
-        internal BlockToolRecoveryResultV3(bool isQualified, ToolRecoveryFailure failure, PlayerId attacker, PlayerId? recoveryActor,
+        internal BlockToolRecoveryResultV3(bool isQualified, ToolRecoveryFailure failure, PlayerId attacker, TeamSide reboundSide, PlayerId? recoveryActor, int remainingTouches,
             float blockContactProbability, float homeReboundProbability, float teammateReachProbability,
             float continuationQuality, float immediateLossRisk, ReorganizationExitV3 reorganizationExit,
             ToolRecoveryReboundEvidenceV3 reboundEvidence, string planEnvelopeIdentity, AttackCandidateV3 toolRecoveryCandidate)
         {
-            IsQualified = isQualified; Failure = failure; Attacker = attacker; RecoveryActor = recoveryActor;
+            IsQualified = isQualified; Failure = failure; Attacker = attacker; ReboundSide = reboundSide; RecoveryActor = recoveryActor; RemainingTouches = remainingTouches;
             BlockContactProbability = blockContactProbability; HomeReboundProbability = homeReboundProbability;
             TeammateReachProbability = teammateReachProbability; ContinuationQuality = continuationQuality;
             ImmediateLossRisk = immediateLossRisk; ReorganizationExit = reorganizationExit;
             ReboundEvidence = reboundEvidence; PlanEnvelopeIdentity = planEnvelopeIdentity; ToolRecoveryCandidate = toolRecoveryCandidate;
         }
-        public bool IsQualified { get; } public ToolRecoveryFailure Failure { get; } public PlayerId Attacker { get; }
+        public bool IsQualified { get; } public ToolRecoveryFailure Failure { get; } public PlayerId Attacker { get; } public TeamSide ReboundSide { get; } public int RemainingTouches { get; }
         public PlayerId? RecoveryActor { get; } public float BlockContactProbability { get; } public float HomeReboundProbability { get; }
         public float TeammateReachProbability { get; } public float ContinuationQuality { get; } public float ImmediateLossRisk { get; }
         public ReorganizationExitV3 ReorganizationExit { get; }
@@ -133,14 +133,14 @@ namespace Volleyball.AI
             if (request.ToolRecoveryCandidate.ReorganizationExitIdentity != exit.Identity ||
                 request.ToolRecoveryCandidate.ExpectedRallyValue != value)
                 return Failure(request, ToolRecoveryFailure.EvidenceMismatch, recovery.Actor, recovery.ReachProbability, recovery.ControlMargin, exit);
-            return new BlockToolRecoveryResultV3(true, ToolRecoveryFailure.None, request.Attacker, recovery.Actor,
+            return new BlockToolRecoveryResultV3(true, ToolRecoveryFailure.None, request.Attacker, request.ReboundSide, recovery.Actor, request.RemainingTouches,
                 request.BlockContactProbability, request.HomeReboundProbability, recovery.ReachProbability,
                 recovery.ControlMargin, request.ImmediateLossRisk, exit, request.ReboundEvidence, request.PlanEnvelopeIdentity, request.ToolRecoveryCandidate);
         }
 
         private static BlockToolRecoveryResultV3 Failure(BlockToolRecoveryPlanningRequestV3 request, ToolRecoveryFailure failure,
             PlayerId? recoveryActor, float reachProbability, float continuationQuality, ReorganizationExitV3 exit) =>
-            new BlockToolRecoveryResultV3(false, failure, request.Attacker, recoveryActor, request.BlockContactProbability,
+            new BlockToolRecoveryResultV3(false, failure, request.Attacker, request.ReboundSide, recoveryActor, request.RemainingTouches, request.BlockContactProbability,
                 request.HomeReboundProbability, reachProbability, continuationQuality, request.ImmediateLossRisk, exit,
                 request.ReboundEvidence, request.PlanEnvelopeIdentity, request.ToolRecoveryCandidate);
     }

@@ -29,7 +29,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             SimVector3 target, float expectedRallyValue, float legalSampleRatio,
             bool isQualifiedPowerRoute, string eliminationReason,
             string envelopeIdentity, string trajectoryArtifactIdentity,
-            string reorganizationExitIdentity = "")
+            string reorganizationExitIdentity = "",
+            ToolRecoveryEvidenceV3 toolRecoveryEvidence = null)
         {
             CandidateIdentity = Text(candidateIdentity, nameof(candidateIdentity));
             Actor = PlayerWorldSnapshotV3.RequirePlayerId(actor, nameof(actor));
@@ -45,6 +46,17 @@ namespace Volleyball.Match.Domain.FullRallyV3
             EnvelopeIdentity = Text(envelopeIdentity, nameof(envelopeIdentity));
             TrajectoryArtifactIdentity = Text(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
             ReorganizationExitIdentity = reorganizationExitIdentity == null ? string.Empty : reorganizationExitIdentity.Trim();
+            if (toolRecoveryEvidence != null && ActionClass != AttackActionClassV3.BlockToolRecovery)
+                throw new ArgumentException("Only BlockToolRecovery may carry tool recovery evidence.", nameof(toolRecoveryEvidence));
+            if (toolRecoveryEvidence != null &&
+                (toolRecoveryEvidence.CandidateIdentity != CandidateIdentity ||
+                 toolRecoveryEvidence.EnvelopeIdentity != EnvelopeIdentity ||
+                 toolRecoveryEvidence.TrajectoryArtifactIdentity != TrajectoryArtifactIdentity ||
+                 toolRecoveryEvidence.ReorganizationExitIdentity != ReorganizationExitIdentity))
+                throw new ArgumentException("Tool recovery evidence must exactly bind the candidate execution and exit.", nameof(toolRecoveryEvidence));
+            if (toolRecoveryEvidence != null && toolRecoveryEvidence.RecoveryActor.Equals(Actor))
+                throw new ArgumentException("Tool recovery requires a non-attacker continuation.", nameof(toolRecoveryEvidence));
+            ToolRecoveryEvidence = toolRecoveryEvidence;
         }
         public string CandidateIdentity { get; }
         public PlayerId Actor { get; }
@@ -60,6 +72,40 @@ namespace Volleyball.Match.Domain.FullRallyV3
         // A tool-recovery candidate must name the only declared continuation exit.
         // Other attack classes deliberately leave this empty.
         public string ReorganizationExitIdentity { get; }
+        public ToolRecoveryEvidenceV3 ToolRecoveryEvidence { get; }
+    }
+
+    public sealed class ToolRecoveryEvidenceV3
+    {
+        public ToolRecoveryEvidenceV3(string candidateIdentity, PlayerId blocker,
+            TeamSide reboundSide, PlayerId recoveryActor, int remainingTouches,
+            string reorganizationExitIdentity, string envelopeIdentity,
+            string trajectoryArtifactIdentity, string sampleIdentity,
+            string blockContactIdentity)
+        {
+            CandidateIdentity = Text(candidateIdentity, nameof(candidateIdentity));
+            Blocker = PlayerWorldSnapshotV3.RequirePlayerId(blocker, nameof(blocker));
+            ReboundSide = EnumValue(reboundSide, nameof(reboundSide));
+            RecoveryActor = PlayerWorldSnapshotV3.RequirePlayerId(recoveryActor, nameof(recoveryActor));
+            if (RecoveryActor.Equals(Blocker) || remainingTouches <= 0)
+                throw new ArgumentException("Tool recovery requires a non-blocker saver and remaining touch.");
+            RemainingTouches = remainingTouches;
+            ReorganizationExitIdentity = Text(reorganizationExitIdentity, nameof(reorganizationExitIdentity));
+            EnvelopeIdentity = Text(envelopeIdentity, nameof(envelopeIdentity));
+            TrajectoryArtifactIdentity = Text(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
+            SampleIdentity = Text(sampleIdentity, nameof(sampleIdentity));
+            BlockContactIdentity = Text(blockContactIdentity, nameof(blockContactIdentity));
+        }
+        public string CandidateIdentity { get; }
+        public PlayerId Blocker { get; }
+        public TeamSide ReboundSide { get; }
+        public PlayerId RecoveryActor { get; }
+        public int RemainingTouches { get; }
+        public string ReorganizationExitIdentity { get; }
+        public string EnvelopeIdentity { get; }
+        public string TrajectoryArtifactIdentity { get; }
+        public string SampleIdentity { get; }
+        public string BlockContactIdentity { get; }
     }
 
     public sealed class PublicAttackThreatEntryV3
@@ -215,6 +261,17 @@ namespace Volleyball.Match.Domain.FullRallyV3
             Defense = defense ?? throw new ArgumentNullException(nameof(defense));
             if (selectedAction != null && !candidates.Any(value => value.CandidateIdentity == selectedAction.CandidateIdentity)) throw new ArgumentException("Selected action must be an attack candidate.", nameof(selectedAction));
             SelectedAction = selectedAction; ReorganizationExits = CopyExits(reorganizationExits);
+            foreach (var candidate in candidates.Where(value => value.ToolRecoveryEvidence != null))
+            {
+                var recovery = candidate.ToolRecoveryEvidence;
+                if (recovery.ReboundSide != AttackingSide ||
+                    !ReorganizationExits.Any(exit =>
+                        exit.Identity == recovery.ReorganizationExitIdentity &&
+                        exit.Actor.Equals(recovery.RecoveryActor)))
+                    throw new ArgumentException(
+                        "Tool recovery must rebound to the attacking side and bind its saver to the declared exit.",
+                        nameof(attackCandidates));
+            }
         }
         public TeamSide AttackingSide { get; }
         public long Revision { get; }

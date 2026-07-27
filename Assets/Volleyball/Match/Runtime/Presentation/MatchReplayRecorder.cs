@@ -347,12 +347,20 @@ namespace Volleyball.Presentation
         private static ReplayToolRecoveryRecordV4 ToReplayRecovery(AttackDefensePlanV3 plan, AttackCandidateV3 selected)
         {
             if (selected == null || selected.ActionClass != AttackActionClassV3.BlockToolRecovery) return null;
-            // A planned defensive assignment and an attacking-side label are not
-            // actual rebound evidence.  Gate I does not yet carry the qualified
-            // block-contact/rebound/recovery snapshot in this receipt, so fail
-            // capture rather than inventing a blocker, rebound side, or saver.
-            throw new InvalidOperationException(
+            var evidence = selected.ToolRecoveryEvidence ?? throw new InvalidOperationException(
                 "Gate I tool recovery replay requires event-owned rebound evidence.");
+            if (evidence.CandidateIdentity != selected.CandidateIdentity ||
+                evidence.EnvelopeIdentity != selected.EnvelopeIdentity ||
+                evidence.TrajectoryArtifactIdentity != selected.TrajectoryArtifactIdentity ||
+                evidence.ReorganizationExitIdentity != selected.ReorganizationExitIdentity ||
+                evidence.RemainingTouches <= 0)
+                throw new InvalidOperationException("Gate I tool recovery evidence does not exactly bind the selected candidate.");
+            return new ReplayToolRecoveryRecordV4(
+                evidence.CandidateIdentity,
+                evidence.Blocker.Value,
+                evidence.ReboundSide.ToString(),
+                evidence.RecoveryActor.Value,
+                evidence.ReorganizationExitIdentity);
         }
 
         private static ReplayCoverageDecisionRecordV4 ToReplayCoverage(PlanCoverageDecision coverage)
