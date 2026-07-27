@@ -1134,13 +1134,31 @@ namespace Volleyball.Shared.Contracts
 
             if (EventKind == "Set")
                 throw new ContractValidationException("Only SetIntentPlanned may be attached to a Set event.");
-            if (!string.IsNullOrEmpty(AttackDefenseAuthority.SelectedCandidateIdentity))
+            var selected = string.IsNullOrEmpty(
+                AttackDefenseAuthority.SelectedCandidateIdentity)
+                ? null
+                : AttackDefenseAuthority.Candidates.Single(value =>
+                    value.CandidateIdentity ==
+                    AttackDefenseAuthority.SelectedCandidateIdentity);
+            if (EventKind == "Attack")
             {
-                var selected = AttackDefenseAuthority.Candidates.Single(value =>
-                    value.CandidateIdentity == AttackDefenseAuthority.SelectedCandidateIdentity);
-                if (EventKind != "Attack" || selected.ActorPlayerId != ActorPlayerId)
+                if (selected == null || selected.ActorPlayerId != ActorPlayerId)
                     throw new ContractValidationException("Selected Gate I candidate must match the Attack event actor.");
+                return;
             }
+
+            if (EventKind != "Block" && EventKind != "Receive")
+                throw new ContractValidationException("Gate I authority is valid only for contact events.");
+            var plannedDefense = AttackDefenseAuthority.Phase ==
+                "DefenseCommitted" && selected == null;
+            var observedDefense = (AttackDefenseAuthority.Phase ==
+                "AwaitingActualContact" || AttackDefenseAuthority.Phase ==
+                "ReorganizationPlanned") && selected != null;
+            if (!plannedDefense && !observedDefense)
+                throw new ContractValidationException("Gate I defense evidence requires an awaiting or reorganization phase.");
+            if (!AttackDefenseAuthority.DefenseResponsibilities.Any(value =>
+                value.ActorPlayerId == ActorPlayerId))
+                throw new ContractValidationException("Gate I defense event actor must have a declared responsibility.");
         }
 
         public static bool IsCandidateCategoryCompatibleWithEventKind(

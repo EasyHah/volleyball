@@ -135,9 +135,13 @@ namespace Volleyball.Presentation
             RuleTransitionV3 ruleTransition = null,
             ExecutionSampleClassificationV4 executionClassification = null,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
-            ReceiveOrganizationAuthorityReceipt organizationAuthority = null)
+            ReceiveOrganizationAuthorityReceipt organizationAuthority = null,
+            GateISetIntentReceiptV3 gateISetIntentAuthority = null,
+            AttackDefenseAuthorityReceipt attackDefenseAuthority = null)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
+            if (gateISetIntentAuthority != null && attackDefenseAuthority != null)
+                throw new ArgumentException("A replay contact cannot carry both Gate I receipt kinds.");
             Action = action;
             SetChain = setChain;
             ObservedAttackGeometry = observedAttackGeometry;
@@ -145,6 +149,8 @@ namespace Volleyball.Presentation
             ExecutionClassification = executionClassification;
             TrajectoryArtifact = trajectoryArtifact;
             OrganizationAuthority = organizationAuthority;
+            GateISetIntentAuthority = gateISetIntentAuthority;
+            AttackDefenseAuthority = attackDefenseAuthority;
         }
 
         public TechniqueAction Action { get; }
@@ -154,6 +160,8 @@ namespace Volleyball.Presentation
         public ExecutionSampleClassificationV4 ExecutionClassification { get; }
         public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
         public ReceiveOrganizationAuthorityReceipt OrganizationAuthority { get; }
+        public GateISetIntentReceiptV3 GateISetIntentAuthority { get; }
+        public AttackDefenseAuthorityReceipt AttackDefenseAuthority { get; }
     }
 
     public sealed class ReplaySetChainEvent
@@ -2056,6 +2064,57 @@ namespace Volleyball.Presentation
             return receipt;
         }
 
+        private AttackDefenseAuthorityReceipt TakeGateIContactReceiptForAction(
+            StablePlayerId actor, TechniqueAction action)
+        {
+            var kind = action == TechniqueAction.Attack
+                ? AttackDefenseCommandKind.AttackContact
+                : action == TechniqueAction.Block
+                    ? AttackDefenseCommandKind.BlockContact
+                    : action == TechniqueAction.Receive
+                        ? AttackDefenseCommandKind.FloorDefense
+                        : (AttackDefenseCommandKind?)null;
+            return kind.HasValue
+                ? TakeGateIContactReceipt(actor, kind.Value)
+                : null;
+        }
+
+        private AttackDefenseAuthorityReceipt CreateIncidentalGateIDefenseReceipt(
+            StablePlayerId actor,
+            ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            if (classification == null || trajectory == null)
+                throw new InvalidOperationException(
+                    "Incidental Gate I defense requires accepted execution evidence.");
+            var plan = _attackDefenseCoordinator.State.Plan;
+            var responsibility = plan?.Defense.Responsibilities.FirstOrDefault(
+                value => value.Actor.Equals(actor));
+            if (responsibility == null)
+                throw new InvalidOperationException(
+                    "Incidental Gate I defense actor is outside the committed roster.");
+            var sourceSequence = _gateHSourceSequence + 1;
+            var evidence = _attackDefenseCoordinator
+                .PreviewIncidentalDefenseContact(
+                    plan.Revision,
+                    sourceSequence,
+                    actor,
+                    responsibility.Branch,
+                    classification.ExecutableEnvelope.Identity,
+                    trajectory.ArtifactIdentity,
+                    true);
+            return new AttackDefenseAuthorityReceipt(
+                plan.Revision,
+                sourceSequence,
+                evidence.Phase,
+                AttackDefenseCommandKind.FloorDefense,
+                actor,
+                responsibility.Branch,
+                classification,
+                trajectory,
+                evidence);
+        }
+
         private static string GateIReceiptKey(StablePlayerId actor,
             AttackDefenseCommandKind kind) => actor.Value + ":" + (int)kind;
 
@@ -2518,7 +2577,31 @@ namespace Volleyball.Presentation
             acceptedTrajectoryArtifact ??=
                 gateHAuthorityReceipt?.TrajectoryArtifact;
 
-            AdvanceGateIAfterAcceptedContact(actorId, contact.Candidate.Action);
+            // These immutable receipts are captured before any Gate I state
+            // transition.  Replay must never reconstruct this contact from a
+            // newer coordinator plan after coverage/replanning has run.
+            var gateISetIntentReceipt = GateIAuthorityEnabled &&
+                contact.Candidate.Action == TechniqueAction.Set
+                ? TakeGateISetIntentReceipt(StableId(actorId))
+                : null;
+            var gateIContactReceipt = GateIAuthorityEnabled &&
+                contact.Candidate.Action != TechniqueAction.Set
+                ? TakeGateIContactReceiptForAction(
+                    StableId(actorId), contact.Candidate.Action)
+                : null;
+            if (gateIContactReceipt == null && GateIAuthorityEnabled &&
+                contact.Candidate.Action == TechniqueAction.Receive &&
+                _attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.AwaitingActualContact)
+            {
+                gateIContactReceipt = CreateIncidentalGateIDefenseReceipt(
+                    StableId(actorId),
+                    acceptedExecutionClassification,
+                    acceptedTrajectoryArtifact);
+            }
+
+            AdvanceGateIAfterAcceptedContact(
+                actorId, contact.Candidate.Action, gateIContactReceipt);
 
             switch (contact.Candidate.Action)
             {
@@ -2562,8 +2645,10 @@ namespace Volleyball.Presentation
 
                     if (GateIAuthorityEnabled)
                     {
-                        AdvanceGateIAfterAcceptedSet(actorId, acceptedExecutionClassification,
-                            acceptedTrajectoryArtifact);
+                        AdvanceGateIAfterAcceptedSet(actorId,
+                            acceptedExecutionClassification,
+                            acceptedTrajectoryArtifact,
+                            gateISetIntentReceipt);
                         _activeGateISetIntent = null;
                         break;
                     }
@@ -2641,7 +2726,9 @@ namespace Volleyball.Presentation
                     authorityContact?.Transition,
                     acceptedExecutionClassification,
                     acceptedTrajectoryArtifact,
-                    gateHAuthorityReceipt));
+                    gateHAuthorityReceipt,
+                    gateISetIntentReceipt,
+                    gateIContactReceipt));
         }
 
         private void AdvanceGateHAfterReceive(
@@ -2680,6 +2767,20 @@ namespace Volleyball.Presentation
                     "gate-h-accepted-trajectory",
                     acceptedClassification?.ExecutableEnvelope?.Identity ??
                     "gate-h-accepted-classification"));
+            if (GateIAuthorityEnabled &&
+                _attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.ReorganizationPlanned)
+            {
+                _attackDefenseCoordinator.CompleteReorganizationAndReset(
+                    _attackDefenseCoordinator.State.Revision,
+                    ++_gateHSourceSequence);
+                // Receipts for committed block/floor commands that did not
+                // become the accepted physical contact belong to the completed
+                // opportunity. The accepted contact already owns its snapshot,
+                // so carrying the remaining receipts into the next possession
+                // would either misattribute evidence or block the next writer.
+                _pendingGateIContactReceipts.Clear();
+            }
             var organization = _receiveOrganizationCoordinator.CurrentPlanning;
             if (organization.Decision.HasDecision)
             {
@@ -2691,7 +2792,7 @@ namespace Volleyball.Presentation
         }
 
         private void AdvanceGateIAfterAcceptedContact(PlayerId actor,
-            TechniqueAction action)
+            TechniqueAction action, AttackDefenseAuthorityReceipt receipt)
         {
             if (!GateIAuthorityEnabled || action == TechniqueAction.Set)
                 return;
@@ -2708,7 +2809,6 @@ namespace Volleyball.Presentation
             if (phase != AttackDefenseAuthorityPhaseV3.AttackCommitted &&
                 phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact)
                 return;
-            var receipt = TakeGateIContactReceipt(StableId(actor), kind.Value);
             if (receipt == null)
             {
                 // A formal Gate I contact may not invent command evidence or read
@@ -2722,7 +2822,7 @@ namespace Volleyball.Presentation
                 throw new InvalidOperationException("Accepted Gate I contact requires a declared reorganization exit.");
             _attackDefenseCoordinator.AcceptContact(new GateIContactEvidenceV3(
                 receipt.PlanRevision, ++_gateHSourceSequence, receipt.Actor,
-                PlanCoverageReason.WithinConditionalEnvelope, receipt.Kind,
+                receipt.Evidence.CoverageDecision.Reason, receipt.Kind,
                 receipt.Branch,
                 receipt.ExecutionClassification.ExecutableEnvelope.Identity,
                 receipt.TrajectoryArtifact.ArtifactIdentity, true, exit.Identity));
@@ -2730,10 +2830,10 @@ namespace Volleyball.Presentation
 
         private void AdvanceGateIAfterAcceptedSet(PlayerId actor,
             ExecutionSampleClassificationV4 classification,
-            BallTrajectoryPredictionArtifactV4 trajectory)
+            BallTrajectoryPredictionArtifactV4 trajectory,
+            GateISetIntentReceiptV3 receipt)
         {
             var intent = _activeGateISetIntent?.Intent;
-            var receipt = TakeGateISetIntentReceipt(StableId(actor));
             if (intent == null || receipt == null || classification == null || trajectory == null ||
                 !StableId(actor).Equals(intent.Organizer) ||
                 classification.ExecutableEnvelope.Identity != intent.ExecutionClassification.ExecutableEnvelope.Identity ||
@@ -2748,7 +2848,12 @@ namespace Volleyball.Presentation
                     pair.Value.Ability.Derived)).ToArray();
             _attackDefenseCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
                 ++_gateHSourceSequence, accepted), new AttackPlanningRequestV3(intent.PlanRevision,
-                intent, accepted, players));
+                intent, accepted, players, _trajectoryPredictionProviderV4,
+                SimulationParameters, _matchContext.PhysicsConfigurationHash,
+                // Gate I candidate trajectories start from this accepted Set's
+                // physical ball snapshot, not from a planner-invented version.
+                (long)(uint)BitConverter.ToInt32(
+                    BitConverter.GetBytes(_ball.SimulationTime), 0)));
             _attackDefenseCoordinator.PublishThreat(intent.PlanRevision, ++_gateHSourceSequence);
             var defending = Opponent(actor.Team);
             var defensePlayers = _players.Where(pair => pair.Key.Team == defending)

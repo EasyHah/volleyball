@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
@@ -164,6 +165,11 @@ namespace Volleyball.Presentation
                     "Gate H Receive/Set replay events require event-owned organization authority.");
                 return;
             }
+            if (_director.GateIAuthorityEnabled && MissingGateIAuthorityEvidence(replayEvent))
+            {
+                InvalidateCapture("Formal Gate I replay events require event-owned authority evidence.");
+                return;
+            }
 
             // V3 transitions are one-based; native replay contact indexes are zero-based.
             ReplayShadowRecordV4 shadow = null;
@@ -230,6 +236,13 @@ namespace Volleyball.Presentation
             var ruleTransition = replayEvent.RuleTransition ??
                 throw new InvalidOperationException(
                     "Formal V4 contact replay requires its V3 rule decision.");
+            if (replayEvent.GateISetIntentAuthority != null && replayEvent.AttackDefenseAuthority != null)
+                throw new InvalidOperationException("A replay contact cannot map both Gate I receipt kinds.");
+            var gateIAuthority = replayEvent.GateISetIntentAuthority != null
+                ? ToReplayGateISetIntentAuthority(replayEvent.GateISetIntentAuthority, replayEvent, classification, trajectory)
+                : replayEvent.AttackDefenseAuthority != null
+                    ? ToReplayAttackDefenseAuthority(replayEvent.AttackDefenseAuthority, replayEvent, classification, trajectory)
+                    : null;
 
             return new MatchReplayEventV4(
                 sequenceNumber,
@@ -256,7 +269,98 @@ namespace Volleyball.Presentation
                     replayEvent.OrganizationAuthority,
                     replayEvent,
                     classification,
-                    trajectory));
+                    trajectory),
+                gateIAuthority);
+        }
+
+        private static bool MissingGateIAuthorityEvidence(ReplayContactEvent replayEvent)
+        {
+            if (replayEvent.GateISetIntentAuthority != null || replayEvent.AttackDefenseAuthority != null)
+                return false;
+            return replayEvent.Action == TechniqueAction.Set ||
+                   replayEvent.Action == TechniqueAction.Attack ||
+                   replayEvent.Action == TechniqueAction.Block ||
+                   (replayEvent.Action == TechniqueAction.Receive && replayEvent.OrganizationAuthority == null);
+        }
+
+        private static ReplayAttackDefenseAuthorityRecordV4 ToReplayGateISetIntentAuthority(
+            GateISetIntentReceiptV3 receipt, ReplayContactEvent replayEvent,
+            ExecutionSampleClassificationV4 classification, BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            var intent = receipt?.Intent;
+            if (intent == null || replayEvent.Action != TechniqueAction.Set || replayEvent.PlayerId == null ||
+                !replayEvent.PlayerId.Value.Equals(intent.Organizer) ||
+                intent.ExecutionClassification.ExecutableEnvelope.Identity != classification.ExecutableEnvelope.Identity ||
+                intent.TrajectoryArtifact.ArtifactIdentity != trajectory.ArtifactIdentity)
+                throw new InvalidOperationException("Gate I SetIntent receipt does not match the accepted Set evidence.");
+            return new ReplayAttackDefenseAuthorityRecordV4(
+                CheckedInt(receipt.PlanRevision, nameof(receipt.PlanRevision)), CheckedInt(receipt.SourceSequence, nameof(receipt.SourceSequence)),
+                "SetIntentPlanned", "Primary", Vector(intent.Target),
+                Array.Empty<ReplayAttackDefenseCandidateRecordV4>(), Array.Empty<ReplayPublicAttackThreatRecordV4>(),
+                Array.Empty<ReplayDefenseResponsibilityRecordV4>(), string.Empty,
+                classification.TestedEnvelope.Identity, classification.ExecutableEnvelope.Identity,
+                classification.Sample.EnvelopeIdentity, trajectory.ArtifactIdentity, null,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f, "RallyOpen", Array.Empty<string>(), 0, "Primary"));
+        }
+
+        private static ReplayAttackDefenseAuthorityRecordV4 ToReplayAttackDefenseAuthority(
+            AttackDefenseAuthorityReceipt receipt, ReplayContactEvent replayEvent,
+            ExecutionSampleClassificationV4 classification, BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            if (receipt == null || receipt.ExecutionClassification == null || receipt.TrajectoryArtifact == null ||
+                receipt.ExecutionClassification.ExecutableEnvelope.Identity != classification.ExecutableEnvelope.Identity ||
+                receipt.TrajectoryArtifact.ArtifactIdentity != trajectory.ArtifactIdentity || replayEvent.PlayerId == null ||
+                !replayEvent.PlayerId.Value.Equals(receipt.Actor) || !IsReplayActionFor(receipt.Kind, replayEvent.Action))
+                throw new InvalidOperationException("Gate I contact receipt does not match the accepted contact evidence.");
+            var evidence = receipt.Evidence;
+            var plan = evidence.Plan ?? throw new InvalidOperationException("Gate I contact replay requires immutable plan evidence.");
+            var selected = plan.SelectedAction;
+            if (receipt.Kind == AttackDefenseCommandKind.AttackContact &&
+                selected == null)
+                throw new InvalidOperationException("Gate I attack replay requires the selected candidate.");
+            return new ReplayAttackDefenseAuthorityRecordV4(
+                CheckedInt(receipt.PlanRevision, nameof(receipt.PlanRevision)), CheckedInt(receipt.SourceSequence, nameof(receipt.SourceSequence)),
+                receipt.Phase.ToString(), ToReplayBranch(receipt.Branch) ?? throw new InvalidOperationException("Gate I receipt branch is required."),
+                Vector(plan.SetIntent.Target), ToReplayCandidates(plan.AttackCandidates), ToReplayThreat(plan.PublicThreat),
+                ToReplayDefenseResponsibilities(plan.Defense), selected?.CandidateIdentity ?? string.Empty,
+                classification.TestedEnvelope.Identity, classification.ExecutableEnvelope.Identity,
+                classification.Sample.EnvelopeIdentity, trajectory.ArtifactIdentity,
+                ToReplayRecovery(plan, selected), ToReplayCoverage(evidence.CoverageDecision));
+        }
+
+        private static bool IsReplayActionFor(AttackDefenseCommandKind kind, TechniqueAction action) =>
+            (kind == AttackDefenseCommandKind.AttackContact && action == TechniqueAction.Attack) ||
+            (kind == AttackDefenseCommandKind.BlockContact && action == TechniqueAction.Block) ||
+            ((kind == AttackDefenseCommandKind.FloorDefense || kind == AttackDefenseCommandKind.AttackCover || kind == AttackDefenseCommandKind.Reorganization) && action == TechniqueAction.Receive);
+
+        private static ReplayAttackDefenseCandidateRecordV4[] ToReplayCandidates(IReadOnlyList<AttackCandidateV3> candidates) => candidates.Select(candidate =>
+            new ReplayAttackDefenseCandidateRecordV4(candidate.CandidateIdentity, candidate.Actor.Value, candidate.ActionClass.ToString(),
+                Vector(candidate.Target), candidate.ExpectedRallyValue, candidate.LegalSampleRatio, candidate.IsQualifiedPowerRoute,
+                candidate.EliminationReason, candidate.EnvelopeIdentity, candidate.TrajectoryArtifactIdentity, candidate.ReorganizationExitIdentity)).ToArray();
+
+        private static ReplayPublicAttackThreatRecordV4[] ToReplayThreat(PublicAttackThreatV3 threat) => threat.Entries.Select(entry =>
+            new ReplayPublicAttackThreatRecordV4(entry.ActionClass.ToString(), entry.Zone, entry.Probability, entry.ArrivalTime)).ToArray();
+
+        private static ReplayDefenseResponsibilityRecordV4[] ToReplayDefenseResponsibilities(JointDefensePlanV3 defense) => defense.Responsibilities.Select(responsibility =>
+            new ReplayDefenseResponsibilityRecordV4(responsibility.Actor.Value, responsibility.Kind.ToString(), responsibility.Zone, ToReplayBranch(responsibility.Branch))).ToArray();
+
+        private static ReplayToolRecoveryRecordV4 ToReplayRecovery(AttackDefensePlanV3 plan, AttackCandidateV3 selected)
+        {
+            if (selected == null || selected.ActionClass != AttackActionClassV3.BlockToolRecovery) return null;
+            // A planned defensive assignment and an attacking-side label are not
+            // actual rebound evidence.  Gate I does not yet carry the qualified
+            // block-contact/rebound/recovery snapshot in this receipt, so fail
+            // capture rather than inventing a blocker, rebound side, or saver.
+            throw new InvalidOperationException(
+                "Gate I tool recovery replay requires event-owned rebound evidence.");
+        }
+
+        private static ReplayCoverageDecisionRecordV4 ToReplayCoverage(PlanCoverageDecision coverage)
+        {
+            if (coverage == null) throw new InvalidOperationException("Gate I replay requires event-owned coverage evidence.");
+            return new ReplayCoverageDecisionRecordV4(ToReplayCoverageKind(coverage.Kind),
+                coverage.Kind == PlanCoverageDecisionKind.CoveredActivateBranch ? 1f : 0f,
+                coverage.Reason.ToString(), coverage.InvalidationSet, coverage.ExpansionDepth, ToReplayBranch(coverage.ActivatedDeclaredBranch));
         }
 
         private static ReplayOrganizationAuthorityRecordV4

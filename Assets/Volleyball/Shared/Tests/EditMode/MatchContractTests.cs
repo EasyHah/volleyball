@@ -225,6 +225,41 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void ReplayAttackDefenseAuthority_AwaitingDefenseReceiveRetainsSelectedPlanCandidate()
+        {
+            var replayEvent = CreateGateIDefenseEvent("away-defender");
+            var authority = CreateObservedDefenseAuthority(replayEvent, "away-defender");
+
+            var recorded = WithGateIAuthority(replayEvent, null, authority);
+
+            Assert.That(recorded.AttackDefenseAuthority.SelectedCandidateIdentity,
+                Is.EqualTo("attack-selected"));
+            Assert.That(recorded.AttackDefenseAuthority.DefenseResponsibilities
+                .Single().ActorPlayerId, Is.EqualTo(recorded.ActorPlayerId));
+        }
+
+        [Test]
+        public void ReplayAttackDefenseAuthority_AwaitingDefenseRejectsUnknownActor()
+        {
+            var replayEvent = CreateGateIDefenseEvent("away-unknown");
+
+            Assert.That(() => WithGateIAuthority(replayEvent, null,
+                CreateObservedDefenseAuthority(replayEvent, "away-defender")),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void ReplayAttackDefenseAuthority_DefenseCommittedAllowsUnselectedCommandEvidence()
+        {
+            var replayEvent = CreateGateIDefenseEvent("away-defender");
+            var authority = CreateObservedDefenseAuthority(replayEvent,
+                "away-defender", "DefenseCommitted", string.Empty);
+
+            Assert.That(WithGateIAuthority(replayEvent, null, authority)
+                .AttackDefenseAuthority.SelectedCandidateIdentity, Is.Empty);
+        }
+
+        [Test]
         public void ReplayEventCategoryCompatibility_AllowsOnlyGateISoftAndDefensePairs()
         {
             var hash = new string('a', 64);
@@ -1229,6 +1264,100 @@ namespace Volleyball.Shared.EditModeTests
                 replayEvent.Classification.ActualSample.EnvelopeIdentity,
                 replayEvent.Trajectory.ArtifactIdentity, null,
                 new ReplayCoverageDecisionRecordV4("Covered", 0f));
+        }
+
+        private static MatchReplayEventV4 CreateGateIDefenseEvent(string actorPlayerId)
+        {
+            var identity = new string('d', 64);
+            var fingerprint = new string('e', 64);
+            var envelope = new ReplayExecutionEnvelopeRecordV4(
+                4, identity, fingerprint, PredictorConfigurationHashV4,
+                "gate-i-defense", "Defense",
+                new ReplayVector3RecordV4(2f, 1f, -5f),
+                new ReplayVector3RecordV4(0f, 5f, 1f),
+                new ReplayVector3RecordV4(8f, 8f, 8f),
+                new ReplayBoundedErrorRecordV4("BoundedUniform",
+                    new ReplayVector3RecordV4(-.1f, -.1f, -.1f),
+                    new ReplayVector3RecordV4(.1f, .1f, .1f)),
+                new ReplayBoundedErrorRecordV4("SymmetricTriangular",
+                    new ReplayVector3RecordV4(-.1f, -.1f, -.1f),
+                    new ReplayVector3RecordV4(.1f, .1f, .1f)),
+                .5f, .8f, "gate-i-defense-sampling", 1, 1,
+                new[] { "Defense" }, new[] { "FullSampling" },
+                0, 0, 0, 1f);
+            var trajectory = new ReplayTrajectoryArtifactRecordV4(
+                identity, "formal-v4", 4, PredictorConfigurationHashV4,
+                new ReplayTrajectoryCacheKeyRecordV4(
+                    fingerprint, 43, identity, PhysicsConfigurationHashV4,
+                    "gate-i-defense-sampling", 4,
+                    PredictorConfigurationHashV4, identity, "FullSampling"));
+            var classification = new ReplaySampleClassificationRecordV4(
+                "Accepted", identity, string.Empty,
+                new ReplayActualSampleRecordV4(identity,
+                    "gate-i-defense-sampling", "Defense",
+                    new ReplayVector3RecordV4(2f, 1f, -5f),
+                    new ReplayVector3RecordV4(0f, 5f, 1f), .5f),
+                Array.Empty<string>());
+            return new MatchReplayEventV4(
+                4, "Receive", actorPlayerId, 2f, 0, 0,
+                envelope, envelope, trajectory,
+                new[]
+                {
+                    new ReplayAbilityConsumptionRecordV4(
+                        actorPlayerId,
+                        fingerprint,
+                        "Defense.Reaction",
+                        .5f,
+                        "ExecutionEnvelopeFactoryRead")
+                },
+                classification, null,
+                new ReplayRuleDecisionRecordV4(
+                    RulesVersions.FullRallyV3, true, "None"));
+        }
+
+        private static ReplayAttackDefenseAuthorityRecordV4
+            CreateObservedDefenseAuthority(
+                MatchReplayEventV4 replayEvent,
+                string defenderPlayerId,
+                string phase = "AwaitingActualContact",
+                string selectedCandidateIdentity = "attack-selected")
+        {
+            var candidate = new ReplayAttackDefenseCandidateRecordV4(
+                "attack-selected", "home-attacker", "PowerLine",
+                new ReplayVector3RecordV4(2f, .12f, -5.25f),
+                .7f, 1f, true, string.Empty,
+                replayEvent.ExecutableEnvelope.Identity,
+                replayEvent.Trajectory.ArtifactIdentity,
+                string.Empty);
+            return new ReplayAttackDefenseAuthorityRecordV4(
+                9, 21, phase, "Primary",
+                new ReplayVector3RecordV4(2f, 2.8f, 2f),
+                new[] { candidate },
+                new[]
+                {
+                    new ReplayPublicAttackThreatRecordV4(
+                        "PowerLine", "Line", 1f, 2f)
+                },
+                new[]
+                {
+                    new ReplayDefenseResponsibilityRecordV4(
+                        defenderPlayerId, "LineDefense", "Line", "Primary")
+                },
+                selectedCandidateIdentity,
+                replayEvent.TestedEnvelope.Identity,
+                replayEvent.ExecutableEnvelope.Identity,
+                replayEvent.Classification.ActualSample.EnvelopeIdentity,
+                replayEvent.Trajectory.ArtifactIdentity,
+                null,
+                new ReplayCoverageDecisionRecordV4(
+                    phase == "DefenseCommitted" ? "Covered" : "Local",
+                    phase == "DefenseCommitted" ? 0f : 1f,
+                    phase == "DefenseCommitted"
+                        ? "WithinConditionalEnvelope"
+                        : "ResponsibleActorChanged",
+                    Array.Empty<string>(),
+                    phase == "DefenseCommitted" ? 0 : 1,
+                    "Primary"));
         }
 
         private static MatchReplayEventV4 WithGateIAuthority(

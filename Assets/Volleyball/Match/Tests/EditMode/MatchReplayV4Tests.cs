@@ -53,6 +53,34 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void GateIToolRecoveryMapper_RejectsMissingExactReboundEvidence()
+        {
+            var mapper = typeof(MatchReplayRecorder).GetMethod(
+                "ToReplayRecovery",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var selected = new AttackCandidateV3(
+                "tool-candidate",
+                new StablePlayerId("home-attacker"),
+                AttackActionClassV3.BlockToolRecovery,
+                new SimVector3(0f, 3f, 0f),
+                new SimVector3(0f, 1f, 3f),
+                0.5f,
+                1f,
+                false,
+                string.Empty,
+                "envelope",
+                "trajectory",
+                "exit");
+
+            var exception = Assert.Throws<TargetInvocationException>(
+                () => mapper.Invoke(null, new object[] { null, selected }));
+
+            Assert.That(exception.InnerException, Is.TypeOf<InvalidOperationException>());
+            Assert.That(exception.InnerException.Message,
+                Does.Contain("event-owned rebound evidence"));
+        }
+
+        [Test]
         public void CanonicalJson_PersistsCompleteV4DiagnosticEvidence()
         {
             var replay = CreateReplay(Event(0, "Attack"));
