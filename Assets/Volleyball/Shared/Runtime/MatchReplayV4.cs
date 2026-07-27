@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -545,6 +546,222 @@ namespace Volleyball.Shared.Contracts
         public ReplayCoverageDecisionRecordV4 Coverage { get; }
     }
 
+    public sealed class ReplayAttackDefenseCandidateRecordV4
+    {
+        public ReplayAttackDefenseCandidateRecordV4(
+            string candidateIdentity,
+            string actorPlayerId,
+            string actionClass,
+            ReplayVector3RecordV4 target,
+            float expectedRallyValue,
+            float legalSampleRatio,
+            bool isQualifiedPowerRoute,
+            string eliminationReason,
+            string envelopeIdentity,
+            string trajectoryArtifactIdentity,
+            string reorganizationExitIdentity)
+        {
+            CandidateIdentity = ReplayContractGuardV4.Required(candidateIdentity, nameof(candidateIdentity));
+            ActorPlayerId = ReplayContractGuardV4.Required(actorPlayerId, nameof(actorPlayerId));
+            ActionClass = ReplayContractGuardV4.OneOf(actionClass, nameof(actionClass),
+                "PowerLine", "PowerCross", "PowerEdge", "PowerOverHand", "Tip", "Roll",
+                "Push", "HighSurvival", "BlockOut", "BlockToolRecovery");
+            Target = target ?? throw new ContractValidationException("target is required.");
+            ExpectedRallyValue = ReplayContractGuardV4.Finite(expectedRallyValue, nameof(expectedRallyValue));
+            LegalSampleRatio = ReplayContractGuardV4.Finite(legalSampleRatio, nameof(legalSampleRatio));
+            if (LegalSampleRatio < 0f || LegalSampleRatio > 1f)
+                throw new ContractValidationException("legalSampleRatio must be in [0, 1].");
+            IsQualifiedPowerRoute = isQualifiedPowerRoute;
+            EliminationReason = eliminationReason == null ? string.Empty : eliminationReason.Trim();
+            EnvelopeIdentity = ReplayContractGuardV4.Hash(envelopeIdentity, nameof(envelopeIdentity));
+            TrajectoryArtifactIdentity = ReplayContractGuardV4.Hash(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
+            ReorganizationExitIdentity = reorganizationExitIdentity == null ? string.Empty : reorganizationExitIdentity.Trim();
+            if (ActionClass != "BlockToolRecovery" && !string.IsNullOrEmpty(ReorganizationExitIdentity))
+                throw new ContractValidationException("Only BlockToolRecovery may identify a reorganization exit.");
+        }
+
+        public string CandidateIdentity { get; }
+        public string ActorPlayerId { get; }
+        public string ActionClass { get; }
+        public ReplayVector3RecordV4 Target { get; }
+        public float ExpectedRallyValue { get; }
+        public float LegalSampleRatio { get; }
+        public bool IsQualifiedPowerRoute { get; }
+        public string EliminationReason { get; }
+        public string EnvelopeIdentity { get; }
+        public string TrajectoryArtifactIdentity { get; }
+        public string ReorganizationExitIdentity { get; }
+    }
+
+    // This deliberately exposes only public class/zone/probability/time facts.
+    // It cannot carry the hidden final route or a future trajectory sample.
+    public sealed class ReplayPublicAttackThreatRecordV4
+    {
+        public ReplayPublicAttackThreatRecordV4(string actionClass, string zone,
+            float probability, float arrivalTime)
+        {
+            ActionClass = ReplayContractGuardV4.OneOf(actionClass, nameof(actionClass),
+                "PowerLine", "PowerCross", "PowerEdge", "PowerOverHand", "Tip", "Roll",
+                "Push", "HighSurvival", "BlockOut", "BlockToolRecovery");
+            Zone = ReplayContractGuardV4.Required(zone, nameof(zone));
+            Probability = ReplayContractGuardV4.Finite(probability, nameof(probability));
+            if (Probability < 0f || Probability > 1f)
+                throw new ContractValidationException("probability must be in [0, 1].");
+            ArrivalTime = ReplayContractGuardV4.Finite(arrivalTime, nameof(arrivalTime));
+        }
+
+        public string ActionClass { get; }
+        public string Zone { get; }
+        public float Probability { get; }
+        public float ArrivalTime { get; }
+    }
+
+    public sealed class ReplayDefenseResponsibilityRecordV4
+    {
+        public ReplayDefenseResponsibilityRecordV4(string actorPlayerId, string kind,
+            string zone, string branch)
+        {
+            ActorPlayerId = ReplayContractGuardV4.Required(actorPlayerId, nameof(actorPlayerId));
+            Kind = ReplayContractGuardV4.OneOf(kind, nameof(kind), "PrimaryBlock",
+                "SupportingBlock", "LineDefense", "CrossDefense", "DeepDefense",
+                "TipDefense", "BlockShadow", "ReboundCoverage");
+            Zone = ReplayContractGuardV4.Required(zone, nameof(zone));
+            Branch = ReplayContractGuardV4.OneOf(branch, nameof(branch), "Primary", "Contingency");
+        }
+
+        public string ActorPlayerId { get; }
+        public string Kind { get; }
+        public string Zone { get; }
+        public string Branch { get; }
+        internal string Identity => ActorPlayerId + "\n" + Kind + "\n" + Zone + "\n" + Branch;
+    }
+
+    public sealed class ReplayToolRecoveryRecordV4
+    {
+        public ReplayToolRecoveryRecordV4(string candidateIdentity,
+            string blockerPlayerId, string reboundSide, string recoveryPlayerId,
+            string reorganizationExitIdentity)
+        {
+            CandidateIdentity = ReplayContractGuardV4.Required(candidateIdentity, nameof(candidateIdentity));
+            BlockerPlayerId = ReplayContractGuardV4.Required(blockerPlayerId, nameof(blockerPlayerId));
+            ReboundSide = ReplayContractGuardV4.OneOf(reboundSide, nameof(reboundSide), "Home", "Away");
+            RecoveryPlayerId = ReplayContractGuardV4.Required(recoveryPlayerId, nameof(recoveryPlayerId));
+            ReorganizationExitIdentity = ReplayContractGuardV4.Required(reorganizationExitIdentity, nameof(reorganizationExitIdentity));
+        }
+
+        public string CandidateIdentity { get; }
+        public string BlockerPlayerId { get; }
+        public string ReboundSide { get; }
+        public string RecoveryPlayerId { get; }
+        public string ReorganizationExitIdentity { get; }
+    }
+
+    public sealed class ReplayAttackDefenseAuthorityRecordV4
+    {
+        private readonly ReplayAttackDefenseCandidateRecordV4[] _candidates;
+        private readonly ReplayPublicAttackThreatRecordV4[] _publicThreat;
+        private readonly ReplayDefenseResponsibilityRecordV4[] _defenseResponsibilities;
+
+        public ReplayAttackDefenseAuthorityRecordV4(int planRevision,
+            int sourceSequenceNumber, string phase, string branch,
+            ReplayVector3RecordV4 setTarget,
+            IReadOnlyList<ReplayAttackDefenseCandidateRecordV4> candidates,
+            IReadOnlyList<ReplayPublicAttackThreatRecordV4> publicThreat,
+            IReadOnlyList<ReplayDefenseResponsibilityRecordV4> defenseResponsibilities,
+            string selectedCandidateIdentity, string testedEnvelopeIdentity,
+            string executableEnvelopeIdentity, string sampleEnvelopeIdentity,
+            string trajectoryArtifactIdentity, ReplayToolRecoveryRecordV4 recovery,
+            ReplayCoverageDecisionRecordV4 coverage)
+        {
+            PlanRevision = ReplayContractGuardV4.NonNegative(planRevision, nameof(planRevision));
+            SourceSequenceNumber = ReplayContractGuardV4.Positive(sourceSequenceNumber, nameof(sourceSequenceNumber));
+            Phase = ReplayContractGuardV4.OneOf(phase, nameof(phase), "SetIntentPlanned",
+                "AttackPlanned", "ThreatPublished", "DefenseCommitted", "AttackCommitted",
+                "AwaitingActualContact", "ReorganizationPlanned", "HandedOff", "Terminal");
+            Branch = ReplayContractGuardV4.OneOf(branch, nameof(branch), "Primary", "Contingency");
+            SetTarget = setTarget ?? throw new ContractValidationException("setTarget is required.");
+            _candidates = CopyCandidates(candidates);
+            _publicThreat = CopyThreat(publicThreat);
+            _defenseResponsibilities = CopyResponsibilities(defenseResponsibilities);
+            SelectedCandidateIdentity = selectedCandidateIdentity == null ? string.Empty : selectedCandidateIdentity.Trim();
+            TestedEnvelopeIdentity = ReplayContractGuardV4.Hash(testedEnvelopeIdentity, nameof(testedEnvelopeIdentity));
+            ExecutableEnvelopeIdentity = ReplayContractGuardV4.Hash(executableEnvelopeIdentity, nameof(executableEnvelopeIdentity));
+            SampleEnvelopeIdentity = ReplayContractGuardV4.Hash(sampleEnvelopeIdentity, nameof(sampleEnvelopeIdentity));
+            TrajectoryArtifactIdentity = ReplayContractGuardV4.Hash(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
+            Recovery = recovery;
+            Coverage = coverage ?? throw new ContractValidationException("coverage is required.");
+
+            var selected = string.IsNullOrEmpty(SelectedCandidateIdentity) ? null :
+                _candidates.SingleOrDefault(value => value.CandidateIdentity == SelectedCandidateIdentity);
+            if (!string.IsNullOrEmpty(SelectedCandidateIdentity) && selected == null)
+                throw new ContractValidationException("selectedCandidateIdentity must identify a candidate.");
+            if (Phase == "SetIntentPlanned")
+            {
+                if (_candidates.Length != 0 || _publicThreat.Length != 0 ||
+                    _defenseResponsibilities.Length != 0 || selected != null || Recovery != null)
+                    throw new ContractValidationException("SetIntentPlanned contains only the immutable SetIntent evidence.");
+            }
+            else if (_candidates.Length == 0)
+                throw new ContractValidationException("Post-Set authority requires candidates.");
+
+            if ((Phase == "AttackCommitted" || Phase == "AwaitingActualContact") && selected == null)
+                throw new ContractValidationException("Committed attack authority requires a selected candidate.");
+            if (Recovery != null)
+            {
+                var recoveryCandidate = _candidates.SingleOrDefault(value =>
+                    value.CandidateIdentity == Recovery.CandidateIdentity);
+                if (recoveryCandidate == null || recoveryCandidate.ActionClass != "BlockToolRecovery" ||
+                    recoveryCandidate.ReorganizationExitIdentity != Recovery.ReorganizationExitIdentity)
+                    throw new ContractValidationException("Tool recovery must link its declared tool candidate and exit.");
+            }
+        }
+
+        public int PlanRevision { get; }
+        public int SourceSequenceNumber { get; }
+        public string Phase { get; }
+        public string Branch { get; }
+        public ReplayVector3RecordV4 SetTarget { get; }
+        public IReadOnlyList<ReplayAttackDefenseCandidateRecordV4> Candidates => new ReadOnlyCollection<ReplayAttackDefenseCandidateRecordV4>(_candidates);
+        public IReadOnlyList<ReplayPublicAttackThreatRecordV4> PublicThreat => new ReadOnlyCollection<ReplayPublicAttackThreatRecordV4>(_publicThreat);
+        public IReadOnlyList<ReplayDefenseResponsibilityRecordV4> DefenseResponsibilities => new ReadOnlyCollection<ReplayDefenseResponsibilityRecordV4>(_defenseResponsibilities);
+        public string SelectedCandidateIdentity { get; }
+        public string TestedEnvelopeIdentity { get; }
+        public string ExecutableEnvelopeIdentity { get; }
+        public string SampleEnvelopeIdentity { get; }
+        public string TrajectoryArtifactIdentity { get; }
+        public ReplayToolRecoveryRecordV4 Recovery { get; }
+        public ReplayCoverageDecisionRecordV4 Coverage { get; }
+
+        private static ReplayAttackDefenseCandidateRecordV4[] CopyCandidates(IReadOnlyList<ReplayAttackDefenseCandidateRecordV4> source)
+        {
+            if (source == null) throw new ContractValidationException("candidates are required.");
+            var copy = source.ToArray();
+            if (copy.Any(value => value == null) || copy.Select(value => value.CandidateIdentity).Distinct(StringComparer.Ordinal).Count() != copy.Length)
+                throw new ContractValidationException("Candidates must be non-null with distinct identities.");
+            Array.Sort(copy, (left, right) => string.CompareOrdinal(left.CandidateIdentity, right.CandidateIdentity));
+            return copy;
+        }
+
+        private static ReplayPublicAttackThreatRecordV4[] CopyThreat(IReadOnlyList<ReplayPublicAttackThreatRecordV4> source)
+        {
+            if (source == null) throw new ContractValidationException("publicThreat is required.");
+            var copy = source.ToArray();
+            if (copy.Any(value => value == null)) throw new ContractValidationException("publicThreat cannot contain null records.");
+            Array.Sort(copy, (left, right) => string.CompareOrdinal(left.ActionClass + "\n" + left.Zone, right.ActionClass + "\n" + right.Zone));
+            return copy;
+        }
+
+        private static ReplayDefenseResponsibilityRecordV4[] CopyResponsibilities(IReadOnlyList<ReplayDefenseResponsibilityRecordV4> source)
+        {
+            if (source == null) throw new ContractValidationException("defenseResponsibilities are required.");
+            var copy = source.ToArray();
+            if (copy.Any(value => value == null) || copy.Select(value => value.Identity).Distinct(StringComparer.Ordinal).Count() != copy.Length)
+                throw new ContractValidationException("Defense responsibilities must be non-null with distinct identities.");
+            Array.Sort(copy, (left, right) => string.CompareOrdinal(left.Identity, right.Identity));
+            return copy;
+        }
+    }
+
     public sealed class MatchReplayEventV4
     {
         private readonly ReplayAbilityConsumptionRecordV4[] _abilityConsumptions;
@@ -577,6 +794,7 @@ namespace Volleyball.Shared.Contracts
                 classification,
                 observedP6Geometry,
                 ruleDecision,
+                null,
                 null,
                 null)
         {
@@ -612,6 +830,7 @@ namespace Volleyball.Shared.Contracts
                 observedP6Geometry,
                 ruleDecision,
                 shadow,
+                null,
                 null)
         {
         }
@@ -632,6 +851,30 @@ namespace Volleyball.Shared.Contracts
             ReplayRuleDecisionRecordV4 ruleDecision,
             ReplayShadowRecordV4 shadow,
             ReplayOrganizationAuthorityRecordV4 organizationAuthority)
+            : this(sequenceNumber, eventKind, actorPlayerId, simulationTimeSeconds,
+                homeScore, awayScore, testedEnvelope, executableEnvelope, trajectory,
+                abilityConsumptions, classification, observedP6Geometry, ruleDecision,
+                shadow, organizationAuthority, null)
+        {
+        }
+
+        public MatchReplayEventV4(
+            int sequenceNumber,
+            string eventKind,
+            string actorPlayerId,
+            float simulationTimeSeconds,
+            int homeScore,
+            int awayScore,
+            ReplayExecutionEnvelopeRecordV4 testedEnvelope,
+            ReplayExecutionEnvelopeRecordV4 executableEnvelope,
+            ReplayTrajectoryArtifactRecordV4 trajectory,
+            IReadOnlyList<ReplayAbilityConsumptionRecordV4> abilityConsumptions,
+            ReplaySampleClassificationRecordV4 classification,
+            ReplayObservedP6GeometryRecordV4 observedP6Geometry,
+            ReplayRuleDecisionRecordV4 ruleDecision,
+            ReplayShadowRecordV4 shadow,
+            ReplayOrganizationAuthorityRecordV4 organizationAuthority,
+            ReplayAttackDefenseAuthorityRecordV4 attackDefenseAuthority)
         {
             SequenceNumber = ReplayContractGuardV4.NonNegative(
                 sequenceNumber,
@@ -782,6 +1025,8 @@ namespace Volleyball.Shared.Contracts
 
             OrganizationAuthority = organizationAuthority;
             ValidateOrganizationAuthority();
+            AttackDefenseAuthority = attackDefenseAuthority;
+            ValidateAttackDefenseAuthority();
         }
 
         public int SequenceNumber { get; }
@@ -801,6 +1046,7 @@ namespace Volleyball.Shared.Contracts
         public ReplayRuleDecisionRecordV4 RuleDecision { get; }
         public ReplayShadowRecordV4 Shadow { get; }
         public ReplayOrganizationAuthorityRecordV4 OrganizationAuthority { get; }
+        public ReplayAttackDefenseAuthorityRecordV4 AttackDefenseAuthority { get; }
 
         private void ValidateOrganizationAuthority()
         {
@@ -867,6 +1113,33 @@ namespace Volleyball.Shared.Contracts
                     throw new ContractValidationException(
                         "An accepted Set cannot use NoLegalOrganizer.");
                 }
+            }
+        }
+
+        private void ValidateAttackDefenseAuthority()
+        {
+            if (AttackDefenseAuthority == null) return;
+            if (AttackDefenseAuthority.TestedEnvelopeIdentity != TestedEnvelope.Identity ||
+                AttackDefenseAuthority.ExecutableEnvelopeIdentity != ExecutableEnvelope.Identity ||
+                AttackDefenseAuthority.SampleEnvelopeIdentity != Classification.ActualSample.EnvelopeIdentity ||
+                AttackDefenseAuthority.TrajectoryArtifactIdentity != Trajectory.ArtifactIdentity)
+                throw new ContractValidationException("Attack-defense authority identities must match event-owned evidence.");
+
+            if (AttackDefenseAuthority.Phase == "SetIntentPlanned")
+            {
+                if (EventKind != "Set" || OrganizationAuthority == null)
+                    throw new ContractValidationException("A Gate I SetIntent record requires the Gate H Set authority record.");
+                return;
+            }
+
+            if (EventKind == "Set")
+                throw new ContractValidationException("Only SetIntentPlanned may be attached to a Set event.");
+            if (!string.IsNullOrEmpty(AttackDefenseAuthority.SelectedCandidateIdentity))
+            {
+                var selected = AttackDefenseAuthority.Candidates.Single(value =>
+                    value.CandidateIdentity == AttackDefenseAuthority.SelectedCandidateIdentity);
+                if (EventKind != "Attack" || selected.ActorPlayerId != ActorPlayerId)
+                    throw new ContractValidationException("Selected Gate I candidate must match the Attack event actor.");
             }
         }
 
@@ -1580,7 +1853,11 @@ namespace Volleyball.Shared.Contracts
                 ParseOrganizationAuthority(
                     StrictJsonV4.OptionalNullableObject(
                         value,
-                        "organizationAuthority")));
+                        "organizationAuthority")),
+                ParseAttackDefenseAuthority(
+                    StrictJsonV4.OptionalNullableObject(
+                        value,
+                        "attackDefenseAuthority")));
         }
 
         private static void RequireEventProperties(StrictJsonObjectV4 value)
@@ -1588,8 +1865,11 @@ namespace Volleyball.Shared.Contracts
             var hasShadow = value.Properties.ContainsKey("shadow");
             var hasAuthority =
                 value.Properties.ContainsKey("organizationAuthority");
+            var hasAttackDefenseAuthority =
+                value.Properties.ContainsKey("attackDefenseAuthority");
             if (value.Properties.Count !=
-                13 + (hasShadow ? 1 : 0) + (hasAuthority ? 1 : 0))
+                13 + (hasShadow ? 1 : 0) + (hasAuthority ? 1 : 0) +
+                (hasAttackDefenseAuthority ? 1 : 0))
             {
                 throw new ContractValidationException(
                     "JSON object fields do not match the native V4 schema.");
@@ -1681,6 +1961,84 @@ namespace Volleyball.Shared.Contracts
                     "trajectoryArtifactIdentity"),
                 ParseCoverage(
                     StrictJsonV4.RequiredObject(value, "coverage")));
+        }
+
+        private static ReplayAttackDefenseAuthorityRecordV4
+            ParseAttackDefenseAuthority(StrictJsonObjectV4 value)
+        {
+            if (value == null) return null;
+            StrictJsonV4.RequireExactProperties(value, "planRevision",
+                "sourceSequenceNumber", "phase", "branch", "setTarget",
+                "candidates", "publicThreat", "defenseResponsibilities",
+                "selectedCandidateIdentity", "testedEnvelopeIdentity",
+                "executableEnvelopeIdentity", "sampleEnvelopeIdentity",
+                "trajectoryArtifactIdentity", "recovery", "coverage");
+            var candidateValues = StrictJsonV4.RequiredArray(value, "candidates");
+            var candidates = new ReplayAttackDefenseCandidateRecordV4[candidateValues.Count];
+            for (var index = 0; index < candidates.Length; index++)
+            {
+                var candidate = StrictJsonV4.AsObject(candidateValues[index], "candidates[" + index + "]");
+                StrictJsonV4.RequireExactProperties(candidate, "candidateIdentity", "actorPlayerId",
+                    "actionClass", "target", "expectedRallyValue", "legalSampleRatio",
+                    "isQualifiedPowerRoute", "eliminationReason", "envelopeIdentity",
+                    "trajectoryArtifactIdentity", "reorganizationExitIdentity");
+                candidates[index] = new ReplayAttackDefenseCandidateRecordV4(
+                    StrictJsonV4.RequiredString(candidate, "candidateIdentity"),
+                    StrictJsonV4.RequiredString(candidate, "actorPlayerId"),
+                    StrictJsonV4.RequiredString(candidate, "actionClass"),
+                    ParseVector(StrictJsonV4.RequiredObject(candidate, "target")),
+                    StrictJsonV4.RequiredFloat(candidate, "expectedRallyValue"),
+                    StrictJsonV4.RequiredFloat(candidate, "legalSampleRatio"),
+                    StrictJsonV4.RequiredBoolean(candidate, "isQualifiedPowerRoute"),
+                    StrictJsonV4.RequiredString(candidate, "eliminationReason"),
+                    StrictJsonV4.RequiredString(candidate, "envelopeIdentity"),
+                    StrictJsonV4.RequiredString(candidate, "trajectoryArtifactIdentity"),
+                    StrictJsonV4.RequiredString(candidate, "reorganizationExitIdentity"));
+            }
+            var threatValues = StrictJsonV4.RequiredArray(value, "publicThreat");
+            var threat = new ReplayPublicAttackThreatRecordV4[threatValues.Count];
+            for (var index = 0; index < threat.Length; index++)
+            {
+                var item = StrictJsonV4.AsObject(threatValues[index], "publicThreat[" + index + "]");
+                StrictJsonV4.RequireExactProperties(item, "actionClass", "zone", "probability", "arrivalTime");
+                threat[index] = new ReplayPublicAttackThreatRecordV4(
+                    StrictJsonV4.RequiredString(item, "actionClass"),
+                    StrictJsonV4.RequiredString(item, "zone"),
+                    StrictJsonV4.RequiredFloat(item, "probability"),
+                    StrictJsonV4.RequiredFloat(item, "arrivalTime"));
+            }
+            var defenseValues = StrictJsonV4.RequiredArray(value, "defenseResponsibilities");
+            var defense = new ReplayDefenseResponsibilityRecordV4[defenseValues.Count];
+            for (var index = 0; index < defense.Length; index++)
+            {
+                var item = StrictJsonV4.AsObject(defenseValues[index], "defenseResponsibilities[" + index + "]");
+                StrictJsonV4.RequireExactProperties(item, "actorPlayerId", "kind", "zone", "branch");
+                defense[index] = new ReplayDefenseResponsibilityRecordV4(
+                    StrictJsonV4.RequiredString(item, "actorPlayerId"),
+                    StrictJsonV4.RequiredString(item, "kind"), StrictJsonV4.RequiredString(item, "zone"),
+                    StrictJsonV4.RequiredString(item, "branch"));
+            }
+            var recoveryValue = StrictJsonV4.RequiredNullableObject(value, "recovery");
+            ReplayToolRecoveryRecordV4 recovery = null;
+            if (recoveryValue != null)
+            {
+                StrictJsonV4.RequireExactProperties(recoveryValue, "candidateIdentity", "blockerPlayerId",
+                    "reboundSide", "recoveryPlayerId", "reorganizationExitIdentity");
+                recovery = new ReplayToolRecoveryRecordV4(
+                    StrictJsonV4.RequiredString(recoveryValue, "candidateIdentity"),
+                    StrictJsonV4.RequiredString(recoveryValue, "blockerPlayerId"),
+                    StrictJsonV4.RequiredString(recoveryValue, "reboundSide"),
+                    StrictJsonV4.RequiredString(recoveryValue, "recoveryPlayerId"),
+                    StrictJsonV4.RequiredString(recoveryValue, "reorganizationExitIdentity"));
+            }
+            return new ReplayAttackDefenseAuthorityRecordV4(
+                StrictJsonV4.RequiredInt(value, "planRevision"), StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"),
+                StrictJsonV4.RequiredString(value, "phase"), StrictJsonV4.RequiredString(value, "branch"),
+                ParseVector(StrictJsonV4.RequiredObject(value, "setTarget")), candidates, threat, defense,
+                StrictJsonV4.RequiredString(value, "selectedCandidateIdentity"),
+                StrictJsonV4.RequiredString(value, "testedEnvelopeIdentity"), StrictJsonV4.RequiredString(value, "executableEnvelopeIdentity"),
+                StrictJsonV4.RequiredString(value, "sampleEnvelopeIdentity"), StrictJsonV4.RequiredString(value, "trajectoryArtifactIdentity"),
+                recovery, ParseCoverage(StrictJsonV4.RequiredObject(value, "coverage")));
         }
 
         private static ReplayShadowRecordV4 ParseShadow(StrictJsonObjectV4 value)
@@ -2165,6 +2523,12 @@ namespace Volleyball.Shared.Contracts
                     replayEvent.OrganizationAuthority);
             }
 
+            if (replayEvent.AttackDefenseAuthority != null)
+            {
+                output.Append(",\"attackDefenseAuthority\":");
+                AppendAttackDefenseAuthority(output, replayEvent.AttackDefenseAuthority);
+            }
+
             output.Append('}');
         }
 
@@ -2218,6 +2582,75 @@ namespace Volleyball.Shared.Contracts
                 .Append(Quote(authority.TrajectoryArtifactIdentity));
             output.Append(",\"coverage\":");
             AppendCoverage(output, authority.Coverage);
+            output.Append('}');
+        }
+
+        private static void AppendAttackDefenseAuthority(StringBuilder output,
+            ReplayAttackDefenseAuthorityRecordV4 authority)
+        {
+            output.Append("{\"planRevision\":").Append(authority.PlanRevision);
+            output.Append(",\"sourceSequenceNumber\":").Append(authority.SourceSequenceNumber);
+            output.Append(",\"phase\":").Append(Quote(authority.Phase));
+            output.Append(",\"branch\":").Append(Quote(authority.Branch));
+            output.Append(",\"setTarget\":"); Vector(output, authority.SetTarget);
+            output.Append(",\"candidates\":[");
+            for (var index = 0; index < authority.Candidates.Count; index++)
+            {
+                if (index > 0) output.Append(',');
+                var candidate = authority.Candidates[index];
+                output.Append("{\"candidateIdentity\":").Append(Quote(candidate.CandidateIdentity));
+                output.Append(",\"actorPlayerId\":").Append(Quote(candidate.ActorPlayerId));
+                output.Append(",\"actionClass\":").Append(Quote(candidate.ActionClass));
+                output.Append(",\"target\":"); Vector(output, candidate.Target);
+                output.Append(",\"expectedRallyValue\":"); Float(output, candidate.ExpectedRallyValue);
+                output.Append(",\"legalSampleRatio\":"); Float(output, candidate.LegalSampleRatio);
+                output.Append(",\"isQualifiedPowerRoute\":").Append(candidate.IsQualifiedPowerRoute ? "true" : "false");
+                output.Append(",\"eliminationReason\":").Append(Quote(candidate.EliminationReason));
+                output.Append(",\"envelopeIdentity\":").Append(Quote(candidate.EnvelopeIdentity));
+                output.Append(",\"trajectoryArtifactIdentity\":").Append(Quote(candidate.TrajectoryArtifactIdentity));
+                output.Append(",\"reorganizationExitIdentity\":").Append(Quote(candidate.ReorganizationExitIdentity));
+                output.Append('}');
+            }
+            output.Append("],\"publicThreat\":[");
+            for (var index = 0; index < authority.PublicThreat.Count; index++)
+            {
+                if (index > 0) output.Append(',');
+                var threat = authority.PublicThreat[index];
+                output.Append("{\"actionClass\":").Append(Quote(threat.ActionClass));
+                output.Append(",\"zone\":").Append(Quote(threat.Zone));
+                output.Append(",\"probability\":"); Float(output, threat.Probability);
+                output.Append(",\"arrivalTime\":"); Float(output, threat.ArrivalTime);
+                output.Append('}');
+            }
+            output.Append("],\"defenseResponsibilities\":[");
+            for (var index = 0; index < authority.DefenseResponsibilities.Count; index++)
+            {
+                if (index > 0) output.Append(',');
+                var responsibility = authority.DefenseResponsibilities[index];
+                output.Append("{\"actorPlayerId\":").Append(Quote(responsibility.ActorPlayerId));
+                output.Append(",\"kind\":").Append(Quote(responsibility.Kind));
+                output.Append(",\"zone\":").Append(Quote(responsibility.Zone));
+                output.Append(",\"branch\":").Append(Quote(responsibility.Branch));
+                output.Append('}');
+            }
+            output.Append("],\"selectedCandidateIdentity\":").Append(Quote(authority.SelectedCandidateIdentity));
+            output.Append(",\"testedEnvelopeIdentity\":").Append(Quote(authority.TestedEnvelopeIdentity));
+            output.Append(",\"executableEnvelopeIdentity\":").Append(Quote(authority.ExecutableEnvelopeIdentity));
+            output.Append(",\"sampleEnvelopeIdentity\":").Append(Quote(authority.SampleEnvelopeIdentity));
+            output.Append(",\"trajectoryArtifactIdentity\":").Append(Quote(authority.TrajectoryArtifactIdentity));
+            output.Append(",\"recovery\":");
+            if (authority.Recovery == null) output.Append("null");
+            else
+            {
+                var recovery = authority.Recovery;
+                output.Append("{\"candidateIdentity\":").Append(Quote(recovery.CandidateIdentity));
+                output.Append(",\"blockerPlayerId\":").Append(Quote(recovery.BlockerPlayerId));
+                output.Append(",\"reboundSide\":").Append(Quote(recovery.ReboundSide));
+                output.Append(",\"recoveryPlayerId\":").Append(Quote(recovery.RecoveryPlayerId));
+                output.Append(",\"reorganizationExitIdentity\":").Append(Quote(recovery.ReorganizationExitIdentity));
+                output.Append('}');
+            }
+            output.Append(",\"coverage\":"); AppendCoverage(output, authority.Coverage);
             output.Append('}');
         }
 

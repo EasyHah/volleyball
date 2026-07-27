@@ -96,6 +96,36 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void ReplayAttackDefenseAuthority_RequiresStrictSortedEventOwnedEvidence()
+        {
+            var hash = new string('b', 64);
+            var coverage = new ReplayCoverageDecisionRecordV4(
+                "Covered", 0f, "WithinConditionalEnvelope", Array.Empty<string>(), 0, "Primary");
+            var candidate = new ReplayAttackDefenseCandidateRecordV4(
+                "attack-7-line", "home-attacker", "PowerLine",
+                new ReplayVector3RecordV4(1f, 3f, -1f),
+                0.7f, 0.9f, true, string.Empty, hash, hash, string.Empty);
+            var authority = new ReplayAttackDefenseAuthorityRecordV4(
+                7, 19, "AttackCommitted", "Primary",
+                new ReplayVector3RecordV4(1f, 3f, -1f),
+                new[] { candidate },
+                new[] { new ReplayPublicAttackThreatRecordV4("PowerLine", "Line", 1f, 1.2f) },
+                new[] { new ReplayDefenseResponsibilityRecordV4(
+                    "away-blocker", "PrimaryBlock", "Line", "Primary") },
+                "attack-7-line", hash, hash, hash, hash, null, coverage);
+
+            Assert.That(authority.SelectedCandidateIdentity, Is.EqualTo("attack-7-line"));
+            Assert.That(authority.Candidates.Single().ActorPlayerId, Is.EqualTo("home-attacker"));
+            Assert.That(
+                () => new ReplayAttackDefenseAuthorityRecordV4(
+                    7, 19, "AttackCommitted", "Primary",
+                    authority.SetTarget, new[] { candidate, candidate }, authority.PublicThreat,
+                    authority.DefenseResponsibilities, "attack-7-line", hash, hash, hash,
+                    hash, null, coverage),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
         public void ReplayEventCategoryCompatibility_AllowsOnlyGateISoftAndDefensePairs()
         {
             var hash = new string('a', 64);
