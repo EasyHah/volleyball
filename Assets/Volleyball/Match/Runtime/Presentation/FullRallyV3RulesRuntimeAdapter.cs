@@ -47,6 +47,9 @@ namespace Volleyball.Presentation
 
         public int RulesVersion => _rulesVersion;
 
+        // Immutable per-rally rules facts for downstream authority planners.
+        public OnCourtEligibilitySnapshot Eligibility => _eligibility;
+
         public void BeginRally(TeamSide initialPossession)
         {
             _engine = RallyRulesEngineV3.Open(initialPossession);

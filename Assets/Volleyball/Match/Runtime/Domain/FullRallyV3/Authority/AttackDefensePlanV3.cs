@@ -123,7 +123,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public GateISetIntentV3(long planRevision, long sourceSequence, PlayerId organizer,
             PlayerId preparedAttacker, SimVector3 target, float gateHExpectedContactTime,
             ExecutionSampleClassificationV4 executionClassification,
-            BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
+            float setFlightSeconds = 0f)
         {
             if (planRevision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(planRevision < 0 ? nameof(planRevision) : nameof(sourceSequence));
             PlanRevision = planRevision; SourceSequence = sourceSequence;
@@ -133,6 +134,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
             ExecutionClassification = executionClassification ?? throw new ArgumentNullException(nameof(executionClassification));
             if (executionClassification.ExecutableEnvelope == null) throw new ArgumentException("Set intent requires an executable envelope.", nameof(executionClassification));
             TrajectoryArtifact = trajectoryArtifact ?? throw new ArgumentNullException(nameof(trajectoryArtifact));
+            if (float.IsNaN(setFlightSeconds) || float.IsInfinity(setFlightSeconds) || setFlightSeconds < 0f)
+                throw new ArgumentOutOfRangeException(nameof(setFlightSeconds));
+            SetFlightSeconds = setFlightSeconds;
         }
         public long PlanRevision { get; }
         public long SourceSequence { get; }
@@ -140,6 +144,10 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public PlayerId PreparedAttacker { get; }
         public SimVector3 Target { get; }
         public float GateHExpectedContactTime { get; }
+        // The physical arrival of the immutable set.  Legacy fixture intents may
+        // omit this (zero), while formal Gate I plans must supply a positive value.
+        public float SetFlightSeconds { get; }
+        public float AttackReadyArrivalTime => GateHExpectedContactTime + SetFlightSeconds;
         public ExecutionSampleClassificationV4 ExecutionClassification { get; }
         public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
     }

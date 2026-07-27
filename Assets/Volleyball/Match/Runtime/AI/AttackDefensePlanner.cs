@@ -128,13 +128,18 @@ namespace Volleyball.AI
 
     public sealed class AttackDefensePlanner
     {
+        private const float FixedSimulationStepSeconds = 1f / 120f;
         public GateISetIntentV3 PlanSetIntent(SetIntentPlanningRequestV3 request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             var attacker = Eligible(request).OrderByDescending(AttackScore).ThenBy(x => x.Player.ToString(), StringComparer.Ordinal).FirstOrDefault();
             if (attacker == null) throw new ArgumentException("Gate I requires an eligible attacking player.", nameof(request));
             var target = new SimVector3(attacker.WorldPosition.X, Math.Max(2.35f, attacker.Attributes.Attributes.Attack.ContactHeightMeters - .35f), attacker.WorldPosition.Z);
-            var velocity = new SimVector3(0f, 2.5f, attacker.WorldPosition.Z >= request.AcceptedPass.Position.Z ? 2f : -2f);
+            // The handoff state is the predicted Gate H Set contact, never the
+            // earlier receive state.  Solve the actual discrete flight before
+            // minting its envelope and immutable trajectory evidence.
+            var flight = SolveSetFlight(request, target);
+            var velocity = flight.InitialVelocity;
             var envelope = ExecutionEnvelopeFactoryV4.Create(request.OrganizerAttributes,
                 new ExecutionIntentV4("gate-i-set-" + request.Revision + "-" + request.SourceSequence, ExecutionCandidateCategoryV4.Set, target, velocity, .5f),
                 "gate-i-set-" + request.Revision + "-" + request.SourceSequence, ExecutionEnvelopePolicyV4.GateI);
@@ -149,7 +154,7 @@ namespace Volleyball.AI
                 request.TrajectoryProvider.PredictorConfigurationHash,
                 classification.ExecutableEnvelope.Identity,
                 ExecutionDegradationStepV4.FullSampling));
-            return new GateISetIntentV3(request.Revision, request.SourceSequence, request.Organizer, attacker.Player, target, request.ExpectedSetContactTime, classification, trajectory);
+            return new GateISetIntentV3(request.Revision, request.SourceSequence, request.Organizer, attacker.Player, target, request.ExpectedSetContactTime, classification, trajectory, flight.FlightSeconds);
         }
 
         public AttackPlanningResultV3 PlanAttack(AttackPlanningRequestV3 request)
@@ -220,8 +225,24 @@ namespace Volleyball.AI
         // contact time plus the distance to the generated landing target.  It is
         // intentionally never a presentation or legacy-decision input.
         private static float ArrivalTime(AttackCandidateV3 candidate, GateISetIntentV3 set) =>
-            set.GateHExpectedContactTime + Math.Max(.01f, (candidate.Target - candidate.ContactCenter).Magnitude / 18f);
+            set.AttackReadyArrivalTime + Math.Max(.01f, (candidate.Target - candidate.ContactCenter).Magnitude / 18f);
         private static bool IsPower(AttackActionClassV3 value) => value == AttackActionClassV3.PowerLine || value == AttackActionClassV3.PowerCross || value == AttackActionClassV3.PowerEdge || value == AttackActionClassV3.PowerOverHand;
         private static string Zone(SimVector3 target) => target.X < -1f ? "Line" : target.X > 1f ? "Cross" : "Middle";
+        private static SetFlightSolution SolveSetFlight(SetIntentPlanningRequestV3 request, SimVector3 target)
+        {
+            // Formal plans use the same deterministic solver/fallback ladder as
+            // the physical director; the chosen velocity is then evidence-owned.
+            foreach (var rhythm in new[] { SetRhythm.FastPin, SetRhythm.Adjustment, SetRhythm.HighBall })
+            {
+                try
+                {
+                    return SetFlightSolver.Solve(new SetFlightRequest(rhythm,
+                        request.AcceptedPass.Position, target, 1f, .8f,
+                        request.SimulationParameters, FixedSimulationStepSeconds));
+                }
+                catch (InvalidOperationException) { }
+            }
+            throw new InvalidOperationException("No deterministic Gate I set flight exists.");
+        }
     }
 }

@@ -315,12 +315,20 @@ namespace Volleyball.AI
                 var candidate = State.Plan?.SelectedAction ?? throw new InvalidOperationException(
                     "Final attack execution requires the committed selected candidate.");
                 var exact = _attack.EvidenceFor(candidate);
-                var approach = new AttackApproachPlan(player.WorldPosition, player.WorldPosition, 1f, .8f, 0f);
+                // The attacker approaches the set's contact point, never the
+                // candidate's far-side landing target.  Sending it to the latter
+                // made the formal player miss the immutable third-touch window.
+                var takeoff = new SimVector3(candidate.ContactCenter.X,
+                    player.WorldPosition.Y, candidate.ContactCenter.Z);
+                var approach = new AttackApproachPlan(player.WorldPosition, takeoff,
+                    (takeoff - player.WorldPosition).Magnitude, .8f, 0f);
                 var attackContact = AttackContactPlanner.Plan(new AttackContactInput(
-                    _intent.Target.Y, .8f, 1f, SetQualityGrade.A, approach.Takeoff, .6f, 1f));
-                return new AttackDefenseCommandExecutionV4(_intent.GateHExpectedContactTime + .01f,
-                    0f, default, 1, exact.ExecutionClassification, exact.TrajectoryArtifact,
-                    candidate.Target, approach, attackContact);
+                    _intent.Target.Y, .8f, 1f, SetQualityGrade.A, takeoff, .6f, 1f));
+                var scheduled = _intent.AttackReadyArrivalTime;
+                var approachLead = Math.Min(.6f, Math.Max(.05f, scheduled));
+                return new AttackDefenseCommandExecutionV4(scheduled,
+                    scheduled - approachLead, default, 1, exact.ExecutionClassification, exact.TrajectoryArtifact,
+                    takeoff, approach, attackContact);
             }
             var category = kind == AttackDefenseCommandKind.AttackContact ? ExecutionCandidateCategoryV4.Attack :
                 kind == AttackDefenseCommandKind.BlockContact ? ExecutionCandidateCategoryV4.Block : ExecutionCandidateCategoryV4.Receive;
@@ -331,7 +339,12 @@ namespace Volleyball.AI
                 "gate-i-" + State.Revision + "-" + (int)kind + "-" + actor.Value, ExecutionEnvelopePolicyV4.GateI);
             var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey, category,
                 envelope.BaselineTarget, envelope.BaselineVelocity, envelope.RequestedEffort);
-            return new AttackDefenseCommandExecutionV4(_intent.GateHExpectedContactTime + .01f, 0f, default, 1,
+            // Defense commitment reserves movement immediately, but its physical
+            // contact must follow the final attack launch.  A defense contact at
+            // Set+epsilon can otherwise become an illegal third rally touch.
+            var defenseTime = Math.Max(_intent.AttackReadyArrivalTime + .01f,
+                _intent.GateHExpectedContactTime + .25f);
+            return new AttackDefenseCommandExecutionV4(defenseTime, 0f, default, 1,
                 envelope.Classify(sample), _intent.TrajectoryArtifact, target);
         }
     }

@@ -30,6 +30,30 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlanSetIntent_SolvesExactPredictedContactFlightAndPositiveAttackArrival()
+        {
+            var request = Request();
+            var intent = new AttackDefensePlanner().PlanSetIntent(request);
+            var sample = intent.ExecutionClassification.ExecutableSample;
+            var state = new BallState(request.AcceptedPass.Position, sample.Velocity,
+                request.AcceptedPass.Radius);
+            const float fixedStep = 1f / 120f;
+            var steps = (int)System.Math.Round(intent.SetFlightSeconds / fixedStep);
+
+            Assert.That(intent.SetFlightSeconds, Is.GreaterThan(0f));
+            Assert.That(intent.AttackReadyArrivalTime,
+                Is.GreaterThan(intent.GateHExpectedContactTime));
+            Assert.That(sample.Target, Is.EqualTo(intent.Target));
+            Assert.That(intent.TrajectoryArtifact.Key.BallStateFingerprint,
+                Is.Not.EqualTo(request.PassPrediction.Key.BallStateFingerprint));
+            for (var index = 0; index < steps; index++)
+                BallIntegrator.Step(state, fixedStep,
+                    request.SimulationParameters);
+            Assert.That((state.Position - intent.Target).Magnitude,
+                Is.LessThan(.0003f));
+        }
+
+        [Test]
         public void PlanningRequests_ExposeFactsButNoLegacyTargetOrCandidateInjectionSurface()
         {
             var setNames = typeof(SetIntentPlanningRequestV3).GetProperties().Select(x => x.Name).ToArray();

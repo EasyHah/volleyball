@@ -1574,17 +1574,27 @@ namespace Volleyball.Presentation
                         $"team={decision.Actor.Team} reason={exception.Message}");
                 }
 
-                var readiness = _plannedAttackDecision?.AttackContactPlan?.ApproachCompletion ?? 0.5f;
-                var setSolution = SolveSetFlightWithFallback(new SetFlightRequest(
-                    TacticFor(decision.Actor.Team).SetRhythm,
-                    authoritativeContactCenter,
-                    outgoingTarget,
-                    actor.Ability.SetTechnique,
-                    readiness,
-                    SimulationParameters,
-                    SimulatedBall.DefaultFixedStep));
-                outgoing = setSolution.InitialVelocity;
-                _scheduledSetFlightSeconds = setSolution.FlightSeconds;
+                if (GateIAuthorityEnabled && _activeGateISetIntent != null)
+                {
+                    // Gate H remains the Set contact writer, but executes Gate I's
+                    // immutable physical target/velocity exactly.
+                    outgoing = _activeGateISetIntent.Intent.ExecutionClassification.ExecutableSample.Velocity;
+                    _scheduledSetFlightSeconds = _activeGateISetIntent.Intent.SetFlightSeconds;
+                }
+                else
+                {
+                    var readiness = _plannedAttackDecision?.AttackContactPlan?.ApproachCompletion ?? 0.5f;
+                    var setSolution = SolveSetFlightWithFallback(new SetFlightRequest(
+                        TacticFor(decision.Actor.Team).SetRhythm,
+                        authoritativeContactCenter,
+                        outgoingTarget,
+                        actor.Ability.SetTechnique,
+                        readiness,
+                        SimulationParameters,
+                        SimulatedBall.DefaultFixedStep));
+                    outgoing = setSolution.InitialVelocity;
+                    _scheduledSetFlightSeconds = setSolution.FlightSeconds;
+                }
             }
             else if (decision.Action == TechniqueAction.Attack)
             {
@@ -1810,10 +1820,15 @@ namespace Volleyball.Presentation
             var contactGroup = NextContactGroup();
             var gateIIntent = GateIAuthorityEnabled && decision.Action == TechniqueAction.Set
                 ? _activeGateISetIntent?.Intent : null;
+            // Gate H still owns the Set contact and timing, while its Gate I
+            // receipt carries an already-solved immutable velocity.  Applying a
+            // second skill-error perturbation would make its physical endpoint
+            // differ from the intent's envelope/trajectory evidence.
+            var gateISetExecutionError = gateIIntent != null ? default : executionError;
             var payload = new ReceiveOrganizationCommandExecutionV4(
                 _expectedContactTime,
                 _ball.SimulationTime,
-                executionError,
+                gateISetExecutionError,
                 contactGroup,
                 gateIIntent?.ExecutionClassification ?? _lastExecutionSampleClassificationV4,
                 gateIIntent?.TrajectoryArtifact ?? trajectoryArtifact,
@@ -1949,14 +1964,18 @@ namespace Volleyball.Presentation
             if (_attackDefenseCoordinator.State.Phase != AttackDefenseAuthorityPhaseV3.Idle)
                 throw new InvalidOperationException("Gate I cannot plan a second SetIntent before the accepted Set.");
             var side = ToSide(gateHDecision.Actor.Team);
+            var organizer = _players[gateHDecision.Actor];
             var players = _players.OrderBy(pair => pair.Key.Team).ThenBy(pair => pair.Key.RosterSlot)
                 .Select(pair => new GateITacticalPlayerV3(pair.Value.StableId, ToSide(pair.Key.Team),
-                    ToSimulation(pair.Value.transform.position), pair.Key.Team == gateHDecision.Actor.Team,
+                    ToSimulation(pair.Value.transform.position),
+                    pair.Key.Team == gateHDecision.Actor.Team &&
+                    !pair.Value.StableId.Equals(organizer.StableId) &&
+                    _v3RulesAdapter.Eligibility.For(pair.Value.StableId)
+                        .CanAttackAboveNetFromFrontZone,
                     pair.Value.Ability.Derived)).ToArray();
-            var organizer = _players[gateHDecision.Actor];
             var result = _attackDefenseCoordinator.PlanSetIntent(new SetIntentPlanningRequestV3(
                 _gateHPlanRevision, ++_gateHSourceSequence, side, organizer.StableId,
-                _ball.SimulationTime + flightSeconds, _ball.State, players, organizer.Ability.Derived,
+                _ball.SimulationTime + flightSeconds, PredictBallState(flightSeconds), players, organizer.Ability.Derived,
                 passPrediction ?? _lastTrajectoryPredictionArtifactV4 ?? throw new InvalidOperationException("Accepted pass trajectory is required."),
                 _trajectoryPredictionProviderV4, SimulationParameters, _matchContext.PhysicsConfigurationHash,
                 _gateHSourceSequence));
@@ -2046,6 +2065,39 @@ namespace Volleyball.Presentation
                 throw new InvalidOperationException("Gate I must publish a non-empty command batch.");
             var team = PlayerForStableId(batch.Commands[0].Actor).Id.Team;
             _attackDefenseControllers[team].PreflightAndCommit(batch);
+            // A Gate I contact has already been atomically committed to the
+            // player controller.  It still needs the physical rally window that
+            // legacy ScheduleDecision normally owns; do not synthesize a new
+            // tactical decision or open defense windows before the attack.
+            var attack = batch.Commands.SingleOrDefault(command =>
+                command.Kind == AttackDefenseCommandKind.AttackContact);
+            if (attack != null)
+            {
+                var execution = attack.Execution ?? throw new InvalidOperationException(
+                    "Gate I attack requires immutable execution facts.");
+                var actor = PlayerForStableId(attack.Actor).Id;
+                _scheduledDecision = null;
+                _scheduledPrimaryActor = actor;
+                _expectedContactTime = execution.ScheduledSimulationTime;
+                _touchState.OpenWindow(new RallyContactWindow(actor.Team,
+                    TechniqueAction.Attack,
+                    _expectedContactTime - ContactWindowLead,
+                    _expectedContactTime + ContactWindowTail,
+                    new[] { actor }));
+                _contactDeadlineActive = true;
+            }
+            var blockCount = batch.Commands.Count(command =>
+                command.Kind == AttackDefenseCommandKind.BlockContact);
+            if (blockCount > 0)
+            {
+                BlockSupportAssignments += blockCount;
+                MaximumScheduledBlockers = Mathf.Max(MaximumScheduledBlockers,
+                    blockCount);
+                if (blockCount >= 2)
+                {
+                    ScheduledMultiBlockUnits++;
+                }
+            }
         }
 
         private static string GateHReceiptKey(
@@ -4441,13 +4493,18 @@ namespace Volleyball.Presentation
 
         private SimVector3 PredictBallCenter(float flightSeconds)
         {
+            return PredictBallState(flightSeconds).Position;
+        }
+
+        private BallState PredictBallState(float flightSeconds)
+        {
             var prediction = _ball.State.Clone();
             var steps = Mathf.Max(1, Mathf.RoundToInt(flightSeconds / SimulatedBall.DefaultFixedStep));
             for (var step = 0; step < steps; step++)
             {
                 BallIntegrator.Step(prediction, SimulatedBall.DefaultFixedStep, SimulationParameters);
             }
-            return prediction.Position;
+            return prediction;
         }
 
         private SimVector3 PredictGate5BallCenterV4(
