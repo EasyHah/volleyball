@@ -133,6 +133,53 @@ namespace Volleyball.EditModeTests
                 Throws.Nothing);
         }
 
+        [Test]
+        public void IncidentalDefensePreview_ProducesLocalRevisionWithoutMutation()
+        {
+            var coordinator = Fixture.CommittedAttack(new Sink(), out var plan);
+            coordinator.AcceptContact(Fixture.Contact(plan, 6, plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact, ""));
+            var blocker = plan.Defense.Responsibilities.First(value =>
+                value.Kind == DefenseResponsibilityKindV3.PrimaryBlock);
+
+            var preview = coordinator.PreviewIncidentalDefenseContact(
+                plan.Revision, 7, blocker.Actor, blocker.Branch,
+                "actual-dig-envelope", "actual-dig-trajectory", true);
+
+            Assert.That(preview.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.AwaitingActualContact));
+            Assert.That(preview.Plan, Is.SameAs(plan));
+            Assert.That(preview.CoverageDecision.Kind,
+                Is.EqualTo(PlanCoverageDecisionKind.LocalRevision));
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.AwaitingActualContact));
+        }
+
+        [Test]
+        public void IncidentalDefensePreview_RejectsActorOutsideDefenseRoster()
+        {
+            var coordinator = Fixture.AwaitingDefense(out var plan);
+
+            Assert.That(() => coordinator.PreviewIncidentalDefenseContact(
+                plan.Revision, 7,
+                new Volleyball.Shared.Contracts.PlayerId("not-on-defense"),
+                RallyPlanBranchV3.Primary, "actual", "trajectory", true),
+                Throws.InvalidOperationException);
+        }
+
+        [Test]
+        public void IncidentalDefensePreview_RejectsUnacceptedV3Contact()
+        {
+            var coordinator = Fixture.AwaitingDefense(out var plan);
+            var blocker = plan.Defense.Responsibilities.First(value =>
+                value.Kind == DefenseResponsibilityKindV3.PrimaryBlock);
+
+            Assert.That(() => coordinator.PreviewIncidentalDefenseContact(
+                plan.Revision, 7, blocker.Actor, blocker.Branch,
+                "actual", "trajectory", false),
+                Throws.InvalidOperationException);
+        }
+
         private sealed class Sink : IAttackDefenseAuthorityCommandSink
         {
             public List<AttackDefenseCommandBatch> Batches { get; } = new List<AttackDefenseCommandBatch>();
@@ -196,6 +243,15 @@ namespace Volleyball.EditModeTests
                     new[] { "zone-1" }));
                 coordinator.CommitFinalAttack(4, 5);
                 plan = coordinator.State.Plan;
+                return coordinator;
+            }
+
+            public static AttackDefenseAuthorityCoordinator AwaitingDefense(
+                out AttackDefensePlanV3 plan)
+            {
+                var coordinator = CommittedAttack(new Sink(), out plan);
+                coordinator.AcceptContact(Contact(plan, 6, plan.SelectedAction.Actor,
+                    AttackDefenseCommandKind.AttackContact, ""));
                 return coordinator;
             }
 

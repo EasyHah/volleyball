@@ -252,6 +252,35 @@ namespace Volleyball.AI
             return State;
         }
 
+        // An actual V3-accepted dig may be made by a player whose committed
+        // Gate I responsibility was block/coverage rather than a scheduled
+        // FloorDefense contact.  This is a pure preview: presentation can bind
+        // its returned immutable evidence to the event before any state change.
+        public AttackDefenseAuthorityEvidenceV3 PreviewIncidentalDefenseContact(
+            long revision, long sourceSequence, PlayerId actor,
+            RallyPlanBranchV3 branch, string envelopeIdentity,
+            string trajectoryArtifactIdentity, bool v3Accepted)
+        {
+            if (State.Phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact ||
+                revision != State.Revision || sourceSequence <= _lastSequence ||
+                !v3Accepted || string.IsNullOrWhiteSpace(envelopeIdentity) ||
+                string.IsNullOrWhiteSpace(trajectoryArtifactIdentity))
+                throw new InvalidOperationException(
+                    "Incidental defense preview requires current V3-accepted evidence.");
+            if (!Enum.IsDefined(typeof(RallyPlanBranchV3), branch) ||
+                !State.Plan.Defense.Responsibilities.Any(value =>
+                    value.Actor.Equals(actor)))
+                throw new InvalidOperationException(
+                    "Incidental defense actor is outside the committed defense roster.");
+
+            return new AttackDefenseAuthorityEvidenceV3(
+                State.Revision,
+                sourceSequence,
+                State.Phase,
+                State.Plan,
+                Coverage(PlanCoverageReason.ResponsibleActorChanged));
+        }
+
         public AttackDefenseAuthorityStateV3 AcceptContact(GateIContactEvidenceV3 contact)
         {
             if (contact == null) throw new ArgumentNullException(nameof(contact));
@@ -342,8 +371,16 @@ namespace Volleyball.AI
                 : contact.ActionKind == AttackDefenseCommandKind.FloorDefense || contact.ActionKind == AttackDefenseCommandKind.AttackCover
                     ? responsibility != null : false;
             var expectedEnvelope = "gate-i-" + State.Revision + "-" + (int)contact.ActionKind + "-" + contact.Actor.Value;
-            if (!kindMatches || contact.EnvelopeIdentity != expectedEnvelope ||
-                contact.TrajectoryArtifactIdentity != _intent.TrajectoryArtifact.ArtifactIdentity)
+            var incidental = contact.ActionKind ==
+                AttackDefenseCommandKind.FloorDefense &&
+                contact.CoverageReason ==
+                    PlanCoverageReason.ResponsibleActorChanged;
+            if (!kindMatches || (!incidental &&
+                (contact.EnvelopeIdentity != expectedEnvelope ||
+                 contact.TrajectoryArtifactIdentity !=
+                    _intent.TrajectoryArtifact.ArtifactIdentity)) ||
+                (incidental && (string.IsNullOrWhiteSpace(contact.EnvelopeIdentity) ||
+                 string.IsNullOrWhiteSpace(contact.TrajectoryArtifactIdentity))))
                 throw new InvalidOperationException("Defense evidence must exactly match a committed responsibility.");
         }
 
