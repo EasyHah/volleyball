@@ -5,6 +5,9 @@ using System.Linq;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
+using ContactCapsuleFrame = Volleyball.Domain.Simulation.ContactCapsuleFrame;
+using TeamCourtFrame = Volleyball.Domain.Prototype.TeamCourtFrame;
+using TeamId = Volleyball.Domain.Prototype.TeamId;
 
 namespace Volleyball.AI
 {
@@ -87,13 +90,41 @@ namespace Volleyball.AI
     {
         public AttackPlanningRequestV3(long revision, GateISetIntentV3 setIntent, AcceptedSetEvidenceV3 actualSet,
             IReadOnlyList<GateITacticalPlayerV3> players)
+            : this(revision, setIntent, actualSet, players,
+                new BallTrajectoryPredictionProviderV4(new TrajectoryPredictionProviderConfigurationV4(
+                    32, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    setIntent?.TrajectoryArtifact.PredictorVersion ?? BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                    setIntent?.TrajectoryArtifact.PredictorConfigurationHash ?? BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash)),
+                new BallSimulationParameters(-9.8f, .9995f),
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(new BallSimulationParameters(-9.8f, .9995f)),
+                setIntent?.TrajectoryArtifact.Key.BallStateVersion + 1 ?? 0)
+        {
+        }
+
+        public AttackPlanningRequestV3(long revision, GateISetIntentV3 setIntent, AcceptedSetEvidenceV3 actualSet,
+            IReadOnlyList<GateITacticalPlayerV3> players,
+            BallTrajectoryPredictionProviderV4 trajectoryProvider,
+            BallSimulationParameters simulationParameters, string physicsConfigurationHash,
+            long attackBallStateVersion)
         {
             if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision)); Revision = revision;
             SetIntent = setIntent ?? throw new ArgumentNullException(nameof(setIntent)); ActualSet = actualSet ?? throw new ArgumentNullException(nameof(actualSet));
             Players = SetIntentPlanningRequestV3.Copy(players, nameof(players));
+            TrajectoryProvider = trajectoryProvider ?? throw new ArgumentNullException(nameof(trajectoryProvider));
+            SimulationParameters = simulationParameters;
+            PhysicsConfigurationHash = string.IsNullOrWhiteSpace(physicsConfigurationHash) ? throw new ArgumentException("Value is required.", nameof(physicsConfigurationHash)) : physicsConfigurationHash;
+            if (attackBallStateVersion < 0) throw new ArgumentOutOfRangeException(nameof(attackBallStateVersion));
+            AttackBallStateVersion = attackBallStateVersion;
         }
         public long Revision { get; } public GateISetIntentV3 SetIntent { get; } public AcceptedSetEvidenceV3 ActualSet { get; }
         public IReadOnlyList<GateITacticalPlayerV3> Players { get; }
+        // Post-set trajectories are fresh, candidate-owned physical predictions.
+        // This preserves the accepted Set artifact as Set evidence rather than
+        // relabeling it as an attack trajectory.
+        public BallTrajectoryPredictionProviderV4 TrajectoryProvider { get; }
+        public BallSimulationParameters SimulationParameters { get; }
+        public string PhysicsConfigurationHash { get; }
+        public long AttackBallStateVersion { get; }
     }
 
     public sealed class AttackPlanningResultV3
@@ -129,6 +160,10 @@ namespace Volleyball.AI
     public sealed class AttackDefensePlanner
     {
         private const float FixedSimulationStepSeconds = 1f / 120f;
+        // A Gate-I set arrives at the player's executable contact center rather
+        // than a presentation-only apex; this deterministic flight gives the
+        // route solver enough net clearance at that real contact height.
+        private const float GateIAttackFlightSeconds = .85f;
         public GateISetIntentV3 PlanSetIntent(SetIntentPlanningRequestV3 request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
@@ -163,7 +198,7 @@ namespace Volleyball.AI
             if (request.SetIntent.PlanRevision != request.Revision || !request.SetIntent.Organizer.Equals(request.ActualSet.Actor) || request.SetIntent.ExecutionClassification.ExecutableEnvelope.Identity != request.ActualSet.EnvelopeIdentity || request.SetIntent.TrajectoryArtifact.ArtifactIdentity != request.ActualSet.TrajectoryArtifactIdentity) throw new ArgumentException("Accepted Set evidence does not match the immutable SetIntent.", nameof(request));
             var actor = request.Players.FirstOrDefault(x => x.Player.Equals(request.SetIntent.PreparedAttacker) && x.CanAttack);
             if (actor == null) throw new ArgumentException("Accepted Set attacker is not eligible.", nameof(request));
-            var generatedEvidence = Generate(actor, request.SetIntent).OrderByDescending(c => c.Candidate.IsQualifiedPowerRoute).ThenByDescending(c => c.Candidate.ExpectedRallyValue).ThenBy(c => c.Candidate.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.Candidate.ActionClass).ThenBy(c => c.Candidate.CandidateIdentity, StringComparer.Ordinal).ToArray();
+            var generatedEvidence = Generate(actor, request).OrderByDescending(c => c.Candidate.IsQualifiedPowerRoute).ThenByDescending(c => c.Candidate.ExpectedRallyValue).ThenBy(c => c.Candidate.Actor.ToString(), StringComparer.Ordinal).ThenBy(c => (int)c.Candidate.ActionClass).ThenBy(c => c.Candidate.CandidateIdentity, StringComparer.Ordinal).ToArray();
             var generated = generatedEvidence.Select(x => x.Candidate).ToArray();
             var power = generated.Where(c => IsPower(c.ActionClass) && c.IsQualifiedPowerRoute && c.LegalSampleRatio >= .6f).ToArray();
             // Tool recovery stays visible as an eliminated tactical branch, but does not
@@ -202,25 +237,146 @@ namespace Volleyball.AI
 
         private static IEnumerable<GateITacticalPlayerV3> Eligible(SetIntentPlanningRequestV3 request) => request.Players.Where(x => x.Side == request.AttackingSide && x.CanAttack);
         private static float AttackScore(GateITacticalPlayerV3 x) { var a = x.Attributes.Attributes.Attack; return a.PowerCapacity + a.DirectionControl + a.SpeedControl + a.ApproachMobility; }
-        private static IEnumerable<GateIAttackExecutionEvidenceV3> Generate(GateITacticalPlayerV3 actor, GateISetIntentV3 set)
+        private static IEnumerable<GateIAttackExecutionEvidenceV3> Generate(GateITacticalPlayerV3 actor, AttackPlanningRequestV3 request)
         {
-            var a = actor.Attributes.Attributes.Attack; var distance = (actor.WorldPosition - set.Target).Magnitude; var ratio = Math.Max(0f, Math.Min(1f, 1f - (distance / 8f))); var powerQualified = ratio >= .6f && a.PowerCapacity >= .45f;
+            var set = request.SetIntent;
+            var a = actor.Attributes.Attributes.Attack;
             foreach (var action in new[] { AttackActionClassV3.PowerLine, AttackActionClassV3.PowerCross, AttackActionClassV3.PowerEdge, AttackActionClassV3.PowerOverHand, AttackActionClassV3.Tip, AttackActionClassV3.Roll, AttackActionClassV3.Push, AttackActionClassV3.HighSurvival, AttackActionClassV3.BlockOut, AttackActionClassV3.BlockToolRecovery })
             {
-                var power = IsPower(action); var tool = action == AttackActionClassV3.BlockToolRecovery; var target = Target(set.Target, action); var qualified = power && powerQualified;
-                var value = (power ? .65f + a.PowerCapacity : .25f + a.DirectionControl) + (ratio * .2f) - ((int)action * .001f);
+                var power = IsPower(action); var tool = action == AttackActionClassV3.BlockToolRecovery;
                 var identity = "gate-i-" + set.PlanRevision + "-" + action;
                 var category = power ? ExecutionCandidateCategoryV4.Attack : ExecutionCandidateCategoryV4.SoftAction;
-                var velocity = new SimVector3(0f, 1.5f, target.Z >= set.Target.Z ? 2f : -2f);
+                var route = RouteFor(action, set.Target);
+                var selection = TrySelectRoute(actor, set.Target, route, request.SimulationParameters);
+                var target = selection.HasValue ? selection.Value.Target : Target(set.Target, action, actor.Side);
+                var velocity = selection.HasValue
+                    ? selection.Value.InitialVelocity
+                    : SafeRejectedVelocity(set.Target, request.SimulationParameters);
                 var envelope = ExecutionEnvelopeFactoryV4.Create(actor.Attributes, new ExecutionIntentV4(identity, category, target, velocity, .5f), identity, ExecutionEnvelopePolicyV4.GateI);
                 var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey, category, target, velocity, .5f);
                 var classification = envelope.Classify(sample);
-                var trajectory = set.TrajectoryArtifact.ForCandidate(identity, classification.ExecutableEnvelope.Identity);
-                var candidate = new AttackCandidateV3(identity, actor.Player, action, set.Target, target, value, power ? ratio : 1f, qualified, qualified || !power ? (tool ? "Tool recovery requires qualification." : string.Empty) : "Set geometry does not qualify power.", classification.ExecutableEnvelope.Identity, trajectory.ArtifactIdentity);
+                // The baseline artifact is the only artifact execution may use.
+                // Reliability is separately derived from the Gate-I policy's seven
+                // deterministic envelope samples, each predicted by the shared
+                // provider with the same physics configuration.
+                var trajectory = PredictTrajectory(request, actor.Side, set.Target,
+                    classification.ExecutableSample.Velocity, identity + ":trajectory:0",
+                    classification.ExecutableEnvelope.Identity);
+                var ratio = LegalSampleRatio(request, actor.Side, set.Target,
+                    classification.ExecutableEnvelope, classification.ExecutableSample,
+                    identity);
+                var arrivalFeasible = (actor.WorldPosition - set.Target).Magnitude <= 8f;
+                var contactGeometryFeasible = set.Target.Y >= 2.60f;
+                var qualified = power && arrivalFeasible && contactGeometryFeasible && a.PowerCapacity >= .45f && ratio >= .6f;
+                var value = (power ? .65f + a.PowerCapacity : .25f + a.DirectionControl) + (ratio * .2f) - ((int)action * .001f);
+                var elimination = power && !qualified
+                    ? !arrivalFeasible ? "ArrivalInfeasible" : !contactGeometryFeasible
+                        ? "ContactGeometryInfeasible" : "InsufficientLegalCrossRatio"
+                    : (tool ? "Tool recovery requires qualification." : string.Empty);
+                var candidate = new AttackCandidateV3(identity, actor.Player, action, set.Target, target, value, ratio, qualified, elimination, classification.ExecutableEnvelope.Identity, trajectory.ArtifactIdentity);
                 yield return new GateIAttackExecutionEvidenceV3(candidate, classification, trajectory);
             }
         }
-        private static SimVector3 Target(SimVector3 center, AttackActionClassV3 action) { var offset = action == AttackActionClassV3.PowerLine ? -3f : action == AttackActionClassV3.PowerCross ? 3f : 0f; return new SimVector3(center.X + offset, 1f, center.Z + 7f); }
+        private static AttackRouteSelection? TrySelectRoute(GateITacticalPlayerV3 actor, SimVector3 contactCenter,
+            GeometricAttackRoute route, BallSimulationParameters parameters)
+        {
+            var input = new AttackRouteSelectionInput(actor.Side == TeamSide.Home ? TeamId.Blue : TeamId.Orange,
+                contactCenter, GateIAttackFlightSeconds, Array.Empty<ContactCapsuleFrame>(), parameters, FixedSimulationStepSeconds);
+            try
+            {
+                return AttackRouteSelector.EvaluateAll(input,
+                    ExecutionEnvelopeFactoryV4.Create(actor.Attributes,
+                        new ExecutionIntentV4("gate-i-route-evaluation", ExecutionCandidateCategoryV4.Attack,
+                            contactCenter, new SimVector3(0f, 1f, 1f), .5f),
+                        "gate-i-route-evaluation", ExecutionEnvelopePolicyV4.GateI),
+                    Array.Empty<BallTrajectoryPredictionArtifactV4>())
+                    .Single(value => value.Route == route).Selection;
+            }
+            catch (ArgumentException)
+            {
+                return null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+        private static GeometricAttackRoute RouteFor(AttackActionClassV3 action, SimVector3 center) => action switch
+        {
+            AttackActionClassV3.PowerLine => GeometricAttackRoute.Line,
+            AttackActionClassV3.PowerCross => GeometricAttackRoute.CrossCourt,
+            AttackActionClassV3.PowerEdge => center.X <= 0f ? GeometricAttackRoute.EdgeRight : GeometricAttackRoute.EdgeLeft,
+            AttackActionClassV3.PowerOverHand => GeometricAttackRoute.OverHand,
+            _ => GeometricAttackRoute.Line
+        };
+        private static SimVector3 Target(SimVector3 center, AttackActionClassV3 action, TeamSide side)
+        {
+            var frame = new TeamCourtFrame(side == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
+            var offset = action == AttackActionClassV3.PowerLine ? -3f : action == AttackActionClassV3.PowerCross ? 3f : 0f;
+            return frame.ToWorld(new SimVector3(center.X + offset, .12f, 5.25f));
+        }
+        private static SimVector3 SafeRejectedVelocity(SimVector3 center, BallSimulationParameters parameters)
+        {
+            return ReturnVelocitySolver.Solve(center, new SimVector3(center.X, .12f, center.Z),
+                .55f, FixedSimulationStepSeconds, parameters).InitialVelocity;
+        }
+        private static float LegalSampleRatio(AttackPlanningRequestV3 request, TeamSide side,
+            SimVector3 contactCenter, ExecutionEnvelopeV4 envelope,
+            ExecutionSampleV4 baseline, string candidateIdentity)
+        {
+            var legal = 0;
+            var offsets = DeterministicVelocityOffsets(envelope.VelocityError);
+            for (var index = 0; index < offsets.Count; index++)
+            {
+                var velocity = baseline.Velocity + offsets[index];
+                var trajectory = PredictTrajectory(request, side, contactCenter, velocity,
+                    candidateIdentity + ":trajectory:" + index, envelope.Identity);
+                if (IsLegalAttackTrajectory(trajectory, side)) legal++;
+            }
+            return legal / (float)offsets.Count;
+        }
+        private static BallTrajectoryPredictionArtifactV4 PredictTrajectory(
+            AttackPlanningRequestV3 request, TeamSide side, SimVector3 contactCenter,
+            SimVector3 velocity, string samplingKey, string envelopeIdentity) =>
+            request.TrajectoryProvider.Predict(new BallTrajectoryPredictionRequestV4(
+                side, request.AttackBallStateVersion, new BallState(contactCenter, velocity, .12f),
+                request.SimulationParameters, request.PhysicsConfigurationHash, samplingKey,
+                request.TrajectoryProvider.PredictorVersion,
+                request.TrajectoryProvider.PredictorConfigurationHash, envelopeIdentity,
+                ExecutionDegradationStepV4.FullSampling));
+        private static IReadOnlyList<SimVector3> DeterministicVelocityOffsets(BoundedErrorDistributionV4 error) =>
+            new[]
+            {
+                SimVector3.Zero,
+                new SimVector3(error.MinimumError.X, 0f, 0f),
+                new SimVector3(error.MaximumError.X, 0f, 0f),
+                new SimVector3(0f, error.MinimumError.Y, 0f),
+                new SimVector3(0f, error.MaximumError.Y, 0f),
+                new SimVector3(0f, 0f, error.MinimumError.Z),
+                new SimVector3(0f, 0f, error.MaximumError.Z)
+            };
+        private static bool IsLegalAttackTrajectory(BallTrajectoryPredictionArtifactV4 trajectory, TeamSide side)
+        {
+            var frame = new TeamCourtFrame(side == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
+            var samples = trajectory.PredictionSnapshot.Samples;
+            var crossed = false;
+            for (var index = 1; index < samples.Count; index++)
+            {
+                var before = frame.ToLocal(samples[index - 1].Position);
+                var after = frame.ToLocal(samples[index].Position);
+                if (before.Z < 0f && after.Z >= 0f)
+                {
+                    var alpha = -before.Z / (after.Z - before.Z);
+                    var crossing = SimVector3.Lerp(samples[index - 1].Position, samples[index].Position, alpha);
+                    crossed = crossing.Y - .12f > 2.48f && Math.Abs(crossing.X) + .12f <= 4.5f;
+                    break;
+                }
+            }
+            var landing = trajectory.PredictionSnapshot.GroundLanding;
+            if (!crossed || !landing.HasValue) return false;
+            var localLanding = frame.ToLocal(landing.Value.Position);
+            return Math.Abs(localLanding.X) + .12f <= 4.5f && localLanding.Z >= 0f && localLanding.Z + .12f <= 9f;
+        }
         // Public timing is a shared, evidence-derived prediction: the accepted Set
         // contact time plus the distance to the generated landing target.  It is
         // intentionally never a presentation or legacy-decision input.

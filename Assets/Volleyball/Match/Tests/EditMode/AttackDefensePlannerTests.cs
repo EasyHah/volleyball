@@ -84,7 +84,7 @@ namespace Volleyball.EditModeTests
             Assert.That(result.PublicThreat.Entries.All(x => x.ArrivalTime > intent.GateHExpectedContactTime), Is.True);
             Assert.That(result.ExecutionEvidence.All(x => x.Candidate.EnvelopeIdentity == x.ExecutionClassification.ExecutableEnvelope.Identity && x.Candidate.TrajectoryArtifactIdentity == x.TrajectoryArtifact.ArtifactIdentity), Is.True);
             Assert.That(result.ExecutionEvidence.Where(x => x.Candidate.IsQualifiedPowerRoute).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.Attack), Is.True);
-            Assert.That(result.ExecutionEvidence.Where(x => !x.Candidate.IsQualifiedPowerRoute).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.SoftAction), Is.True);
+            Assert.That(result.ExecutionEvidence.Where(x => !IsPower(x.Candidate.ActionClass)).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.SoftAction), Is.True);
             Assert.That(result.ExecutionEvidence.Select(x => x.TrajectoryArtifact.ArtifactIdentity).Distinct().Count(), Is.EqualTo(result.ExecutionEvidence.Count));
         }
 
@@ -98,6 +98,67 @@ namespace Volleyball.EditModeTests
             Assert.That(poor.QualifiedPowerRoutes, Is.Empty);
             Assert.That(() => planner.PlanAttack(new AttackPlanningRequestV3(7, intent,
                 new AcceptedSetEvidenceV3(intent.Organizer, "wrong-envelope", intent.TrajectoryArtifact.ArtifactIdentity), request.Players)), Throws.ArgumentException);
+        }
+
+        [Test]
+        public void PlanAttack_ASetPowerLine_UsesExactExecutableTrajectoryAcrossNetIntoOpponentCourt()
+        {
+            var request = Request();
+            var planner = new AttackDefensePlanner();
+            var intent = planner.PlanSetIntent(request);
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), request.Players));
+            var evidence = result.ExecutionEvidence.Single(value =>
+                value.Candidate.ActionClass == AttackActionClassV3.PowerLine);
+
+            Assert.That(evidence.Candidate.IsQualifiedPowerRoute, Is.True);
+            Assert.That(evidence.Candidate.LegalSampleRatio, Is.GreaterThanOrEqualTo(.6f));
+            Assert.That(evidence.ExecutionClassification.ExecutableSample.Velocity,
+                Is.Not.EqualTo(new SimVector3(0f, 1.5f, 2f)));
+            Assert.That(evidence.ExecutionClassification.ExecutableSample.Velocity,
+                Is.Not.EqualTo(new SimVector3(0f, 1.5f, -2f)));
+            Assert.That(CrossesAndLandsOpponentSide(evidence.TrajectoryArtifact, TeamSide.Home), Is.True);
+            Assert.That(evidence.Candidate.EnvelopeIdentity,
+                Is.EqualTo(evidence.ExecutionClassification.ExecutableEnvelope.Identity));
+            Assert.That(evidence.Candidate.TrajectoryArtifactIdentity,
+                Is.EqualTo(evidence.TrajectoryArtifact.ArtifactIdentity));
+        }
+
+        [Test]
+        public void PlanAttack_PoorSetWithInfeasibleContactGeometry_EliminatesPowerBeforeScoring()
+        {
+            var request = Request();
+            var planner = new AttackDefensePlanner();
+            var normal = planner.PlanSetIntent(request);
+            var poor = new GateISetIntentV3(normal.PlanRevision, normal.SourceSequence,
+                normal.Organizer, normal.PreparedAttacker,
+                new SimVector3(normal.Target.X, .2f, normal.Target.Z),
+                normal.GateHExpectedContactTime, normal.ExecutionClassification,
+                normal.TrajectoryArtifact, normal.SetFlightSeconds);
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, poor, Evidence(poor), request.Players));
+
+            Assert.That(result.Candidates.Where(value => value.ActionClass == AttackActionClassV3.PowerLine ||
+                value.ActionClass == AttackActionClassV3.PowerCross ||
+                value.ActionClass == AttackActionClassV3.PowerEdge ||
+                value.ActionClass == AttackActionClassV3.PowerOverHand),
+                Has.All.Matches<AttackCandidateV3>(value => !value.IsQualifiedPowerRoute &&
+                    value.EliminationReason == "ContactGeometryInfeasible"));
+        }
+
+        [Test]
+        public void PlanAttack_LegalSampleRatio_ComesFromTrajectoryRatherThanAttackerDistance()
+        {
+            var request = Request();
+            var planner = new AttackDefensePlanner();
+            var intent = planner.PlanSetIntent(request);
+            var near = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), request.Players));
+            var farPlayers = new[] { new GateITacticalPlayerV3(request.Players[0].Player,
+                TeamSide.Home, new SimVector3(30f, 2f, 30f), true,
+                request.Players[0].Attributes) };
+            var far = planner.PlanAttack(new AttackPlanningRequestV3(7, intent, Evidence(intent), farPlayers));
+
+            var nearLine = near.Candidates.Single(value => value.ActionClass == AttackActionClassV3.PowerLine);
+            var farLine = far.Candidates.Single(value => value.ActionClass == AttackActionClassV3.PowerLine);
+            Assert.That(farLine.LegalSampleRatio, Is.EqualTo(nearLine.LegalSampleRatio));
         }
 
         [Test]
@@ -123,10 +184,25 @@ namespace Volleyball.EditModeTests
                     context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash, envelope.Identity, ExecutionDegradationStepV4.FullSampling));
             return new SetIntentPlanningRequestV3(7, 1, TeamSide.Home, new PlayerId("home-setter"), 1f,
                 new BallState(new SimVector3(0f, 3f, -2f), new SimVector3(0f, 4f, 1f), .12f),
-                new[] { new GateITacticalPlayerV3(new PlayerId("home-attacker"), TeamSide.Home, new SimVector3(0f, 2f, 1f), true, derived) }, derived, artifact);
+                new[] { new GateITacticalPlayerV3(new PlayerId("home-attacker"), TeamSide.Home, new SimVector3(0f, 2f, -2f), true, derived) }, derived, artifact);
         }
 
         private static AcceptedSetEvidenceV3 Evidence(GateISetIntentV3 intent) =>
             new AcceptedSetEvidenceV3(intent.Organizer, intent.ExecutionClassification.ExecutableEnvelope.Identity, intent.TrajectoryArtifact.ArtifactIdentity);
+
+        private static bool CrossesAndLandsOpponentSide(BallTrajectoryPredictionArtifactV4 artifact,
+            TeamSide attackingSide)
+        {
+            var depthSign = attackingSide == TeamSide.Home ? 1f : -1f;
+            var crossed = artifact.PredictionSnapshot.Samples.Any(sample => sample.Position.Z * depthSign > 0f && sample.Position.Y > 2.6f);
+            var landing = artifact.PredictionSnapshot.GroundLanding;
+            return crossed && landing.HasValue && landing.Value.Position.Z * depthSign > 0f &&
+                System.Math.Abs(landing.Value.Position.X) < 4.5f;
+        }
+
+        private static bool IsPower(AttackActionClassV3 value) =>
+            value == AttackActionClassV3.PowerLine || value == AttackActionClassV3.PowerCross ||
+            value == AttackActionClassV3.PowerEdge || value == AttackActionClassV3.PowerOverHand;
+
     }
 }
