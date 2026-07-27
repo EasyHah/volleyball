@@ -175,7 +175,8 @@ namespace Volleyball.Presentation
             AttackContactPlan? attackContactPlan = null,
             SetRoute? normalSetRoute = null,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
-            bool allowGateISoftAttack = false)
+            bool allowGateISoftAttack = false,
+            bool useExactTargetVelocity = false)
         {
             ValidateV4Schedule(action, executionClassification, attackApproach,
                 attackContactPlan, allowGateISoftAttack);
@@ -208,7 +209,8 @@ namespace Volleyball.Presentation
                 command.AttackContactPlan,
                 command.NormalSetRoute,
                 applyLegacyAttackPowerScale: false,
-                executionCommand: command);
+                executionCommand: command,
+                useExactTargetVelocity: useExactTargetVelocity);
         }
 
         public void ValidateV4Schedule(
@@ -313,7 +315,8 @@ namespace Volleyball.Presentation
             AttackContactPlan? attackContactPlan,
             SetRoute? normalSetRoute,
             bool applyLegacyAttackPowerScale,
-            PlayerExecutionCommand executionCommand = null)
+            PlayerExecutionCommand executionCommand = null,
+            bool useExactTargetVelocity = false)
         {
             ValidateScheduleContactArguments(action, attackApproach, attackContactPlan);
 
@@ -397,7 +400,8 @@ namespace Volleyball.Presentation
                 playerTechnique,
                 resolvedTargetVelocity,
                 CurrentSetContactHand(),
-                authoritativeContactCenter));
+                authoritativeContactCenter,
+                useExactTargetVelocity));
             _contactSurfaceProvider.Begin();
             _actionTimelineState.DisableSupport();
         }

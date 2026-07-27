@@ -396,7 +396,10 @@ namespace Volleyball.Presentation
                         execution.MovementStartSimulationTime,
                         attackApproach: command.Decision.AttackApproach,
                         attackContactPlan: command.Decision.AttackContactPlan,
-                        trajectoryArtifact: execution.TrajectoryArtifact);
+                        trajectoryArtifact: execution.TrajectoryArtifact,
+                        useExactTargetVelocity:
+                        command.Kind == ReceiveOrganizationCommandKind.OrganizationContact &&
+                        command.GateISetIntent != null);
                     if (command.Kind == ReceiveOrganizationCommandKind.OrganizationContact &&
                         command.GateISetIntent != null &&
                         _players.TryGetValue(command.GateISetIntent.PreparedAttacker,

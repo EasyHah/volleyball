@@ -12,7 +12,7 @@ namespace Volleyball.Presentation
         public ScheduledPlayerContact(
             TechniqueAction contactAction, TechniqueAction surfaceAction, int contactGroupId,
             float playerTechnique, SimVector3 targetVelocity, SetContactHand setContactHand,
-            SimVector3? plannedContactCenter)
+            SimVector3? plannedContactCenter, bool useExactTargetVelocity = false)
         {
             ContactAction = contactAction;
             SurfaceAction = surfaceAction;
@@ -21,6 +21,7 @@ namespace Volleyball.Presentation
             TargetVelocity = targetVelocity;
             SetContactHand = setContactHand;
             PlannedContactCenter = plannedContactCenter;
+            UseExactTargetVelocity = useExactTargetVelocity;
         }
 
         public TechniqueAction ContactAction { get; }
@@ -30,10 +31,12 @@ namespace Volleyball.Presentation
         public SimVector3 TargetVelocity { get; }
         public SetContactHand SetContactHand { get; }
         public SimVector3? PlannedContactCenter { get; }
+        public bool UseExactTargetVelocity { get; }
 
         public PlayerContactInput WithSample(PlayerId playerId, ActionTimelineSample sample) =>
             new PlayerContactInput(playerId, ContactAction, SurfaceAction, sample, ContactGroupId,
-                PlayerTechnique, TargetVelocity, SetContactHand, PlannedContactCenter);
+                PlayerTechnique, TargetVelocity, SetContactHand, PlannedContactCenter,
+                UseExactTargetVelocity);
     }
 
     /// <summary>Builds contact candidates from already-resolved player presentation state.</summary>
@@ -48,7 +51,8 @@ namespace Volleyball.Presentation
             float playerTechnique,
             SimVector3 targetVelocity,
             SetContactHand setContactHand,
-            SimVector3? plannedContactCenter = null)
+            SimVector3? plannedContactCenter = null,
+            bool useExactTargetVelocity = false)
         {
             PlayerId = playerId;
             ContactAction = contactAction;
@@ -59,6 +63,7 @@ namespace Volleyball.Presentation
             TargetVelocity = targetVelocity;
             SetContactHand = setContactHand;
             PlannedContactCenter = plannedContactCenter;
+            UseExactTargetVelocity = useExactTargetVelocity;
         }
 
         public PlayerId PlayerId { get; }
@@ -70,6 +75,7 @@ namespace Volleyball.Presentation
         public SimVector3 TargetVelocity { get; }
         public SetContactHand SetContactHand { get; }
         public SimVector3? PlannedContactCenter { get; }
+        public bool UseExactTargetVelocity { get; }
     }
 
     public sealed class PlayerContactSurfaceProvider
@@ -197,7 +203,8 @@ namespace Volleyball.Presentation
                     input.PlayerTechnique,
                     input.TargetVelocity,
                     strikeDirection,
-                    response));
+                    response,
+                    input.UseExactTargetVelocity));
             }
         }
 
