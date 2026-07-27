@@ -513,7 +513,7 @@ base attributes + DominantHand
 - 复用唯一 `SetterOrganizationZone` 和注册二传可达性规则。
 - 移除对应 legacy tactical writer。
 
-### Gate I：攻防与重组权威
+### Gate I：攻防与重组权威（已完成）
 
 - plan/executor 接管 set target、攻击路线、联合拦防、soft action、tool recovery 和重组。
 - V4 Attack/Block/Defense/SoftTouch 派生属性进入各自唯一消费路径。

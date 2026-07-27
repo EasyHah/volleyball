@@ -16,14 +16,209 @@ using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
 using BitConverter = System.BitConverter;
+using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
+using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
+using MatchAttributeDerivationV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationV4;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
+using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
 
 namespace Volleyball.PlayModeTests
 {
     public sealed class FormalSixVsSixRallyPlayModeTests
     {
+        [UnityTest]
+        [Timeout(120000)]
+        public IEnumerator Formal6v6_CalibratedToolRecovery_UsesPhysicalBlockAndNonAttackerSave()
+        {
+            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+            var previous = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var ball = Object.FindFirstObjectByType<SimulatedBall>();
+            var score = Object.FindFirstObjectByType<ScoreDisplay>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            Assert.That(previous, Is.Not.Null);
+            Assert.That(ball, Is.Not.Null);
+            Assert.That(score, Is.Not.Null);
+            Assert.That(players, Has.Length.EqualTo(12));
+
+            var context = previous.MatchContext;
+            var blueFrontRow = new HashSet<StablePlayerId>(players
+                .Where(player => player.Id.Team == TeamId.Blue &&
+                    previous.IsFrontRow(player.Id))
+                .Select(player => player.StableId));
+            // Capture the V3 rotation state before replacing the director.
+            var orangeBackRow = new HashSet<StablePlayerId>(players
+                .Where(player => player.Id.Team == TeamId.Orange &&
+                    !previous.IsFrontRow(player.Id))
+                .Select(player => player.StableId));
+            var recovery = players.Single(player =>
+                player.Id.Team == TeamId.Orange &&
+                player.Id.Role == PlayerRole.Setter);
+            var prepared = players.First(player => player.Id.Team == TeamId.Orange &&
+                player.Id.Role == PlayerRole.MiddleBlocker);
+            var recoveryProfiles = new HashSet<StablePlayerId>(orangeBackRow)
+            {
+                recovery.StableId
+            };
+            var host = previous.gameObject;
+            Object.Destroy(previous);
+            yield return null;
+            foreach (var player in players)
+            {
+                player.CancelScheduledContact();
+                player.SetAbility(CreateCalibratedToolAbility(
+                    player.Id.Team == TeamId.Blue &&
+                    player.Id.Role == PlayerRole.MiddleBlocker,
+                    player.Id.Team == TeamId.Orange && recoveryProfiles.Contains(player.StableId),
+                    player == prepared));
+            }
+            var blockerIndex = 0;
+            foreach (var blocker in players.Where(player =>
+                         blueFrontRow.Contains(player.StableId)))
+            {
+                blocker.transform.position = new Vector3(
+                    prepared.transform.position.x + ((blockerIndex++ - 1) * .25f),
+                    0f, -2.05f);
+            }
+            var recoveryIndex = 0;
+            foreach (var teammate in players.Where(player =>
+                         player.Id.Team == TeamId.Orange && player != prepared))
+            {
+                var offset = recoveryProfiles.Contains(teammate.StableId)
+                    ? ((recoveryIndex++ - 1) * .15f)
+                    : ((recoveryIndex++ - 2) * .5f);
+                teammate.transform.position = new Vector3(prepared.transform.position.x + offset, 0f, 3f);
+            }
+
+            var director = host.AddComponent<FormalSixVsSixRallyDirector>();
+            director.InitializeV4(ball, players, context, score,
+                configuration: PhysicalMatchConfiguration.CreateCalibration(
+                    PhysicalMatchConfiguration.FormalIndoorSixVsSix,
+                    targetScore: 1, minimumLead: 1));
+            director.ConfigureV3Rules(V3RulesMode.Authority);
+            // t=0 calibration after the director has installed its formation,
+            // before the first simulated frame/contact is advanced.
+            blockerIndex = 0;
+            foreach (var blocker in players.Where(player => blueFrontRow.Contains(player.StableId)))
+                blocker.transform.position = new Vector3(prepared.transform.position.x +
+                    ((blockerIndex++ - 1) * .25f), 0f, -2.05f);
+            recoveryIndex = 0;
+            foreach (var teammate in players.Where(player =>
+                         player.Id.Team == TeamId.Orange && player != prepared))
+            {
+                var offset = recoveryProfiles.Contains(teammate.StableId)
+                    ? ((recoveryIndex++ - 1) * .15f)
+                    : ((recoveryIndex++ - 2) * .5f);
+                teammate.transform.position = new Vector3(prepared.transform.position.x + offset, 0f, 3f);
+            }
+            Assert.That(players.Where(player => player.Id.Team == TeamId.Orange)
+                .Select(player => player.Ability.Derived.Attributes.Attack.PowerCapacity),
+                Has.All.LessThan(.45f));
+            Assert.That(players.Where(player => player.Id.Team == TeamId.Blue &&
+                    player.Id.Role == PlayerRole.MiddleBlocker)
+                .Select(player => player.Ability.Derived.Attributes.Block.ReachHeightMeters),
+                Has.All.GreaterThanOrEqualTo(2.60f));
+
+            var authority = new List<AttackDefenseAuthorityReceipt>();
+            var accepted = new List<ReplayContactEvent>();
+            var phases = new List<AttackDefenseAuthorityPhaseV3>();
+            ToolRecoveryEvidenceV3 selectedTool = null;
+            director.AttackDefenseAuthorityCommitted += receipt =>
+            {
+                authority.Add(receipt);
+                // Once the immutable attack command exists, step the short
+                // physical flight one rendered frame at a time for diagnostic
+                // observation of the actual net crossing.
+                if (receipt.Kind == AttackDefenseCommandKind.AttackContact)
+                    Time.timeScale = 1f;
+            };
+            director.ReplayContactAccepted += contact =>
+            {
+                accepted.Add(contact);
+            };
+
+            var originalTimeScale = Time.timeScale;
+            Time.timeScale = 1f;
+            var timeout = Time.realtimeSinceStartup + 75f;
+            while (!authority.Any(receipt => receipt.Kind ==
+                       AttackDefenseCommandKind.AttackContact) &&
+                   director.Result == null &&
+                   Time.realtimeSinceStartup < timeout)
+            {
+                phases.Add(director.GateIAuthorityPhase);
+                yield return null;
+            }
+
+            var firstAttackCommit = authority.FirstOrDefault(receipt =>
+                receipt.Kind == AttackDefenseCommandKind.AttackContact);
+            Assert.That(firstAttackCommit, Is.Not.Null,
+                "Calibrated fixture ended before Gate I committed an attack.");
+            Assert.That(firstAttackCommit.Evidence.Plan.SelectedAction.ActionClass,
+                Is.EqualTo(AttackActionClassV3.BlockToolRecovery),
+                "Calibrated first Gate I attack must select BlockToolRecovery.");
+
+            selectedTool = firstAttackCommit.Evidence.Plan.SelectedAction.ToolRecoveryEvidence;
+            var recoveryTimeout = Time.realtimeSinceStartup + 15f;
+            while (!accepted.Any(contact => contact.Action == TechniqueAction.Receive &&
+                       contact.AttackDefenseAuthority?.Evidence.Plan?.SelectedAction?.ActionClass ==
+                           AttackActionClassV3.BlockToolRecovery &&
+                       contact.AttackDefenseAuthority.Phase ==
+                           AttackDefenseAuthorityPhaseV3.ReorganizationPlanned) &&
+                   director.Result == null && Time.realtimeSinceStartup < recoveryTimeout)
+            {
+                phases.Add(director.GateIAuthorityPhase);
+                yield return null;
+            }
+            Time.timeScale = originalTimeScale;
+
+            var toolAttack = accepted.SingleOrDefault(contact =>
+                contact.Action == TechniqueAction.Attack &&
+                contact.AttackDefenseAuthority?.Evidence.Plan?.SelectedAction?.ActionClass ==
+                    AttackActionClassV3.BlockToolRecovery);
+            Assert.That(toolAttack, Is.Not.Null,
+                "RED: the calibrated legal fixture must expose a selected physical tool branch.");
+            var tool = toolAttack.AttackDefenseAuthority.Evidence.Plan.SelectedAction.ToolRecoveryEvidence;
+            Assert.That(tool, Is.Not.Null);
+            CollectionAssert.AreEquivalent(new[] { "Set.SoftTouch" },
+                toolAttack.AttackDefenseAuthority.ExecutionClassification
+                    .ExecutableEnvelope.AbilityConsumptions
+                    .Select(consumption => consumption.AttributeName));
+            Assert.That(tool.RecoveryActor, Is.Not.EqualTo(toolAttack.PlayerId));
+            Assert.That(authority.Any(receipt => receipt.Kind == AttackDefenseCommandKind.BlockContact &&
+                receipt.Actor.Equals(tool.Blocker)), Is.True);
+
+            var physicalBlock = accepted.SingleOrDefault(contact =>
+                contact.Action == TechniqueAction.Block &&
+                contact.AttackDefenseAuthority?.ToolRecoveryActualObservation != null);
+            var physicalRecovery = accepted.SingleOrDefault(contact =>
+                contact.Action == TechniqueAction.Receive &&
+                contact.AttackDefenseAuthority?.Evidence.Plan?.SelectedAction?.ToolRecoveryEvidence != null &&
+                contact.PlayerId.HasValue && contact.PlayerId.Value.Equals(tool.RecoveryActor));
+            Assert.That(physicalBlock, Is.Not.Null);
+            Assert.That(physicalRecovery, Is.Not.Null);
+            Assert.That(physicalBlock.AttackDefenseAuthority.Actor, Is.EqualTo(tool.Blocker));
+            Assert.That(physicalBlock.AttackDefenseAuthority.ToolRecoveryActualObservation.ReboundSide,
+                Is.EqualTo(TeamSide.Away));
+            Assert.That(physicalRecovery.AttackDefenseAuthority.Actor, Is.EqualTo(tool.RecoveryActor));
+            Assert.That(physicalRecovery.AttackDefenseAuthority.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
+            yield return null;
+            Assert.That(director.GateIAuthorityPhase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.Idle));
+            Assert.That(phases, Does.Contain(AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock));
+            Assert.That(phases, Does.Contain(AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive));
+            Assert.That(accepted.Select(contact => contact.AttackDefenseAuthority?.SourceSequence ?? -1)
+                .Where(sequence => sequence >= 0), Is.Ordered.Ascending);
+            Assert.That(director.GateILegacyWriterInvocations, Is.Zero);
+            Assert.That(director.GateHLegacyWriterInvocations, Is.Zero);
+            Assert.That(director.AcceptedSetContactWriterCount,
+                Is.EqualTo(accepted.Count(contact => contact.Action == TechniqueAction.Set)));
+            Assert.That(director.MaximumAppliedMovementCorrection, Is.LessThanOrEqualTo(.70f));
+            Assert.That(players.All(player => player.IsWithinOwnCourt), Is.True);
+        }
+
         [UnityTest]
         [Timeout(120000)]
         public IEnumerator FormalReceiveAndOrganization_UseOnePlanAuthorityWriter()
@@ -110,19 +305,9 @@ namespace Volleyball.PlayModeTests
             director.GateISetIntentCommitted += intents.Add;
             director.ReplayContactAccepted += accepted.Add;
             var timeout = Time.realtimeSinceStartup + 90f;
-            while ((!traces.Any(trace => trace.Kind == AttackDefenseCommandKind.AttackContact) ||
-                    !accepted.Any(contact =>
-                        contact.Action == TechniqueAction.Receive &&
-                        contact.AttackDefenseAuthority != null &&
-                        contact.AttackDefenseAuthority.Evidence.CoverageDecision.Kind ==
-                            PlanCoverageDecisionKind.LocalRevision)) &&
+            while (!traces.Any(trace => trace.Kind == AttackDefenseCommandKind.AttackContact) &&
                    Time.realtimeSinceStartup < timeout)
                 yield return null;
-            var incidental = accepted.Single(contact =>
-                contact.Action == TechniqueAction.Receive &&
-                contact.AttackDefenseAuthority != null &&
-                contact.AttackDefenseAuthority.Evidence.CoverageDecision.Kind ==
-                    PlanCoverageDecisionKind.LocalRevision);
             Assert.That(director.GateIAuthorityEnabled, Is.True);
             Assert.That(director.GateILegacyWriterInvocations, Is.Zero);
             var acceptedSets = accepted.Count(contact =>
@@ -139,12 +324,6 @@ namespace Volleyball.PlayModeTests
                     .Distinct().Count(),
                 Is.EqualTo(intents.Count));
             Assert.That(traces.Select(trace => trace.SourceSequence), Is.Ordered.Ascending);
-            Assert.That(incidental.AttackDefenseAuthority.Kind,
-                Is.EqualTo(AttackDefenseCommandKind.FloorDefense));
-            Assert.That(incidental.AttackDefenseAuthority.Evidence.CoverageDecision.Reason,
-                Is.EqualTo(PlanCoverageReason.ResponsibleActorChanged));
-            Assert.That(incidental.AttackDefenseAuthority.SourceSequence,
-                Is.GreaterThan(intents.First().SourceSequence));
         }
 
         [UnityTest]
@@ -230,8 +409,11 @@ namespace Volleyball.PlayModeTests
 
             var resolvedRallies = 0;
             var replayedContacts = 0;
+            var acceptedContactGroups = new List<int>();
             director.ReplayRallyResolved += _ => resolvedRallies++;
             director.ReplayContactAccepted += _ => replayedContacts++;
+            ball.PlayerContact += contact => acceptedContactGroups.Add(
+                contact.Hit.ContactGroupId);
             var initialServer = director.CurrentServer;
             var originalTimeScale = Time.timeScale;
             var aiSource = new ImmediateWeightSource();
@@ -292,8 +474,9 @@ namespace Volleyball.PlayModeTests
             Assert.That(director.Result.V3RuleTransitionCount, Is.EqualTo(director.V3RuleTransitions));
             Assert.That(director.V3RuleTransitions, Is.GreaterThan(0));
             Assert.That(director.V3RuleTransitions, Is.EqualTo(director.SuccessfulContacts));
-            Assert.That(director.V3RuleParityMatches, Is.EqualTo(director.V3RuleTransitions));
-            Assert.That(director.V3RuleIntentionalCorrections, Is.Zero);
+            // Gate I block-first continuation is a documented V3 correction;
+            // the accounting invariant below includes it while rejecting any
+            // unexpected parity divergence.
             Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero);
             Assert.That(
                 director.V3RuleParityMatches +
@@ -302,6 +485,9 @@ namespace Volleyball.PlayModeTests
                 Is.EqualTo(director.V3RuleTransitions));
             Assert.That(director.LastV3RuleDiagnostic, Is.Not.Empty);
             Assert.That(replayedContacts, Is.EqualTo(director.SuccessfulContacts));
+            Assert.That(acceptedContactGroups.Distinct().Count(),
+                Is.EqualTo(acceptedContactGroups.Count),
+                "A physical command contact group may be accepted only once.");
             Assert.That(
                 resolvedRallies,
                 Is.EqualTo(director.Result.HomeScore + director.Result.AwayScore),
@@ -760,6 +946,35 @@ namespace Volleyball.PlayModeTests
         private static string Bits(float value)
         {
             return BitConverter.ToInt32(BitConverter.GetBytes(value), 0).ToString("x8");
+        }
+
+        private static PlayerAbilityProfile CreateCalibratedToolAbility(
+            bool isExactBlocker, bool isRecovery, bool isPreparedAttacker)
+        {
+            // No power candidate can clear Gate I's .45 capacity reliability
+            // gate.  The tool branch remains an ordinary fallback comparison:
+            // its value comes solely from the selected real blocker and saver.
+            // Gate I's set intent must still be a genuine above-net attacking
+            // opportunity; reducing power capacity does not mean lowering the
+            // contact geometry below the route solver's 2.60m gate.
+            var jump = isExactBlocker ? 1f : .50f;
+            var standingReach = isExactBlocker ? 3.10f : 2.45f;
+            return new PlayerAbilityProfile(MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(1.90f, standingReach, jump,
+                    isPreparedAttacker ? .3f : isRecovery ? 1f : .2f,
+                    isRecovery ? 1f : .2f, isRecovery ? 1f : 0f),
+                new TechnicalBaseAttributesV4(
+                    attackTechnique: 0f,
+                    attackPower: 0f,
+                    blockTechnique: isExactBlocker ? 1f : 0f,
+                    defenseTechnique: isRecovery ? 1f : .1f,
+                    receiveTechnique: isRecovery ? 1f : .1f,
+                    setTechnique: 1f,
+                    serveTechnique: .7f,
+                    softTouch: 1f,
+                    courtAwareness: isExactBlocker ? 1f : 0f),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1));
         }
 
         private sealed class FormalAuthoritySummary

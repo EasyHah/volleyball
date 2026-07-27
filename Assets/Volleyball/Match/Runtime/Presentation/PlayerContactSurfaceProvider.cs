@@ -12,7 +12,8 @@ namespace Volleyball.Presentation
         public ScheduledPlayerContact(
             TechniqueAction contactAction, TechniqueAction surfaceAction, int contactGroupId,
             float playerTechnique, SimVector3 targetVelocity, SetContactHand setContactHand,
-            SimVector3? plannedContactCenter, bool useExactTargetVelocity = false)
+            SimVector3? plannedContactCenter, bool useExactTargetVelocity = false,
+            bool preservePlannedContactRoot = false)
         {
             ContactAction = contactAction;
             SurfaceAction = surfaceAction;
@@ -22,6 +23,7 @@ namespace Volleyball.Presentation
             SetContactHand = setContactHand;
             PlannedContactCenter = plannedContactCenter;
             UseExactTargetVelocity = useExactTargetVelocity;
+            PreservePlannedContactRoot = preservePlannedContactRoot;
         }
 
         public TechniqueAction ContactAction { get; }
@@ -32,6 +34,7 @@ namespace Volleyball.Presentation
         public SetContactHand SetContactHand { get; }
         public SimVector3? PlannedContactCenter { get; }
         public bool UseExactTargetVelocity { get; }
+        public bool PreservePlannedContactRoot { get; }
 
         public PlayerContactInput WithSample(PlayerId playerId, ActionTimelineSample sample) =>
             new PlayerContactInput(playerId, ContactAction, SurfaceAction, sample, ContactGroupId,
@@ -86,6 +89,7 @@ namespace Volleyball.Presentation
 
         internal ScheduledPlayerContact ScheduledContact { get; private set; }
         internal bool HasPlannedContactCenter { get; private set; }
+        internal bool PreservePlannedContactRoot => ScheduledContact.PreservePlannedContactRoot;
         internal SimVector3 PlannedContactCenter { get; private set; }
         internal bool HasPhysicalBlockContact { get; private set; }
         internal SimVector3 PhysicalBlockTargetVelocity { get; private set; }

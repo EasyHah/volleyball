@@ -73,6 +73,9 @@ namespace Volleyball.AI
             var units = BlockUnitPlanner.EvaluateUnits(blockCandidates, Intercept(blockZone), orderedThreat[0].ArrivalTime, true);
             var blockers = units.Count == 0 ? Array.Empty<BlockCandidateSnapshot>() : units[units.Count - 1].Blockers;
             var blockerIds = new HashSet<ContractPlayerId>(blockers.Select(value => identitiesByBlockCandidate[value.Id]));
+            ContractPlayerId? primaryBlockerId = blockers.Count == 0
+                ? (ContractPlayerId?)null
+                : identitiesByBlockCandidate[blockers[0].Id];
             var residualZones = orderedThreat.Where(value => value.Zone != blockZone).Select(value => value.Zone).Distinct(StringComparer.Ordinal).ToArray();
             var assignments = request.Assignments.OrderBy(value => value.Rank).ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal).ToArray();
             var responsibilities = new List<DefenseResponsibilityV3>(6);
@@ -81,7 +84,7 @@ namespace Volleyball.AI
             {
                 DefenseResponsibilityKindV3 kind;
                 string zone;
-                if (blockerIds.Contains(assignment.PlayerId)) { kind = responsibilities.Any(value => value.Kind == DefenseResponsibilityKindV3.PrimaryBlock) ? DefenseResponsibilityKindV3.SupportingBlock : DefenseResponsibilityKindV3.PrimaryBlock; zone = blockZone; }
+                if (blockerIds.Contains(assignment.PlayerId)) { kind = primaryBlockerId.HasValue && assignment.PlayerId.Equals(primaryBlockerId.Value) ? DefenseResponsibilityKindV3.PrimaryBlock : DefenseResponsibilityKindV3.SupportingBlock; zone = blockZone; }
                 else if (residualZones.Length > 0) { kind = residualIndex++ == 0 ? DefenseResponsibilityKindV3.CrossDefense : DefenseResponsibilityKindV3.DeepDefense; zone = residualZones[(residualIndex - 1) % residualZones.Length]; }
                 else { kind = DefenseResponsibilityKindV3.ReboundCoverage; zone = blockZone; }
                 responsibilities.Add(new DefenseResponsibilityV3(assignment.PlayerId, kind, zone, RallyPlanBranchV3.Primary));

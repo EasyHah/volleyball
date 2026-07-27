@@ -102,7 +102,7 @@ namespace Volleyball.EditModeTests
             var sink = new Sink();
             var coordinator = Fixture.CommittedAttack(sink, out var plan);
 
-            coordinator.AcceptContact(Fixture.Contact(
+            coordinator.AcceptContact(Fixture.Contact(coordinator,
                 plan,
                 6,
                 plan.SelectedAction.Actor,
@@ -117,7 +117,7 @@ namespace Volleyball.EditModeTests
 
             var defender = plan.Defense.Responsibilities.First(value =>
                 value.Kind == DefenseResponsibilityKindV3.LineDefense);
-            coordinator.AcceptContact(Fixture.Contact(
+            coordinator.AcceptContact(Fixture.Contact(coordinator,
                 plan,
                 7,
                 defender.Actor,
@@ -131,15 +131,77 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AcceptedBlock_UsesThePublishedExecutionEnvelopeIdentity()
+        {
+            var sink = new Sink();
+            var coordinator = Fixture.CommittedAttack(sink, out var plan);
+            coordinator.AcceptContact(Fixture.Contact(coordinator, plan, 6, plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact, string.Empty));
+            var block = sink.Batches.First().Commands.First(command =>
+                command.Kind == AttackDefenseCommandKind.BlockContact);
+
+            coordinator.AcceptContact(new GateIContactEvidenceV3(plan.Revision, 7,
+                block.Actor, PlanCoverageReason.WithinConditionalEnvelope,
+                AttackDefenseCommandKind.BlockContact, block.Branch,
+                block.Execution.ExecutionClassification.ExecutableEnvelope.Identity,
+                block.Execution.TrajectoryArtifact.ArtifactIdentity, true,
+                plan.ReorganizationExits[0].Identity));
+
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
+        }
+
+        [Test]
+        public void CommitDefense_BlockCommandsReserveTheirPublicNetCorridor()
+        {
+            var sink = new Sink();
+            Fixture.CommittedAttack(sink, out var plan);
+            var blocks = sink.Batches.First().Commands.Where(command =>
+                command.Kind == AttackDefenseCommandKind.BlockContact).ToArray();
+
+            Assert.That(blocks, Has.Length.EqualTo(2));
+            Assert.That(blocks.Select(command => command.Execution.MovementTarget.X),
+                Is.EqualTo(new[] { -1f, .55f }));
+            Assert.That(blocks.Select(command => command.Execution.MovementTarget.X)
+                .Distinct().Count(), Is.EqualTo(2));
+            Assert.That(blocks.Select(command => command.Execution.MovementTarget.Z),
+                Has.All.EqualTo(.35f));
+            Assert.That(blocks.Select(command => command.Execution.ContactGroupId)
+                .Distinct().Count(), Is.EqualTo(1));
+            var attackGroup = sink.Batches.Last().Commands.Single(command =>
+                command.Kind == AttackDefenseCommandKind.AttackContact)
+                .Execution.ContactGroupId;
+            Assert.That(blocks[0].Execution.ContactGroupId,
+                Is.Not.EqualTo(attackGroup));
+            Assert.That(blocks[0].Execution.ContactGroupId,
+                Is.EqualTo(1000000066));
+            Assert.That(attackGroup, Is.EqualTo(1000000065));
+            foreach (var block in blocks)
+            {
+                var zone = block.Execution.MovementTarget.X < 0f ? "Line" : "Cross";
+                var publishedArrival = plan.PublicThreat.Entries
+                    .Where(entry => entry.Zone == zone)
+                    .Select(entry => entry.ArrivalTime)
+                    .DefaultIfEmpty(plan.PublicThreat.Entries.Min(entry =>
+                        entry.ArrivalTime))
+                    .Min();
+                Assert.That(block.Execution.ScheduledSimulationTime,
+                    Is.EqualTo(publishedArrival).Within(.00001f));
+                Assert.That(block.Execution.ScheduledSimulationTime,
+                    Is.GreaterThan(plan.SetIntent.AttackReadyArrivalTime));
+            }
+        }
+
+        [Test]
         public void CompleteReorganization_ResetsOpportunityButRetainsSequenceFloor()
         {
             var sink = new Sink();
             var coordinator = Fixture.CommittedAttack(sink, out var plan);
-            coordinator.AcceptContact(Fixture.Contact(plan, 6, plan.SelectedAction.Actor,
+            coordinator.AcceptContact(Fixture.Contact(coordinator, plan, 6, plan.SelectedAction.Actor,
                 AttackDefenseCommandKind.AttackContact, ""));
             var defender = plan.Defense.Responsibilities.First(value =>
                 value.Kind == DefenseResponsibilityKindV3.LineDefense);
-            coordinator.AcceptContact(Fixture.Contact(plan, 7, defender.Actor,
+            coordinator.AcceptContact(Fixture.Contact(coordinator, plan, 7, defender.Actor,
                 AttackDefenseCommandKind.FloorDefense,
                 plan.ReorganizationExits[0].Identity));
 
@@ -159,7 +221,7 @@ namespace Volleyball.EditModeTests
         public void IncidentalDefensePreview_ProducesLocalRevisionWithoutMutation()
         {
             var coordinator = Fixture.CommittedAttack(new Sink(), out var plan);
-            coordinator.AcceptContact(Fixture.Contact(plan, 6, plan.SelectedAction.Actor,
+            coordinator.AcceptContact(Fixture.Contact(coordinator, plan, 6, plan.SelectedAction.Actor,
                 AttackDefenseCommandKind.AttackContact, ""));
             var blocker = plan.Defense.Responsibilities.First(value =>
                 value.Kind == DefenseResponsibilityKindV3.PrimaryBlock);
@@ -213,15 +275,23 @@ namespace Volleyball.EditModeTests
             coordinator.AcceptContact(Fixture.ToolContact(plan, 7,
                 plan.SelectedAction.ToolRecoveryEvidence.Blocker,
                 AttackDefenseCommandKind.BlockContact,
-                ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3));
+                ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3,
+                Fixture.ToolRecoveryExecution(coordinator, plan)));
             Assert.That(coordinator.State.Phase, Is.EqualTo(AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive));
-            Assert.That(sink.Batches, Is.Empty, "A successful rebound has no ordinary reorganization command.");
+            Assert.That(sink.Batches, Has.Count.EqualTo(1),
+                "A successful rebound must publish the exact declared recovery contact.");
+            var recoveryCommand = sink.Batches.Single().Commands.Single();
+            Assert.That(recoveryCommand.Kind, Is.EqualTo(AttackDefenseCommandKind.FloorDefense));
+            Assert.That(recoveryCommand.Actor,
+                Is.EqualTo(plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor));
+            Assert.That(recoveryCommand.Execution, Is.Not.Null);
             coordinator.AcceptContact(Fixture.ToolContact(plan, 8,
                 plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
                 AttackDefenseCommandKind.FloorDefense,
-                ToolRecoveryReboundObservationV3.NotApplicable, 2));
+                ToolRecoveryReboundObservationV3.NotApplicable, 2,
+                recoveryCommand.Execution));
             Assert.That(coordinator.State.Phase, Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
-            Assert.That(sink.Batches.Single().Commands.Single().Kind, Is.EqualTo(AttackDefenseCommandKind.Reorganization));
+            Assert.That(sink.Batches.Last().Commands.Single().Kind, Is.EqualTo(AttackDefenseCommandKind.Reorganization));
         }
 
         [Test]
@@ -250,12 +320,13 @@ namespace Volleyball.EditModeTests
                 ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3)), Throws.InvalidOperationException);
             Assert.That(sink.Batches, Is.Empty);
             coordinator.AcceptContact(Fixture.ToolContact(plan, 7, plan.SelectedAction.ToolRecoveryEvidence.Blocker,
-                AttackDefenseCommandKind.BlockContact, ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3));
+                AttackDefenseCommandKind.BlockContact, ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3,
+                Fixture.ToolRecoveryExecution(coordinator, plan)));
             Assert.That(() => coordinator.AcceptContact(Fixture.ToolContact(plan, 8, plan.SelectedAction.Actor,
                 AttackDefenseCommandKind.FloorDefense, ToolRecoveryReboundObservationV3.NotApplicable, 2)), Throws.InvalidOperationException);
             Assert.That(() => coordinator.AcceptContact(Fixture.ToolContact(plan, 7, plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
                 AttackDefenseCommandKind.FloorDefense, ToolRecoveryReboundObservationV3.NotApplicable, 2)), Throws.InvalidOperationException);
-            Assert.That(sink.Batches, Is.Empty);
+            Assert.That(sink.Batches, Has.Count.EqualTo(1));
         }
 
         [Test]
@@ -264,11 +335,57 @@ namespace Volleyball.EditModeTests
             var coordinator = Fixture.ToolRecoveryAwaitingAttack(out var plan, out var sink);
             coordinator.AcceptContact(Fixture.ToolContact(plan, 6, plan.SelectedAction.Actor, AttackDefenseCommandKind.AttackContact));
             coordinator.AcceptContact(Fixture.ToolContact(plan, 7, plan.SelectedAction.ToolRecoveryEvidence.Blocker,
-                AttackDefenseCommandKind.BlockContact, ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3));
+                AttackDefenseCommandKind.BlockContact, ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3,
+                Fixture.ToolRecoveryExecution(coordinator, plan)));
             Assert.That(() => coordinator.AcceptContact(Fixture.ToolContact(plan, 8, plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
                 AttackDefenseCommandKind.FloorDefense, ToolRecoveryReboundObservationV3.NotApplicable, 0)), Throws.InvalidOperationException);
             Assert.That(coordinator.State.Phase, Is.EqualTo(AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive));
-            Assert.That(sink.Batches, Is.Empty);
+            Assert.That(sink.Batches, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void ToolRecovery_RejectsReceiveWithDifferentPublishedExecution()
+        {
+            var coordinator = Fixture.ToolRecoveryAwaitingAttack(out var plan, out var sink);
+            coordinator.AcceptContact(Fixture.ToolContact(plan, 6, plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact));
+            coordinator.AcceptContact(Fixture.ToolContact(plan, 7,
+                plan.SelectedAction.ToolRecoveryEvidence.Blocker,
+                AttackDefenseCommandKind.BlockContact,
+                ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3,
+                Fixture.ToolRecoveryExecution(coordinator, plan)));
+
+            var published = sink.Batches.Single().Commands.Single().Execution;
+            var mismatched = new AttackDefenseCommandExecutionV4(
+                published.ScheduledSimulationTime, published.MovementStartSimulationTime,
+                published.ExecutionError, published.ContactGroupId + 1,
+                published.ExecutionClassification, published.TrajectoryArtifact,
+                published.MovementTarget, published.AttackApproach, published.AttackContactPlan,
+                published.PhysicalContactCenter);
+            Assert.That(() => coordinator.AcceptContact(Fixture.ToolContact(plan, 8,
+                plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
+                AttackDefenseCommandKind.FloorDefense,
+                ToolRecoveryReboundObservationV3.NotApplicable, 2, mismatched)),
+                Throws.InvalidOperationException);
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive));
+        }
+
+        [Test]
+        public void ToolRecovery_RejectsSuccessfulBlockWithoutActualRecoveryExecution()
+        {
+            var coordinator = Fixture.ToolRecoveryAwaitingAttack(out var plan, out var sink);
+            coordinator.AcceptContact(Fixture.ToolContact(plan, 6, plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact));
+
+            coordinator.AcceptContact(Fixture.ToolContact(plan, 7,
+                plan.SelectedAction.ToolRecoveryEvidence.Blocker,
+                AttackDefenseCommandKind.BlockContact,
+                ToolRecoveryReboundObservationV3.ReturnsToAttackingSide, 3));
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
+            Assert.That(sink.Batches.Single().Commands.Single().Kind,
+                Is.EqualTo(AttackDefenseCommandKind.Reorganization));
         }
 
         private sealed class Sink : IAttackDefenseAuthorityCommandSink
@@ -322,7 +439,7 @@ namespace Volleyball.EditModeTests
                         index == 0 ? DefenseResponsibilityKindV3.PrimaryBlock :
                         index == 1 ? DefenseResponsibilityKindV3.SupportingBlock :
                         DefenseResponsibilityKindV3.LineDefense,
-                        "zone-" + index,
+                        index == 0 ? "Line" : index == 1 ? "Cross" : "Deep",
                         RallyPlanBranchV3.Primary)).ToArray();
                 var exits = new[] { new ReorganizationExitV3(
                     "defense-exit", defenders[2].Player, "organize") };
@@ -330,8 +447,8 @@ namespace Volleyball.EditModeTests
                     coordinator.PublicThreat.ThreatIdentity,
                     responsibilities,
                     exits,
-                    new[] { "zone-0" },
-                    new[] { "zone-1" }));
+                    new[] { "Line" },
+                    new[] { "Cross" }));
                 coordinator.CommitFinalAttack(4, 5);
                 plan = coordinator.State.Plan;
                 return coordinator;
@@ -341,12 +458,13 @@ namespace Volleyball.EditModeTests
                 out AttackDefensePlanV3 plan)
             {
                 var coordinator = CommittedAttack(new Sink(), out plan);
-                coordinator.AcceptContact(Contact(plan, 6, plan.SelectedAction.Actor,
+                coordinator.AcceptContact(Contact(coordinator, plan, 6, plan.SelectedAction.Actor,
                     AttackDefenseCommandKind.AttackContact, ""));
                 return coordinator;
             }
 
             public static GateIContactEvidenceV3 Contact(
+                AttackDefenseAuthorityCoordinator coordinator,
                 AttackDefensePlanV3 plan,
                 long sequence,
                 Volleyball.Shared.Contracts.PlayerId actor,
@@ -354,12 +472,15 @@ namespace Volleyball.EditModeTests
                 string exit)
             {
                 var candidate = plan.SelectedAction;
-                var envelope = kind == AttackDefenseCommandKind.AttackContact
-                    ? candidate.EnvelopeIdentity
-                    : "gate-i-" + plan.Revision + "-" + (int)kind + "-" + actor.Value;
-                var trajectory = kind == AttackDefenseCommandKind.AttackContact
-                    ? candidate.TrajectoryArtifactIdentity
-                    : plan.SetIntent.TrajectoryArtifact.ArtifactIdentity;
+                var execution = kind == AttackDefenseCommandKind.AttackContact
+                    ? null
+                    : (AttackDefenseCommandExecutionV4)typeof(AttackDefenseAuthorityCoordinator)
+                        .GetMethod("ExecutionFor", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(coordinator, new object[] { actor, kind, null, null, 0 });
+                var envelope = execution?.ExecutionClassification.ExecutableEnvelope.Identity ??
+                    candidate.EnvelopeIdentity;
+                var trajectory = execution?.TrajectoryArtifact.ArtifactIdentity ??
+                    candidate.TrajectoryArtifactIdentity;
                 return new GateIContactEvidenceV3(
                     plan.Revision,
                     sequence,
@@ -413,14 +534,24 @@ namespace Volleyball.EditModeTests
                 return coordinator;
             }
 
+            public static AttackDefenseCommandExecutionV4 ToolRecoveryExecution(
+                AttackDefenseAuthorityCoordinator coordinator, AttackDefensePlanV3 plan) =>
+                (AttackDefenseCommandExecutionV4)typeof(AttackDefenseAuthorityCoordinator)
+                    .GetMethod("ExecutionFor", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(coordinator, new object[] {
+                        plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
+                        AttackDefenseCommandKind.FloorDefense, null, null, 0
+                    });
+
             public static GateIContactEvidenceV3 ToolContact(AttackDefensePlanV3 plan, long sequence,
                 Volleyball.Shared.Contracts.PlayerId actor, AttackDefenseCommandKind kind,
                 ToolRecoveryReboundObservationV3 rebound = ToolRecoveryReboundObservationV3.NotApplicable,
-                int remainingTouches = -1) => new GateIContactEvidenceV3(plan.Revision, sequence, actor,
+                int remainingTouches = -1,
+                AttackDefenseCommandExecutionV4 recoveryExecution = null) => new GateIContactEvidenceV3(plan.Revision, sequence, actor,
                 PlanCoverageReason.WithinConditionalEnvelope, kind, RallyPlanBranchV3.Primary,
                 kind == AttackDefenseCommandKind.AttackContact ? plan.SelectedAction.EnvelopeIdentity : "actual-" + sequence,
                 kind == AttackDefenseCommandKind.AttackContact ? plan.SelectedAction.TrajectoryArtifactIdentity : "actual-trajectory-" + sequence,
-                true, string.Empty, rebound, remainingTouches);
+                true, string.Empty, rebound, remainingTouches, recoveryExecution);
 
             private static GateITacticalPlayerV3[] Players()
             {

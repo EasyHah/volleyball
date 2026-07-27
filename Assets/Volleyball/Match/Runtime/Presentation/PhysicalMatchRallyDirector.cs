@@ -241,6 +241,7 @@ namespace Volleyball.Presentation
         private PlayerId? _scheduledPrimaryActor;
         private readonly HashSet<PlayerId> _scheduledBlockers = new HashSet<PlayerId>();
         private PlayerId? _scheduledBlockPrimary;
+        private float _committedGateIBlockTime = -1f;
         private bool _awaitingPostBlockCrossing;
         private TeamId? _postBlockerTeam;
         private TeamId? _pendingCrossingTeam;
@@ -354,6 +355,14 @@ namespace Volleyball.Presentation
         public int GateHLegacyWriterInvocations { get; private set; }
 
         public bool GateIAuthorityEnabled { get; private set; }
+
+        // A read-only lifecycle diagnostic.  It exposes no coordinator command
+        // surface and lets formal integration tests observe V3-accepted
+        // contact hand-offs without reaching into private authority state.
+        public AttackDefenseAuthorityPhaseV3 GateIAuthorityPhase =>
+            _attackDefenseCoordinator == null
+                ? AttackDefenseAuthorityPhaseV3.Idle
+                : _attackDefenseCoordinator.State.Phase;
 
         public int GateILegacyWriterInvocations { get; private set; }
 
@@ -2072,11 +2081,15 @@ namespace Volleyball.Presentation
                 ? AttackDefenseCommandKind.AttackContact
                 : action == TechniqueAction.Block
                     ? AttackDefenseCommandKind.BlockContact
+                    : action == TechniqueAction.Receive &&
+                      _attackDefenseCoordinator.State.Phase ==
+                          AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
+                        ? AttackDefenseCommandKind.FloorDefense
                     : (AttackDefenseCommandKind?)null;
-            // FloorDefense/AttackCover/Reorganization receipts commit support
-            // movement and responsibility; they are not physical Receive
-            // contact commands.  A V3-accepted dig must own a fresh receipt
-            // built from its actual execution classification and trajectory.
+            // FloorDefense/AttackCover/Reorganization normally commit support
+            // movement only. The ToolRecoveryAwaitingReceive exception is the
+            // published immutable physical Receive command and must be consumed
+            // exactly as scheduled.
             return kind.HasValue
                 ? TakeGateIContactReceipt(actor, kind.Value)
                 : null;
@@ -2148,10 +2161,47 @@ namespace Volleyball.Presentation
                     new[] { actor }));
                 _contactDeadlineActive = true;
             }
+            var toolRecoveryReceive = batch.Evidence.Phase ==
+                AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
+                ? batch.Commands.SingleOrDefault(command =>
+                    command.Kind == AttackDefenseCommandKind.FloorDefense)
+                : null;
+            if (toolRecoveryReceive != null)
+            {
+                var execution = toolRecoveryReceive.Execution ??
+                    throw new InvalidOperationException(
+                        "Tool recovery Receive requires immutable actual execution facts.");
+                var actor = PlayerForStableId(toolRecoveryReceive.Actor).Id;
+                _scheduledDecision = null;
+                _scheduledPrimaryActor = actor;
+                _expectedContactTime = execution.ScheduledSimulationTime;
+                _touchState.OpenWindow(new RallyContactWindow(actor.Team,
+                    TechniqueAction.Receive,
+                    _expectedContactTime - ContactWindowLead,
+                    _expectedContactTime + ContactWindowTail,
+                    new[] { actor }));
+                _contactDeadlineActive = true;
+            }
             var blockCount = batch.Commands.Count(command =>
                 command.Kind == AttackDefenseCommandKind.BlockContact);
             if (blockCount > 0)
             {
+                var blocks = batch.Commands.Where(command =>
+                    command.Kind == AttackDefenseCommandKind.BlockContact).ToArray();
+                _scheduledBlockers.Clear();
+                foreach (var block in blocks)
+                {
+                    _scheduledBlockers.Add(PlayerForStableId(block.Actor).Id);
+                }
+                var primary = _attackDefenseCoordinator?.State.Plan?.Defense.Responsibilities
+                    .FirstOrDefault(responsibility =>
+                        responsibility.Kind == DefenseResponsibilityKindV3.PrimaryBlock &&
+                        _scheduledBlockers.Contains(PlayerForStableId(responsibility.Actor).Id));
+                _scheduledBlockPrimary = primary == null
+                    ? (PlayerId?)null
+                    : PlayerForStableId(primary.Actor).Id;
+                _committedGateIBlockTime = blocks
+                    .Select(block => block.Execution.ScheduledSimulationTime).Min();
                 BlockSupportAssignments += blockCount;
                 MaximumScheduledBlockers = Mathf.Max(MaximumScheduledBlockers,
                     blockCount);
@@ -2160,6 +2210,25 @@ namespace Volleyball.Presentation
                     ScheduledMultiBlockUnits++;
                 }
             }
+        }
+
+        private void OpenCommittedGateIBlockWindow()
+        {
+            if (!GateIAuthorityEnabled || _scheduledBlockers.Count == 0 ||
+                _committedGateIBlockTime < 0f)
+            {
+                return;
+            }
+
+            var blockers = _scheduledBlockers.OrderBy(blocker => blocker.Role)
+                .ThenBy(blocker => blocker.Team).ToArray();
+            _touchState.OpenWindow(new RallyContactWindow(
+                blockers[0].Team,
+                TechniqueAction.Block,
+                _committedGateIBlockTime - ContactWindowLead,
+                _committedGateIBlockTime + ContactWindowTail,
+                blockers));
+            _contactDeadlineActive = false;
         }
 
         private static string GateHReceiptKey(
@@ -2592,6 +2661,16 @@ namespace Volleyball.Presentation
                 ? TakeGateIContactReceiptForAction(
                     StableId(actorId), contact.Candidate.Action)
                 : null;
+            // A Gate I attack command is a one-shot physical ticket.  The
+            // contact timeline can outlive its collision after an opposing
+            // block, so consume it here before the rebound returns to the same
+            // attack surface. Later continuation must arrive as a new command.
+            if (GateIAuthorityEnabled &&
+                contact.Candidate.Action == TechniqueAction.Attack)
+            {
+                actor.CancelScheduledContact();
+            }
+            AttackDefenseCommandExecutionV4 toolRecoveryReceiveExecution = null;
             if (gateIContactReceipt == null && GateIAuthorityEnabled &&
                 contact.Candidate.Action == TechniqueAction.Receive &&
                 (_attackDefenseCoordinator.State.Phase ==
@@ -2611,6 +2690,9 @@ namespace Volleyball.Presentation
                 _attackDefenseCoordinator.State.Phase ==
                     AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock)
             {
+                toolRecoveryReceiveExecution = CreateToolRecoveryReceiveExecution(
+                    contact.Hit.ImpactCenter,
+                    contact.TechniqueResponse.FinalOutgoing);
                 gateIContactReceipt = CreateActualToolRecoveryBlockReceipt(
                     gateIContactReceipt, acceptedExecutionClassification,
                     acceptedTrajectoryArtifact, contact.TechniqueResponse.FinalOutgoing,
@@ -2619,7 +2701,8 @@ namespace Volleyball.Presentation
 
             AdvanceGateIAfterAcceptedContact(
                 actorId, contact.Candidate.Action, gateIContactReceipt,
-                contact.TechniqueResponse.FinalOutgoing, authorityContact?.Transition);
+                contact.TechniqueResponse.FinalOutgoing, authorityContact?.Transition,
+                toolRecoveryReceiveExecution);
             if (gateIContactReceipt != null && GateIAuthorityEnabled &&
                 ((contact.Candidate.Action == TechniqueAction.Block &&
                   _attackDefenseCoordinator.State.Phase ==
@@ -2631,16 +2714,42 @@ namespace Volleyball.Presentation
             {
                 gateIContactReceipt = SnapshotToolRecoveryReceipt(gateIContactReceipt);
             }
+            var completedToolRecoveryReceive = GateIAuthorityEnabled &&
+                contact.Candidate.Action == TechniqueAction.Receive &&
+                gateIContactReceipt?.Kind == AttackDefenseCommandKind.FloorDefense &&
+                _attackDefenseCoordinator.State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.ReorganizationPlanned &&
+                _attackDefenseCoordinator.State.Plan?.SelectedAction?.ToolRecoveryEvidence != null;
+            if (completedToolRecoveryReceive)
+            {
+                _attackDefenseCoordinator.CompleteReorganizationAndReset(
+                    _attackDefenseCoordinator.State.Revision, ++_gateHSourceSequence);
+                _pendingGateIContactReceipts.Clear();
+            }
 
             switch (contact.Candidate.Action)
             {
                 case TechniqueAction.Receive:
+                    var acceptedToolRecoveryReceive = GateIAuthorityEnabled &&
+                        gateIContactReceipt?.Kind == AttackDefenseCommandKind.FloorDefense &&
+                        gateIContactReceipt.Evidence.Plan?.SelectedAction?.ToolRecoveryEvidence != null;
                     if (_controlledHandlingActive)
                     {
                         _controlledHandlingActive = false;
                         _scheduledDecision = null;
                         _scheduledPrimaryActor = null;
                         CompletedCycles++;
+                        break;
+                    }
+
+                    // This physical Receive is the event-owned continuation of
+                    // a Gate I tool block.  It has no Gate H receive authority
+                    // to commit, so treating it as an ordinary first contact
+                    // creates a second writer and violates Gate H's phase.
+                    if (acceptedToolRecoveryReceive)
+                    {
+                        _scheduledDecision = null;
+                        _scheduledPrimaryActor = null;
                         break;
                     }
 
@@ -2678,6 +2787,8 @@ namespace Volleyball.Presentation
                             acceptedExecutionClassification,
                             acceptedTrajectoryArtifact,
                             gateISetIntentReceipt);
+                        RecordGateISetCalibration(actorId, actor.CurrentSetStyle,
+                            contact.Hit.Centeredness);
                         _activeGateISetIntent = null;
                         break;
                     }
@@ -2718,8 +2829,10 @@ namespace Volleyball.Presentation
                     if (GateIAuthorityEnabled)
                     {
                         // The committed Gate I joint-defense batch has already
-                        // scheduled block/floor responsibility.  Never rebuild a
+                        // scheduled block/floor responsibility.  Open only its
+                        // committed physical contact window; never rebuild a
                         // legacy block unit from the hidden final route.
+                        OpenCommittedGateIBlockWindow();
                         break;
                     }
                     GateILegacyWriterInvocations++;
@@ -2822,7 +2935,8 @@ namespace Volleyball.Presentation
 
         private void AdvanceGateIAfterAcceptedContact(PlayerId actor,
             TechniqueAction action, AttackDefenseAuthorityReceipt receipt,
-            SimVector3 actualOutgoing, RuleTransitionV3 v3Transition)
+            SimVector3 actualOutgoing, RuleTransitionV3 v3Transition,
+            AttackDefenseCommandExecutionV4 toolRecoveryReceiveExecution = null)
         {
             if (!GateIAuthorityEnabled || action == TechniqueAction.Set)
                 return;
@@ -2860,17 +2974,135 @@ namespace Volleyball.Presentation
                 receipt.TrajectoryArtifact.ArtifactIdentity, true, exit.Identity,
                 action == TechniqueAction.Block &&
                 phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock
-                    ? (ReturnsToAttackingSide(actualOutgoing,
+                    ? (toolRecoveryReceiveExecution != null &&
+                       ReturnsToAttackingSide(actualOutgoing,
                         _attackDefenseCoordinator.State.AttackingSide)
                         ? ToolRecoveryReboundObservationV3.ReturnsToAttackingSide
                         : ToolRecoveryReboundObservationV3.ReturnsAway)
                     : ToolRecoveryReboundObservationV3.NotApplicable,
-                v3Transition?.After.RemainingHits ?? -1));
+                v3Transition?.After.RemainingHits ?? -1,
+                action == TechniqueAction.Receive &&
+                phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
+                    ? receipt.Execution
+                    : toolRecoveryReceiveExecution));
         }
 
         private static bool ReturnsToAttackingSide(SimVector3 outgoing,
             TeamSide attackingSide) => attackingSide == TeamSide.Home
             ? outgoing.Z < 0f : outgoing.Z > 0f;
+
+        private AttackDefenseCommandExecutionV4 CreateToolRecoveryReceiveExecution(
+            SimVector3 actualImpactCenter, SimVector3 actualBlockOutgoing)
+        {
+            var state = _attackDefenseCoordinator.State;
+            var recovery = state.Plan?.SelectedAction?.ToolRecoveryEvidence
+                ?? throw new InvalidOperationException("Tool recovery execution requires declared evidence.");
+            var receiver = PlayerForStableId(recovery.RecoveryActor);
+            // This is deliberately sampled from the accepted block's live ball
+            // state, before the coordinator publishes the recovery command.
+            // It is not a later net-crossing rewrite of an already committed
+            // command.
+            var rebound = new BallState(actualImpactCenter, actualBlockOutgoing,
+                SimulatedBall.DefaultRadius);
+            var recoveryRoot = ToSimulation(receiver.transform.position);
+            var recoverySpeed = BaseMovementSpeed * (.65f +
+                (receiver.Ability.Mobility * .5f));
+            // PlayerLocomotion reserves this interval before a non-attack
+            // contact.  The live recovery search must use the same interval,
+            // otherwise it can publish a contact the receiver cannot reach.
+            const float contactPreparationLead = .10f;
+            var maximumSteps = Mathf.CeilToInt(1.25f /
+                SimulatedBall.DefaultFixedStep);
+            var receiveFrames = receiver.PreviewContactFrames(TechniqueAction.Receive);
+            var receiveHeight = receiveFrames.Average(frame => frame.Origin.Y +
+                (frame.Normal.Y * SimulatedBall.DefaultRadius));
+            var recoveryLead = 0f;
+            var smallestHeightError = float.PositiveInfinity;
+            var recoveryRootTarget = Vector3.zero;
+            const float maximumReceiveSurfaceDistance = .18f;
+            for (var step = 1; step <= maximumSteps; step++)
+            {
+                BallIntegrator.Step(rebound, SimulatedBall.DefaultFixedStep,
+                    SimulationParameters);
+                var elapsed = step * SimulatedBall.DefaultFixedStep;
+                var rootTarget = receiver.ResolveContactRootTarget(
+                    TechniqueAction.Receive, rebound.Position,
+                    new Vector3(rebound.Position.X, 0f, rebound.Position.Z));
+                var horizontal = new SimVector3(rootTarget.x - recoveryRoot.X,
+                    0f, rootTarget.z - recoveryRoot.Z).Magnitude;
+                var heightError = Mathf.Abs(rebound.Position.Y - receiveHeight);
+                var surfaceDistance = receiver.PreviewContactFramesAt(
+                        TechniqueAction.Receive, rootTarget)
+                    .Select(frame => (frame.Origin - rebound.Position).Magnitude)
+                    .DefaultIfEmpty(float.PositiveInfinity).Min();
+                var movementSeconds = Mathf.Max(0f, elapsed - contactPreparationLead);
+                if (rebound.Position.Y >= SimulatedBall.DefaultRadius &&
+                    movementSeconds > 0f &&
+                    horizontal <= recoverySpeed * movementSeconds &&
+                    surfaceDistance <= maximumReceiveSurfaceDistance &&
+                    heightError < smallestHeightError)
+                {
+                    recoveryLead = elapsed;
+                    smallestHeightError = heightError;
+                    recoveryRootTarget = rootTarget;
+                }
+            }
+            if (recoveryLead <= 0f)
+            {
+                return null;
+            }
+            // Re-integrate to the selected reachable continuation sample; this
+            // makes the contact center/time a single immutable actual-rebound
+            // fact rather than an independently guessed movement target.
+            rebound = new BallState(actualImpactCenter, actualBlockOutgoing,
+                SimulatedBall.DefaultRadius);
+            var selectedSteps = Mathf.Max(1, Mathf.RoundToInt(recoveryLead /
+                SimulatedBall.DefaultFixedStep));
+            for (var step = 0; step < selectedSteps; step++)
+                BallIntegrator.Step(rebound, SimulatedBall.DefaultFixedStep,
+                    SimulationParameters);
+            var contactCenter = rebound.Position;
+            // The declared reorganization exit supplies the receiving side;
+            // the setter organization zone is a pure geometric output target,
+            // not a new tactical Set selection.
+            var setterZone = SetterOrganizationZone.DefaultWorldTarget(receiver.Id.Team);
+            var target = new SimVector3(setterZone.X, 2.5f, setterZone.Z);
+            var outgoing = ReturnVelocitySolver.Solve(contactCenter, target, .60f,
+                SimulatedBall.DefaultFixedStep, SimulationParameters).InitialVelocity;
+            var identity = "gate-i-tool-recovery:" + state.Revision + ":" +
+                recovery.RecoveryActor.Value + ":" + _gateHSourceSequence;
+            var envelope = PlanExecutionEnvelopeV4(receiver.Ability.Derived,
+                new ExecutionIntentV4(identity, ExecutionCandidateCategoryV4.Receive,
+                    target, outgoing, .5f), identity + ":sample",
+                ExecutionEnvelopePolicyV4.GateI);
+            var sample = new ExecutionSampleV4(envelope.Identity,
+                envelope.Sampling.SamplingKey, ExecutionCandidateCategoryV4.Receive,
+                target, outgoing, envelope.RequestedEffort);
+            var classification = ExecuteExecutionSampleV4(envelope, sample);
+            if (classification.Kind is ExecutionSampleClassificationKindV4.UnexpectedExecutionSample or
+                ExecutionSampleClassificationKindV4.EnvelopeExceeded)
+                throw new InvalidOperationException("Actual tool recovery Receive must be executable.");
+            var stateVersion = (long)(uint)BitConverter.ToInt32(
+                BitConverter.GetBytes(_ball.SimulationTime), 0);
+            var trajectory = PredictSharedGate5TrajectoryV4(
+                _trajectoryPredictionProviderV4,
+                new BallTrajectoryPredictionRequestV4(ToSide(receiver.Id.Team), stateVersion,
+                    new BallState(contactCenter, outgoing, SimulatedBall.DefaultRadius),
+                    SimulationParameters, _matchContext.PhysicsConfigurationHash,
+                    identity + ":trajectory",
+                    _matchContext.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                    _matchContext.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                    envelope.Identity, ExecutionDegradationStepV4.FullSampling),
+                ExecutionEnvelopePolicyV4.Default);
+            // Resolve the receiving platform's root from the actual rebound.
+            // Scheduling the ball's ground projection makes the player stop a
+            // palm-width away because a Receive surface is offset from its root.
+            var root = recoveryRootTarget;
+            var group = checked(1000000000 + ((int)state.Revision * 16) + 3);
+            return new AttackDefenseCommandExecutionV4(_ball.SimulationTime + recoveryLead,
+                _ball.SimulationTime, default, group, classification, trajectory,
+                ToSimulation(root), physicalContactCenter: contactCenter);
+        }
 
         private AttackDefenseAuthorityReceipt CreateToolRecoveryReceiveReceipt(
             StablePlayerId actor, ExecutionSampleClassificationV4 classification,
@@ -2975,6 +3207,59 @@ namespace Volleyball.Presentation
                 defensePlayers, assignments, exits));
             _attackDefenseCoordinator.CommitDefense(intent.PlanRevision, ++_gateHSourceSequence, defense);
             _attackDefenseCoordinator.CommitFinalAttack(intent.PlanRevision, ++_gateHSourceSequence);
+        }
+
+        private void RecordGateISetCalibration(
+            PlayerId setter, SetTechniqueStyle style, float contactCenteredness)
+        {
+            var intent = _attackDefenseCoordinator.State.Plan?.SetIntent;
+            var selected = _attackDefenseCoordinator.State.Plan?.SelectedAction;
+            if (intent == null || selected == null)
+                throw new InvalidOperationException(
+                    "Accepted Gate I Set requires its committed final attack plan.");
+
+            var prediction = TrajectoryPredictor.Predict(
+                _ball.State,
+                SimulationParameters,
+                SimulatedBall.DefaultFixedStep,
+                Mathf.Max(2f, intent.SetFlightSeconds + .5f),
+                260,
+                GroundHeight);
+            var actualArrival = ClosestSetArrival(
+                prediction,
+                intent.Target,
+                intent.SetFlightSeconds);
+            var quality = SetQualityAssessment.Evaluate(new SetQualityInput(
+                GroundDistance(actualArrival.Position, intent.Target),
+                Mathf.Abs(actualArrival.Position.Y - intent.Target.Y),
+                Mathf.Abs(actualArrival.TimeSeconds - intent.SetFlightSeconds),
+                Mathf.Abs(actualArrival.Position.Z),
+                actualArrival.TimeSeconds));
+
+            _lastSetQualityAssessment = quality;
+            _lastSetAttackActor = PlayerForStableId(selected.Actor).Id;
+            _lastSetSetterActor = setter;
+            _lastAttackContactOutcome = AttackContactOutcome.FullAttack;
+            _lastSetChainSuccessRecorded = false;
+            _activeSetChain = true;
+            _lastAttackResponsibility = SetQualityAssessment.PrimaryResponsibility(
+                quality.Grade,
+                AttackOutcome.InPlay);
+            TotalSets++;
+            if (quality.Grade == SetQualityGrade.A)
+                GradeASets++;
+            if (quality.IsAdjustable)
+                AttackableSets++;
+            else
+                DirectSetErrors++;
+
+            // Gate I owns the immutable set target and final route. These retain
+            // the calibration observability previously recorded by the legacy
+            // set-to-attack scheduler without reopening that writer.
+            GeometricSetTargetSelections++;
+            GeometricAttackRouteSelections++;
+            RecordSetCalibration(setter, style, contactCenteredness,
+                recordLegacyRouteStyle: false);
         }
 
         // The coordinator keeps candidates private; the committed public threat is
@@ -3528,7 +3813,8 @@ namespace Volleyball.Presentation
         private void RecordSetCalibration(
             PlayerId setter,
             SetTechniqueStyle style,
-            float contactCenteredness)
+            float contactCenteredness,
+            bool recordLegacyRouteStyle = true)
         {
             const float inSystemCenteredness = 0.85f;
             _lastSetWasSetter = setter.Role == PlayerRole.Setter &&
@@ -3547,8 +3833,10 @@ namespace Volleyball.Presentation
                 }
             }
 
-            if (style == SetTechniqueStyle.SideLeftTwoHand ||
+            if (recordLegacyRouteStyle &&
+                (style == SetTechniqueStyle.SideLeftTwoHand ||
                 style == SetTechniqueStyle.SideRightTwoHand)
+            )
             {
                 NormalSideSets++;
             }
@@ -4660,6 +4948,7 @@ namespace Volleyball.Presentation
             }
             _scheduledBlockers.Clear();
             _scheduledBlockPrimary = null;
+            _committedGateIBlockTime = -1f;
         }
 
         private void DisableEmergencyReceiveWindows(TeamId team)

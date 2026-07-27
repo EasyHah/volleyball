@@ -110,9 +110,10 @@ outside Gate H, while accepted Set hands off to the temporary Gate I attack seam
 
 Gate H completion evidence on Unity `6000.0.43f1` is EditMode `627/627`,
 PlayMode `31/31`, and fixed-seed determinism `2/2`, all with zero failures,
-skips or inconclusive results. Gates I–K remain pending: attack/defense and
-reorganization authority, perception/CourtAwareness, then director slimming,
-Replay/calibration completion.
+skips or inconclusive results. Gate I completion evidence on Unity `6000.0.43f1`
+is EditMode `719/719`, PlayMode `34/34`, and fixed-seed determinism `2/2`, all
+with zero failures, skips or inconclusive results. Gates J–K remain pending:
+perception/CourtAwareness, then director slimming, Replay/calibration completion.
 
 ## Windows delivery
 

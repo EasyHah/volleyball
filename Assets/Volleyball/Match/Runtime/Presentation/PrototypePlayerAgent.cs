@@ -176,7 +176,8 @@ namespace Volleyball.Presentation
             SetRoute? normalSetRoute = null,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
             bool allowGateISoftAttack = false,
-            bool useExactTargetVelocity = false)
+            bool useExactTargetVelocity = false,
+            bool preservePlannedContactRoot = false)
         {
             ValidateV4Schedule(action, executionClassification, attackApproach,
                 attackContactPlan, allowGateISoftAttack);
@@ -210,7 +211,8 @@ namespace Volleyball.Presentation
                 command.NormalSetRoute,
                 applyLegacyAttackPowerScale: false,
                 executionCommand: command,
-                useExactTargetVelocity: useExactTargetVelocity);
+                useExactTargetVelocity: useExactTargetVelocity,
+                preservePlannedContactRoot: preservePlannedContactRoot);
         }
 
         public void ValidateV4Schedule(
@@ -316,7 +318,8 @@ namespace Volleyball.Presentation
             SetRoute? normalSetRoute,
             bool applyLegacyAttackPowerScale,
             PlayerExecutionCommand executionCommand = null,
-            bool useExactTargetVelocity = false)
+            bool useExactTargetVelocity = false,
+            bool preservePlannedContactRoot = false)
         {
             ValidateScheduleContactArguments(action, attackApproach, attackContactPlan);
 
@@ -401,7 +404,8 @@ namespace Volleyball.Presentation
                 resolvedTargetVelocity,
                 CurrentSetContactHand(),
                 authoritativeContactCenter,
-                useExactTargetVelocity));
+                useExactTargetVelocity,
+                preservePlannedContactRoot));
             _contactSurfaceProvider.Begin();
             _actionTimelineState.DisableSupport();
         }
@@ -1079,6 +1083,13 @@ namespace Volleyball.Presentation
 
         private void ApplyScheduledPose(ActionTimelineSample sample, float deltaSeconds)
         {
+            if (_contactSurfaceProvider.PreservePlannedContactRoot &&
+                _techniqueExecutor.ScheduledAction == TechniqueAction.Receive)
+            {
+                _presentation.ApplyPose(TechniqueAction.Receive,
+                    _techniqueExecutor.SetDecision.ExecutedStyle, 1f);
+                return;
+            }
             _presentation.ApplyScheduledPose(
                 sample, _techniqueExecutor.ScheduledAction, _techniqueExecutor.IsControlledHandling,
                 _techniqueExecutor.SetDecision.ExecutedStyle, _techniqueExecutor.ScheduledError,
@@ -1120,7 +1131,8 @@ namespace Volleyball.Presentation
 
         private void ApplyLimitedContactAlignment(ActionTimelineSample sample, float deltaSeconds)
         {
-            if (!_contactSurfaceProvider.HasPlannedContactCenter ||
+            if (_contactSurfaceProvider.PreservePlannedContactRoot ||
+                !_contactSurfaceProvider.HasPlannedContactCenter ||
                 sample.Phase != ActionPhase.Power && sample.Phase != ActionPhase.Contact)
             {
                 return;

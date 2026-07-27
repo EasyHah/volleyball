@@ -82,6 +82,12 @@ namespace Volleyball.EditModeTests
             Assert.That(result.Candidates.Select(x => x.ActionClass), Does.Contain(AttackActionClassV3.BlockToolRecovery));
             Assert.That(result.FallbackCandidates.Select(x => x.ActionClass), Has.None.EqualTo(AttackActionClassV3.BlockToolRecovery));
             Assert.That(result.PublicThreat.Entries.All(x => x.ArrivalTime > intent.GateHExpectedContactTime), Is.True);
+            var lineThreat = result.PublicThreat.Entries.Single(entry =>
+                entry.ActionClass == AttackActionClassV3.PowerLine);
+            var lineEvidence = result.ExecutionEvidence.Single(value =>
+                value.Candidate.ActionClass == AttackActionClassV3.PowerLine);
+            Assert.That(lineThreat.ArrivalTime, Is.EqualTo(intent.AttackReadyArrivalTime +
+                NetCrossingTime(lineEvidence.TrajectoryArtifact)).Within(.00001f));
             Assert.That(result.ExecutionEvidence.All(x => x.Candidate.EnvelopeIdentity == x.ExecutionClassification.ExecutableEnvelope.Identity && x.Candidate.TrajectoryArtifactIdentity == x.TrajectoryArtifact.ArtifactIdentity), Is.True);
             Assert.That(result.ExecutionEvidence.Where(x => x.Candidate.IsQualifiedPowerRoute).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.Attack), Is.True);
             Assert.That(result.ExecutionEvidence.Where(x => !IsPower(x.Candidate.ActionClass)).All(x => x.ExecutionClassification.ExecutableSample.CandidateCategory == ExecutionCandidateCategoryV4.SoftAction), Is.True);
@@ -145,6 +151,88 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlanAttack_LowPowerRouteBeyondEnvelope_FailsClosedWithDiagnosticEvidence()
+        {
+            var request = Request();
+            var lowPower = MatchV4TestFixture.CreateDerived(
+                attackTechnique: .3f, attackPower: 0f);
+            var players = new[]
+            {
+                new GateITacticalPlayerV3(request.Players[0].Player,
+                    TeamSide.Home, request.Players[0].WorldPosition, true,
+                    lowPower)
+            };
+            var normal = new AttackDefensePlanner().PlanSetIntent(request);
+            var intent = normal;
+
+            AttackPlanningResultV3 result = null;
+            Assert.DoesNotThrow(() => result = new AttackDefensePlanner().PlanAttack(
+                new AttackPlanningRequestV3(7, intent, Evidence(intent), players)));
+            var power = result.Candidates.Where(candidate => IsPower(candidate.ActionClass)).ToArray();
+            Assert.That(power, Has.Length.EqualTo(4));
+            Assert.That(power, Has.All.Matches<AttackCandidateV3>(candidate =>
+                !candidate.IsQualifiedPowerRoute &&
+                candidate.EliminationReason == "PowerCapacityInsufficient"));
+            Assert.That(result.ExecutionEvidence.Where(evidence =>
+                IsPower(evidence.Candidate.ActionClass)).All(evidence =>
+                evidence.ExecutionClassification != null &&
+                evidence.ExecutionClassification.ExecutableEnvelope != null &&
+                evidence.TrajectoryArtifact != null &&
+                !string.IsNullOrWhiteSpace(evidence.TrajectoryArtifact.ArtifactIdentity)), Is.True);
+        }
+
+        [Test]
+        public void PlanAttack_FallbackValuesAreComparableProbabilities_AndLowSoftTouchLetsToolWin()
+        {
+            var request = Request();
+            var planner = new AttackDefensePlanner();
+            var intent = planner.PlanSetIntent(request);
+            var lowSoft = MatchV4TestFixture.CreateAbility(
+                mobility: .2f, reaction: .2f, jump: .5f,
+                receiveTechnique: .2f, setTechnique: 1f,
+                attackTechnique: 0f, attackPower: 0f).Derived;
+            var recovery = new PlayerId("home-recovery");
+            var blocker = new PlayerId("away-blocker");
+            var players = new[]
+            {
+                new GateITacticalPlayerV3(request.Players[0].Player, TeamSide.Home,
+                    request.Players[0].WorldPosition, true, lowSoft),
+                new GateITacticalPlayerV3(recovery, TeamSide.Home,
+                    new SimVector3(0f, 2f, -2.5f), false, request.Players[0].Attributes),
+                new GateITacticalPlayerV3(blocker, TeamSide.Away,
+                    new SimVector3(0f, 3f, .05f), false, true, request.Players[0].Attributes)
+            };
+
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, intent,
+                Evidence(intent), players, ToolFacts(1,
+                    new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+
+            Assert.That(result.Candidates.Where(candidate => !IsPower(candidate.ActionClass))
+                .Select(candidate => candidate.ExpectedRallyValue),
+                Has.All.InRange(0f, 1f));
+            var tool = result.FallbackCandidates.Single(candidate =>
+                candidate.ActionClass == AttackActionClassV3.BlockToolRecovery);
+            var choice = planner.ChooseFinal(result,
+                DefenseWith(blocker, DefenseResponsibilityKindV3.PrimaryBlock));
+            Assert.That(choice.Candidate.CandidateIdentity,
+                Is.EqualTo(tool.CandidateIdentity));
+
+            var highDirection = MatchV4TestFixture.CreateAbility(
+                mobility: .2f, reaction: .2f, jump: .5f,
+                receiveTechnique: .2f, setTechnique: 1f,
+                attackTechnique: 1f, attackPower: 0f).Derived;
+            players[0] = new GateITacticalPlayerV3(request.Players[0].Player,
+                TeamSide.Home, request.Players[0].WorldPosition, true,
+                highDirection);
+            var high = planner.PlanAttack(new AttackPlanningRequestV3(7, intent,
+                Evidence(intent), players, ToolFacts(1,
+                    new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+            Assert.That(planner.ChooseFinal(high,
+                    DefenseWith(blocker, DefenseResponsibilityKindV3.PrimaryBlock))
+                .Candidate.ActionClass, Is.Not.EqualTo(AttackActionClassV3.BlockToolRecovery));
+        }
+
+        [Test]
         public void PlanAttack_LegalSampleRatio_ComesFromTrajectoryRatherThanAttackerDistance()
         {
             var request = Request();
@@ -198,6 +286,65 @@ namespace Volleyball.EditModeTests
             Assert.That(tool.ToolRecoveryEvidence.ReboundSampleIdentity, Does.Contain(":rebound-sample:"));
             Assert.That(result.ExecutionEvidence.Single(value => value.CandidateIdentity == tool.CandidateIdentity)
                 .TrajectoryArtifact.ArtifactIdentity, Is.EqualTo(tool.TrajectoryArtifactIdentity));
+        }
+
+        [Test]
+        public void PlanAttack_ToolRecoveryAllowsNetCorridorWithVerticalReach()
+        {
+            var request = Request();
+            var planner = new AttackDefensePlanner();
+            var intent = planner.PlanSetIntent(request);
+            var recovery = new PlayerId("home-recovery");
+            var blocker = new PlayerId("away-net-corridor-blocker");
+            // The root stays in its legal front-row corridor two metres from
+            // the net.  Vertical reach is validated independently, so it must
+            // not be added again to the lateral movement distance.
+            var players = request.Players.Concat(new[]
+            {
+                new GateITacticalPlayerV3(recovery, TeamSide.Home,
+                    new SimVector3(0f, 0f, -2.5f), false,
+                    request.Players[0].Attributes),
+                new GateITacticalPlayerV3(blocker, TeamSide.Away,
+                    new SimVector3(0f, 0f, 2.05f), false, true,
+                    request.Players[0].Attributes)
+            }).ToArray();
+
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7,
+                intent, Evidence(intent), players, ToolFacts(1,
+                    new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+
+            Assert.That(result.FallbackCandidates.Single(candidate =>
+                    candidate.ActionClass == AttackActionClassV3.BlockToolRecovery)
+                .ToolRecoveryEvidence.Blocker, Is.EqualTo(blocker));
+        }
+
+        [Test]
+        public void PlanAttack_ToolRecoverySkipsNearestUnreachableBlocker()
+        {
+            var request = Request();
+            var planner = new AttackDefensePlanner();
+            var intent = planner.PlanSetIntent(request);
+            var recovery = new PlayerId("home-recovery");
+            var unreachable = new PlayerId("away-nearest-low-reach");
+            var reachable = new PlayerId("away-reachable-second");
+            var lowBlock = MatchV4TestFixture.CreateAbility(.2f, .2f, 0f,
+                .2f, .8f, .2f, .2f, plannedContactHeightMeters: 2.45f).Derived;
+            var players = request.Players.Concat(new[]
+            {
+                new GateITacticalPlayerV3(recovery, TeamSide.Home,
+                    new SimVector3(0f, 2f, -2.5f), false, request.Players[0].Attributes),
+                new GateITacticalPlayerV3(unreachable, TeamSide.Away,
+                    new SimVector3(0f, 0f, .05f), false, true, lowBlock),
+                new GateITacticalPlayerV3(reachable, TeamSide.Away,
+                    new SimVector3(0f, 0f, 2.05f), false, true, request.Players[0].Attributes)
+            }).ToArray();
+
+            var result = planner.PlanAttack(new AttackPlanningRequestV3(7, intent,
+                Evidence(intent), players, ToolFacts(1,
+                    new ReorganizationExitV3("tool-exit", recovery, "organize"))));
+            Assert.That(result.FallbackCandidates.Single(candidate =>
+                candidate.ActionClass == AttackActionClassV3.BlockToolRecovery)
+                .ToolRecoveryEvidence.Blocker, Is.EqualTo(reachable));
         }
 
         [TestCase(false, 1, true, ToolRecoveryFailure.NoNonAttackerContinuation)]
@@ -309,6 +456,23 @@ namespace Volleyball.EditModeTests
             var landing = artifact.PredictionSnapshot.GroundLanding;
             return crossed && landing.HasValue && landing.Value.Position.Z * depthSign > 0f &&
                 System.Math.Abs(landing.Value.Position.X) < 4.5f;
+        }
+
+        private static float NetCrossingTime(BallTrajectoryPredictionArtifactV4 artifact)
+        {
+            var samples = artifact.PredictionSnapshot.Samples;
+            for (var index = 1; index < samples.Count; index++)
+            {
+                if (samples[index - 1].Position.Z < 0f && samples[index].Position.Z >= 0f)
+                {
+                    var alpha = -samples[index - 1].Position.Z /
+                        (samples[index].Position.Z - samples[index - 1].Position.Z);
+                    return samples[index - 1].TimeSeconds +
+                        ((samples[index].TimeSeconds - samples[index - 1].TimeSeconds) * alpha);
+                }
+            }
+            Assert.Fail("Expected an opponent-net crossing in the candidate-owned trajectory.");
+            return 0f;
         }
 
         private static bool IsPower(AttackActionClassV3 value) =>

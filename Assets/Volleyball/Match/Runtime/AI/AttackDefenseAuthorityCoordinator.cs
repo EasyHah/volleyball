@@ -78,7 +78,8 @@ namespace Volleyball.AI
             string trajectoryArtifactIdentity, bool v3Accepted,
             string reorganizationExitIdentity = null,
             ToolRecoveryReboundObservationV3 toolRecoveryRebound = ToolRecoveryReboundObservationV3.NotApplicable,
-            int remainingTouchesAfterContact = -1)
+            int remainingTouchesAfterContact = -1,
+            AttackDefenseCommandExecutionV4 toolRecoveryReceiveExecution = null)
         {
             if (planRevision < 0 || sourceSequence < 0) throw new ArgumentOutOfRangeException(planRevision < 0 ? nameof(planRevision) : nameof(sourceSequence));
             if (!Enum.IsDefined(typeof(PlanCoverageReason), coverageReason)) throw new ArgumentOutOfRangeException(nameof(coverageReason));
@@ -96,6 +97,7 @@ namespace Volleyball.AI
                 throw new ArgumentOutOfRangeException(nameof(remainingTouchesAfterContact));
             ToolRecoveryRebound = toolRecoveryRebound;
             RemainingTouchesAfterContact = remainingTouchesAfterContact;
+            ToolRecoveryReceiveExecution = toolRecoveryReceiveExecution;
         }
         public long PlanRevision { get; } public long SourceSequence { get; } public PlayerId Actor { get; }
         public PlanCoverageReason CoverageReason { get; } public string ReorganizationExitIdentity { get; }
@@ -106,6 +108,10 @@ namespace Volleyball.AI
         public bool V3Accepted { get; }
         public ToolRecoveryReboundObservationV3 ToolRecoveryRebound { get; }
         public int RemainingTouchesAfterContact { get; }
+        // A successful physical tool block supplies the receive execution from
+        // its actual rebound state.  The coordinator publishes this immutable
+        // command; presentation may not replace it at the net crossing.
+        public AttackDefenseCommandExecutionV4 ToolRecoveryReceiveExecution { get; }
     }
 
     public sealed class AttackDefenseAuthorityCommand
@@ -143,7 +149,8 @@ namespace Volleyball.AI
             int contactGroupId, ExecutionSampleClassificationV4 executionClassification,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact, SimVector3 movementTarget,
             AttackApproachPlan? attackApproach = null,
-            AttackContactPlan? attackContactPlan = null)
+            AttackContactPlan? attackContactPlan = null,
+            SimVector3? physicalContactCenter = null)
         {
             if (!Finite(scheduledSimulationTime) || !Finite(movementStartSimulationTime) ||
                 contactGroupId <= 0 || !Finite(movementTarget))
@@ -159,6 +166,9 @@ namespace Volleyball.AI
             MovementTarget = movementTarget;
             AttackApproach = attackApproach;
             AttackContactPlan = attackContactPlan;
+            if (physicalContactCenter.HasValue && !Finite(physicalContactCenter.Value))
+                throw new ArgumentOutOfRangeException(nameof(physicalContactCenter));
+            PhysicalContactCenter = physicalContactCenter;
         }
         public float ScheduledSimulationTime { get; }
         public float MovementStartSimulationTime { get; }
@@ -169,6 +179,7 @@ namespace Volleyball.AI
         public SimVector3 MovementTarget { get; }
         public AttackApproachPlan? AttackApproach { get; }
         public AttackContactPlan? AttackContactPlan { get; }
+        public SimVector3? PhysicalContactCenter { get; }
         private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value) && value >= 0f;
         private static bool Finite(SimVector3 value) => value.IsFinite;
     }
@@ -204,6 +215,9 @@ namespace Volleyball.AI
         private readonly AttackDefensePlanner _planner; private readonly IAttackDefenseAuthorityCommandSink _sink;
         private GateISetIntentV3 _intent; private AttackPlanningResultV3 _attack; private JointDefensePlanV3 _defense;
         private IReadOnlyDictionary<PlayerId, GateITacticalPlayerV3> _players;
+        private readonly Dictionary<string, AttackDefenseCommandExecutionV4>
+            _committedDefenseExecutions = new Dictionary<string, AttackDefenseCommandExecutionV4>();
+        private AttackDefenseCommandExecutionV4 _toolRecoveryReceiveExecution;
         private TeamSide _attackingSide;
         private long _lastSequence = -1;
         public AttackDefenseAuthorityCoordinator(AttackDefensePlanner planner, IAttackDefenseAuthorityCommandSink sink)
@@ -254,8 +268,16 @@ namespace Volleyball.AI
             {
                 var kind = x.Kind == DefenseResponsibilityKindV3.PrimaryBlock || x.Kind == DefenseResponsibilityKindV3.SupportingBlock
                     ? AttackDefenseCommandKind.BlockContact : AttackDefenseCommandKind.FloorDefense;
+                var execution = ExecutionFor(x.Actor, kind, x.Zone, x.Kind,
+                        x.Kind == DefenseResponsibilityKindV3.SupportingBlock
+                            ? defense.Responsibilities.Where(value =>
+                                value.Kind == DefenseResponsibilityKindV3.SupportingBlock)
+                                .OrderBy(value => value.Actor.ToString(), StringComparer.Ordinal)
+                                .ToList().FindIndex(value => value.Actor.Equals(x.Actor))
+                            : 0);
+                _committedDefenseExecutions[DefenseExecutionKey(x.Actor, kind, x.Branch)] = execution;
                 return new AttackDefenseAuthorityCommand(revision, sourceSequence, kind, x.Actor, true,
-                    ExecutionFor(x.Actor, kind), x.Branch);
+                    execution, x.Branch);
             }));
             return State;
         }
@@ -334,10 +356,20 @@ namespace Volleyball.AI
                     contact.ToolRecoveryRebound != ToolRecoveryReboundObservationV3.ReturnsToAttackingSide ||
                     contact.RemainingTouchesAfterContact <= 0)
                     return CompleteOrdinaryDefense(contact, PlanCoverageReason.ResponsibleActorChanged);
+                if (contact.ToolRecoveryReceiveExecution == null)
+                    return CompleteOrdinaryDefense(contact,
+                        PlanCoverageReason.BallEnvelopeExceeded);
                 _lastSequence = contact.SourceSequence;
+                _toolRecoveryReceiveExecution = contact.ToolRecoveryReceiveExecution;
                 State = new AttackDefenseAuthorityStateV3(
                     AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive,
                     State.Revision, _attackingSide, State.Plan, coverage);
+                var recovery = State.Plan.SelectedAction.ToolRecoveryEvidence;
+                Publish(contact.SourceSequence, State, new[] {
+                    new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence,
+                        AttackDefenseCommandKind.FloorDefense, recovery.RecoveryActor, true,
+                        contact.ToolRecoveryReceiveExecution, RallyPlanBranchV3.Primary)
+                });
                 return State;
             }
 
@@ -404,6 +436,8 @@ namespace Volleyball.AI
             _attack = null;
             _defense = null;
             _players = null;
+            _committedDefenseExecutions.Clear();
+            _toolRecoveryReceiveExecution = null;
             State = AttackDefenseAuthorityStateV3.Idle;
             return State;
         }
@@ -430,8 +464,7 @@ namespace Volleyball.AI
                 contact.ActionKind == AttackDefenseCommandKind.FloorDefense &&
                 State.Plan?.SelectedAction?.ToolRecoveryEvidence != null &&
                 contact.Actor.Equals(State.Plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor) &&
-                !string.IsNullOrWhiteSpace(contact.EnvelopeIdentity) &&
-                !string.IsNullOrWhiteSpace(contact.TrajectoryArtifactIdentity))
+                MatchesToolRecoveryExecution(contact.ToolRecoveryReceiveExecution))
                 return;
             if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingBlock &&
                 contact.ActionKind == AttackDefenseCommandKind.BlockContact &&
@@ -457,7 +490,11 @@ namespace Volleyball.AI
                 ? responsibility != null && (responsibility.Kind == DefenseResponsibilityKindV3.PrimaryBlock || responsibility.Kind == DefenseResponsibilityKindV3.SupportingBlock)
                 : contact.ActionKind == AttackDefenseCommandKind.FloorDefense || contact.ActionKind == AttackDefenseCommandKind.AttackCover
                     ? responsibility != null : false;
-            var expectedEnvelope = "gate-i-" + State.Revision + "-" + (int)contact.ActionKind + "-" + contact.Actor.Value;
+            var expectedEnvelope = _committedDefenseExecutions.TryGetValue(
+                DefenseExecutionKey(contact.Actor, contact.ActionKind, contact.Branch),
+                out var committedExecution)
+                ? committedExecution.ExecutionClassification.ExecutableEnvelope.Identity
+                : "gate-i-" + State.Revision + "-" + (int)contact.ActionKind + "-" + contact.Actor.Value;
             var incidental = contact.ActionKind ==
                 AttackDefenseCommandKind.FloorDefense &&
                 contact.CoverageReason ==
@@ -471,7 +508,29 @@ namespace Volleyball.AI
                 throw new InvalidOperationException("Defense evidence must exactly match a committed responsibility.");
         }
 
-        private AttackDefenseCommandExecutionV4 ExecutionFor(PlayerId actor, AttackDefenseCommandKind kind)
+        private static string DefenseExecutionKey(PlayerId actor,
+            AttackDefenseCommandKind kind, RallyPlanBranchV3 branch) =>
+            actor.Value + ":" + (int)kind + ":" + (int)branch;
+
+        private bool MatchesToolRecoveryExecution(
+            AttackDefenseCommandExecutionV4 actual)
+        {
+            var expected = _toolRecoveryReceiveExecution;
+            return actual != null && expected != null &&
+                actual.ScheduledSimulationTime.Equals(expected.ScheduledSimulationTime) &&
+                actual.MovementStartSimulationTime.Equals(expected.MovementStartSimulationTime) &&
+                actual.ContactGroupId == expected.ContactGroupId &&
+                actual.MovementTarget.Equals(expected.MovementTarget) &&
+                Nullable.Equals(actual.PhysicalContactCenter, expected.PhysicalContactCenter) &&
+                actual.ExecutionClassification.ExecutableEnvelope.Identity ==
+                    expected.ExecutionClassification.ExecutableEnvelope.Identity &&
+                actual.TrajectoryArtifact.ArtifactIdentity ==
+                    expected.TrajectoryArtifact.ArtifactIdentity;
+        }
+
+        private AttackDefenseCommandExecutionV4 ExecutionFor(PlayerId actor, AttackDefenseCommandKind kind,
+            string defenseZone = null, DefenseResponsibilityKindV3? responsibilityKind = null,
+            int supportingBlockIndex = 0)
         {
             if (_players == null || !_players.TryGetValue(actor, out var player))
                 throw new InvalidOperationException("Every command actor must have immutable Gate I execution inputs.");
@@ -492,12 +551,30 @@ namespace Volleyball.AI
                 var scheduled = _intent.AttackReadyArrivalTime;
                 var approachLead = Math.Min(.6f, Math.Max(.05f, scheduled));
                 return new AttackDefenseCommandExecutionV4(scheduled,
-                    scheduled - approachLead, default, 1, exact.ExecutionClassification, exact.TrajectoryArtifact,
+                    scheduled - approachLead, default,
+                    ContactGroupFor(State.Revision, AttackDefenseCommandKind.AttackContact),
+                    exact.ExecutionClassification, exact.TrajectoryArtifact,
                     takeoff, approach, attackContact);
             }
             var category = kind == AttackDefenseCommandKind.AttackContact ? ExecutionCandidateCategoryV4.Attack :
                 kind == AttackDefenseCommandKind.BlockContact ? ExecutionCandidateCategoryV4.Block : ExecutionCandidateCategoryV4.Receive;
+            // Block responsibility is an already-public joint-defense fact.
+            // Reserve a net-corridor root from that zone, rather than leaving
+            // a scheduled block at its formation snapshot or deriving a target
+            // from the hidden final attack route.
             var target = player.WorldPosition;
+            if (kind == AttackDefenseCommandKind.BlockContact)
+            {
+                var x = string.Equals(defenseZone, "Line", StringComparison.Ordinal)
+                    ? -1f
+                    : string.Equals(defenseZone, "Cross", StringComparison.Ordinal)
+                        ? 1f
+                        : 0f;
+                if (responsibilityKind == DefenseResponsibilityKindV3.SupportingBlock)
+                    x += supportingBlockIndex % 2 == 0 ? -.45f : .45f;
+                var z = player.Side == TeamSide.Home ? -.35f : .35f;
+                target = new SimVector3(x, player.WorldPosition.Y, z);
+            }
             var envelope = ExecutionEnvelopeFactoryV4.Create(player.Attributes,
                 new ExecutionIntentV4("gate-i-" + State.Revision + "-" + (int)kind + "-" + actor.Value, category, target,
                     new SimVector3(0f, 1f, 1f), .5f),
@@ -509,8 +586,39 @@ namespace Volleyball.AI
             // Set+epsilon can otherwise become an illegal third rally touch.
             var defenseTime = Math.Max(_intent.AttackReadyArrivalTime + .01f,
                 _intent.GateHExpectedContactTime + .25f);
-            return new AttackDefenseCommandExecutionV4(defenseTime, 0f, default, 1,
+            if (kind == AttackDefenseCommandKind.BlockContact)
+            {
+                var publishedArrival = State.Plan.PublicThreat.Entries
+                    .Where(entry => string.Equals(entry.Zone, defenseZone,
+                        StringComparison.Ordinal))
+                    .Select(entry => entry.ArrivalTime)
+                    // A middle-only threat still needs a deterministic block
+                    // window for a line/cross responsibility: use the earliest
+                    // already-public arrival, never a hidden final route.
+                    .DefaultIfEmpty(State.Plan.PublicThreat.Entries
+                        .Select(entry => entry.ArrivalTime).Min())
+                    .Min();
+                defenseTime = Math.Max(_intent.AttackReadyArrivalTime + .01f,
+                    publishedArrival);
+            }
+            // A committed block unit shares one V3 physical-contact group, but
+            // it must never reuse the attack group's identity or a later Gate-I
+            // opportunity's identity.
+            var contactGroup = ContactGroupFor(State.Revision, kind);
+            return new AttackDefenseCommandExecutionV4(defenseTime, 0f, default, contactGroup,
                 envelope.Classify(sample), _intent.TrajectoryArtifact, target);
+        }
+
+        private static int ContactGroupFor(long revision, AttackDefenseCommandKind kind)
+        {
+            const int baseGroup = 1000000000;
+            const int revisionStride = 16;
+            if (revision < 0 || revision > (int.MaxValue - baseGroup) / revisionStride)
+                throw new InvalidOperationException("Gate I contact-group revision exceeds the deterministic range.");
+            var kindCode = kind == AttackDefenseCommandKind.AttackContact ? 1 :
+                kind == AttackDefenseCommandKind.BlockContact ? 2 :
+                kind == AttackDefenseCommandKind.FloorDefense ? 3 : 4;
+            return checked(baseGroup + ((int)revision * revisionStride) + kindCode);
         }
     }
 }

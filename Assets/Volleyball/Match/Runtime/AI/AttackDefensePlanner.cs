@@ -242,7 +242,8 @@ namespace Volleyball.AI
                 (c.ActionClass != AttackActionClassV3.BlockToolRecovery || c.ToolRecoveryEvidence != null)).ToArray();
             var threatSource = power.Length > 0 ? power : fallback;
             var min = threatSource.Min(c => c.ExpectedRallyValue); var total = threatSource.Sum(c => Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f));
-            var entries = threatSource.Select(c => new PublicAttackThreatEntryV3(c.ActionClass, Zone(c.Target), Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f) / total, ArrivalTime(c, request.SetIntent))).ToArray();
+            var entries = threatSource.Select(c => new PublicAttackThreatEntryV3(c.ActionClass, Zone(c.Target), Math.Max(.0001f, c.ExpectedRallyValue - min + .0001f) / total,
+                ArrivalTime(generatedEvidence.Single(evidence => evidence.Candidate.CandidateIdentity == c.CandidateIdentity), request.SetIntent, actor.Side))).ToArray();
             var exits = qualifiedTool.Recovery != null && qualifiedTool.Recovery.IsQualified
                 ? new[] { qualifiedTool.Recovery.ReorganizationExit }
                 : Array.Empty<ReorganizationExitV3>();
@@ -260,18 +261,23 @@ namespace Volleyball.AI
             GateITacticalPlayerV3 attacker, GateIAttackExecutionEvidenceV3 source)
         {
             var candidate = source.Candidate;
-            var blocker = request.Players.Where(value => value.Side != attacker.Side && value.CanBlock)
+            var blocker = request.Players.Where(value => value.Side != attacker.Side && value.CanBlock &&
+                    IsBlockReachable(value, source.TrajectoryArtifact))
                 .OrderBy(value => DistanceToNetTrajectory(value.WorldPosition, source.TrajectoryArtifact))
                 .ThenBy(value => value.Player.ToString(), StringComparer.Ordinal).FirstOrDefault();
             var reboundEvidence = default(BallTrajectoryPredictionArtifactV4);
             ToolRecoveryFailure failure = ToolRecoveryFailure.NoBlockContact;
-            if (blocker != null && IsBlockReachable(blocker, source.TrajectoryArtifact))
+            if (blocker != null)
             {
                 var contact = NetCrossing(source.TrajectoryArtifact, attacker.Side);
                 if (contact.HasValue)
                 {
                     var frame = new TeamCourtFrame(attacker.Side == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
-                    var reboundTarget = frame.ToWorld(new SimVector3(contact.Value.X, .12f, -3f));
+                    // A controlled tool rebound is a short playable continuation
+                    // behind the attacker, not an invented deep-court landing.
+                    // This corridor matches the committed physical block response
+                    // while retaining a non-attacker recovery opportunity.
+                    var reboundTarget = frame.ToWorld(new SimVector3(contact.Value.X, .12f, -1.25f));
                     var reboundVelocity = ReturnVelocitySolver.Solve(contact.Value, reboundTarget, .5f,
                         FixedSimulationStepSeconds, request.SimulationParameters).InitialVelocity;
                     reboundEvidence = PredictTrajectory(request, attacker.Side, contact.Value, reboundVelocity,
@@ -282,12 +288,13 @@ namespace Volleyball.AI
                             value.Player.Equals(attacker.Player) ? 0f : ReachProbability(value, reboundEvidence),
                             value.Player.Equals(attacker.Player) ? 0f : value.Attributes.Attributes.Defense.PlatformControl)).ToArray();
                     var exits = ResolveToolRecoveryExits(request, attacker);
-                    var exit = exits.OrderBy(value => value.Identity, StringComparer.Ordinal)
-                        .FirstOrDefault(value => teammates.Any(team => team.Actor.Equals(value.Actor) && team.ReachProbability > 0f));
                     var blockProbability = blocker.Attributes.Attributes.Block.Timing * blocker.Attributes.Attributes.Block.HandControl;
                     var homeProbability = reboundHome ? 1f : 0f;
                     var recoveryActor = teammates.Where(value => value.ReachProbability > 0f && value.ControlMargin > 0f)
                         .OrderByDescending(value => value.ReachProbability * value.ControlMargin).ThenBy(value => value.Actor.ToString(), StringComparer.Ordinal).FirstOrDefault();
+                    var exit = recoveryActor.Actor.Value == null ? null : exits
+                        .OrderBy(value => value.Identity, StringComparer.Ordinal)
+                        .FirstOrDefault(value => value.Actor.Equals(recoveryActor.Actor));
                     var value = recoveryActor.Actor.Value == null || exit == null ? 0f : blockProbability * homeProbability * recoveryActor.ReachProbability * recoveryActor.ControlMargin;
                     var provisional = new AttackCandidateV3(candidate.CandidateIdentity, candidate.Actor, candidate.ActionClass,
                         candidate.ContactCenter, candidate.Target, value, candidate.LegalSampleRatio, false,
@@ -332,9 +339,15 @@ namespace Volleyball.AI
         private static bool IsBlockReachable(GateITacticalPlayerV3 blocker, BallTrajectoryPredictionArtifactV4 trajectory)
         {
             var contact = trajectory.PredictionSnapshot.Samples.Where(sample => Math.Abs(sample.Position.Z) <= .35f)
-                .OrderBy(sample => (sample.Position - blocker.WorldPosition).Magnitude).FirstOrDefault();
+                .OrderBy(sample => HorizontalDistance(sample.Position, blocker.WorldPosition)).FirstOrDefault();
             return contact.Position.IsFinite && contact.Position.Y <= blocker.Attributes.Attributes.Block.ReachHeightMeters &&
-                (contact.Position - blocker.WorldPosition).Magnitude <= 3f;
+                HorizontalDistance(contact.Position, blocker.WorldPosition) <= 3f;
+        }
+        private static float HorizontalDistance(SimVector3 first, SimVector3 second)
+        {
+            var dx = first.X - second.X;
+            var dz = first.Z - second.Z;
+            return (float)Math.Sqrt((dx * dx) + (dz * dz));
         }
         private static SimVector3? NetCrossing(BallTrajectoryPredictionArtifactV4 trajectory, TeamSide side)
         {
@@ -436,12 +449,47 @@ namespace Volleyball.AI
                 var identity = "gate-i-" + set.PlanRevision + "-" + action;
                 var category = power ? ExecutionCandidateCategoryV4.Attack : ExecutionCandidateCategoryV4.SoftAction;
                 var route = RouteFor(action, set.Target);
-                var selection = TrySelectRoute(actor, set.Target, route, request.SimulationParameters);
+                var selection = TrySelectRoute(actor, set.Target, route, category,
+                    request.SimulationParameters);
                 var target = selection.HasValue ? selection.Value.Target : Target(set.Target, action, actor.Side);
                 var velocity = selection.HasValue
                     ? selection.Value.InitialVelocity
                     : SafeRejectedVelocity(set.Target, request.SimulationParameters);
-                var envelope = ExecutionEnvelopeFactoryV4.Create(actor.Attributes, new ExecutionIntentV4(identity, category, target, velocity, .5f), identity, ExecutionEnvelopePolicyV4.GateI);
+                ExecutionEnvelopeV4 envelope;
+                var powerCapacityInsufficient = false;
+                if (power)
+                {
+                    // Build the zero-velocity diagnostic envelope first.  It
+                    // gives the exact V4 bounds without swallowing unrelated
+                    // factory invariants from a real route envelope.
+                    var diagnostic = ExecutionEnvelopeFactoryV4.Create(
+                        actor.Attributes,
+                        new ExecutionIntentV4(identity, category, target,
+                            SimVector3.Zero, .5f),
+                        identity, ExecutionEnvelopePolicyV4.GateI);
+                    if (Math.Abs(velocity.X) > diagnostic.MaximumVelocity.X ||
+                        Math.Abs(velocity.Y) > diagnostic.MaximumVelocity.Y ||
+                        Math.Abs(velocity.Z) > diagnostic.MaximumVelocity.Z)
+                    {
+                        powerCapacityInsufficient = true;
+                        velocity = SimVector3.Zero;
+                        envelope = diagnostic;
+                    }
+                    else
+                    {
+                        envelope = ExecutionEnvelopeFactoryV4.Create(
+                            actor.Attributes,
+                            new ExecutionIntentV4(identity, category, target,
+                                velocity, .5f),
+                            identity, ExecutionEnvelopePolicyV4.GateI);
+                    }
+                }
+                else
+                {
+                    envelope = ExecutionEnvelopeFactoryV4.Create(actor.Attributes,
+                        new ExecutionIntentV4(identity, category, target, velocity, .5f),
+                        identity, ExecutionEnvelopePolicyV4.GateI);
+                }
                 var sample = new ExecutionSampleV4(envelope.Identity, envelope.Sampling.SamplingKey, category, target, velocity, .5f);
                 var classification = envelope.Classify(sample);
                 // The baseline artifact is the only artifact execution may use.
@@ -456,10 +504,22 @@ namespace Volleyball.AI
                     identity);
                 var arrivalFeasible = (actor.WorldPosition - set.Target).Magnitude <= 8f;
                 var contactGeometryFeasible = set.Target.Y >= 2.60f;
-                var qualified = power && arrivalFeasible && contactGeometryFeasible && a.PowerCapacity >= .45f && ratio >= .6f;
-                var value = (power ? .65f + a.PowerCapacity : .25f + a.DirectionControl) + (ratio * .2f) - ((int)action * .001f);
+                var qualified = power && !powerCapacityInsufficient && arrivalFeasible && contactGeometryFeasible && a.PowerCapacity >= .45f && ratio >= .6f;
+                // Fallback choices share one expected-continuation probability
+                // scale.  A tool's final value is its separately qualified
+                // block/rebound/recovery product; its source placeholder must
+                // not pre-bias that comparison.  Soft routes use the legal
+                // sample ratio generated by their SoftAction envelope and the
+                // attacker's direction-control continuation probability.
+                var value = power
+                    ? .65f + a.PowerCapacity + (ratio * .2f) - ((int)action * .001f)
+                    : tool
+                        ? 0f
+                        : Math.Max(0f, Math.Min(1f,
+                            (a.DirectionControl * ratio) - ((int)action * .001f)));
                 var elimination = power && !qualified
-                    ? !arrivalFeasible ? "ArrivalInfeasible" : !contactGeometryFeasible
+                    ? powerCapacityInsufficient || a.PowerCapacity < .45f
+                        ? "PowerCapacityInsufficient" : !arrivalFeasible ? "ArrivalInfeasible" : !contactGeometryFeasible
                         ? "ContactGeometryInfeasible" : "InsufficientLegalCrossRatio"
                     : (tool ? "Tool recovery requires qualification." : string.Empty);
                 var candidate = new AttackCandidateV3(identity, actor.Player, action, set.Target, target, value, ratio, qualified, elimination, classification.ExecutableEnvelope.Identity, trajectory.ArtifactIdentity);
@@ -467,7 +527,8 @@ namespace Volleyball.AI
             }
         }
         private static AttackRouteSelection? TrySelectRoute(GateITacticalPlayerV3 actor, SimVector3 contactCenter,
-            GeometricAttackRoute route, BallSimulationParameters parameters)
+            GeometricAttackRoute route, ExecutionCandidateCategoryV4 category,
+            BallSimulationParameters parameters)
         {
             var input = new AttackRouteSelectionInput(actor.Side == TeamSide.Home ? TeamId.Blue : TeamId.Orange,
                 contactCenter, GateIAttackFlightSeconds, Array.Empty<ContactCapsuleFrame>(), parameters, FixedSimulationStepSeconds);
@@ -475,7 +536,7 @@ namespace Volleyball.AI
             {
                 return AttackRouteSelector.EvaluateAll(input,
                     ExecutionEnvelopeFactoryV4.Create(actor.Attributes,
-                        new ExecutionIntentV4("gate-i-route-evaluation", ExecutionCandidateCategoryV4.Attack,
+                        new ExecutionIntentV4("gate-i-route-evaluation", category,
                             contactCenter, new SimVector3(0f, 1f, 1f), .5f),
                         "gate-i-route-evaluation", ExecutionEnvelopePolicyV4.GateI),
                     Array.Empty<BallTrajectoryPredictionArtifactV4>())
@@ -569,8 +630,29 @@ namespace Volleyball.AI
         // Public timing is a shared, evidence-derived prediction: the accepted Set
         // contact time plus the distance to the generated landing target.  It is
         // intentionally never a presentation or legacy-decision input.
-        private static float ArrivalTime(AttackCandidateV3 candidate, GateISetIntentV3 set) =>
-            set.AttackReadyArrivalTime + Math.Max(.01f, (candidate.Target - candidate.ContactCenter).Magnitude / 18f);
+        private static float ArrivalTime(GateIAttackExecutionEvidenceV3 evidence, GateISetIntentV3 set,
+            TeamSide attackingSide)
+        {
+            var samples = evidence.TrajectoryArtifact.PredictionSnapshot.Samples;
+            var frame = new TeamCourtFrame(attackingSide == TeamSide.Home ? TeamId.Blue : TeamId.Orange);
+            for (var index = 1; index < samples.Count; index++)
+            {
+                var before = frame.ToLocal(samples[index - 1].Position);
+                var after = frame.ToLocal(samples[index].Position);
+                if (before.Z < 0f && after.Z >= 0f)
+                {
+                    var alpha = -before.Z / (after.Z - before.Z);
+                    return set.AttackReadyArrivalTime +
+                        (samples[index - 1].TimeSeconds +
+                         ((samples[index].TimeSeconds - samples[index - 1].TimeSeconds) * alpha));
+                }
+            }
+            // Poor-set diagnostics can retain an eliminated source trajectory
+            // without a crossing.  It never becomes a legal public route, but
+            // retain the old bounded estimate for that compatibility evidence.
+            return set.AttackReadyArrivalTime + Math.Max(.01f,
+                (evidence.Candidate.Target - evidence.Candidate.ContactCenter).Magnitude / 18f);
+        }
         private static bool IsPower(AttackActionClassV3 value) => value == AttackActionClassV3.PowerLine || value == AttackActionClassV3.PowerCross || value == AttackActionClassV3.PowerEdge || value == AttackActionClassV3.PowerOverHand;
         private static string Zone(SimVector3 target) => target.X < -1f ? "Line" : target.X > 1f ? "Cross" : "Middle";
         private static SetFlightSolution SolveSetFlight(SetIntentPlanningRequestV3 request, SimVector3 target)
