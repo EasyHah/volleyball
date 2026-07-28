@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260728-002 | 2026-07-28 | 已完成 | ProjectSettings / Packages / Docs | 模块内部 | [Unity 6000.3 项目升级](2026-07-28-002-unity-6000-3-upgrade.md) |
 | CHG-20260728-001 | 2026-07-28 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate K 完成](2026-07-28-001-full-rally-v4-gate-k-completion.md) |
 | CHG-20260727-002 | 2026-07-27 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate J 感知与 CourtAwareness](2026-07-27-002-full-rally-v4-gate-j-perception-court-awareness.md) |
 | CHG-20260727-001 | 2026-07-27 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate I 攻防与重组权威](2026-07-27-001-full-rally-v4-gate-i-attack-defense-reorganization-authority.md) |

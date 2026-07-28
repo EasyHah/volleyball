@@ -21,13 +21,13 @@ The original 3v3 scene remains an automated compatibility baseline.
 
 ## Project setup
 
-Open this repository in Unity Hub with Unity `6000.0.43f1`. Unity will create
+Open this repository in Unity Hub with Unity `6000.3.20f1`. Unity will create
 local `Library/` files; they are intentionally ignored.
 
-The initial manifest contains only basic physics, UI and Test Framework modules.
-Add the approved URP, Input System and NavMesh components through Unity Package
-Manager after Unity has created `Packages/packages-lock.json`, then commit that
-lock file before any feature work begins.
+The committed Unity 6000.3 manifest and package lock include the required physics,
+UI, Test Framework, adaptive performance and vector graphics modules. Add future
+rendering, input or navigation packages through Unity Package Manager and commit
+the resulting manifest and lock changes together.
 
 ## Repository layout
 

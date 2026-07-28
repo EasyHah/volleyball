@@ -74,13 +74,13 @@ Run the complete Gate A–E verification from the checkout under test. Do not ad
 `-quit`; Unity 6000 may exit before writing test results when batch tests use it.
 
 ```bash
-/Applications/Unity/Unity.app/Contents/MacOS/Unity \
+/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity \
   -batchmode -projectPath "$PWD" \
   -runTests -testPlatform EditMode \
   -testResults /tmp/volleyball-v4-all-editmode.xml \
   -logFile /tmp/volleyball-v4-all-editmode.log
 
-/Applications/Unity/Unity.app/Contents/MacOS/Unity \
+/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity \
   -batchmode -projectPath "$PWD" \
   -runTests -testPlatform PlayMode \
   -testResults /tmp/volleyball-v4-all-playmode.xml \
@@ -124,10 +124,14 @@ fixed-seed calibration matrix. macOS browser policy prevented opening the local
 `file://` artifact for a visual pass; Windows x64 and profiler validation remain
 release checks.
 
+The current `main` project is pinned to Unity `6000.3.20f1`. After the editor and
+package migration, the complete suites passed EditMode `745/745` and PlayMode
+`39/39` with zero failures, skips or inconclusive results.
+
 ## Windows delivery
 
 Windows x64 is the release platform. The committed workflow is intentionally
-disabled until Unity `6000.0.43f1` has generated complete `ProjectSettings` and
+disabled until Unity `6000.3.20f1` has generated complete `ProjectSettings` and
 `Packages/packages-lock.json` files on a Windows x64 development machine. Then pin
 a matching Unity Windows runner or self-hosted runner, configure Unity activation
 as a repository secret, add the verified batch-mode build command, and enable the job.
@@ -137,7 +141,7 @@ keyboard, controller, graphics and performance checks.
 ## All-AI prototype verification
 
 Open `Assets/Volleyball/Match/Scenes/AiRallyPrototype.unity` with Unity
-`6000.0.43f1`, enter Play Mode, and observe at least ten completed rallies.
+`6000.3.20f1`, enter Play Mode, and observe at least ten completed rallies.
 Confirm that every rally has a serve, receive, set, spike and defensive
 response; the tactical camera retains all players and the ball; score advances
 once per rally; and the next rally begins automatically.
@@ -145,7 +149,7 @@ once per rally; and the next rally begins automatically.
 From the repository root, run both automated suites with the same Unity editor:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 mkdir -p TestResults
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
   -testResults "$PWD/TestResults/EditMode.xml" \
@@ -165,12 +169,12 @@ It reads `MENSHEN_API_KEY` from the current process environment, writes local
 reports under ignored `TestResults/MenShen/`, and must not be wired into Unity
 player builds.
 
-Run it from the repository root with Unity `6000.0.43f1`:
+Run it from the repository root with Unity `6000.3.20f1`:
 
 ```bash
 source "$HOME/.zshrc"
 test -n "$MENSHEN_API_KEY" || { echo "MENSHEN_API_KEY is missing"; exit 1; }
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 "$UNITY" -batchmode -quit -projectPath "$PWD" \
   -executeMethod Volleyball.Editor.AI.MenShenBenchmarkCommand.Run \
   -logFile "$PWD/TestResults/MenShen-benchmark.log"
@@ -282,7 +286,7 @@ their own half while hands can legally penetrate the net plane for attack or blo
 Run the deterministic full-scene test with:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
   -testFilter "Volleyball.PlayModeTests.FormalSixVsSixRallyPlayModeTests" \
   -testResults "$PWD/TestResults/Formal6v6.xml" \
@@ -291,10 +295,10 @@ UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
 
 Formal 6v6 configures `V3RulesMode.Authority`; the V4 3v3 prototype remains
 `Disabled` with no V3 adapter. Run the Phase 1 authority gate and retain its
-local XML evidence with Unity `6000.0.43f1`:
+local XML evidence with Unity `6000.3.20f1`:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 mkdir -p TestResults
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
   -testResults "$PWD/TestResults/FullRallyV3-Phase1-final-edit.xml" \
@@ -314,7 +318,7 @@ Run the unified attack-chain calibration (30 in-system setter contacts in each
 scene plus 20 symmetric formal sets) with:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
   -testFilter "Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests" \
   -testResults "$PWD/TestResults/AttackChainCalibration.xml" \
@@ -329,10 +333,10 @@ The formal 6v6 replay test captures its first completed rally as validated
 10 Hz plus an exact snapshot for each recorded event. These files are local
 diagnostics; do not commit `TestResults/` or treat it as a save-game location.
 
-Run the replay contract and artifact checks with Unity `6000.0.43f1`:
+Run the replay contract and artifact checks with Unity `6000.3.20f1`:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 mkdir -p TestResults
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
   -testFilter "Volleyball.EditModeTests.MatchReplayV4Tests" \
