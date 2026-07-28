@@ -100,7 +100,7 @@ The Task 12 full-suite evidence on Unity `6000.0.43f1` is:
 - both legacy production searches returned no matches and `git diff --check`
   was clean.
 
-Gates A–J are complete. Gate H formal authority is enabled only for V3 Authority
+Gates A–K and Full Rally V4 are complete. Gate H formal authority is enabled only for V3 Authority
 with a complete twelve-player formal roster. Immutable Gate F responsibilities
 select receive/organization ownership; the Gate H coordinator owns revision,
 fallback and bounded coverage decisions; the controller is the single writer
@@ -117,8 +117,12 @@ Unity `6000.0.43f1` is EditMode `737/737` and PlayMode `35/35`, including
 strict/canonical Replay compatibility, recorder invariance and independent
 fixed-seed byte/hash stability, all with zero failures, skips or inconclusive
 results. Gate J is restricted to formal twelve-player V3 Authority; 3v3 and
-Shadow/Disabled emit no perception receipt. Gate K remains pending: director
-slimming, Replay UI/overlay, full calibration matrix and performance reporting.
+Shadow/Disabled emit no perception receipt. Gate K completion evidence is
+EditMode `745/745` and PlayMode `39/39`, with Director ownership scans clean,
+three-panel Replay HTML, deterministic work-budget evidence and a four-axis
+fixed-seed calibration matrix. macOS browser policy prevented opening the local
+`file://` artifact for a visual pass; Windows x64 and profiler validation remain
+release checks.
 
 ## Windows delivery
 
@@ -306,7 +310,7 @@ The expected local artifacts are
 require one V3 transition and replay event per committed accepted contact, zero
 unexpected mismatches, and one score advance per completed rally.
 
-Run the unified attack-chain calibration (100 in-system setter contacts in each
+Run the unified attack-chain calibration (30 in-system setter contacts in each
 scene plus 20 symmetric formal sets) with:
 
 ```bash

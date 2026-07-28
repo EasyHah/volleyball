@@ -25,7 +25,7 @@
 两个独立 fixed-seed formal rally capture：
 
 - Replay hash：
-  `2612926bf909b523d572d0fcfa818d59811604812ff6949bb319bdfa38ac95f9`；
+  `d244ee97c87c325350e63f615b2d592d5980d5e686405d2950c023af4ab4414b`；
 - 3 个 event 的 deterministic work units：`35, 49, 49`；
 - degradation：全部 `FullSampling`；
 - budget outcome：全部 `WithinBudget`；
@@ -34,6 +34,7 @@
 - focused test 1/1 通过，wall-clock 7.5365s。
 
 work units 由 `candidateCount * sampleCount * (expansionCount + 1)` 得出。
+configuration identity 来自该事件实际使用的 envelope policy，而非固定默认值。
 wall-clock、allocation、thread、cache hit、frame 和 profiler 数据不进入
 `ReplayWorkBudgetRecordV4` 或 canonical hash。
 

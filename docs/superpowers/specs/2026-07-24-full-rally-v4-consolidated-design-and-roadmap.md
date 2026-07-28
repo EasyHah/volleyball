@@ -2,7 +2,7 @@
 
 **日期：** 2026-07-24
 
-**状态：** Gate A–J 已完成；Gate K 待实施
+**状态：** Gate A–K 已完成；Full Rally V4 已收口
 
 **范围：** 当前完成度审计、V4 双端权威属性、Career/Match 硬切、共享执行与预测、V3 规则复用、Full Rally 后续交付顺序
 
@@ -528,11 +528,13 @@ base attributes + DominantHand
   Shadow/Disabled 保持隔离，Replay V4 以可选 strict/canonical record 留证。
 - 完整验证：EditMode 737/737、PlayMode 35/35，零失败、跳过或 inconclusive。
 
-### Gate K：Director 瘦身与 Replay/Calibration 完成
+### Gate K：Director 瘦身与 Replay/Calibration 完成（已完成）
 
 - 删除固定 `Receive → Organize → Attack` tactical ownership 和重复 writers。
 - director 只保留物理事件、规则、生命周期、得分、result 和 replay dispatch。
 - 完成双视角 overlay、固定种子矩阵、work-budget/degradation 证据和性能报告。
+- 完整验证：EditMode 745/745、PlayMode 39/39；四轴 matrix 4/4，
+  fixed-seed Replay/HTML/work evidence 两次稳定。
 
 ## 15. 验收矩阵
 

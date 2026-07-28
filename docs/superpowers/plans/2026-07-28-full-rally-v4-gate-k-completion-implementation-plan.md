@@ -1,5 +1,7 @@
 # Full Rally V4 Gate K Completion Implementation Plan
 
+**状态：已完成（2026-07-28）**
+
 > 实施遵循 `proportionate-validation`：每个 slice 先 focused red/green；由于涉及
 > lifecycle、canonical Replay 和四个模块，最终运行完整 EditMode/PlayMode 与一次
 > combined independent review。共享 director 文件的工作保持串行。
@@ -149,4 +151,3 @@ byte stability和遗漏场景。修复发现后按风险复跑 affected focused 
 完成记录必须列出精确 totals/duration、校准 matrix、HTML/hash stability、静态扫描、
 手动双视角检查、Windows x64 与 profiler 未完成项。全部自动门通过后将 Gate K 和
 Full Rally V4 标记完成。
-
