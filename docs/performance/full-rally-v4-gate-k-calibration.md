@@ -1,7 +1,9 @@
 # Full Rally V4 Gate K Calibration
 
-**日期：** 2026-07-28  
-**平台：** macOS，Unity 6000.0.43f1，batchmode PlayMode  
+**日期：** 2026-07-28
+
+**平台：** macOS，Unity 6000.0.43f1，batchmode PlayMode
+
 **固定 key：** `gate-k-calibration-seed-73421`
 
 ## 四轴 deterministic matrix
