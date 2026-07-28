@@ -87,6 +87,43 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void GateKWorkBudget_RoundTripsAndChangesCanonicalHash()
+        {
+            var baseline = Event(0, "Attack");
+            var recorded = EventWithWorkBudget(baseline,
+                new ReplayWorkBudgetRecordV4(
+                    HashB, 5, 7, 1, 70,
+                    "ReducedSampleCount", "Degraded"));
+            var replay = CreateReplay(recorded);
+            var json = ContractJson.SerializeV4(replay);
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restored.Events[0].WorkBudget.DeterministicWorkUnits,
+                Is.EqualTo(70));
+            Assert.That(replay.ReplayHash,
+                Is.Not.EqualTo(CreateReplay(baseline).ReplayHash));
+            Assert.That(json, Does.Not.Contain("wallClock"));
+            Assert.That(json, Does.Not.Contain("cacheHit"));
+        }
+
+        [Test]
+        public void GateKWorkBudget_StrictReaderRejectsProfilerField()
+        {
+            var recorded = EventWithWorkBudget(Event(0, "Attack"),
+                new ReplayWorkBudgetRecordV4(
+                    HashB, 5, 7, 1, 70,
+                    "ReducedSampleCount", "Degraded"));
+            var json = ContractJson.SerializeV4(CreateReplay(recorded));
+
+            Assert.That(() => ContractJson.DeserializeMatchReplayV4(
+                    json.Replace("\"budgetOutcome\":\"Degraded\"",
+                        "\"budgetOutcome\":\"Degraded\"," +
+                        "\"wallClockMilliseconds\":1")),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
         public void GateIToolRecoveryMapper_RejectsMissingExactReboundEvidence()
         {
             var mapper = typeof(MatchReplayRecorder).GetMethod(
@@ -1094,6 +1131,31 @@ namespace Volleyball.EditModeTests
                 Is.EqualTo(ContractJson.SerializeV4(CreateReplay(Event(0, "Attack")))));
         }
 
+        [Test]
+        public void GateKHtml_RendersAuthoritativeAndEventOwnedPerspectivesDeterministically()
+        {
+            var withPerception = EventWithPerception(
+                Event(0, "Attack"), PerceptionAuthority());
+            var replay = CreateReplay(EventWithWorkBudget(
+                withPerception,
+                new ReplayWorkBudgetRecordV4(
+                    HashB, 5, 7, 1, 70,
+                    "ReducedSampleCount", "Degraded")));
+
+            var first = MatchReplayArtifactWriter.Render(replay);
+            var second = MatchReplayArtifactWriter.Render(replay);
+
+            Assert.That(second, Is.EqualTo(first));
+            Assert.That(first, Does.Contain("AUTHORITATIVE / ACTUAL"));
+            Assert.That(first, Does.Contain("HOME PERCEIVED"));
+            Assert.That(first, Does.Contain("AWAY PERCEIVED"));
+            Assert.That(first, Does.Contain("gate-j-view-7"));
+            Assert.That(first, Does.Contain("No event-owned view"));
+            Assert.That(first, Does.Contain("Deterministic work units"));
+            Assert.That(first, Does.Not.Contain("selectedRoute"));
+            Assert.That(first, Does.Not.Contain("futureSample"));
+        }
+
         private static MatchReplayV4 CreateReplay(params MatchReplayEventV4[] events)
         {
             return MatchReplayV4.Create(
@@ -1214,6 +1276,31 @@ namespace Volleyball.EditModeTests
                 baseline.OrganizationAuthority,
                 baseline.AttackDefenseAuthority,
                 perception);
+        }
+
+        private static MatchReplayEventV4 EventWithWorkBudget(
+            MatchReplayEventV4 baseline,
+            ReplayWorkBudgetRecordV4 workBudget)
+        {
+            return new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                baseline.Shadow,
+                baseline.OrganizationAuthority,
+                baseline.AttackDefenseAuthority,
+                baseline.PerceptionAuthority,
+                workBudget);
         }
 
         private static ReplayPerceptionAuthorityRecordV4

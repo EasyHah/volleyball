@@ -227,6 +227,14 @@ namespace Volleyball.PlayModeTests
                         replayEvent.PerceptionAuthority.Confidence,
                         Is.InRange(0f, 1f));
                 }
+                Assert.That(replayEvent.WorkBudget, Is.Not.Null);
+                Assert.That(
+                    replayEvent.WorkBudget.DeterministicWorkUnits,
+                    Is.GreaterThan(0));
+                Assert.That(
+                    replayEvent.WorkBudget.DegradationStep,
+                    Is.EqualTo(
+                        replayEvent.Trajectory.CacheKey.DegradationStep));
             }
             Assert.That(restored.Events.Any(replayEvent =>
                 replayEvent.AttackDefenseAuthority != null), Is.True);
@@ -556,6 +564,8 @@ namespace Volleyball.PlayModeTests
             Assert.That(v3Transitions[0], Is.GreaterThan(0));
             Assert.That(v3Transitions[1], Is.EqualTo(v3Transitions[0]));
             Assert.That(second.ReplayHash, Is.EqualTo(first.ReplayHash));
+            Assert.That(MatchReplayArtifactWriter.Render(second),
+                Is.EqualTo(MatchReplayArtifactWriter.Render(first)));
             Assert.That(second.Events.Count, Is.EqualTo(first.Events.Count));
             for (var eventIndex = 0;
                  eventIndex < first.Events.Count;
@@ -584,6 +594,15 @@ namespace Volleyball.PlayModeTests
                 Assert.That(right.AwayScore, Is.EqualTo(left.AwayScore));
                 Assert.That(right.ActorPlayerId, Is.EqualTo(left.ActorPlayerId));
                 Assert.That(right.EventKind, Is.EqualTo(left.EventKind));
+                Assert.That(right.WorkBudget, Is.Not.Null);
+                Assert.That(left.WorkBudget, Is.Not.Null);
+                Assert.That(
+                    right.WorkBudget.DeterministicWorkUnits,
+                    Is.EqualTo(
+                        left.WorkBudget.DeterministicWorkUnits));
+                Assert.That(
+                    right.WorkBudget.BudgetOutcome,
+                    Is.EqualTo(left.WorkBudget.BudgetOutcome));
                 Assert.That(right.Shadow, Is.Not.Null);
                 Assert.That(left.Shadow, Is.Not.Null);
                 Assert.That(

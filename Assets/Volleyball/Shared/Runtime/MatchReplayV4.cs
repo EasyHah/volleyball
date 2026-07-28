@@ -883,6 +883,57 @@ namespace Volleyball.Shared.Contracts
         public int SourceSequenceNumber { get; }
     }
 
+    public sealed class ReplayWorkBudgetRecordV4
+    {
+        public ReplayWorkBudgetRecordV4(
+            string configurationIdentity,
+            int candidateCount,
+            int sampleCount,
+            int expansionCount,
+            int deterministicWorkUnits,
+            string degradationStep,
+            string budgetOutcome)
+        {
+            ConfigurationIdentity = ReplayContractGuardV4.Hash(
+                configurationIdentity, nameof(configurationIdentity));
+            CandidateCount = ReplayContractGuardV4.Positive(
+                candidateCount, nameof(candidateCount));
+            SampleCount = ReplayContractGuardV4.Positive(
+                sampleCount, nameof(sampleCount));
+            ExpansionCount = ReplayContractGuardV4.NonNegative(
+                expansionCount, nameof(expansionCount));
+            DeterministicWorkUnits = ReplayContractGuardV4.Positive(
+                deterministicWorkUnits, nameof(deterministicWorkUnits));
+            var expected = (long)CandidateCount * SampleCount *
+                           (ExpansionCount + 1L);
+            if (expected > int.MaxValue ||
+                DeterministicWorkUnits != (int)expected)
+                throw new ContractValidationException(
+                    "deterministicWorkUnits must match candidates * samples * expansion passes.");
+            DegradationStep = ReplayContractGuardV4.DegradationStep(
+                degradationStep, nameof(degradationStep));
+            BudgetOutcome = ReplayContractGuardV4.OneOf(
+                budgetOutcome, nameof(budgetOutcome),
+                "WithinBudget", "Degraded", "SafeFallback");
+            var expectedOutcome = DegradationStep == "FullSampling"
+                ? "WithinBudget"
+                : DegradationStep == "DeterministicSafeFallback"
+                    ? "SafeFallback"
+                    : "Degraded";
+            if (BudgetOutcome != expectedOutcome)
+                throw new ContractValidationException(
+                    "budgetOutcome must match the selected degradation step.");
+        }
+
+        public string ConfigurationIdentity { get; }
+        public int CandidateCount { get; }
+        public int SampleCount { get; }
+        public int ExpansionCount { get; }
+        public int DeterministicWorkUnits { get; }
+        public string DegradationStep { get; }
+        public string BudgetOutcome { get; }
+    }
+
     public sealed class MatchReplayEventV4
     {
         private readonly ReplayAbilityConsumptionRecordV4[] _abilityConsumptions;
@@ -996,7 +1047,8 @@ namespace Volleyball.Shared.Contracts
             ReplayShadowRecordV4 shadow,
             ReplayOrganizationAuthorityRecordV4 organizationAuthority,
             ReplayAttackDefenseAuthorityRecordV4 attackDefenseAuthority,
-            ReplayPerceptionAuthorityRecordV4 perceptionAuthority = null)
+            ReplayPerceptionAuthorityRecordV4 perceptionAuthority = null,
+            ReplayWorkBudgetRecordV4 workBudget = null)
         {
             SequenceNumber = ReplayContractGuardV4.NonNegative(
                 sequenceNumber,
@@ -1150,6 +1202,17 @@ namespace Volleyball.Shared.Contracts
             AttackDefenseAuthority = attackDefenseAuthority;
             ValidateAttackDefenseAuthority();
             PerceptionAuthority = perceptionAuthority;
+            WorkBudget = workBudget;
+            if (WorkBudget != null &&
+                (WorkBudget.ConfigurationIdentity !=
+                     TestedEnvelope.PolicyIdentity ||
+                 WorkBudget.SampleCount != TestedEnvelope.SampleCount ||
+                 WorkBudget.ExpansionCount !=
+                     ExecutableEnvelope.CurrentExpansionCount ||
+                 WorkBudget.DegradationStep !=
+                     Trajectory.CacheKey.DegradationStep))
+                throw new ContractValidationException(
+                    "Work-budget evidence must match event-owned envelope and trajectory evidence.");
         }
 
         public int SequenceNumber { get; }
@@ -1171,6 +1234,7 @@ namespace Volleyball.Shared.Contracts
         public ReplayOrganizationAuthorityRecordV4 OrganizationAuthority { get; }
         public ReplayAttackDefenseAuthorityRecordV4 AttackDefenseAuthority { get; }
         public ReplayPerceptionAuthorityRecordV4 PerceptionAuthority { get; }
+        public ReplayWorkBudgetRecordV4 WorkBudget { get; }
 
         private void ValidateOrganizationAuthority()
         {
@@ -2013,7 +2077,11 @@ namespace Volleyball.Shared.Contracts
                 ParsePerceptionAuthority(
                     StrictJsonV4.OptionalNullableObject(
                         value,
-                        "perceptionAuthority")));
+                        "perceptionAuthority")),
+                ParseWorkBudget(
+                    StrictJsonV4.OptionalNullableObject(
+                        value,
+                        "workBudget")));
         }
 
         private static void RequireEventProperties(StrictJsonObjectV4 value)
@@ -2025,10 +2093,13 @@ namespace Volleyball.Shared.Contracts
                 value.Properties.ContainsKey("attackDefenseAuthority");
             var hasPerceptionAuthority =
                 value.Properties.ContainsKey("perceptionAuthority");
+            var hasWorkBudget =
+                value.Properties.ContainsKey("workBudget");
             if (value.Properties.Count !=
                 13 + (hasShadow ? 1 : 0) + (hasAuthority ? 1 : 0) +
                 (hasAttackDefenseAuthority ? 1 : 0) +
-                (hasPerceptionAuthority ? 1 : 0))
+                (hasPerceptionAuthority ? 1 : 0) +
+                (hasWorkBudget ? 1 : 0))
             {
                 throw new ContractValidationException(
                     "JSON object fields do not match the native V4 schema.");
@@ -2259,6 +2330,26 @@ namespace Volleyball.Shared.Contracts
                     "conservativeFallback"),
                 StrictJsonV4.RequiredInt(value, "affectedRevision"),
                 StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"));
+        }
+
+        private static ReplayWorkBudgetRecordV4 ParseWorkBudget(
+            StrictJsonObjectV4 value)
+        {
+            if (value == null) return null;
+            StrictJsonV4.RequireExactProperties(value,
+                "configurationIdentity", "candidateCount", "sampleCount",
+                "expansionCount", "deterministicWorkUnits",
+                "degradationStep", "budgetOutcome");
+            return new ReplayWorkBudgetRecordV4(
+                StrictJsonV4.RequiredString(value,
+                    "configurationIdentity"),
+                StrictJsonV4.RequiredInt(value, "candidateCount"),
+                StrictJsonV4.RequiredInt(value, "sampleCount"),
+                StrictJsonV4.RequiredInt(value, "expansionCount"),
+                StrictJsonV4.RequiredInt(value,
+                    "deterministicWorkUnits"),
+                StrictJsonV4.RequiredString(value, "degradationStep"),
+                StrictJsonV4.RequiredString(value, "budgetOutcome"));
         }
 
         private static ReplayShadowRecordV4 ParseShadow(StrictJsonObjectV4 value)
@@ -2756,7 +2847,33 @@ namespace Volleyball.Shared.Contracts
                     replayEvent.PerceptionAuthority);
             }
 
+            if (replayEvent.WorkBudget != null)
+            {
+                output.Append(",\"workBudget\":");
+                AppendWorkBudget(output, replayEvent.WorkBudget);
+            }
+
             output.Append('}');
+        }
+
+        private static void AppendWorkBudget(StringBuilder output,
+            ReplayWorkBudgetRecordV4 work)
+        {
+            output.Append("{\"configurationIdentity\":")
+                .Append(Quote(work.ConfigurationIdentity));
+            output.Append(",\"candidateCount\":")
+                .Append(work.CandidateCount);
+            output.Append(",\"sampleCount\":")
+                .Append(work.SampleCount);
+            output.Append(",\"expansionCount\":")
+                .Append(work.ExpansionCount);
+            output.Append(",\"deterministicWorkUnits\":")
+                .Append(work.DeterministicWorkUnits);
+            output.Append(",\"degradationStep\":")
+                .Append(Quote(work.DegradationStep));
+            output.Append(",\"budgetOutcome\":")
+                .Append(Quote(work.BudgetOutcome))
+                .Append('}');
         }
 
         private static void AppendPerceptionAuthority(StringBuilder output,

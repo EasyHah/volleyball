@@ -31,8 +31,16 @@ namespace Volleyball.Presentation
                 new UTF8Encoding(false));
             File.WriteAllText(
                 Path.Combine(outputDirectory, "index.html"),
-                Html(EscapeEmbeddedJson(json)),
+                Render(replay),
                 new UTF8Encoding(false));
+        }
+
+        public static string Render(MatchReplayV4 replay)
+        {
+            if (replay == null)
+                throw new ArgumentNullException(nameof(replay));
+            return Html(EscapeEmbeddedJson(
+                ContractJson.SerializeV4(replay)));
         }
 
         private static string EscapeEmbeddedJson(string json)
@@ -57,6 +65,7 @@ h1{margin:.15rem 0;font-size:2rem}.versions{display:flex;gap:10px;flex-wrap:wrap
 .event{border:1px solid #285270;border-radius:14px;background:#0b2032;padding:18px;box-shadow:0 18px 40px #0005}
 .event h2{margin:0 0 12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 .panel{border-radius:10px;background:#102b43;padding:12px}.panel h3{margin:0 0 8px;color:#7ed9ff;font-size:.95rem}
+.perspectives{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.home{border-left:4px solid #57a9ff}.away{border-left:4px solid #ff9a57}
 dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:5px 10px}dt{color:#9bb8ca}dd{margin:0;overflow-wrap:anywhere}
 table{border-collapse:collapse;width:100%;font-size:.85rem}th,td{text-align:left;padding:6px;border-bottom:1px solid #285270}
 </style>
@@ -79,9 +88,23 @@ document.querySelector('#replay-hash').textContent=`Replay SHA-256 ${replay.repl
 const text=value=>value===null||value===undefined?'—':String(value);
 const vector=value=>value?`(${value.x}, ${value.y}, ${value.z})`:'—';
 const items=value=>Array.isArray(value)?value.join(', '):'—';
+const perspective=(side,event)=>{
+  const view=event.perceptionAuthority?.observingSide===side?event.perceptionAuthority:null;
+  if(!view) return `<div class='empty'>No event-owned view</div>`;
+  return `<dl>
+    <dt>View</dt><dd>${view.viewIdentity}</dd>
+    <dt>Artifact</dt><dd>${view.authoritativeArtifactIdentity}</dd>
+    <dt>Confidence</dt><dd>${view.confidence}</dd>
+    <dt>Recognition delay</dt><dd>${view.recognitionDelaySeconds}</dd>
+    <dt>Position uncertainty</dt><dd>${view.positionUncertaintyMeters}</dd>
+    <dt>Visible threats</dt><dd>${view.visibleThreats.map(item=>`${item.zone} (${item.confidence})`).join(', ')||'—'}</dd>
+    <dt>Support</dt><dd>${view.selectedSupportPlayerId} · ${view.selectedSupportZone}${view.conservativeFallback?' · conservative':''}</dd>
+  </dl>`;
+};
 document.querySelector('#events').innerHTML=replay.events.map(event=>`
 <article class='event'>
   <h2>#${event.sequenceNumber} ${event.eventKind} · ${event.actorPlayerId}</h2>
+  <h3>AUTHORITATIVE / ACTUAL</h3>
   <div class='grid'>
     <section class='panel'><h3>Execution envelopes</h3><dl>
       <dt>Tested identity</dt><dd>${event.testedEnvelope.identity}</dd>
@@ -117,6 +140,18 @@ document.querySelector('#events').innerHTML=replay.events.map(event=>`
       <thead><tr><th>Player</th><th>Derived field</th><th>Value</th><th>Evidence</th></tr></thead>
       <tbody>${event.abilityConsumptions.map(item=>`<tr><td>${item.playerId}</td><td>${item.attributeName}</td><td>${item.value}</td><td>${item.evidenceKind}</td></tr>`).join('')}</tbody>
     </table></section>
+    <section class='panel'><h3>Deterministic work budget</h3><dl>
+      <dt>Configuration</dt><dd>${text(event.workBudget?.configurationIdentity)}</dd>
+      <dt>Candidates</dt><dd>${text(event.workBudget?.candidateCount)}</dd>
+      <dt>Samples</dt><dd>${text(event.workBudget?.sampleCount)}</dd>
+      <dt>Expansions</dt><dd>${text(event.workBudget?.expansionCount)}</dd>
+      <dt>Deterministic work units</dt><dd>${text(event.workBudget?.deterministicWorkUnits)}</dd>
+      <dt>Outcome</dt><dd>${text(event.workBudget?.budgetOutcome)}</dd>
+    </dl></section>
+  </div>
+  <div class='perspectives'>
+    <section class='panel home'><h3>HOME PERCEIVED</h3>${perspective('Home',event)}</section>
+    <section class='panel away'><h3>AWAY PERCEIVED</h3>${perspective('Away',event)}</section>
   </div>
 </article>`).join('');
 </script>

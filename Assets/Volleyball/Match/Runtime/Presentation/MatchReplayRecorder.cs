@@ -282,7 +282,43 @@ namespace Volleyball.Presentation
                     classification,
                     trajectory),
                 gateIAuthority,
-                ToReplayPerception(perception));
+                ToReplayPerception(perception),
+                ToReplayWorkBudget(
+                    testedEnvelope,
+                    executableEnvelope,
+                    trajectory));
+        }
+
+        private static ReplayWorkBudgetRecordV4 ToReplayWorkBudget(
+            ExecutionEnvelopeV4 testedEnvelope,
+            ExecutionEnvelopeV4 executableEnvelope,
+            BallTrajectoryPredictionArtifactV4 trajectory)
+        {
+            var candidateCount =
+                testedEnvelope.Sampling.CandidateCategoryOrder.Count;
+            var sampleCount = testedEnvelope.Sampling.SampleCount;
+            var expansionCount =
+                executableEnvelope.Expansion.CurrentExpansionCount;
+            var units = checked(candidateCount * sampleCount *
+                                (expansionCount + 1));
+            var degradation = ((ExecutionDegradationStepV4)
+                trajectory.Key.DegradationStep).ToString();
+            var outcome = degradation ==
+                          ExecutionDegradationStepV4.FullSampling.ToString()
+                ? "WithinBudget"
+                : degradation ==
+                  ExecutionDegradationStepV4.DeterministicSafeFallback
+                      .ToString()
+                    ? "SafeFallback"
+                    : "Degraded";
+            return new ReplayWorkBudgetRecordV4(
+                Sha256(ExecutionEnvelopePolicyV4.Default.ToCanonicalBytes()),
+                candidateCount,
+                sampleCount,
+                expansionCount,
+                units,
+                degradation,
+                outcome);
         }
 
         private static bool MissingGateIAuthorityEvidence(ReplayContactEvent replayEvent)
