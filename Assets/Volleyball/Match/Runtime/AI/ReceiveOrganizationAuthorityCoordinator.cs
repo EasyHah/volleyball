@@ -548,6 +548,7 @@ namespace Volleyball.AI
         private ReceiveOrganizationPlanningResult _planning;
         private StablePlayerId _activeReceiveActor;
         private long _lastSourceSequence;
+        private PerceptionReceiptV3 _perception;
 
         public ReceiveOrganizationAuthorityCoordinator(
             ReceiveOrganizationResponsibilityPlanner planner,
@@ -561,6 +562,8 @@ namespace Volleyball.AI
         public ReceiveOrganizationAuthorityStateV3 State { get; private set; }
 
         public ReceiveOrganizationPlanningResult CurrentPlanning => _planning;
+
+        public PerceptionReceiptV3 CurrentPerception => _perception;
 
         public ReceiveOrganizationAuthorityStateV3 PlanReceive(
             ReceiveOrganizationAuthorityRequestV3 request)
@@ -619,6 +622,25 @@ namespace Volleyball.AI
             _lastSourceSequence = request.SourceSequence;
             State = next;
             return State;
+        }
+
+        public void ApplyPerception(PerceptionReceiptV3 receipt)
+        {
+            if (receipt == null) throw new ArgumentNullException(nameof(receipt));
+            if (_request == null ||
+                State.Phase != ReceiveOrganizationAuthorityPhaseV3.ReceivePlanned ||
+                receipt.Revision != State.Revision ||
+                receipt.SourceSequence != _request.SourceSequence ||
+                receipt.ObservingSide != State.Plan.Side)
+                throw new InvalidOperationException(
+                    "Perception must belong to the active receive planning event.");
+            var selected = receipt.SupportDecision.SelectedPlayer;
+            if (!State.Plan.PrimaryReceiver.Equals(selected) &&
+                !State.Plan.EmergencyReceivers.Contains(selected) &&
+                !State.Plan.BackupOrganizers.Contains(selected))
+                throw new InvalidOperationException(
+                    "Perceived support is outside the declared Gate H support set.");
+            _perception = receipt;
         }
 
         public ReceiveOrganizationAuthorityStateV3 CommitReceive(

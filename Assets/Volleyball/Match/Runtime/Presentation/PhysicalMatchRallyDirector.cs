@@ -304,6 +304,10 @@ namespace Volleyball.Presentation
         private GateISetIntentPlanningResultV3 _activeGateISetIntent;
         private long _gateHPlanRevision;
         private long _gateHSourceSequence;
+        private static readonly CourtPerceptionConfigurationV3
+            GateJPerceptionConfiguration =
+                new CourtPerceptionConfigurationV3(
+                    "gate-j-v1", .05f, .30f, .08f, 1.20f);
         private string _status = "Preparing dynamic physical 3v3";
 
         public int CompletedCycles { get; private set; }
@@ -1320,6 +1324,22 @@ namespace Volleyball.Presentation
                 bindings);
             _receiveOrganizationCoordinator.PlanReceive(request);
             var planning = _receiveOrganizationCoordinator.CurrentPlanning;
+            if (GateJEnabled && _lastTrajectoryPredictionArtifactV4 != null)
+            {
+                _receiveOrganizationCoordinator.ApplyPerception(
+                    CreateGateJPerceptionReceipt(
+                        team,
+                        request.Revision,
+                        request.SourceSequence,
+                        _lastTrajectoryPredictionArtifactV4.ArtifactIdentity,
+                        null,
+                        planning.Plan.EmergencyReceivers
+                            .Concat(planning.Plan.BackupOrganizers)
+                            .Append(planning.Plan.PrimaryReceiver)
+                            .Distinct()
+                            .ToArray(),
+                        false));
+            }
             ScheduleDecision(planning.Decision, receiveSeconds);
         }
 
@@ -3201,10 +3221,26 @@ namespace Volleyball.Presentation
                 RallyPlanBranchV3.Primary, 1f, index + 1)).ToArray();
             var exits = new[] { new ReorganizationExitV3("gate-i-exit-" + intent.PlanRevision,
                 defensePlayers[0].Id, "recover") };
+            var publicThreat = _attackDefenseCoordinator.State.Phase ==
+                               AttackDefenseAuthorityPhaseV3.ThreatPublished
+                ? GetGateIPublicThreat()
+                : throw new InvalidOperationException("Gate I threat was not published.");
+            var perception = GateJEnabled
+                ? CreateGateJPerceptionReceipt(
+                    defending,
+                    intent.PlanRevision,
+                    _gateHSourceSequence,
+                    intent.TrajectoryArtifact.ArtifactIdentity,
+                    publicThreat,
+                    defensePlayers.Where(player => !player.IsFrontRow)
+                        .Select(player => player.Id).ToArray(),
+                    true)
+                : null;
+            if (perception != null)
+                _attackDefenseCoordinator.ApplyPerception(perception);
             var defense = new JointDefensePlanner().Plan(new JointDefensePlanningRequestV3(intent.PlanRevision,
-                Opponent(ToSide(actor.Team)), _attackDefenseCoordinator.State.Phase == AttackDefenseAuthorityPhaseV3.ThreatPublished
-                    ? GetGateIPublicThreat() : throw new InvalidOperationException("Gate I threat was not published."),
-                defensePlayers, assignments, exits));
+                Opponent(ToSide(actor.Team)), publicThreat,
+                defensePlayers, assignments, exits, perception));
             _attackDefenseCoordinator.CommitDefense(intent.PlanRevision, ++_gateHSourceSequence, defense);
             _attackDefenseCoordinator.CommitFinalAttack(intent.PlanRevision, ++_gateHSourceSequence);
         }
@@ -5057,6 +5093,74 @@ namespace Volleyball.Presentation
             return ClosestTrajectoryPosition(
                 _lastTrajectoryPredictionArtifactV4.PredictionSnapshot,
                 flightSeconds);
+        }
+
+        private bool GateJEnabled =>
+            GateIAuthorityEnabled &&
+            _v3RulesAdapter != null &&
+            _v3RulesAdapter.Mode == V3RulesMode.Authority &&
+            _players.Count == 12;
+
+        private PerceptionReceiptV3 CreateGateJPerceptionReceipt(
+            TeamId observingTeam,
+            long revision,
+            long sourceSequence,
+            string artifactIdentity,
+            PublicAttackThreatV3 publicThreat,
+            IReadOnlyList<StablePlayerId> legalSupport,
+            bool defenseAwareness)
+        {
+            if (!GateJEnabled)
+                throw new InvalidOperationException(
+                    "Gate J perception is restricted to formal Authority.");
+            var observers = _players
+                .Where(pair => pair.Key.Team == observingTeam)
+                .OrderByDescending(pair => defenseAwareness
+                    ? pair.Value.Ability.Attributes.Defense.Awareness
+                    : pair.Value.Ability.Attributes.Receive.Awareness)
+                .ThenBy(pair => pair.Value.StableId.Value,
+                    StringComparer.Ordinal)
+                .ToArray();
+            var observer = observers[0].Value;
+            var awareness = defenseAwareness
+                ? observer.Ability.Attributes.Defense.Awareness
+                : observer.Ability.Attributes.Receive.Awareness;
+            var allowed = legalSupport
+                .Distinct()
+                .OrderBy(value => value.Value, StringComparer.Ordinal)
+                .ToArray();
+            if (allowed.Length == 0)
+                throw new InvalidOperationException(
+                    "Gate J requires a declared legal support candidate.");
+            var supports = allowed.Select(playerId =>
+            {
+                var agent = _players.Values.Single(value =>
+                    value.StableId.Equals(playerId));
+                var distance = Vector3.Distance(
+                    agent.transform.position, _ball.transform.position);
+                return new PerceivedSupportCandidateV3(
+                    playerId, awareness,
+                    (BaseMovementSpeed * .5f) - distance,
+                    playerId.Equals(allowed[0]));
+            }).ToArray();
+            var threats = publicThreat == null
+                ? Array.Empty<PerceivedThreatEntryV3>()
+                : publicThreat.Entries.Select((entry, index) =>
+                    new PerceivedThreatEntryV3(
+                        publicThreat.ThreatIdentity + ":" + index,
+                        entry.Zone, entry.Probability, entry.ArrivalTime))
+                    .ToArray();
+            var request = new CourtPerceptionRequestV3(
+                _matchContext.Seed.ToString(
+                    System.Globalization.CultureInfo.InvariantCulture),
+                revision, sourceSequence, ToSide(observingTeam),
+                observer.StableId, awareness, artifactIdentity,
+                _ball.State.Position, threats, supports, allowed[0]);
+            var result = new CourtPerceptionAdapterV3(
+                GateJPerceptionConfiguration).Observe(request);
+            return new PerceptionReceiptV3(
+                GateJPerceptionConfiguration.Identity,
+                result.View, result.SupportDecision);
         }
 
         private static string BuildGate5EnvelopeIdentityV4(

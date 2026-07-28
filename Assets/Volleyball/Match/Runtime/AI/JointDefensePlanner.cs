@@ -26,7 +26,7 @@ namespace Volleyball.AI
     {
         public JointDefensePlanningRequestV3(long revision, TeamSide defendingSide, PublicAttackThreatV3 publicThreat,
             IReadOnlyList<DefensePlayerSnapshotV3> players, IReadOnlyList<PlayerResponsibilityAssignmentV3> assignments,
-            IReadOnlyList<ReorganizationExitV3> exits)
+            IReadOnlyList<ReorganizationExitV3> exits, PerceptionReceiptV3 perception = null)
         {
             if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision));
             if (!Enum.IsDefined(typeof(TeamSide), defendingSide)) throw new ArgumentOutOfRangeException(nameof(defendingSide));
@@ -38,14 +38,47 @@ namespace Volleyball.AI
                 throw new ArgumentException("Formal defense requires six matching on-court players and assignments.");
             if (Assignments.Select(value => value.SpatialClaim).Distinct().Count() != Assignments.Count)
                 throw new ArgumentException("Hard spatial claims cannot conflict.", nameof(assignments));
+            if (perception != null)
+            {
+                if (perception.Revision != revision ||
+                    perception.ObservingSide != defendingSide)
+                    throw new ArgumentException(
+                        "Perception must belong to the active defense revision and side.",
+                        nameof(perception));
+                if (!SameThreat(publicThreat, perception.View))
+                    throw new ArgumentException(
+                        "Perception must contain exactly the published public threat.",
+                        nameof(perception));
+                if (!Players.Any(player =>
+                        player.Id.Equals(perception.SupportDecision.SelectedPlayer)))
+                    throw new ArgumentException(
+                        "Perceived support must belong to the legal defense roster.",
+                        nameof(perception));
+            }
+            Perception = perception;
         }
         public long Revision { get; } public TeamSide DefendingSide { get; } public PublicAttackThreatV3 PublicThreat { get; }
         public IReadOnlyList<DefensePlayerSnapshotV3> Players { get; } public IReadOnlyList<PlayerResponsibilityAssignmentV3> Assignments { get; }
         public IReadOnlyList<ReorganizationExitV3> Exits { get; }
+        public PerceptionReceiptV3 Perception { get; }
         private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> values, string name)
         {
             if (values == null || values.Count == 0) throw new ArgumentException("Values are required.", name);
             return new ReadOnlyCollection<T>(values.ToArray());
+        }
+
+        private static bool SameThreat(PublicAttackThreatV3 threat,
+            TeamPerceptionSnapshotV3 view)
+        {
+            var expected = threat.Entries
+                .Select(value => value.Zone + ":" + value.ArrivalTime.ToString("R",
+                    System.Globalization.CultureInfo.InvariantCulture))
+                .OrderBy(value => value, StringComparer.Ordinal);
+            var observed = view.Threats
+                .Select(value => value.Zone + ":" + value.ArrivalTime.ToString("R",
+                    System.Globalization.CultureInfo.InvariantCulture))
+                .OrderBy(value => value, StringComparer.Ordinal);
+            return expected.SequenceEqual(observed, StringComparer.Ordinal);
         }
     }
 
@@ -78,6 +111,18 @@ namespace Volleyball.AI
                 : identitiesByBlockCandidate[blockers[0].Id];
             var residualZones = orderedThreat.Where(value => value.Zone != blockZone).Select(value => value.Zone).Distinct(StringComparer.Ordinal).ToArray();
             var assignments = request.Assignments.OrderBy(value => value.Rank).ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal).ToArray();
+            if (request.Perception != null)
+            {
+                var perceivedSupport =
+                    request.Perception.SupportDecision.SelectedPlayer;
+                assignments = assignments
+                    .OrderBy(value => blockerIds.Contains(value.PlayerId) ? 0 : 1)
+                    .ThenBy(value => !blockerIds.Contains(value.PlayerId) &&
+                                     value.PlayerId.Equals(perceivedSupport) ? 0 : 1)
+                    .ThenBy(value => value.Rank)
+                    .ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal)
+                    .ToArray();
+            }
             var responsibilities = new List<DefenseResponsibilityV3>(6);
             var residualIndex = 0;
             foreach (var assignment in assignments)

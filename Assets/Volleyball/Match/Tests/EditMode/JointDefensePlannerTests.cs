@@ -56,6 +56,50 @@ namespace Volleyball.EditModeTests
                 Is.EqualTo(new ContractPlayerId("orange-defense-0")));
         }
 
+        [Test]
+        public void Request_RejectsPerceptionFromAnotherRevisionOrPublicThreat()
+        {
+            var request = Fixture.DefenseRequest(Fixture.LineHeavyThreat());
+            var mismatchedRevision = Fixture.PerceptionReceipt(request, revision: 13,
+                artifact: "trajectory-12");
+            var mismatchedThreat = Fixture.PerceptionReceipt(request,
+                revision: request.Revision, artifact: "trajectory-12",
+                zone: "Other");
+
+            Assert.That(() => new JointDefensePlanningRequestV3(request.Revision,
+                request.DefendingSide, request.PublicThreat, request.Players,
+                request.Assignments, request.Exits, mismatchedRevision),
+                Throws.ArgumentException);
+            Assert.That(() => new JointDefensePlanningRequestV3(request.Revision,
+                request.DefendingSide, request.PublicThreat, request.Players,
+                request.Assignments, request.Exits, mismatchedThreat),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void Perception_MayChangeFloorSupportButNotBlockerIdentity()
+        {
+            var baselineRequest = Fixture.DefenseRequest(Fixture.LineHeavyThreat());
+            var baseline = new JointDefensePlanner().Plan(baselineRequest);
+            var receipt = Fixture.PerceptionReceipt(baselineRequest,
+                baselineRequest.Revision, "trajectory-12");
+            var perceived = new JointDefensePlanner().Plan(
+                Fixture.WithPerception(baselineRequest, receipt));
+
+            CollectionAssert.AreEqual(
+                baseline.Responsibilities.Where(IsBlock)
+                    .Select(value => value.Actor),
+                perceived.Responsibilities.Where(IsBlock)
+                    .Select(value => value.Actor));
+            Assert.That(perceived.Responsibilities
+                    .First(value => !IsBlock(value)).Actor,
+                Is.EqualTo(receipt.SupportDecision.SelectedPlayer));
+        }
+
+        private static bool IsBlock(DefenseResponsibilityV3 value) =>
+            value.Kind == DefenseResponsibilityKindV3.PrimaryBlock ||
+            value.Kind == DefenseResponsibilityKindV3.SupportingBlock;
+
         private static class Fixture
         {
             public static JointDefensePlanningRequestV3 DefenseRequest(PublicAttackThreatV3 threat)
@@ -97,6 +141,32 @@ namespace Volleyball.EditModeTests
             public static JointDefensePlanningRequestV3 Permute(JointDefensePlanningRequestV3 request) =>
                 new JointDefensePlanningRequestV3(request.Revision, request.DefendingSide, request.PublicThreat,
                     request.Players.Reverse().ToArray(), request.Assignments.Reverse().ToArray(), request.Exits);
+
+            public static JointDefensePlanningRequestV3 WithPerception(
+                JointDefensePlanningRequestV3 request,
+                PerceptionReceiptV3 receipt) =>
+                new JointDefensePlanningRequestV3(request.Revision,
+                    request.DefendingSide, request.PublicThreat, request.Players,
+                    request.Assignments, request.Exits, receipt);
+
+            public static PerceptionReceiptV3 PerceptionReceipt(
+                JointDefensePlanningRequestV3 request, long revision,
+                string artifact, string zone = null)
+            {
+                var selected = request.Players[5].Id;
+                var threats = request.PublicThreat.Entries.Select((entry, index) =>
+                    new PerceivedThreatEntryV3("threat-" + index,
+                        zone ?? entry.Zone, entry.Probability,
+                        entry.ArrivalTime)).ToArray();
+                var view = new TeamPerceptionSnapshotV3("view-" + revision,
+                    artifact, request.DefendingSide, revision, 9,
+                    new[] { new PlayerPerceptionSnapshotV3(selected, .8f, .1f) },
+                    threats,
+                    new[] { new PerceivedSupportCandidateV3(selected, .8f,
+                        .5f, false) });
+                return new PerceptionReceiptV3("gate-j-v1", view,
+                    new PerceptionSupportDecisionV3(selected, false, .8f));
+            }
         }
     }
 }

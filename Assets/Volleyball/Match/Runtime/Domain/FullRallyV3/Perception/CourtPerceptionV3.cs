@@ -164,6 +164,37 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public float Confidence { get; }
     }
 
+    public sealed class PerceptionReceiptV3
+    {
+        public PerceptionReceiptV3(string configurationIdentity,
+            TeamPerceptionSnapshotV3 view,
+            PerceptionSupportDecisionV3 supportDecision)
+        {
+            ConfigurationIdentity = CourtPerceptionValidationV3.RequireText(
+                configurationIdentity, nameof(configurationIdentity));
+            View = view ?? throw new ArgumentNullException(nameof(view));
+            SupportDecision = supportDecision ??
+                              throw new ArgumentNullException(nameof(supportDecision));
+            if (!view.SupportCandidates.Any(candidate =>
+                    candidate.PlayerId.Equals(supportDecision.SelectedPlayer)))
+            {
+                throw new ArgumentException(
+                    "The selected support player must belong to the filtered view.",
+                    nameof(supportDecision));
+            }
+        }
+
+        public string ConfigurationIdentity { get; }
+        public TeamPerceptionSnapshotV3 View { get; }
+        public PerceptionSupportDecisionV3 SupportDecision { get; }
+        public string ViewIdentity => View.ViewIdentity;
+        public long Revision => View.Revision;
+        public long SourceSequence => View.SourceSequence;
+        public TeamSide ObservingSide => View.ObservingSide;
+        public string AuthoritativeArtifactIdentity =>
+            View.AuthoritativeArtifactIdentity;
+    }
+
     internal static class CourtPerceptionValidationV3
     {
         internal static string RequireText(string value, string parameterName)

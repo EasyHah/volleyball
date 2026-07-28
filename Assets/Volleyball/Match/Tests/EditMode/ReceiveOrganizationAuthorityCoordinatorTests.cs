@@ -62,6 +62,24 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ApplyPerception_RejectsAnotherRevisionAndRetainsMatchingEvent()
+        {
+            var fixture = CreateFixture();
+            var coordinator = fixture.Coordinator();
+            var planned = coordinator.PlanReceive(fixture.Request(7, 1));
+            var selected = planned.Plan.EmergencyReceivers[0];
+
+            Assert.That(() => coordinator.ApplyPerception(
+                    Perception(planned.Plan.Side, 99, 1, selected)),
+                Throws.InvalidOperationException);
+
+            var matching = Perception(planned.Plan.Side, 7, 1, selected);
+            coordinator.ApplyPerception(matching);
+
+            Assert.That(coordinator.CurrentPerception, Is.SameAs(matching));
+        }
+
+        [Test]
         public void MissPrimary_ActivatesOnlyDeclaredEmergencyBranch()
         {
             var fixture = CreateFixture();
@@ -248,6 +266,19 @@ namespace Volleyball.EditModeTests
         private static AuthorityFixture CreateFixture(bool organizationReachable = true)
         {
             return new AuthorityFixture(organizationReachable);
+        }
+
+        private static PerceptionReceiptV3 Perception(TeamSide side,
+            long revision, long sourceSequence, StablePlayerId selected)
+        {
+            var view = new TeamPerceptionSnapshotV3("receive-view-" + revision,
+                "receive-trajectory-" + revision, side, revision, sourceSequence,
+                new[] { new PlayerPerceptionSnapshotV3(selected, .8f, .1f) },
+                Array.Empty<PerceivedThreatEntryV3>(),
+                new[] { new PerceivedSupportCandidateV3(selected, .8f, .4f,
+                    true) });
+            return new PerceptionReceiptV3("gate-j-v1", view,
+                new PerceptionSupportDecisionV3(selected, false, .8f));
         }
 
         private sealed class AuthorityFixture

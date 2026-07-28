@@ -220,12 +220,14 @@ namespace Volleyball.AI
         private AttackDefenseCommandExecutionV4 _toolRecoveryReceiveExecution;
         private TeamSide _attackingSide;
         private long _lastSequence = -1;
+        private PerceptionReceiptV3 _perception;
         public AttackDefenseAuthorityCoordinator(AttackDefensePlanner planner, IAttackDefenseAuthorityCommandSink sink)
         { _planner = planner ?? throw new ArgumentNullException(nameof(planner)); _sink = sink ?? throw new ArgumentNullException(nameof(sink)); State = AttackDefenseAuthorityStateV3.Idle; }
         public AttackDefenseAuthorityStateV3 State { get; private set; }
         // Exposes only the already-generated public distribution for the joint
         // defense handoff; it never exposes the selected route or future sample.
         public PublicAttackThreatV3 PublicThreat => _attack?.PublicThreat;
+        public PerceptionReceiptV3 CurrentPerception => _perception;
 
         public GateISetIntentPlanningResultV3 PlanSetIntent(SetIntentPlanningRequestV3 request)
         {
@@ -252,6 +254,24 @@ namespace Volleyball.AI
 
         public AttackDefenseAuthorityStateV3 PublishThreat(long revision, long sourceSequence)
         { Require(AttackDefenseAuthorityPhaseV3.AttackPlanned, revision, sourceSequence); _lastSequence = sourceSequence; State = New(AttackDefenseAuthorityPhaseV3.ThreatPublished); return State; }
+
+        public void ApplyPerception(PerceptionReceiptV3 receipt)
+        {
+            if (receipt == null) throw new ArgumentNullException(nameof(receipt));
+            var defendingSide = _attackingSide == TeamSide.Home
+                ? TeamSide.Away
+                : TeamSide.Home;
+            if (State.Phase != AttackDefenseAuthorityPhaseV3.ThreatPublished ||
+                receipt.Revision != State.Revision ||
+                receipt.SourceSequence != _lastSequence ||
+                receipt.ObservingSide != defendingSide ||
+                _intent == null ||
+                receipt.AuthoritativeArtifactIdentity !=
+                _intent.TrajectoryArtifact.ArtifactIdentity)
+                throw new InvalidOperationException(
+                    "Perception must belong to the published threat event.");
+            _perception = receipt;
+        }
 
         public AttackDefenseAuthorityStateV3 CommitDefense(long revision, long sourceSequence, JointDefensePlanV3 defense)
         {
@@ -439,6 +459,7 @@ namespace Volleyball.AI
             _committedDefenseExecutions.Clear();
             _toolRecoveryReceiveExecution = null;
             State = AttackDefenseAuthorityStateV3.Idle;
+            _perception = null;
             return State;
         }
 

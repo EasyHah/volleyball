@@ -50,6 +50,32 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ApplyPerception_RejectsWrongArtifactAndRetainsPublishedThreatEvent()
+        {
+            var coordinator = new AttackDefenseAuthorityCoordinator(
+                new AttackDefensePlanner(), new Sink());
+            var result = coordinator.PlanSetIntent(Fixture.Request(4, 1));
+            var accepted = new AcceptedSetEvidenceV3(result.Intent.Organizer,
+                result.Intent.ExecutionClassification.ExecutableEnvelope.Identity,
+                result.Intent.TrajectoryArtifact.ArtifactIdentity);
+            coordinator.AcceptSet(new GateIAcceptedSetV3(4, 2, accepted),
+                new AttackPlanningRequestV3(4, result.Intent, accepted,
+                    Fixture.Players()));
+            coordinator.PublishThreat(4, 3);
+            var selected = Fixture.Players().First(value =>
+                value.Side == Volleyball.Shared.Contracts.TeamSide.Away).Player;
+
+            Assert.That(() => coordinator.ApplyPerception(Fixture.Perception(
+                    4, 3, "wrong-artifact", selected)),
+                Throws.InvalidOperationException);
+
+            var matching = Fixture.Perception(4, 3,
+                result.Intent.TrajectoryArtifact.ArtifactIdentity, selected);
+            coordinator.ApplyPerception(matching);
+            Assert.That(coordinator.CurrentPerception, Is.SameAs(matching));
+        }
+
+        [Test]
         public void ContactBeforeCommittedAttack_PublishesNothing()
         {
             var sink = new Sink();
@@ -553,7 +579,7 @@ namespace Volleyball.EditModeTests
                 kind == AttackDefenseCommandKind.AttackContact ? plan.SelectedAction.TrajectoryArtifactIdentity : "actual-trajectory-" + sequence,
                 true, string.Empty, rebound, remainingTouches, recoveryExecution);
 
-            private static GateITacticalPlayerV3[] Players()
+            public static GateITacticalPlayerV3[] Players()
             {
                 var attributes = MatchV4TestFixture.CreateDerived();
                 return Enumerable.Range(0, 6)
@@ -572,6 +598,29 @@ namespace Volleyball.EditModeTests
                             false,
                             attributes)))
                     .ToArray();
+            }
+
+            public static PerceptionReceiptV3 Perception(long revision,
+                long sourceSequence, string artifact,
+                Volleyball.Shared.Contracts.PlayerId selected)
+            {
+                var view = new TeamPerceptionSnapshotV3(
+                    "defense-view-" + revision, artifact,
+                    Volleyball.Shared.Contracts.TeamSide.Away, revision,
+                    sourceSequence,
+                    new[] { new PlayerPerceptionSnapshotV3(selected, .8f, .1f) },
+                    new[]
+                    {
+                        new PerceivedThreatEntryV3("published-0", "Line",
+                            .8f, .4f)
+                    },
+                    new[]
+                    {
+                        new PerceivedSupportCandidateV3(selected, .8f, .5f,
+                            false)
+                    });
+                return new PerceptionReceiptV3("gate-j-v1", view,
+                    new PerceptionSupportDecisionV3(selected, false, .8f));
             }
         }
     }
