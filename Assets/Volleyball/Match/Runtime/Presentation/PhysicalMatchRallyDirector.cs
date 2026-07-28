@@ -226,8 +226,8 @@ namespace Volleyball.Presentation
             new Dictionary<PlayerId, PrototypePlayerAgent>();
         private readonly PhysicalRallyTacticPlanner _tacticPlanner =
             new PhysicalRallyTacticPlanner();
-        private readonly TeamRallyDecisionPlanner _decisionPlanner =
-            new TeamRallyDecisionPlanner(7351);
+        private readonly RallyDecisionCoordinatorV3 _decisionCoordinator =
+            new RallyDecisionCoordinatorV3(7351);
 
         private SimulatedBall _ball;
         private ScoreDisplay _scoreDisplay;
@@ -866,8 +866,7 @@ namespace Volleyball.Presentation
             if (GateHAuthorityEnabled)
             {
                 var responsibilityPlanner =
-                    new ReceiveOrganizationResponsibilityPlanner(
-                        _decisionPlanner);
+                    _decisionCoordinator.CreateReceiveOrganizationPlanner();
                 _receiveOrganizationCoordinator =
                     new ReceiveOrganizationAuthorityCoordinator(
                         responsibilityPlanner,
@@ -1277,7 +1276,7 @@ namespace Volleyball.Presentation
                     receiveSeconds),
                 _touchState.CountedTeamTouches,
                 _touchState.LastCountedActor);
-            if (!_decisionPlanner.OrderedCandidates(receiveInput)
+            if (!_decisionCoordinator.OrderedCandidates(receiveInput)
                     .Any(candidate => candidate.IsFeasible))
             {
                 _scheduledDecision = null;
@@ -1396,7 +1395,7 @@ namespace Volleyball.Presentation
                 predictedBallCenter,
                 countedTouches,
                 lastCountedActor);
-            var decision = _decisionPlanner.Plan(input);
+            var decision = _decisionCoordinator.Plan(input);
             if (!decision.HasDecision)
             {
                 Debug.Log(
