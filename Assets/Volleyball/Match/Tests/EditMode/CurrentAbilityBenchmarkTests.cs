@@ -219,7 +219,7 @@ namespace Volleyball.EditModeTests
 
         private static float ReachabilityFor(PlayerAbilityProfile attackerAbility)
         {
-            var decision = new TeamRallyDecisionPlanner(FixedSeed).Plan(CreateAttackInput(attackerAbility));
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateAttackInput(attackerAbility));
             return CandidateFor(decision, PlayerRole.Attacker).Score.Reachability;
         }
 
@@ -255,7 +255,7 @@ namespace Volleyball.EditModeTests
                 0,
                 stage,
                 RallyTacticalWeights.Default);
-            return new TeamRallyDecisionPlanner(FixedSeed)
+            return new TeamRallyDecisionPlanner()
                 .OrderedCandidates(input)
                 .Single(candidate => candidate.Actor.Equals(actor))
                 .Score.Reachability;
@@ -362,7 +362,7 @@ namespace Volleyball.EditModeTests
 
         private static TeamRallyDecision AttackDecisionFor(PlayerAbilityProfile attackerAbility)
         {
-            return new TeamRallyDecisionPlanner(FixedSeed).Plan(CreateAttackInput(attackerAbility));
+            return new TeamRallyDecisionPlanner().Plan(CreateAttackInput(attackerAbility));
         }
 
         private static TeamRallyDecisionInput CreateAttackInput(PlayerAbilityProfile attackerAbility)

@@ -13,6 +13,28 @@ namespace Volleyball.Career.MatchIntegration
         public const string CompetitionId = "competition.university.v1";
         public const string ScheduleItemId = "schedule.u1w1.match.01";
 
+        private readonly CareerMatchExecutionMode _executionMode;
+
+        public CareerFirstMatchLaunchFactoryV1()
+            : this(CareerMatchExecutionMode.Fixture)
+        {
+        }
+
+        public CareerFirstMatchLaunchFactoryV1(
+            CareerMatchExecutionMode executionMode)
+        {
+            if (executionMode != CareerMatchExecutionMode.Fixture &&
+                executionMode != CareerMatchExecutionMode.Direct)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(executionMode),
+                    executionMode,
+                    "The first-match factory supports fixture or direct execution.");
+            }
+
+            _executionMode = executionMode;
+        }
+
         public CareerMatchLaunch Create(CareerFirstMatchLaunchRequest request)
         {
             if (request == null)
@@ -86,9 +108,13 @@ namespace Volleyball.Career.MatchIntegration
             return new CareerMatchLaunch(
                 request.Versions,
                 request.SessionId,
-                CareerMatchExecutionMode.Fixture,
-                FixtureId,
-                FixtureVersion,
+                _executionMode,
+                _executionMode == CareerMatchExecutionMode.Fixture
+                    ? FixtureId
+                    : null,
+                _executionMode == CareerMatchExecutionMode.Fixture
+                    ? FixtureVersion
+                    : (int?)null,
                 request.MatchSeed,
                 CompetitionId,
                 ScheduleItemId,

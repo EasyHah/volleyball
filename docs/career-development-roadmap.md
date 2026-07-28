@@ -7,10 +7,11 @@
 > [CHG-20260727-003](changes/2026-07-27-003-career-shared-v3-integration.md)。
 
 - 状态：已确认，实施中
-- 适用范围：离线首版的首个一周技术闭环
+- 适用范围：离线首版的一周技术闭环与阶段 10 正式 6v6 接入
 - Unity 基线目标：`6000.3.20f1`
-- 已同步上游基线：`origin/main@173f957`（Full Rally V4 与 Unity 6000.3）
-- 当前里程碑 Match 冻结树：`c7d047bb2018c8faa4a9c5b939f76adaaca8d369`
+- 已同步上游基线：`origin/main@d508be9`（Full Rally V4、Unity 6000.3 与合并后基线修复）
+- 阶段 10 Match 基线树：`fd483948212776e2abb8b0646c77c5b3ad48fae9`；本阶段解除目录冻结，
+  但保留 `@EasyHah` CODEOWNER，并只允许通过 PR 修改正式接入口与必要的 seed 消费
 - 当前里程碑 Shared Runtime 冻结树：`76d70c3c229a9834471f0eed7874bda22efa7f63`
 - 对应目录 `.meta` blob：Match `23d5e66a3e4158bd421c4d3ee573e0d4e7339627`；Shared V1
   `9085d85a3a423a82a6303df4ca3fe3819d8d30ea`
@@ -73,6 +74,11 @@ ProjectSettings、CI 和公共文档，不再等待暂时无法参与的 Match �
 Unity 全量回归/Windows 构建，以及独立 agent 复核无 P1/P2。V1 契约保持兼容；新版详细事实和异步
 runner 只由 Shared、Career.MatchIntegration 与 FakeMatch 消费。物理 Match 适配器、能力绑定、AI seed
 接线和玩家控制全部延期，不得为完成首里程碑绕过冻结规则。
+
+自 2026-07-28 起，项目负责人明确启动阶段 10。`Assets/Volleyball/Match/**` 的首里程碑冻结到此结束；
+本阶段可以在功能分支内修改 Formal 6v6 外部上下文入口和真实比赛 seed 消费，但仍不得直接合并到
+`main`，必须通过 Pull Request 交由 Match CODEOWNER 复核。Shared Runtime 继续冻结，存档 Schema、
+结算幂等规则和 Match V4 载荷结构均不在本阶段修改。
 
 ## 3. 前置基线
 
@@ -415,20 +421,25 @@ FakeMatch 固定 6v6 单局事实、结果哈希校验、回执查询和从比�
 - 1920×1080 的菜单交互无明显停顿，自动保存不会无提示冻结界面；
 - 所有测试版本、结果和已知限制写入变更记录，失败门禁不得标记为完成。
 
-### 阶段 10：现有 FormalIndoor6v6 生涯接入（首里程碑完成后的后续阶段）
+### 阶段 10：现有 FormalIndoor6v6 生涯接入（当前阶段）
 
-- 建议分支：`feature/career-formal-6v6-integration`
-- 负责人：后续重新授权；需要修改 Match 内部，当前冻结期间不得启动
+- 实施分支：`milestone/career-formal-6v6-v4`
+- 负责人：当前项目负责人实施接线；`@EasyHah` 通过 CODEOWNERS 复核 Match 改动
 
-进入条件：阶段 9 已完成；Shared runner 与 12 人事实契约稳定；上下文能力已真实绑定到物理球员；Match
-已明确主角控制模式并完成 Windows x64 基本输入/性能验证。当前按位置覆盖能力、自动运行的沙盒 6v6
-不满足这些条件。
+进入条件：阶段 9 已完成；Shared V4 与 12 人事实契约稳定；上下文能力能够绑定到物理球员。首个
+检查点采用自动运行的正式 6v6，直接控制继续由 Match 后续阶段提供，不阻塞 Career 的上下文、结果、
+取消和恢复闭环。
 
 范围：让现有 `FormalIndoor6v6` 从已提交的 `PendingMatch` 接收外部上下文，移除正式入口中的硬编码
 沙盒创建，通过同一 `IMatchRunnerV*` 返回结果，并验证取消、场景加载失败、从赛前重试与成功结算。
 runner 必须把冻结的 `matchSeed` 派生并传入所有使用随机性的 AI planner，不能继续使用固定 `7351`；
 纯确定性 planner 删除未使用的 seed 参数。主角控制启用时，必须保证该球员不会同时收到 AI 决策。
 仍只覆盖单局，不在该分支加入多局制、换人、自由人替换程序或比赛中途存档。
+
+场景生命周期采用 additive 加载：Career 场景和控制器保持存活，比赛期间只隐藏 Career UI 并停用菜单
+输入，比赛完成、Escape/B 取消或初始化失败后卸载 Match 场景并恢复原 UI。物理 Match 的累计 workload
+在 Bootstrap 边界按 `rawWorkload / ralliesPlayed` 归一化并钳制到 `[0,1]`；Career 对超出范围的 V4
+结果直接拒绝，避免不同单位静默混用。
 
 退出条件：FakeMatch 与物理 6v6 可在不改 Career Domain 规则的情况下替换；12 名球员身份、能力和主角
 统计往返一致；物理比赛退出/崩溃只回到赛前并复用原上下文；完成单独的 Windows 构建实机验收。
@@ -464,18 +475,18 @@ CI 暂不可用不等于测试门禁可跳过；只能用可复现的本地/固�
 | 区域 | 主要负责人 | 合并要求 |
 | --- | --- | --- |
 | `Assets/Volleyball/Career/**` | 当前里程碑负责人 | 可实现；不得反向依赖 Match 内部代码 |
-| `Assets/Volleyball/Match/**` | 冻结上游 | 保持树哈希 `1f0bbe...`；任何变化直接拒绝 |
+| `Assets/Volleyball/Match/**` | `@EasyHah` | 阶段 10 仅改正式接入口与 seed 消费；必须通过 PR 和相关 Match 回归 |
 | `Assets/Volleyball/Shared/**`、`Assets/Volleyball/Bootstrap/**`、`Packages/**`、`ProjectSettings/**`、公共场景与 workflow | 当前里程碑负责人 | 变更记录、自动化兼容证据和独立 agent 复核 |
 | 大型场景和 Prefab | 当前里程碑负责人 | 首里程碑不编辑既有 Match 场景；新 Career 资源使用独立路径 |
 
 只有 `main` 是长期分支。每个阶段从当前已验证集成基线建立短分支，通过 PR 合并并附带独立变更记录；
-共同区域必须标记 `跨模块（重点）`。每次开始新阶段都重新获取远端状态，但不得自动合入改变冻结 Match
-树的提交；发现新 Match 上传时先单独审计。不得直接推送、强制推送或把无关资源重导入混入功能 PR。
+共同区域必须标记 `跨模块（重点）`。每次开始新阶段都重新获取远端状态；发现新 Match 上传时先单独
+审计。不得直接推送、强制推送或把无关资源重导入混入功能 PR。
 
 ## 7. 硬性验收门禁
 
 - 每个分支的新增规则必须有 EditMode 测试，且完整 EditMode 套件全绿；
-- 每次验证都必须确认 Match 树哈希仍为冻结值，V1 契约和现有 3v3/6v6 回归继续通过；
+- 阶段 10 每次验证都必须确认 Match 改动只在获批接入范围内，V1 契约和现有 3v3/6v6 回归继续通过；
 - 阶段 0B 的 CODEOWNERS、UnityYAMLMerge/LFS 规则和无许可证 CI 未通过前，不开始功能分支；
 - 存档阶段必须覆盖往返、损坏、备份恢复、版本令牌冲突和原子替换失败；
 - 周执行阶段必须覆盖每个状态提交前后的失败，证明不会重复或跳过结算；

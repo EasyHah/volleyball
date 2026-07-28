@@ -29,6 +29,32 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void Mapper_UsesInjectedPhysicalRuntimeConfiguration()
+        {
+            const string physicsHash =
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+            const string predictorHash =
+                "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+            var predictor = new TrajectoryPredictionProviderConfigurationV4(
+                64,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                7,
+                predictorHash);
+
+            var context = new CareerMatchV4Mapper(physicsHash, predictor)
+                .ToContext(CareerMatchTestData.Launch());
+
+            Assert.That(context.PhysicsConfigurationHash, Is.EqualTo(physicsHash));
+            Assert.That(
+                context.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                Is.EqualTo(7));
+            Assert.That(
+                context.TrajectoryPredictionProviderConfiguration
+                    .PredictorConfigurationHash,
+                Is.EqualTo(predictorHash));
+        }
+
+        [Test]
         public async Task FixtureRunner_IsDeterministicAndReturnsCompleteV4Facts()
         {
             var context = new CareerMatchV4Mapper().ToContext(CareerMatchTestData.Launch());
@@ -63,6 +89,46 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(decoded.Facts.Versions.ContractVersion, Is.EqualTo(4));
             Assert.That(decoded.Facts.PlayerFacts.Count, Is.EqualTo(12));
             Assert.That(decoded.Facts.Sets.Single().HomePoints, Is.EqualTo(25));
+        }
+
+        [Test]
+        public async Task Mapper_RejectsUnnormalizedPhysicalWorkload()
+        {
+            var mapper = new CareerMatchV4Mapper();
+            var context = mapper.ToContext(CareerMatchTestData.Launch());
+            var fixture = await new DeterministicFixtureMatchRunnerV4()
+                .ExecuteAsync(context, CancellationToken.None);
+            var stats = fixture.PlayerStats
+                .Select((item, index) => new PlayerMatchStatsV4(
+                    item.PlayerId,
+                    item.Points,
+                    item.Contacts,
+                    item.Errors,
+                    index == 0 ? 2f : item.Workload))
+                .ToArray();
+            var unnormalized = MatchResultV4.Create(
+                context,
+                fixture.WinnerTeamId,
+                fixture.HomeScore,
+                fixture.AwayScore,
+                fixture.RalliesPlayed,
+                fixture.AcceptedContacts,
+                fixture.V3RuleTransitionCount,
+                stats);
+
+            Assert.Throws<ContractValidationException>(
+                () => mapper.ToCareerFacts(context, unnormalized));
+        }
+
+        [Test]
+        public void WorkloadNormalization_UsesPerRallyScaleAndClamps()
+        {
+            Assert.That(
+                CareerMatchV4Mapper.NormalizeAccumulatedWorkload(23f, 46),
+                Is.EqualTo(0.5f));
+            Assert.That(
+                CareerMatchV4Mapper.NormalizeAccumulatedWorkload(100f, 25),
+                Is.EqualTo(1f));
         }
 
         [Test]

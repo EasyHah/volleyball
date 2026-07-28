@@ -15,9 +15,16 @@ namespace Volleyball.Career.MatchIntegration
         private readonly CareerMatchV4Mapper _mapper;
 
         public CareerMatchExecutorV4(ICareerMatchRunnerV4 runner)
+            : this(runner, new CareerMatchV4Mapper())
+        {
+        }
+
+        public CareerMatchExecutorV4(
+            ICareerMatchRunnerV4 runner,
+            CareerMatchV4Mapper mapper)
         {
             _runner = runner ?? throw new ArgumentNullException(nameof(runner));
-            _mapper = new CareerMatchV4Mapper();
+            _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
         }
 
         public CareerCanonicalMatchContext Encode(CareerMatchLaunch launch)

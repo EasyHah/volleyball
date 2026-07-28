@@ -19,6 +19,40 @@ namespace Volleyball.Career.MatchIntegration
         public const string FixturePredictorConfigurationHash =
             "1e5242f326637e85416d8f493344c7d52fbb53a35ce2d21be96b799e70d62e20";
 
+        private readonly string _physicsConfigurationHash;
+        private readonly TrajectoryPredictionProviderConfigurationV4
+            _trajectoryPredictionProviderConfiguration;
+
+        public CareerMatchV4Mapper()
+            : this(
+                FixturePhysicsConfigurationHash,
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    1,
+                    FixturePredictorConfigurationHash))
+        {
+        }
+
+        public CareerMatchV4Mapper(
+            string physicsConfigurationHash,
+            TrajectoryPredictionProviderConfigurationV4
+                trajectoryPredictionProviderConfiguration)
+        {
+            if (string.IsNullOrWhiteSpace(physicsConfigurationHash))
+            {
+                throw new ArgumentException(
+                    "A physical configuration hash is required.",
+                    nameof(physicsConfigurationHash));
+            }
+
+            _physicsConfigurationHash = physicsConfigurationHash;
+            _trajectoryPredictionProviderConfiguration =
+                trajectoryPredictionProviderConfiguration ??
+                throw new ArgumentNullException(
+                    nameof(trajectoryPredictionProviderConfiguration));
+        }
+
         public MatchContextV4 ToContext(CareerMatchLaunch launch)
         {
             if (launch == null) throw new ArgumentNullException(nameof(launch));
@@ -28,12 +62,8 @@ namespace Volleyball.Career.MatchIntegration
                 unchecked((int)launch.MatchSeed),
                 ToTeam(launch.Teams[0]),
                 ToTeam(launch.Teams[1]),
-                FixturePhysicsConfigurationHash,
-                new TrajectoryPredictionProviderConfigurationV4(
-                    128,
-                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
-                    1,
-                    FixturePredictorConfigurationHash),
+                _physicsConfigurationHash,
+                _trajectoryPredictionProviderConfiguration,
                 RulesVersions.FullRallyV3);
         }
 
@@ -69,6 +99,31 @@ namespace Volleyball.Career.MatchIntegration
                 result.RalliesPlayed,
                 playerFacts,
                 new Sha256Digest(result.ResultHash));
+        }
+
+        public static float NormalizeAccumulatedWorkload(
+            float accumulatedWorkload,
+            int ralliesPlayed)
+        {
+            if (float.IsNaN(accumulatedWorkload) ||
+                float.IsInfinity(accumulatedWorkload) ||
+                accumulatedWorkload < 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(accumulatedWorkload),
+                    "Accumulated physical workload must be finite and non-negative.");
+            }
+
+            if (ralliesPlayed <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(ralliesPlayed),
+                    "A completed match must contain at least one rally.");
+            }
+
+            return Math.Max(
+                0f,
+                Math.Min(1f, accumulatedWorkload / ralliesPlayed));
         }
 
         private static void RequireSupportedVersions(CareerMatchVersions versions)
@@ -240,8 +295,16 @@ namespace Volleyball.Career.MatchIntegration
 
         private static int WorkloadBasisPoints(float workload)
         {
-            var scaled = workload <= 1f ? workload * 10000f : workload;
-            return Math.Max(0, Math.Min(10000, (int)Math.Round(scaled)));
+            if (float.IsNaN(workload) ||
+                float.IsInfinity(workload) ||
+                workload < 0f ||
+                workload > 1f)
+            {
+                throw new ContractValidationException(
+                    "Career requires Match V4 workload to be normalized to [0, 1].");
+            }
+
+            return Math.Max(0, Math.Min(10000, (int)Math.Round(workload * 10000f)));
         }
 
         private static float Unit(int basisPoints)

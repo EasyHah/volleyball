@@ -23,7 +23,7 @@ namespace Volleyball.EditModeTests
                 new SimVector3(0f, 0f, -2f),
                 new SimVector3(0f, 0f, -2f));
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(input);
+            var decision = new TeamRallyDecisionPlanner().Plan(input);
 
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
@@ -45,7 +45,7 @@ namespace Volleyball.EditModeTests
                 Snapshot(PlayerRole.Defender, 5, 0f)
             };
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateRawInput(players));
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateRawInput(players));
 
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Candidates, Has.Count.EqualTo(6));
@@ -65,7 +65,7 @@ namespace Volleyball.EditModeTests
                 new SimVector3(0f, 0f, -2f),
                 availableSeconds: 0.5f);
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(input);
+            var decision = new TeamRallyDecisionPlanner().Plan(input);
 
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
@@ -77,7 +77,7 @@ namespace Volleyball.EditModeTests
         {
             var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
             var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateOrganizeInput(
                 new RallyPlayerSnapshot(setter, new SimVector3(1f, 0f, -2f), Ability(0f)),
                 new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
                 new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(1f)),
@@ -94,7 +94,7 @@ namespace Volleyball.EditModeTests
         {
             var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
             var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateOrganizeInput(
                 new RallyPlayerSnapshot(setter, new SimVector3(20f, 0f, -2f), Ability(0.8f)),
                 new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
                 new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
@@ -109,7 +109,7 @@ namespace Volleyball.EditModeTests
         {
             var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
             var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateOrganizeInput(
                 new RallyPlayerSnapshot(setter, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
                 new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
                 new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
@@ -125,7 +125,7 @@ namespace Volleyball.EditModeTests
         {
             var tactic = CreateTactic(SpikeRoute.Line, team);
             var currentBall = new SimVector3(-1.5f, 2.1f, 0.35f * new TeamCourtFrame(team).WorldDepthSign);
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateInput(
                 team,
                 RallyDecisionStage.Organize,
                 currentBall,
@@ -175,7 +175,7 @@ namespace Volleyball.EditModeTests
                 tactic: tactic,
                 availableSeconds: 0.5f);
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(input);
+            var decision = new TeamRallyDecisionPlanner().Plan(input);
 
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
@@ -192,9 +192,9 @@ namespace Volleyball.EditModeTests
         {
             var lowExecutionRatings = AbilityWithAttack(attackTechnique: 0.2f, attackPower: 0.2f);
             var highExecutionRatings = AbilityWithAttack(attackTechnique: 0.95f, attackPower: 0.95f);
-            var firstLow = new TeamRallyDecisionPlanner(17).Plan(
+            var firstLow = new TeamRallyDecisionPlanner().Plan(
                 CreateAttackSelectionInput(lowExecutionRatings, highExecutionRatings));
-            var firstHigh = new TeamRallyDecisionPlanner(17).Plan(
+            var firstHigh = new TeamRallyDecisionPlanner().Plan(
                 CreateAttackSelectionInput(highExecutionRatings, lowExecutionRatings));
 
             Assert.That(
@@ -225,7 +225,7 @@ namespace Volleyball.EditModeTests
                 new SimVector3(0f, 0f, -2f),
                 lastCountedActor: setter);
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(input);
+            var decision = new TeamRallyDecisionPlanner().Plan(input);
 
             Assert.That(decision.HasDecision, Is.True);
             Assert.That(decision.Actor, Is.Not.EqualTo(setter));
@@ -244,7 +244,7 @@ namespace Volleyball.EditModeTests
                 new SimVector3(0f, 0f, -2f),
                 lastCountedActor: defender);
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(input);
+            var decision = new TeamRallyDecisionPlanner().Plan(input);
 
             Assert.That(decision.Actor, Is.EqualTo(defender));
         }
@@ -261,7 +261,7 @@ namespace Volleyball.EditModeTests
                 new SimVector3(22f, 0f, -2f),
                 availableSeconds: 0.3f);
 
-            var decision = new TeamRallyDecisionPlanner(17).Plan(input);
+            var decision = new TeamRallyDecisionPlanner().Plan(input);
 
             Assert.That(decision, Is.SameAs(TeamRallyDecision.NoDecision));
             Assert.That(decision.HasDecision, Is.False);
@@ -270,7 +270,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Plan_BlockReturnsTheSharedNoDecision()
         {
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateInput(
                 TeamId.Blue,
                 RallyDecisionStage.Block,
                 new SimVector3(0f, 2f, -2f),
@@ -284,8 +284,8 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Plan_AttackRoutesToTheOpponentDepthAndVariesLandingAcrossRoutes()
         {
-            var line = new TeamRallyDecisionPlanner(17).Plan(CreateOrangeAttackInput(SpikeRoute.Line));
-            var cross = new TeamRallyDecisionPlanner(17).Plan(CreateOrangeAttackInput(SpikeRoute.CrossCourt));
+            var line = new TeamRallyDecisionPlanner().Plan(CreateOrangeAttackInput(SpikeRoute.Line));
+            var cross = new TeamRallyDecisionPlanner().Plan(CreateOrangeAttackInput(SpikeRoute.CrossCourt));
 
             Assert.That(line.HasDecision, Is.True);
             Assert.That(line.BallTarget.Z, Is.LessThan(0f));
@@ -296,9 +296,9 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Plan_AttackApproachQualityIncreasesToItsCapAndAnglePenaltyGrowsForCrossCourt()
         {
-            var shortApproach = new TeamRallyDecisionPlanner(17).Plan(CreateAttackInput(SpikeRoute.Line, 0f));
-            var cappedApproach = new TeamRallyDecisionPlanner(17).Plan(CreateAttackInput(SpikeRoute.Line, 1f));
-            var crossCourt = new TeamRallyDecisionPlanner(17).Plan(CreateAttackInput(SpikeRoute.CrossCourt, 1f));
+            var shortApproach = new TeamRallyDecisionPlanner().Plan(CreateAttackInput(SpikeRoute.Line, 0f));
+            var cappedApproach = new TeamRallyDecisionPlanner().Plan(CreateAttackInput(SpikeRoute.Line, 1f));
+            var crossCourt = new TeamRallyDecisionPlanner().Plan(CreateAttackInput(SpikeRoute.CrossCourt, 1f));
 
             Assert.That(cappedApproach.AttackApproach.Value.JumpQuality,
                 Is.GreaterThan(shortApproach.AttackApproach.Value.JumpQuality));
@@ -315,7 +315,7 @@ namespace Volleyball.EditModeTests
         {
             var tactic = CreateTactic(SpikeRoute.Line);
             var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
-            var shortTime = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            var shortTime = new TeamRallyDecisionPlanner().Plan(CreateInput(
                 TeamId.Blue,
                 RallyDecisionStage.Attack,
                 new SimVector3(0f, 3f, -1f),
@@ -324,7 +324,7 @@ namespace Volleyball.EditModeTests
                 new SimVector3(8f, 0f, -5f),
                 tactic: tactic,
                 availableSeconds: 0.25f));
-            var ampleTime = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            var ampleTime = new TeamRallyDecisionPlanner().Plan(CreateInput(
                 TeamId.Blue,
                 RallyDecisionStage.Attack,
                 new SimVector3(0f, 3f, -1f),
@@ -402,7 +402,7 @@ namespace Volleyball.EditModeTests
         {
             var tactic = CreateTactic(SpikeRoute.CrossCourt, team);
             var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateInput(
                 team,
                 RallyDecisionStage.Attack,
                 new SimVector3(0f, 3f, -new TeamCourtFrame(team).WorldDepthSign),
@@ -457,7 +457,7 @@ namespace Volleyball.EditModeTests
                 RallyTacticalWeights.Default);
             players[0] = new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Setter), new SimVector3(99f, 0f, -2f), Ability(0.8f));
 
-            var planner = new TeamRallyDecisionPlanner(17);
+            var planner = new TeamRallyDecisionPlanner();
             var first = planner.Plan(input);
             var second = planner.Plan(input);
 
@@ -492,7 +492,7 @@ namespace Volleyball.EditModeTests
                 Snapshot(PlayerRole.Attacker, 1, 0.5f)
             };
             var reversed = players.Reverse().ToArray();
-            var planner = new TeamRallyDecisionPlanner(17);
+            var planner = new TeamRallyDecisionPlanner();
 
             var first = planner.OrderedCandidates(CreateRawInput(players));
             var second = planner.OrderedCandidates(CreateRawInput(reversed));
@@ -560,7 +560,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Plan_OrganizeSetterWinsWhenAnotherReachableRoleScoresHigher()
         {
-            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            var decision = new TeamRallyDecisionPlanner().Plan(CreateInput(
                 TeamId.Blue,
                 RallyDecisionStage.Organize,
                 new SimVector3(0f, 2f, -2f),
@@ -888,7 +888,7 @@ namespace Volleyball.EditModeTests
             var tactic = CreateTactic(SpikeRoute.Line);
             var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
             var mobility = (desiredDistance - 0.6f) / 1.4f;
-            return new TeamRallyDecisionPlanner(17).Plan(CreateInput(
+            return new TeamRallyDecisionPlanner().Plan(CreateInput(
                 TeamId.Blue,
                 RallyDecisionStage.Attack,
                 new SimVector3(0f, 3f, -1f),

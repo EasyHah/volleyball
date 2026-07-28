@@ -29,13 +29,105 @@ namespace Volleyball.Presentation
         private static readonly Color OrangeColor = new Color(1f, 0.38f, 0.08f);
         private static readonly PhysicalMatchConfiguration Configuration =
             PhysicalMatchConfiguration.FormalIndoorSixVsSix;
+        private static readonly object ExternalContextGate = new object();
+
+        private static MatchContextV4 _queuedExternalContext;
+        private bool _initialized;
+
+        public FormalSixVsSixRallyDirector Director { get; private set; }
+
+        public Exception InitializationException { get; private set; }
+
+        public static string RuntimePhysicsConfigurationHash =>
+            BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                new BallSimulationParameters(-9.8f, 0.9995f));
+
+        public static TrajectoryPredictionProviderConfigurationV4
+            CreateRuntimeTrajectoryConfiguration()
+        {
+            return new TrajectoryPredictionProviderConfigurationV4(
+                128,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash);
+        }
+
+        public static void QueueExternalContext(MatchContextV4 context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            lock (ExternalContextGate)
+            {
+                if (_queuedExternalContext != null)
+                {
+                    throw new InvalidOperationException(
+                        "A formal 6v6 external context is already queued.");
+                }
+
+                _queuedExternalContext = context;
+            }
+        }
+
+        public static void ClearQueuedExternalContext(MatchContextV4 context)
+        {
+            lock (ExternalContextGate)
+            {
+                if (ReferenceEquals(_queuedExternalContext, context))
+                {
+                    _queuedExternalContext = null;
+                }
+            }
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetExternalContextSlot()
+        {
+            lock (ExternalContextGate)
+            {
+                _queuedExternalContext = null;
+            }
+        }
+
+        private static MatchContextV4 ConsumeQueuedExternalContext()
+        {
+            lock (ExternalContextGate)
+            {
+                var context = _queuedExternalContext;
+                _queuedExternalContext = null;
+                return context;
+            }
+        }
 
         private void Awake()
         {
+            try
+            {
+                InitializeRuntime(
+                    ConsumeQueuedExternalContext() ?? CreateSandboxContext());
+            }
+            catch (Exception exception)
+            {
+                InitializationException = exception;
+                Debug.LogException(exception, this);
+                enabled = false;
+            }
+        }
+
+        private void InitializeRuntime(MatchContextV4 context)
+        {
+            if (_initialized)
+            {
+                throw new InvalidOperationException(
+                    "The formal 6v6 scene can only initialize once.");
+            }
+
+            _initialized = true;
             Application.targetFrameRate = 60;
             CourtBuilder.Build(transform, Configuration.CourtHalfLength);
             var ball = CreateBall();
-            var context = CreateSandboxContext();
             var agents = CreateRoster(context);
             var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<FormalSixVsSixRallyDirector>();
@@ -46,6 +138,7 @@ namespace Volleyball.Presentation
                 scoreDisplay,
                 configuration: Configuration);
             director.ConfigureV3Rules(V3RulesMode.Authority);
+            Director = director;
             var rosterDisplay = gameObject.AddComponent<MatchRosterDisplay>();
             rosterDisplay.Initialize(director, agents);
             var cameras = gameObject.AddComponent<RallyCameraController>();
@@ -138,13 +231,8 @@ namespace Volleyball.Presentation
                 7351,
                 CreateTeam("formal-home", "Blue", TeamSide.Home, "home"),
                 CreateTeam("formal-away", "Orange", TeamSide.Away, "away"),
-                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
-                    new BallSimulationParameters(-9.8f, 0.9995f)),
-                new TrajectoryPredictionProviderConfigurationV4(
-                    128,
-                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
-                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
-                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
+                RuntimePhysicsConfigurationHash,
+                CreateRuntimeTrajectoryConfiguration(),
                 rulesVersion: RulesVersions.FullRallyV3);
         }
 

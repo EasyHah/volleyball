@@ -7,6 +7,7 @@ using Volleyball.Career.Domain;
 using Volleyball.Career.MatchIntegration;
 using Volleyball.Career.Persistence;
 using Volleyball.Career.Presentation;
+using Volleyball.Presentation;
 
 namespace Volleyball.Bootstrap
 {
@@ -30,8 +31,13 @@ namespace Volleyball.Bootstrap
                 var profileRepository = new LocalPlayerProfileRepository(paths, fileSystem);
                 var catalogRepository = new LocalProfileCatalogRepository(paths, fileSystem);
                 var random = new CareerDeterministicRandom();
+                var runner = new OfflineCareerMatchRunnerV4(gameObject);
                 var executor = new CareerMatchExecutorV4(
-                    new DeterministicFixtureMatchRunnerV4());
+                    runner,
+                    new CareerMatchV4Mapper(
+                        FormalSixVsSixRallyBootstrap.RuntimePhysicsConfigurationHash,
+                        FormalSixVsSixRallyBootstrap
+                            .CreateRuntimeTrajectoryConfiguration()));
                 var adapter = new CareerUiUseCasesAdapter(
                     new CareerLocalUiWorkflow(
                         profileRepository,
@@ -46,7 +52,8 @@ namespace Volleyball.Bootstrap
                     new CareerPendingMatchService(
                         careerRepository,
                         random,
-                        new CareerFirstMatchLaunchFactoryV1(),
+                        new CareerFirstMatchLaunchFactoryV1(
+                            CareerMatchExecutionMode.Direct),
                         executor),
                     new CareerMatchSettlementService(
                         careerRepository,

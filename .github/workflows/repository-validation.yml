@@ -66,12 +66,11 @@ jobs:
         shell: bash
         run: python -B tools/validate_repository.py --base "$VALIDATION_BASE_SHA"
 
-      - name: Enforce frozen Match and legacy Shared V1
+      - name: Enforce frozen Match root metadata and legacy Shared V1
         shell: bash
         run: |
           set -euo pipefail
           git diff --exit-code "$VALIDATION_BASE_SHA" HEAD -- \
-            Assets/Volleyball/Match \
             Assets/Volleyball/Match.meta \
             Assets/Volleyball/Shared/Runtime \
             Assets/Volleyball/Shared/Runtime.meta
