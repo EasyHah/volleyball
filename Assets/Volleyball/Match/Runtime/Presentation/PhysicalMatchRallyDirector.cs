@@ -267,7 +267,6 @@ namespace Volleyball.Presentation
         private bool _lastSetWasSetter;
         private bool _forceInSystemReceiveExecution;
         private int _tacticRevision;
-        private int _decisionIndex;
         private int _aiDecisionRequestVersion;
         private int _aiRequestSequence;
         private int _contactGroupSequence = 3000;
@@ -1245,16 +1244,22 @@ namespace Volleyball.Presentation
         private void ScheduleGateHReceive(TeamId team, float availableSeconds)
         {
             var receiveSeconds = Mathf.Max(0.10f, availableSeconds);
-            var receiveInput = CreateDecisionInput(
+            var playerSnapshots = CaptureTeamPlayerSnapshots(team);
+            var receiveInput = _decisionCoordinator.CreateInput(
                 team,
-                RallyDecisionStage.Receive,
-                receiveSeconds,
+                TacticFor(team),
+                playerSnapshots,
                 PredictGate5BallCenterV4(
                     team,
                     RallyDecisionStage.Receive,
                     receiveSeconds),
+                receiveSeconds,
+                BaseMovementSpeed,
                 _touchState.CountedTeamTouches,
-                _touchState.LastCountedActor);
+                _touchState.LastCountedActor,
+                _tacticRevision,
+                RallyDecisionStage.Receive,
+                _activeTacticalWeights);
             if (!_decisionCoordinator.HasFeasibleCandidate(receiveInput))
             {
                 _scheduledDecision = null;
@@ -1263,28 +1268,38 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            var organizationInput = CreateDecisionInput(
+            var organizationInput = _decisionCoordinator.CreateInput(
                 team,
-                RallyDecisionStage.Organize,
-                ReceiveFlightSeconds,
+                TacticFor(team),
+                playerSnapshots,
                 PredictGate5BallCenterV4(
                     team,
                     RallyDecisionStage.Organize,
                     ReceiveFlightSeconds),
+                ReceiveFlightSeconds,
+                BaseMovementSpeed,
                 1,
-                null);
-            var attackInput = CreateDecisionInput(
+                null,
+                _tacticRevision,
+                RallyDecisionStage.Organize,
+                _activeTacticalWeights);
+            var attackFlightSeconds = SetFlightSolver.PreferredFlightSeconds(
+                TacticFor(team).SetRhythm);
+            var attackInput = _decisionCoordinator.CreateInput(
                 team,
-                RallyDecisionStage.Attack,
-                SetFlightSolver.PreferredFlightSeconds(
-                    TacticFor(team).SetRhythm),
+                TacticFor(team),
+                playerSnapshots,
                 PredictGate5BallCenterV4(
                     team,
                     RallyDecisionStage.Attack,
-                    SetFlightSolver.PreferredFlightSeconds(
-                        TacticFor(team).SetRhythm)),
+                    attackFlightSeconds),
+                attackFlightSeconds,
+                BaseMovementSpeed,
                 2,
-                FindPlayer(team, role => role == PlayerRole.Setter).Id);
+                FindPlayer(team, role => role == PlayerRole.Setter).Id,
+                _tacticRevision,
+                RallyDecisionStage.Attack,
+                _activeTacticalWeights);
             var bindings = _players
                 .Where(pair => pair.Key.Team == team)
                 .OrderBy(pair => pair.Key.RosterSlot)
@@ -1366,13 +1381,18 @@ namespace Volleyball.Presentation
             int countedTouches,
             PlayerId? lastCountedActor)
         {
-            var input = CreateDecisionInput(
+            var input = _decisionCoordinator.CreateInput(
                 team,
-                stage,
-                availableSeconds,
+                TacticFor(team),
+                CaptureTeamPlayerSnapshots(team),
                 predictedBallCenter,
+                availableSeconds,
+                BaseMovementSpeed,
                 countedTouches,
-                lastCountedActor);
+                lastCountedActor,
+                _tacticRevision,
+                stage,
+                _activeTacticalWeights);
             var decision = _decisionCoordinator.Plan(input);
             if (!decision.HasDecision)
             {
@@ -1404,13 +1424,8 @@ namespace Volleyball.Presentation
             return decision;
         }
 
-        private TeamRallyDecisionInput CreateDecisionInput(
-            TeamId team,
-            RallyDecisionStage stage,
-            float availableSeconds,
-            SimVector3 predictedBallCenter,
-            int countedTouches,
-            PlayerId? lastCountedActor)
+        private IReadOnlyList<RallyPlayerSnapshot> CaptureTeamPlayerSnapshots(
+            TeamId team)
         {
             var players = new List<RallyPlayerSnapshot>(_configuration.RosterSize);
             foreach (var pair in _players)
@@ -1428,19 +1443,7 @@ namespace Volleyball.Presentation
                     player.Ability));
             }
 
-            return new TeamRallyDecisionInput(
-                team,
-                TacticFor(team),
-                players,
-                predictedBallCenter,
-                availableSeconds,
-                BaseMovementSpeed,
-                countedTouches,
-                lastCountedActor,
-                _tacticRevision,
-                _decisionIndex++,
-                stage,
-                _activeTacticalWeights);
+            return players;
         }
 
         private ReplayOrganizationDecisionDiagnostic CreateOrganizationDiagnostic(
@@ -1666,7 +1669,7 @@ namespace Volleyball.Presentation
             var executionCandidateCategory = ToExecutionCandidateCategoryV4(decision.Action);
             var executionIntentIdentity =
                 $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
-                $"{_tacticRevision}:{_decisionIndex}:{SuccessfulContacts}:{(int)decision.Actor.Team}:" +
+                $"{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:{SuccessfulContacts}:{(int)decision.Actor.Team}:" +
                 $"{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}:{(int)decision.Action}";
             var executionSamplingKey = executionIntentIdentity + ":sample";
             var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
@@ -3958,7 +3961,7 @@ namespace Volleyball.Presentation
             var executionCandidateCategory = ExecutionCandidateCategoryV4.Receive;
             var executionIntentIdentity =
                 $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
-                $"controlled-handling:{_tacticRevision}:{_decisionIndex}:{SuccessfulContacts}:" +
+                $"controlled-handling:{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:{SuccessfulContacts}:" +
                 $"{(int)decision.Actor.Team}:{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}";
             var executionSamplingKey = executionIntentIdentity + ":sample";
             var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
@@ -4222,7 +4225,7 @@ namespace Volleyball.Presentation
                 return null;
             }
 
-            var identity = $"execution:{_matchContext.SessionId:D}:block:{_tacticRevision}:{_decisionIndex}:" +
+            var identity = $"execution:{_matchContext.SessionId:D}:block:{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:" +
                            $"{SuccessfulContacts}:{(int)blocker.Team}:{(int)blocker.Role}:{blocker.RosterSlot}";
             var samplingKey = identity + ":sample";
             var envelope = PlanExecutionEnvelopeV4(

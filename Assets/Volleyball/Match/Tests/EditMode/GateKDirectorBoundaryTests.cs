@@ -17,6 +17,8 @@ namespace Volleyball.EditModeTests
 
             Assert.That(fields.Select(field => field.FieldType),
                 Has.None.EqualTo(typeof(TeamRallyDecisionPlanner)));
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_decisionIndex"));
         }
 
         [Test]
