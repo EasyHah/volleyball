@@ -363,7 +363,7 @@ namespace Volleyball.EditModeTests
             {
                 return new ReceiveOrganizationAuthorityCoordinator(
                     new ReceiveOrganizationResponsibilityPlanner(
-                        new TeamRallyDecisionPlanner(17)),
+                        new TeamRallyDecisionPlanner()),
                     Sink);
             }
 

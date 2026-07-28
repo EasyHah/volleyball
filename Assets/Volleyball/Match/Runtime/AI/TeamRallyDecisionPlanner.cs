@@ -560,13 +560,6 @@ namespace Volleyball.AI
         private const float FullJumpPreparationSeconds = 0.38f;
         private const float MaximumApproachDistance = 2f;
         private const float FullJumpApproachDistance = 1.5f;
-        private readonly int _seed;
-
-        public TeamRallyDecisionPlanner(int seed)
-        {
-            _seed = seed;
-        }
-
         public TeamRallyDecision Plan(TeamRallyDecisionInput input)
         {
             if (input == null)

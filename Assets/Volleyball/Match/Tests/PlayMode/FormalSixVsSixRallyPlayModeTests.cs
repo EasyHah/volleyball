@@ -30,6 +30,45 @@ namespace Volleyball.PlayModeTests
     public sealed class FormalSixVsSixRallyPlayModeTests
     {
         [UnityTest]
+        [Timeout(30000)]
+        public IEnumerator Formal6v6_SceneLaunchConsumesExternalContext()
+        {
+            var factory = typeof(FormalSixVsSixRallyBootstrap).GetMethod(
+                "CreateSandboxContext",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(factory, Is.Not.Null);
+            var template = (MatchContextV4)factory.Invoke(null, null);
+            var external = MatchContextV4.Create(
+                System.Guid.Parse("17171717-1717-4717-8717-171717171717"),
+                2468,
+                template.Home,
+                template.Away,
+                template.PhysicsConfigurationHash,
+                template.TrajectoryPredictionProviderConfiguration,
+                template.RulesVersion);
+            FormalSixVsSixRallyBootstrap.QueueExternalContext(external);
+            try
+            {
+                yield return SceneManager.LoadSceneAsync(
+                    "FormalIndoor6v6",
+                    LoadSceneMode.Single);
+            }
+            finally
+            {
+                FormalSixVsSixRallyBootstrap.ClearQueuedExternalContext(external);
+            }
+
+            var loadedBootstrap =
+                Object.FindFirstObjectByType<FormalSixVsSixRallyBootstrap>();
+            Assert.That(loadedBootstrap, Is.Not.Null);
+            Assert.That(loadedBootstrap.InitializationException, Is.Null);
+            Assert.That(loadedBootstrap.Director, Is.Not.Null);
+            Assert.That(loadedBootstrap.Director.MatchContext.SessionId,
+                Is.EqualTo(external.SessionId));
+            Assert.That(loadedBootstrap.Director.MatchContext.Seed, Is.EqualTo(2468));
+        }
+
+        [UnityTest]
         [Timeout(120000)]
         public IEnumerator Formal6v6_CalibratedToolRecovery_UsesPhysicalBlockAndNonAttackerSave()
         {

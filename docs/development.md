@@ -7,28 +7,32 @@
 `chore/<description>` or `docs/<description>` branches from the current verified
 integration baseline. Merge through pull requests only, then delete the branch.
 
-For the first Career milestone, the project owner has temporarily authorized one
+For the first Career milestone, the project owner temporarily authorized one
 integrator to own Career and the common surfaces (`Shared`, `Bootstrap`, packages,
-project settings, CI and common documentation). The partner-owned Match implementation
-is frozen at `origin/main@4bf9e4b`:
+project settings, CI and common documentation). That milestone froze the partner-owned
+Match implementation. Stage 10 was explicitly started on 2026-07-28 from
+`origin/main@d508be9`; the Match directory freeze is now lifted only for the formal
+Career integration branch, while Match remains owned by `@EasyHah` and requires a
+pull request:
 
-- `Assets/Volleyball/Match` tree: `1f0bbe976355ded867dcefadba61d538f77905b9`;
+- stage 10 `Assets/Volleyball/Match` baseline tree:
+  `fd483948212776e2abb8b0646c77c5b3ad48fae9`;
 - `Assets/Volleyball/Match.meta` blob: `23d5e66a3e4158bd421c4d3ee573e0d4e7339627`;
-- legacy `Assets/Volleyball/Shared/Runtime` V1 tree:
-  `61c7a928f2bf4740defea34c67e5cb108f6dfe76`;
+- frozen `Assets/Volleyball/Shared/Runtime` V4 tree:
+  `76d70c3c229a9834471f0eed7874bda22efa7f63`;
 - `Assets/Volleyball/Shared/Runtime.meta` blob:
   `9085d85a3a423a82a6303df4ca3fe3819d8d30ea`.
 
-Fetch remote state before each stage, but do not automatically merge a newer Match
-tree. Audit a new partner upload separately before changing either frozen hash.
+Fetch remote state before each stage and audit a new partner upload separately before
+changing Match integration code or a frozen Shared hash.
 
 Every code, resource, scene, configuration or contract change must add or update
 a record under `docs/changes/` and link it from `docs/changes/README.md`. Start
 from `docs/changes/TEMPLATE.md`. If Match and Career interact through Shared,
 Bootstrap, a scene path, a save field or a public interface, mark the record as
 `跨模块（重点）` and state the provider, consumers, compatibility evidence and
-any deferred consumer work. An unavailable developer's approval is not a current
-merge gate; changing the frozen Match tree is prohibited instead.
+any deferred consumer work. Match changes must retain CODEOWNER review and are never
+merged directly to `main`.
 
 The repository owner should eventually require the two `Repository Validation`
 matrix checks, up-to-date branches and at least one review on remote `main`; direct

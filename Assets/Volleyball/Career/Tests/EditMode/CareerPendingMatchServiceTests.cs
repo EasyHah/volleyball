@@ -319,6 +319,28 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void FirstMatchFactory_DirectModeOmitsFixtureIdentity()
+        {
+            var snapshot = CareerSaveV2LifecycleTestData.MatchReadySnapshot();
+            var launch = new CareerFirstMatchLaunchFactoryV1(
+                    CareerMatchExecutionMode.Direct)
+                .Create(new CareerFirstMatchLaunchRequest(
+                    CareerMatchTestData.Versions(),
+                    CareerMatchTestData.SessionId,
+                    CareerMatchTestData.MatchSeed,
+                    snapshot.TeamId.Value,
+                    snapshot.Player.PlayerId,
+                    snapshot.Player.JerseyNumber,
+                    snapshot.Fatigue.Value,
+                    snapshot.Player.Attributes,
+                    CareerMatchPriority.AttackFirst));
+
+            Assert.That(launch.ExecutionMode, Is.EqualTo(CareerMatchExecutionMode.Direct));
+            Assert.That(launch.FixtureId, Is.Null);
+            Assert.That(launch.FixtureVersion, Is.Null);
+        }
+
+        [Test]
         public async Task ConcreteFirstMatchPipeline_ExecutesCommittedFixtureContext()
         {
             var snapshot = CareerSaveV2LifecycleTestData.MatchReadySnapshot();

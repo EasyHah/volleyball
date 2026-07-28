@@ -4,7 +4,9 @@
     "Volleyball.Shared",
     "Volleyball.Career.Domain",
     "Volleyball.Career.Application",
+    "Volleyball.Career.MatchIntegration",
     "Volleyball.Career.Presentation",
+    "Volleyball.Match.Presentation",
     "Volleyball.Bootstrap",
     "Unity.InputSystem"
   ],

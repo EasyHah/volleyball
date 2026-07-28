@@ -226,8 +226,9 @@ namespace Volleyball.Presentation
             new Dictionary<PlayerId, PrototypePlayerAgent>();
         private readonly PhysicalRallyTacticPlanner _tacticPlanner =
             new PhysicalRallyTacticPlanner();
-        private readonly RallyDecisionCoordinatorV3 _decisionCoordinator =
-            new RallyDecisionCoordinatorV3(7351);
+        private RallyDecisionCoordinatorV3 _decisionCoordinator =
+            new RallyDecisionCoordinatorV3();
+        private int _matchSeed = 7351;
 
         private SimulatedBall _ball;
         private ScoreDisplay _scoreDisplay;
@@ -664,6 +665,8 @@ namespace Volleyball.Presentation
             }
 
             _matchContext = matchContext;
+            _matchSeed = matchContext.Seed;
+            _decisionCoordinator = new RallyDecisionCoordinatorV3();
             InitializeCore(
                 ball,
                 agents,
@@ -1739,7 +1742,7 @@ namespace Volleyball.Presentation
                     StablePlayerNumber(decision.Actor),
                     _tacticRevision,
                     SuccessfulContacts,
-                    7351,
+                    _matchSeed,
                     0.72f);
             ExecutionErrorApplications++;
             var executionSample = new ExecutionSampleV4(
@@ -4002,7 +4005,7 @@ namespace Volleyball.Presentation
                 StablePlayerNumber(decision.Actor),
                 _tacticRevision,
                 SuccessfulContacts,
-                7351,
+                _matchSeed,
                 0.72f);
             ExecutionErrorApplications++;
             var executionCandidateCategory = ExecutionCandidateCategoryV4.Receive;
