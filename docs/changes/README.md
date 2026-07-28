@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260728-004 | 2026-07-28 | 已自动验证 | Repository / Bootstrap / Career / Match / Docs | **跨模块（重点）** | [合并后 Unity 目录元数据与冻结基线修复](2026-07-28-004-repository-meta-baseline-repair.md) |
 | CHG-20260728-003 | 2026-07-28 | 已自动验证，待人工验收 | Shared / Match / Career / Bootstrap / Packages / ProjectSettings / Tests / Docs | **跨模块（重点）** | [Career 合入 Full Rally V4](2026-07-28-003-career-shared-v4-upgrade.md) |
 | CHG-20260728-002 | 2026-07-28 | 已完成 | ProjectSettings / Packages / Docs | 模块内部 | [Unity 6000.3 项目升级](2026-07-28-002-unity-6000-3-upgrade.md) |
 | CHG-20260728-001 | 2026-07-28 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate K 完成](2026-07-28-001-full-rally-v4-gate-k-completion.md) |
