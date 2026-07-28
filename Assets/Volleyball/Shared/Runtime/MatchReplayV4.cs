@@ -775,6 +775,114 @@ namespace Volleyball.Shared.Contracts
         }
     }
 
+    public sealed class ReplayPerceivedThreatRecordV4
+    {
+        public ReplayPerceivedThreatRecordV4(string identity, string zone,
+            float confidence, float arrivalTime)
+        {
+            Identity = ReplayContractGuardV4.Required(identity, nameof(identity));
+            Zone = ReplayContractGuardV4.Required(zone, nameof(zone));
+            Confidence = ReplayContractGuardV4.Finite(confidence,
+                nameof(confidence));
+            ArrivalTime = ReplayContractGuardV4.Finite(arrivalTime,
+                nameof(arrivalTime));
+            if (Confidence < 0f || Confidence > 1f || ArrivalTime < 0f)
+                throw new ContractValidationException(
+                    "Perceived threat confidence and arrival time are out of range.");
+        }
+
+        public string Identity { get; }
+        public string Zone { get; }
+        public float Confidence { get; }
+        public float ArrivalTime { get; }
+    }
+
+    public sealed class ReplayPerceptionAuthorityRecordV4
+    {
+        private readonly ReplayPerceivedThreatRecordV4[] _visibleThreats;
+
+        public ReplayPerceptionAuthorityRecordV4(
+            string configurationIdentity, string viewIdentity,
+            string observingSide, string authoritativeArtifactIdentity,
+            float observedAtSimulationTime, float recognitionDelaySeconds,
+            string uncertaintyKey, float positionUncertaintyMeters,
+            float confidence,
+            IReadOnlyList<ReplayPerceivedThreatRecordV4> visibleThreats,
+            string selectedSupportPlayerId, string selectedSupportZone,
+            bool conservativeFallback, int affectedRevision,
+            int sourceSequenceNumber)
+        {
+            ConfigurationIdentity = ReplayContractGuardV4.Required(
+                configurationIdentity, nameof(configurationIdentity));
+            ViewIdentity = ReplayContractGuardV4.Required(
+                viewIdentity, nameof(viewIdentity));
+            ObservingSide = ReplayContractGuardV4.Required(
+                observingSide, nameof(observingSide));
+            if (ObservingSide != "Home" && ObservingSide != "Away")
+                throw new ContractValidationException(
+                    "observingSide must be Home or Away.");
+            AuthoritativeArtifactIdentity = ReplayContractGuardV4.Required(
+                authoritativeArtifactIdentity,
+                nameof(authoritativeArtifactIdentity));
+            ObservedAtSimulationTime = ReplayContractGuardV4.Finite(
+                observedAtSimulationTime, nameof(observedAtSimulationTime));
+            RecognitionDelaySeconds = ReplayContractGuardV4.Finite(
+                recognitionDelaySeconds, nameof(recognitionDelaySeconds));
+            UncertaintyKey = ReplayContractGuardV4.Required(
+                uncertaintyKey, nameof(uncertaintyKey));
+            PositionUncertaintyMeters = ReplayContractGuardV4.Finite(
+                positionUncertaintyMeters,
+                nameof(positionUncertaintyMeters));
+            Confidence = ReplayContractGuardV4.Finite(
+                confidence, nameof(confidence));
+            if (ObservedAtSimulationTime < 0f ||
+                RecognitionDelaySeconds < 0f ||
+                PositionUncertaintyMeters < 0f ||
+                Confidence < 0f || Confidence > 1f)
+                throw new ContractValidationException(
+                    "Perception timing, uncertainty, or confidence is out of range.");
+            if (visibleThreats == null)
+                throw new ContractValidationException(
+                    "visibleThreats are required.");
+            _visibleThreats = visibleThreats.ToArray();
+            if (_visibleThreats.Any(value => value == null) ||
+                _visibleThreats.Select(value => value.Identity)
+                    .Distinct(StringComparer.Ordinal).Count() !=
+                _visibleThreats.Length)
+                throw new ContractValidationException(
+                    "Visible threats must be non-null with distinct identities.");
+            Array.Sort(_visibleThreats, (left, right) =>
+                string.CompareOrdinal(left.Identity, right.Identity));
+            SelectedSupportPlayerId = ReplayContractGuardV4.Required(
+                selectedSupportPlayerId, nameof(selectedSupportPlayerId));
+            SelectedSupportZone = ReplayContractGuardV4.Required(
+                selectedSupportZone, nameof(selectedSupportZone));
+            ConservativeFallback = conservativeFallback;
+            AffectedRevision = ReplayContractGuardV4.NonNegative(
+                affectedRevision, nameof(affectedRevision));
+            SourceSequenceNumber = ReplayContractGuardV4.NonNegative(
+                sourceSequenceNumber, nameof(sourceSequenceNumber));
+        }
+
+        public string ConfigurationIdentity { get; }
+        public string ViewIdentity { get; }
+        public string ObservingSide { get; }
+        public string AuthoritativeArtifactIdentity { get; }
+        public float ObservedAtSimulationTime { get; }
+        public float RecognitionDelaySeconds { get; }
+        public string UncertaintyKey { get; }
+        public float PositionUncertaintyMeters { get; }
+        public float Confidence { get; }
+        public IReadOnlyList<ReplayPerceivedThreatRecordV4> VisibleThreats =>
+            new ReadOnlyCollection<ReplayPerceivedThreatRecordV4>(
+                _visibleThreats);
+        public string SelectedSupportPlayerId { get; }
+        public string SelectedSupportZone { get; }
+        public bool ConservativeFallback { get; }
+        public int AffectedRevision { get; }
+        public int SourceSequenceNumber { get; }
+    }
+
     public sealed class MatchReplayEventV4
     {
         private readonly ReplayAbilityConsumptionRecordV4[] _abilityConsumptions;
@@ -887,7 +995,8 @@ namespace Volleyball.Shared.Contracts
             ReplayRuleDecisionRecordV4 ruleDecision,
             ReplayShadowRecordV4 shadow,
             ReplayOrganizationAuthorityRecordV4 organizationAuthority,
-            ReplayAttackDefenseAuthorityRecordV4 attackDefenseAuthority)
+            ReplayAttackDefenseAuthorityRecordV4 attackDefenseAuthority,
+            ReplayPerceptionAuthorityRecordV4 perceptionAuthority = null)
         {
             SequenceNumber = ReplayContractGuardV4.NonNegative(
                 sequenceNumber,
@@ -1040,6 +1149,7 @@ namespace Volleyball.Shared.Contracts
             ValidateOrganizationAuthority();
             AttackDefenseAuthority = attackDefenseAuthority;
             ValidateAttackDefenseAuthority();
+            PerceptionAuthority = perceptionAuthority;
         }
 
         public int SequenceNumber { get; }
@@ -1060,6 +1170,7 @@ namespace Volleyball.Shared.Contracts
         public ReplayShadowRecordV4 Shadow { get; }
         public ReplayOrganizationAuthorityRecordV4 OrganizationAuthority { get; }
         public ReplayAttackDefenseAuthorityRecordV4 AttackDefenseAuthority { get; }
+        public ReplayPerceptionAuthorityRecordV4 PerceptionAuthority { get; }
 
         private void ValidateOrganizationAuthority()
         {
@@ -1898,7 +2009,11 @@ namespace Volleyball.Shared.Contracts
                 ParseAttackDefenseAuthority(
                     StrictJsonV4.OptionalNullableObject(
                         value,
-                        "attackDefenseAuthority")));
+                        "attackDefenseAuthority")),
+                ParsePerceptionAuthority(
+                    StrictJsonV4.OptionalNullableObject(
+                        value,
+                        "perceptionAuthority")));
         }
 
         private static void RequireEventProperties(StrictJsonObjectV4 value)
@@ -1908,9 +2023,12 @@ namespace Volleyball.Shared.Contracts
                 value.Properties.ContainsKey("organizationAuthority");
             var hasAttackDefenseAuthority =
                 value.Properties.ContainsKey("attackDefenseAuthority");
+            var hasPerceptionAuthority =
+                value.Properties.ContainsKey("perceptionAuthority");
             if (value.Properties.Count !=
                 13 + (hasShadow ? 1 : 0) + (hasAuthority ? 1 : 0) +
-                (hasAttackDefenseAuthority ? 1 : 0))
+                (hasAttackDefenseAuthority ? 1 : 0) +
+                (hasPerceptionAuthority ? 1 : 0))
             {
                 throw new ContractValidationException(
                     "JSON object fields do not match the native V4 schema.");
@@ -2086,6 +2204,61 @@ namespace Volleyball.Shared.Contracts
                 StrictJsonV4.RequiredString(value, "testedEnvelopeIdentity"), StrictJsonV4.RequiredString(value, "executableEnvelopeIdentity"),
                 StrictJsonV4.RequiredString(value, "sampleEnvelopeIdentity"), StrictJsonV4.RequiredString(value, "trajectoryArtifactIdentity"),
                 recovery, ParseCoverage(StrictJsonV4.RequiredObject(value, "coverage")));
+        }
+
+        private static ReplayPerceptionAuthorityRecordV4
+            ParsePerceptionAuthority(StrictJsonObjectV4 value)
+        {
+            if (value == null) return null;
+            StrictJsonV4.RequireExactProperties(value,
+                "configurationIdentity", "viewIdentity", "observingSide",
+                "authoritativeArtifactIdentity",
+                "observedAtSimulationTime", "recognitionDelaySeconds",
+                "uncertaintyKey", "positionUncertaintyMeters", "confidence",
+                "visibleThreats", "selectedSupportPlayerId",
+                "selectedSupportZone", "conservativeFallback",
+                "affectedRevision", "sourceSequenceNumber");
+            var values = StrictJsonV4.RequiredArray(value, "visibleThreats");
+            var threats = new ReplayPerceivedThreatRecordV4[values.Count];
+            for (var index = 0; index < threats.Length; index++)
+            {
+                var item = StrictJsonV4.AsObject(values[index],
+                    "visibleThreats[" + index + "]");
+                StrictJsonV4.RequireExactProperties(item, "identity", "zone",
+                    "confidence", "arrivalTime");
+                threats[index] = new ReplayPerceivedThreatRecordV4(
+                    StrictJsonV4.RequiredString(item, "identity"),
+                    StrictJsonV4.RequiredString(item, "zone"),
+                    StrictJsonV4.RequiredFloat(item, "confidence"),
+                    StrictJsonV4.RequiredFloat(item, "arrivalTime"));
+            }
+            for (var index = 1; index < threats.Length; index++)
+                if (string.CompareOrdinal(threats[index - 1].Identity,
+                        threats[index].Identity) >= 0)
+                    throw new ContractValidationException(
+                        "visibleThreats must use canonical identity order.");
+            return new ReplayPerceptionAuthorityRecordV4(
+                StrictJsonV4.RequiredString(value, "configurationIdentity"),
+                StrictJsonV4.RequiredString(value, "viewIdentity"),
+                StrictJsonV4.RequiredString(value, "observingSide"),
+                StrictJsonV4.RequiredString(value,
+                    "authoritativeArtifactIdentity"),
+                StrictJsonV4.RequiredFloat(value,
+                    "observedAtSimulationTime"),
+                StrictJsonV4.RequiredFloat(value,
+                    "recognitionDelaySeconds"),
+                StrictJsonV4.RequiredString(value, "uncertaintyKey"),
+                StrictJsonV4.RequiredFloat(value,
+                    "positionUncertaintyMeters"),
+                StrictJsonV4.RequiredFloat(value, "confidence"),
+                threats,
+                StrictJsonV4.RequiredString(value,
+                    "selectedSupportPlayerId"),
+                StrictJsonV4.RequiredString(value, "selectedSupportZone"),
+                StrictJsonV4.RequiredBoolean(value,
+                    "conservativeFallback"),
+                StrictJsonV4.RequiredInt(value, "affectedRevision"),
+                StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"));
         }
 
         private static ReplayShadowRecordV4 ParseShadow(StrictJsonObjectV4 value)
@@ -2576,7 +2749,64 @@ namespace Volleyball.Shared.Contracts
                 AppendAttackDefenseAuthority(output, replayEvent.AttackDefenseAuthority);
             }
 
+            if (replayEvent.PerceptionAuthority != null)
+            {
+                output.Append(",\"perceptionAuthority\":");
+                AppendPerceptionAuthority(output,
+                    replayEvent.PerceptionAuthority);
+            }
+
             output.Append('}');
+        }
+
+        private static void AppendPerceptionAuthority(StringBuilder output,
+            ReplayPerceptionAuthorityRecordV4 perception)
+        {
+            output.Append("{\"configurationIdentity\":")
+                .Append(Quote(perception.ConfigurationIdentity));
+            output.Append(",\"viewIdentity\":")
+                .Append(Quote(perception.ViewIdentity));
+            output.Append(",\"observingSide\":")
+                .Append(Quote(perception.ObservingSide));
+            output.Append(",\"authoritativeArtifactIdentity\":")
+                .Append(Quote(perception.AuthoritativeArtifactIdentity));
+            output.Append(",\"observedAtSimulationTime\":");
+            Float(output, perception.ObservedAtSimulationTime);
+            output.Append(",\"recognitionDelaySeconds\":");
+            Float(output, perception.RecognitionDelaySeconds);
+            output.Append(",\"uncertaintyKey\":")
+                .Append(Quote(perception.UncertaintyKey));
+            output.Append(",\"positionUncertaintyMeters\":");
+            Float(output, perception.PositionUncertaintyMeters);
+            output.Append(",\"confidence\":");
+            Float(output, perception.Confidence);
+            output.Append(",\"visibleThreats\":[");
+            for (var index = 0;
+                 index < perception.VisibleThreats.Count;
+                 index++)
+            {
+                if (index > 0) output.Append(',');
+                var threat = perception.VisibleThreats[index];
+                output.Append("{\"identity\":")
+                    .Append(Quote(threat.Identity));
+                output.Append(",\"zone\":").Append(Quote(threat.Zone));
+                output.Append(",\"confidence\":");
+                Float(output, threat.Confidence);
+                output.Append(",\"arrivalTime\":");
+                Float(output, threat.ArrivalTime);
+                output.Append('}');
+            }
+            output.Append("],\"selectedSupportPlayerId\":")
+                .Append(Quote(perception.SelectedSupportPlayerId));
+            output.Append(",\"selectedSupportZone\":")
+                .Append(Quote(perception.SelectedSupportZone));
+            output.Append(",\"conservativeFallback\":")
+                .Append(perception.ConservativeFallback ? "true" : "false");
+            output.Append(",\"affectedRevision\":")
+                .Append(perception.AffectedRevision);
+            output.Append(",\"sourceSequenceNumber\":")
+                .Append(perception.SourceSequenceNumber)
+                .Append('}');
         }
 
         private static void AppendOrganizationAuthority(

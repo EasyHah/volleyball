@@ -22,7 +22,8 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             ExecutionSampleClassificationV4 executionClassification,
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
-            ReceiveOrganizationAuthorityEvidenceV3 evidence)
+            ReceiveOrganizationAuthorityEvidenceV3 evidence,
+            PerceptionReceiptV3 perception = null)
         {
             PlanRevision = planRevision;
             SourceSequence = sourceSequence;
@@ -33,6 +34,7 @@ namespace Volleyball.Presentation
             ExecutionClassification = executionClassification;
             TrajectoryArtifact = trajectoryArtifact;
             Evidence = evidence ?? throw new ArgumentNullException(nameof(evidence));
+            Perception = perception;
         }
 
         public long PlanRevision { get; }
@@ -52,6 +54,7 @@ namespace Volleyball.Presentation
         public BallTrajectoryPredictionArtifactV4 TrajectoryArtifact { get; }
 
         public ReceiveOrganizationAuthorityEvidenceV3 Evidence { get; }
+        public PerceptionReceiptV3 Perception { get; }
     }
 
     public sealed class ReceiveOrganizationAuthorityController :
@@ -452,7 +455,8 @@ namespace Volleyball.Presentation
                 prepared.Action,
                 prepared.Command.Execution?.ExecutionClassification,
                 prepared.Command.Execution?.TrajectoryArtifact,
-                evidence);
+                evidence,
+                evidence.Perception);
         }
 
         private static Vector3 ToUnity(SimVector3 value)

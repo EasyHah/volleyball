@@ -152,23 +152,29 @@ namespace Volleyball.Match.Domain.FullRallyV3
     public sealed class PerceptionSupportDecisionV3
     {
         public PerceptionSupportDecisionV3(PlayerId selectedPlayer, bool isConservativeFallback,
-            float confidence)
+            float confidence, string supportZone = "DeclaredCoverage")
         {
             SelectedPlayer = PlayerWorldSnapshotV3.RequirePlayerId(selectedPlayer, nameof(selectedPlayer));
             IsConservativeFallback = isConservativeFallback;
             Confidence = CourtPerceptionValidationV3.RequireUnit(confidence, nameof(confidence));
+            SupportZone = CourtPerceptionValidationV3.RequireText(
+                supportZone, nameof(supportZone));
         }
 
         public PlayerId SelectedPlayer { get; }
         public bool IsConservativeFallback { get; }
         public float Confidence { get; }
+        public string SupportZone { get; }
     }
 
     public sealed class PerceptionReceiptV3
     {
         public PerceptionReceiptV3(string configurationIdentity,
             TeamPerceptionSnapshotV3 view,
-            PerceptionSupportDecisionV3 supportDecision)
+            PerceptionSupportDecisionV3 supportDecision,
+            PerceptionObservationV3<Volleyball.Domain.Simulation.SimVector3>
+                observedBall = null,
+            float recognitionDelaySeconds = 0f)
         {
             ConfigurationIdentity = CourtPerceptionValidationV3.RequireText(
                 configurationIdentity, nameof(configurationIdentity));
@@ -182,11 +188,18 @@ namespace Volleyball.Match.Domain.FullRallyV3
                     "The selected support player must belong to the filtered view.",
                     nameof(supportDecision));
             }
+            RecognitionDelaySeconds =
+                CourtPerceptionValidationV3.RequireNonNegativeFinite(
+                    recognitionDelaySeconds, nameof(recognitionDelaySeconds));
+            ObservedBall = observedBall;
         }
 
         public string ConfigurationIdentity { get; }
         public TeamPerceptionSnapshotV3 View { get; }
         public PerceptionSupportDecisionV3 SupportDecision { get; }
+        public PerceptionObservationV3<Volleyball.Domain.Simulation.SimVector3>
+            ObservedBall { get; }
+        public float RecognitionDelaySeconds { get; }
         public string ViewIdentity => View.ViewIdentity;
         public long Revision => View.Revision;
         public long SourceSequence => View.SourceSequence;

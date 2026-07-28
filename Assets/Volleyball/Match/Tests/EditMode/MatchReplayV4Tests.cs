@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using Volleyball.AI;
@@ -50,6 +51,39 @@ namespace Volleyball.EditModeTests
             var restored = ContractJson.DeserializeMatchReplayV4(firstJson);
             Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(firstJson));
             Assert.That(restored.ReplayHash, Is.EqualTo(first.ReplayHash));
+        }
+
+        [Test]
+        public void GateJPerception_RoundTripsAndStrictReaderRejectsHiddenRouteField()
+        {
+            var baseline = Event(0, "Attack");
+            var recorded = EventWithPerception(baseline,
+                PerceptionAuthority());
+            var json = ContractJson.SerializeV4(CreateReplay(recorded));
+            var restored = ContractJson.DeserializeMatchReplayV4(json);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(json));
+            Assert.That(restored.Events[0].PerceptionAuthority.ViewIdentity,
+                Is.EqualTo("gate-j-view-7"));
+            Assert.That(restored.Events[0].PerceptionAuthority.VisibleThreats
+                    .Select(value => value.Identity),
+                Is.EqualTo(new[] { "threat-a", "threat-b" }));
+            Assert.That(() => ContractJson.DeserializeMatchReplayV4(
+                    json.Replace("\"confidence\":0.8",
+                        "\"selectedRoute\":\"line\"")),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void HistoricalEventWithoutGateJ_RetainsCanonicalShape()
+        {
+            var json = ContractJson.SerializeV4(
+                CreateReplay(Event(0, "Attack")));
+
+            Assert.That(json, Does.Not.Contain("perceptionAuthority"));
+            Assert.That(ContractJson.SerializeV4(
+                    ContractJson.DeserializeMatchReplayV4(json)),
+                Is.EqualTo(json));
         }
 
         [Test]
@@ -1156,6 +1190,46 @@ namespace Volleyball.EditModeTests
                 baseline.RuleDecision,
                 baseline.Shadow,
                 authority);
+        }
+
+        private static MatchReplayEventV4 EventWithPerception(
+            MatchReplayEventV4 baseline,
+            ReplayPerceptionAuthorityRecordV4 perception)
+        {
+            return new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                baseline.Shadow,
+                baseline.OrganizationAuthority,
+                baseline.AttackDefenseAuthority,
+                perception);
+        }
+
+        private static ReplayPerceptionAuthorityRecordV4
+            PerceptionAuthority()
+        {
+            return new ReplayPerceptionAuthorityRecordV4(
+                "gate-j-v1", "gate-j-view-7", "Away", HashA,
+                1.1f, .15f, "uncertainty-7", .2f, .8f,
+                new[]
+                {
+                    new ReplayPerceivedThreatRecordV4(
+                        "threat-b", "Cross", .6f, .5f),
+                    new ReplayPerceivedThreatRecordV4(
+                        "threat-a", "Line", .8f, .4f)
+                },
+                "away-libero", "Cross", false, 7, 9);
         }
 
         private static ReplayOrganizationAuthorityRecordV4 OrganizationAuthority(

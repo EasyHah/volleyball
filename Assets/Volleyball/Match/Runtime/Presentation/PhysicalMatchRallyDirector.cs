@@ -359,6 +359,7 @@ namespace Volleyball.Presentation
         public int GateHLegacyWriterInvocations { get; private set; }
 
         public bool GateIAuthorityEnabled { get; private set; }
+        public bool GateJPerceptionEnabled => GateJEnabled;
 
         // A read-only lifecycle diagnostic.  It exposes no coordinator command
         // surface and lets formal integration tests observe V3-accepted
@@ -1957,7 +1958,8 @@ namespace Volleyball.Presentation
                 planning.SetterEvidence,
                 planning.FallbackReason,
                 state.CoverageDecision,
-                state.ActualFirstPassLanding);
+                state.ActualFirstPassLanding,
+                _receiveOrganizationCoordinator.CurrentPerception);
             _receiveOrganizationControllers[decision.Actor.Team]
                 .PreflightAndCommit(new ReceiveOrganizationCommandBatch(
                     state.Revision,
@@ -3138,7 +3140,9 @@ namespace Volleyball.Presentation
                 AttackDefenseCommandKind.FloorDefense, actor, RallyPlanBranchV3.Primary,
                 classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
                     state.Revision, source, state.Phase, state.Plan,
-                    state.CoverageDecision));
+                    state.CoverageDecision,
+                    _attackDefenseCoordinator.CurrentPerception),
+                perception: _attackDefenseCoordinator.CurrentPerception);
         }
 
         private AttackDefenseAuthorityReceipt CreateActualToolRecoveryBlockReceipt(
@@ -3158,14 +3162,16 @@ namespace Volleyball.Presentation
                 AttackDefenseCommandKind.BlockContact, planned.Actor, planned.Branch,
                 classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
                     state.Revision, source, state.Phase, state.Plan,
-                    state.CoverageDecision),
+                    state.CoverageDecision,
+                    _attackDefenseCoordinator.CurrentPerception),
                 new ToolRecoveryActualObservationV3(
                     ReturnsToAttackingSide(actualOutgoing, state.AttackingSide)
                         ? state.AttackingSide : Opponent(state.AttackingSide),
                     trajectory.ArtifactIdentity,
                     classification.Sample.SamplingKey,
                     "actual-tool-block:" + planned.Actor.Value + ":" + source,
-                    remainingTouches));
+                    remainingTouches),
+                perception: _attackDefenseCoordinator.CurrentPerception);
         }
 
         private AttackDefenseAuthorityReceipt SnapshotToolRecoveryReceipt(
@@ -3177,7 +3183,10 @@ namespace Volleyball.Presentation
                 receipt.ExecutionClassification, receipt.TrajectoryArtifact,
                 new AttackDefenseAuthorityEvidenceV3(state.Revision,
                     _gateHSourceSequence, state.Phase, state.Plan,
-                    state.CoverageDecision), receipt.ToolRecoveryActualObservation);
+                    state.CoverageDecision,
+                    _attackDefenseCoordinator.CurrentPerception),
+                receipt.ToolRecoveryActualObservation,
+                perception: _attackDefenseCoordinator.CurrentPerception);
         }
 
         private void AdvanceGateIAfterAcceptedSet(PlayerId actor,
@@ -5155,12 +5164,14 @@ namespace Volleyball.Presentation
                     System.Globalization.CultureInfo.InvariantCulture),
                 revision, sourceSequence, ToSide(observingTeam),
                 observer.StableId, awareness, artifactIdentity,
-                _ball.State.Position, threats, supports, allowed[0]);
+                _ball.State.Position, threats, supports, allowed[0],
+                _ball.SimulationTime);
             var result = new CourtPerceptionAdapterV3(
                 GateJPerceptionConfiguration).Observe(request);
             return new PerceptionReceiptV3(
                 GateJPerceptionConfiguration.Identity,
-                result.View, result.SupportDecision);
+                result.View, result.SupportDecision, result.ObservedBall,
+                result.RecognitionDelaySeconds);
         }
 
         private static string BuildGate5EnvelopeIdentityV4(

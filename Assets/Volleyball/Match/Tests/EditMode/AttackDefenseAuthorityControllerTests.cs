@@ -71,6 +71,8 @@ namespace Volleyball.EditModeTests
                 Is.EqualTo(fixture.Execution.TrajectoryArtifact.ArtifactIdentity));
             Assert.That(fixture.Attacker.ScheduledTrajectoryPredictionArtifactV4,
                 Is.SameAs(receipt.TrajectoryArtifact));
+            Assert.That(receipt.Perception,
+                Is.SameAs(fixture.Perception));
         }
 
         [Test]
@@ -125,12 +127,14 @@ namespace Volleyball.EditModeTests
                     new PublicAttackThreatV3("threat", new[] { new PublicAttackThreatEntryV3(AttackActionClassV3.Tip, "z", 1f, 1f) }),
                     new JointDefensePlanV3("threat", responsibilities, new[] { new ReorganizationExitV3("exit", Attacker.StableId, "cover") }, Array.Empty<string>(), Array.Empty<string>()),
                     candidate, new[] { new ReorganizationExitV3("exit", Attacker.StableId, "cover") });
+                Perception = CreatePerception(players[2].StableId);
                 Controller = new AttackDefenseAuthorityController(players);
             }
             public IReadOnlyList<PrototypePlayerAgent> Players { get; }
             public PrototypePlayerAgent Attacker { get; }
             public AttackDefenseCommandExecutionV4 Execution { get; }
             public AttackDefensePlanV3 Plan { get; }
+            public PerceptionReceiptV3 Perception { get; }
             public AttackDefenseAuthorityController Controller { get; }
             public AttackDefenseAuthorityCommand Command(StablePlayerId actor, bool committed = false) =>
                 new AttackDefenseAuthorityCommand(7, 1, AttackDefenseCommandKind.AttackContact, actor, committed, Execution,
@@ -140,7 +144,8 @@ namespace Volleyball.EditModeTests
             private AttackDefenseCommandBatch Batch(IReadOnlyList<AttackDefenseAuthorityCommand> commands, long sequence) =>
                 new AttackDefenseCommandBatch(commands, new AttackDefenseAuthorityEvidenceV3(7, sequence,
                     AttackDefenseAuthorityPhaseV3.AttackCommitted, Plan,
-                    PlanCoverageDecision.Covered("7", PlanCoverageReason.RallyOpen)));
+                    PlanCoverageDecision.Covered("7", PlanCoverageReason.RallyOpen),
+                    Perception));
             public void Dispose() { foreach (var item in _objects) UnityEngine.Object.DestroyImmediate(item); }
             private static AttackDefenseCommandExecutionV4 CreateExecution(ExecutionCandidateCategoryV4 category)
             {
@@ -161,6 +166,30 @@ namespace Volleyball.EditModeTests
                 var contact = AttackContactPlanner.Plan(new AttackContactInput(3.2f, .8f, 1f, SetQualityGrade.A, approach.Takeoff, .6f, 1f));
                 return new AttackDefenseCommandExecutionV4(2f, 0f, default, 77, envelope.Classify(sample), artifact,
                     new SimVector3(1f, 0f, -3f), approach, contact);
+            }
+
+            private static PerceptionReceiptV3 CreatePerception(
+                StablePlayerId selected)
+            {
+                var view = new TeamPerceptionSnapshotV3(
+                    "gate-j-defense-view", "gate-j-defense-artifact",
+                    TeamSide.Away, 7, 1,
+                    new[]
+                    {
+                        new PlayerPerceptionSnapshotV3(selected, .8f, .1f)
+                    },
+                    new[]
+                    {
+                        new PerceivedThreatEntryV3(
+                            "threat-0", "z", .8f, 1f)
+                    },
+                    new[]
+                    {
+                        new PerceivedSupportCandidateV3(selected, .8f, .4f,
+                            false)
+                    });
+                return new PerceptionReceiptV3("gate-j-v1", view,
+                    new PerceptionSupportDecisionV3(selected, false, .8f));
             }
         }
     }

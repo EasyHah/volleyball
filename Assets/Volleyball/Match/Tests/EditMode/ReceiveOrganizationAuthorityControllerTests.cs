@@ -36,6 +36,8 @@ namespace Volleyball.EditModeTests
             Assert.That(
                 receipt.TrajectoryArtifact,
                 Is.SameAs(fixture.Execution.TrajectoryArtifact));
+            Assert.That(receipt.Perception,
+                Is.SameAs(batch.Evidence.Perception));
         }
 
         [Test]
@@ -190,6 +192,7 @@ namespace Volleyball.EditModeTests
                     TechniqueAction.Attack,
                     attack: true);
                 Execution = CreateExecution();
+                Perception = CreatePerception(Plan, Primary.StableId);
                 Evidence = new ReceiveOrganizationAuthorityEvidenceV3(
                     7,
                     1,
@@ -212,7 +215,8 @@ namespace Volleyball.EditModeTests
                         Array.Empty<string>(),
                         0,
                         RallyPlanBranchV3.Primary),
-                    null);
+                    null,
+                    Perception);
                 Controller = new ReceiveOrganizationAuthorityController(players);
             }
 
@@ -235,6 +239,7 @@ namespace Volleyball.EditModeTests
             public ReceiveOrganizationCommandExecutionV4 Execution { get; }
 
             public ReceiveOrganizationAuthorityEvidenceV3 Evidence { get; }
+            public PerceptionReceiptV3 Perception { get; }
 
             public ReceiveOrganizationAuthorityController Controller { get; }
 
@@ -277,7 +282,8 @@ namespace Volleyball.EditModeTests
                         Evidence.SetterEvidence,
                         Evidence.FallbackReason,
                         Evidence.CoverageDecision,
-                        Evidence.ActualFirstPassLanding);
+                        Evidence.ActualFirstPassLanding,
+                        Evidence.Perception);
                 return new ReceiveOrganizationCommandBatch(
                     7,
                     sourceSequence,
@@ -337,6 +343,26 @@ namespace Volleyball.EditModeTests
                     new[] { candidate },
                     approach,
                     contact);
+            }
+
+            private static PerceptionReceiptV3 CreatePerception(
+                ReceiveOrganizationPlanV3 plan, StablePlayerId selected)
+            {
+                var view = new TeamPerceptionSnapshotV3(
+                    "gate-j-receive-view", "gate-j-receive-artifact",
+                    plan.Side, plan.Revision, 1,
+                    new[]
+                    {
+                        new PlayerPerceptionSnapshotV3(selected, .8f, .1f)
+                    },
+                    Array.Empty<PerceivedThreatEntryV3>(),
+                    new[]
+                    {
+                        new PerceivedSupportCandidateV3(selected, .8f, .4f,
+                            true)
+                    });
+                return new PerceptionReceiptV3("gate-j-v1", view,
+                    new PerceptionSupportDecisionV3(selected, false, .8f));
             }
 
             private static ReceiveOrganizationCommandExecutionV4 CreateExecution()

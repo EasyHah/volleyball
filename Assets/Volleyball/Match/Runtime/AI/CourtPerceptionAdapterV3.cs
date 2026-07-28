@@ -17,13 +17,16 @@ namespace Volleyball.AI
             float observerAwareness, string authoritativeArtifactIdentity,
             SimVector3 ballPosition, IReadOnlyList<PerceivedThreatEntryV3> threats,
             IReadOnlyList<PerceivedSupportCandidateV3> supportCandidates,
-            PlayerId conservativeSupport)
+            PlayerId conservativeSupport, float simulationTime = 0f)
         {
             if (string.IsNullOrWhiteSpace(matchSeed) || revision < 0 || sourceSequence < 0 ||
                 !ballPosition.IsFinite || float.IsNaN(observerAwareness) ||
                 float.IsInfinity(observerAwareness) || observerAwareness < 0f ||
                 observerAwareness > 1f || string.IsNullOrWhiteSpace(authoritativeArtifactIdentity))
                 throw new ArgumentOutOfRangeException(nameof(matchSeed));
+            if (float.IsNaN(simulationTime) || float.IsInfinity(simulationTime) ||
+                simulationTime < 0f)
+                throw new ArgumentOutOfRangeException(nameof(simulationTime));
             MatchSeed = matchSeed; Revision = revision; SourceSequence = sourceSequence;
             ObservingSide = observingSide; Observer = observer;
             ObserverAwareness = observerAwareness;
@@ -32,6 +35,7 @@ namespace Volleyball.AI
             Threats = Copy(threats, nameof(threats));
             SupportCandidates = Copy(supportCandidates, nameof(supportCandidates));
             ConservativeSupport = conservativeSupport;
+            SimulationTime = simulationTime;
         }
 
         public string MatchSeed { get; } public long Revision { get; }
@@ -41,6 +45,7 @@ namespace Volleyball.AI
         public IReadOnlyList<PerceivedThreatEntryV3> Threats { get; }
         public IReadOnlyList<PerceivedSupportCandidateV3> SupportCandidates { get; }
         public PlayerId ConservativeSupport { get; }
+        public float SimulationTime { get; }
 
         private static IReadOnlyList<T> Copy<T>(IReadOnlyList<T> source, string name)
             where T : class
@@ -93,7 +98,8 @@ namespace Volleyball.AI
             var offset = SignedUnit(key) * uncertainty;
             var observedBall = new PerceptionObservationV3<SimVector3>(
                 new SimVector3(request.BallPosition.X + offset, request.BallPosition.Y,
-                    request.BallPosition.Z - offset), confidence, uncertainty, delay, key,
+                    request.BallPosition.Z - offset), confidence, uncertainty,
+                Math.Max(0f, request.SimulationTime - delay), key,
                 new[] { request.Observer });
             var players = new[] { new PlayerPerceptionSnapshotV3(request.Observer,
                 confidence, delay) };

@@ -238,7 +238,8 @@ namespace Volleyball.AI
             SetterReachabilityEvidenceV3 setterEvidence,
             OrganizationFallbackReasonV3 fallbackReason,
             PlanCoverageDecision coverageDecision,
-            SimVector3? actualFirstPassLanding)
+            SimVector3? actualFirstPassLanding,
+            PerceptionReceiptV3 perception = null)
         {
             ReceiveOrganizationAuthorityCommand.ValidateRevisionAndSequence(
                 planRevision,
@@ -283,6 +284,13 @@ namespace Volleyball.AI
             }
 
             ActualFirstPassLanding = actualFirstPassLanding;
+            if (perception != null &&
+                (perception.Revision != planRevision ||
+                 perception.ObservingSide != plan.Side))
+                throw new ArgumentException(
+                    "Perception and authority evidence must identify the same revision and side.",
+                    nameof(perception));
+            Perception = perception;
         }
 
         public long PlanRevision { get; }
@@ -300,6 +308,7 @@ namespace Volleyball.AI
         public PlanCoverageDecision CoverageDecision { get; }
 
         public SimVector3? ActualFirstPassLanding { get; }
+        public PerceptionReceiptV3 Perception { get; }
     }
 
     public sealed class ReceiveOrganizationCommandBatch
@@ -1246,7 +1255,8 @@ namespace Volleyball.AI
                 planning.SetterEvidence,
                 state.FallbackReason,
                 state.CoverageDecision,
-                state.ActualFirstPassLanding);
+                state.ActualFirstPassLanding,
+                _perception);
             _sink.Publish(new ReceiveOrganizationCommandBatch(
                 state.Revision,
                 sourceSequence,

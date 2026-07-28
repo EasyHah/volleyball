@@ -184,13 +184,15 @@ namespace Volleyball.AI
         private static bool Finite(SimVector3 value) => value.IsFinite;
     }
 
-    public sealed class AttackDefenseAuthorityEvidenceV3
+        public sealed class AttackDefenseAuthorityEvidenceV3
     {
         public AttackDefenseAuthorityEvidenceV3(long planRevision, long sourceSequence, AttackDefenseAuthorityPhaseV3 phase,
-            AttackDefensePlanV3 plan, PlanCoverageDecision coverageDecision)
-        { PlanRevision = planRevision; SourceSequence = sourceSequence; Phase = phase; Plan = plan; CoverageDecision = coverageDecision; }
+            AttackDefensePlanV3 plan, PlanCoverageDecision coverageDecision,
+            PerceptionReceiptV3 perception = null)
+        { PlanRevision = planRevision; SourceSequence = sourceSequence; Phase = phase; Plan = plan; CoverageDecision = coverageDecision; Perception = perception; }
         public long PlanRevision { get; } public long SourceSequence { get; } public AttackDefenseAuthorityPhaseV3 Phase { get; }
         public AttackDefensePlanV3 Plan { get; } public PlanCoverageDecision CoverageDecision { get; }
+        public PerceptionReceiptV3 Perception { get; }
     }
 
     public sealed class AttackDefenseCommandBatch
@@ -344,7 +346,8 @@ namespace Volleyball.AI
                 sourceSequence,
                 State.Phase,
                 State.Plan,
-                Coverage(PlanCoverageReason.ResponsibleActorChanged));
+                Coverage(PlanCoverageReason.ResponsibleActorChanged),
+                _perception);
         }
 
         public AttackDefenseAuthorityStateV3 AcceptContact(GateIContactEvidenceV3 contact)
@@ -466,7 +469,7 @@ namespace Volleyball.AI
         private AttackDefenseAuthorityStateV3 New(AttackDefenseAuthorityPhaseV3 phase) => new AttackDefenseAuthorityStateV3(phase, State.Revision, _attackingSide, State.Plan, State.CoverageDecision);
         private void Require(AttackDefenseAuthorityPhaseV3 phase, long revision, long sourceSequence)
         { if (State.Phase != phase || revision != State.Revision || sourceSequence <= _lastSequence) throw new InvalidOperationException("Phase, revision, or source sequence is invalid."); }
-        private void Publish(long sequence, AttackDefenseAuthorityStateV3 state, IEnumerable<AttackDefenseAuthorityCommand> commands) => _sink.Publish(new AttackDefenseCommandBatch(commands.ToArray(), new AttackDefenseAuthorityEvidenceV3(state.Revision, sequence, state.Phase, state.Plan, state.CoverageDecision)));
+        private void Publish(long sequence, AttackDefenseAuthorityStateV3 state, IEnumerable<AttackDefenseAuthorityCommand> commands) => _sink.Publish(new AttackDefenseCommandBatch(commands.ToArray(), new AttackDefenseAuthorityEvidenceV3(state.Revision, sequence, state.Phase, state.Plan, state.CoverageDecision, _perception)));
         private PlanCoverageDecision Coverage(PlanCoverageReason reason)
         {
             var kind = reason == PlanCoverageReason.ResponsibleActorChanged ? PlanCoverageDecisionKind.LocalRevision :

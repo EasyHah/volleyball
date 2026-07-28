@@ -41,7 +41,8 @@ namespace Volleyball.Presentation
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact,
             AttackDefenseAuthorityEvidenceV3 evidence,
             ToolRecoveryActualObservationV3 toolRecoveryActualObservation = null,
-            AttackDefenseCommandExecutionV4 execution = null)
+            AttackDefenseCommandExecutionV4 execution = null,
+            PerceptionReceiptV3 perception = null)
         {
             PlanRevision = planRevision;
             SourceSequence = sourceSequence;
@@ -54,6 +55,7 @@ namespace Volleyball.Presentation
             Evidence = evidence ?? throw new ArgumentNullException(nameof(evidence));
             ToolRecoveryActualObservation = toolRecoveryActualObservation;
             Execution = execution;
+            Perception = perception;
         }
 
         public long PlanRevision { get; }
@@ -67,6 +69,7 @@ namespace Volleyball.Presentation
         public AttackDefenseAuthorityEvidenceV3 Evidence { get; }
         public ToolRecoveryActualObservationV3 ToolRecoveryActualObservation { get; }
         public AttackDefenseCommandExecutionV4 Execution { get; }
+        public PerceptionReceiptV3 Perception { get; }
     }
 
     // Gate I starts after Gate H's Set command.  This controller therefore owns
@@ -361,7 +364,8 @@ namespace Volleyball.Presentation
             prepared.Command.Kind, prepared.Command.Actor, prepared.Command.Branch,
             prepared.Command.Execution?.ExecutionClassification,
             prepared.Command.Execution?.TrajectoryArtifact, evidence,
-            execution: prepared.Command.Execution);
+            execution: prepared.Command.Execution,
+            perception: evidence.Perception);
 
         private static Vector3 ToUnity(SimVector3 value) =>
             new Vector3(value.X, value.Y, value.Z);

@@ -170,6 +170,13 @@ namespace Volleyball.Presentation
                 InvalidateCapture("Formal Gate I replay events require event-owned authority evidence.");
                 return;
             }
+            if (_director.GateJPerceptionEnabled &&
+                MissingGateJPerceptionEvidence(replayEvent))
+            {
+                InvalidateCapture(
+                    "Formal Gate J authority events require event-owned perception evidence.");
+                return;
+            }
 
             // V3 transitions are one-based; native replay contact indexes are zero-based.
             ReplayShadowRecordV4 shadow = null;
@@ -243,6 +250,10 @@ namespace Volleyball.Presentation
                 : replayEvent.AttackDefenseAuthority != null
                     ? ToReplayAttackDefenseAuthority(replayEvent.AttackDefenseAuthority, replayEvent, classification, trajectory)
                     : null;
+            var perception = replayEvent.OrganizationAuthority?.Perception ??
+                             replayEvent.AttackDefenseAuthority?.Perception ??
+                             replayEvent.AttackDefenseAuthority?.Evidence
+                                 ?.Perception;
 
             return new MatchReplayEventV4(
                 sequenceNumber,
@@ -270,7 +281,8 @@ namespace Volleyball.Presentation
                     replayEvent,
                     classification,
                     trajectory),
-                gateIAuthority);
+                gateIAuthority,
+                ToReplayPerception(perception));
         }
 
         private static bool MissingGateIAuthorityEvidence(ReplayContactEvent replayEvent)
@@ -281,6 +293,50 @@ namespace Volleyball.Presentation
                    replayEvent.Action == TechniqueAction.Attack ||
                    replayEvent.Action == TechniqueAction.Block ||
                    (replayEvent.Action == TechniqueAction.Receive && replayEvent.OrganizationAuthority == null);
+        }
+
+        private static bool MissingGateJPerceptionEvidence(
+            ReplayContactEvent replayEvent)
+        {
+            if (replayEvent.Action != TechniqueAction.Receive &&
+                replayEvent.Action != TechniqueAction.Set &&
+                replayEvent.Action != TechniqueAction.Attack &&
+                replayEvent.Action != TechniqueAction.Block)
+                return false;
+            var perception = replayEvent.OrganizationAuthority?.Perception ??
+                             replayEvent.AttackDefenseAuthority?.Perception ??
+                             replayEvent.AttackDefenseAuthority?.Evidence
+                                 ?.Perception;
+            return perception == null;
+        }
+
+        private static ReplayPerceptionAuthorityRecordV4 ToReplayPerception(
+            PerceptionReceiptV3 receipt)
+        {
+            if (receipt == null) return null;
+            var observed = receipt.ObservedBall ??
+                throw new InvalidOperationException(
+                    "Gate J replay requires the event-owned ball observation.");
+            return new ReplayPerceptionAuthorityRecordV4(
+                receipt.ConfigurationIdentity,
+                receipt.ViewIdentity,
+                receipt.ObservingSide.ToString(),
+                receipt.AuthoritativeArtifactIdentity,
+                observed.ObservedAtSimulationTime,
+                receipt.RecognitionDelaySeconds,
+                observed.UncertaintyKey,
+                observed.Uncertainty,
+                observed.Confidence,
+                receipt.View.Threats.Select(value =>
+                    new ReplayPerceivedThreatRecordV4(
+                        value.ThreatIdentity, value.Zone, value.Confidence,
+                        value.ArrivalTime)).ToArray(),
+                receipt.SupportDecision.SelectedPlayer.Value,
+                receipt.SupportDecision.SupportZone,
+                receipt.SupportDecision.IsConservativeFallback,
+                CheckedInt(receipt.Revision, nameof(receipt.Revision)),
+                CheckedInt(receipt.SourceSequence,
+                    nameof(receipt.SourceSequence)));
         }
 
         private static ReplayAttackDefenseAuthorityRecordV4 ToReplayGateISetIntentAuthority(
