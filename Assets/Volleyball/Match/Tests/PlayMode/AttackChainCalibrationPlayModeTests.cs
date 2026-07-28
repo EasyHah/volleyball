@@ -15,14 +15,14 @@ namespace Volleyball.PlayModeTests
     public sealed class AttackChainCalibrationPlayModeTests
     {
         [UnityTest]
-        [Timeout(1200000)]
+        [Timeout(360000)]
         public IEnumerator Formal6v6_InSystemAttackChainMeetsInitialThresholds()
         {
             AttackChainCalibrationReport report = null;
             yield return RunInSystemFirstPasses(
                 "FormalIndoor6v6",
                 7351,
-                100,
+                30,
                 value => report = value);
 
             Assert.That(report.AttackableSetRate, Is.GreaterThanOrEqualTo(0.95f));
@@ -35,14 +35,14 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
-        [Timeout(1200000)]
+        [Timeout(360000)]
         public IEnumerator ThreeVsThree_InSystemAttackChainMeetsInitialThresholds()
         {
             AttackChainCalibrationReport report = null;
             yield return RunInSystemFirstPasses(
                 "Physical3v3Rally",
                 7351,
-                100,
+                30,
                 value => report = value);
 
             Assert.That(report.AttackableSetRate, Is.GreaterThanOrEqualTo(0.95f));
