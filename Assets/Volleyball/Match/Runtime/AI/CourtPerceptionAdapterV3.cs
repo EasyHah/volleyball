@@ -60,17 +60,20 @@ namespace Volleyball.AI
     {
         public CourtPerceptionResultV3(TeamPerceptionSnapshotV3 view,
             PerceptionObservationV3<SimVector3> observedBall,
-            PerceptionSupportDecisionV3 supportDecision, float recognitionDelaySeconds)
+            PerceptionSupportDecisionV3 supportDecision, float recognitionDelaySeconds,
+            float arrivalUncertaintySeconds)
         {
             View = view ?? throw new ArgumentNullException(nameof(view));
             ObservedBall = observedBall ?? throw new ArgumentNullException(nameof(observedBall));
-            SupportDecision = supportDecision ?? throw new ArgumentNullException(nameof(supportDecision));
+            SupportDecision = supportDecision;
             RecognitionDelaySeconds = recognitionDelaySeconds;
+            ArrivalUncertaintySeconds = arrivalUncertaintySeconds;
         }
         public TeamPerceptionSnapshotV3 View { get; }
         public PerceptionObservationV3<SimVector3> ObservedBall { get; }
         public PerceptionSupportDecisionV3 SupportDecision { get; }
         public float RecognitionDelaySeconds { get; }
+        public float ArrivalUncertaintySeconds { get; }
     }
 
     public sealed class CourtPerceptionAdapterV3
@@ -91,6 +94,9 @@ namespace Volleyball.AI
                 _configuration.MinimumRecognitionDelay, awareness);
             var uncertainty = Lerp(_configuration.MaximumError,
                 _configuration.MinimumError, awareness);
+            var arrivalUncertainty = Lerp(
+                _configuration.MaximumArrivalUncertainty,
+                _configuration.MinimumArrivalUncertainty, awareness);
             var confidence = Math.Max(0f, Math.Min(1f, 1f -
                 ((uncertainty - _configuration.MinimumError) /
                 Math.Max(.00001f, _configuration.MaximumError - _configuration.MinimumError))));
@@ -103,10 +109,26 @@ namespace Volleyball.AI
                 new[] { request.Observer });
             var players = new[] { new PlayerPerceptionSnapshotV3(request.Observer,
                 confidence, delay) };
+            var threats = request.Threats.Select(threat =>
+                new PerceivedThreatEntryV3(
+                    threat.ThreatIdentity,
+                    threat.Zone,
+                    Math.Min(threat.Confidence, confidence),
+                    Math.Max(0f, threat.ArrivalTime +
+                        (SignedUnit(Key(request, "threat:" +
+                            threat.ThreatIdentity)) * arrivalUncertainty))))
+                .ToArray();
             var view = new TeamPerceptionSnapshotV3("gate-j-view:" + Key(request, "view"),
                 request.AuthoritativeArtifactIdentity, request.ObservingSide, request.Revision,
-                request.SourceSequence, players, request.Threats, request.SupportCandidates);
+                request.SourceSequence, players, threats, request.SupportCandidates);
+            if (request.SupportCandidates.Count == 0)
+                return new CourtPerceptionResultV3(
+                    view, observedBall, null, delay, arrivalUncertainty);
             var conservative = confidence < ConservativeConfidence;
+            if (conservative && !request.SupportCandidates.Any(candidate =>
+                    candidate.PlayerId.Equals(request.ConservativeSupport)))
+                throw new InvalidOperationException(
+                    "The declared conservative support must be a legal candidate.");
             var selected = conservative ? request.ConservativeSupport : request.SupportCandidates
                 .OrderByDescending(candidate => candidate.PerceivedArrivalMargin)
                 .ThenByDescending(candidate => candidate.Confidence)
@@ -114,7 +136,8 @@ namespace Volleyball.AI
                 .ThenBy(candidate => candidate.PlayerId.Value, StringComparer.Ordinal)
                 .First().PlayerId;
             return new CourtPerceptionResultV3(view, observedBall,
-                new PerceptionSupportDecisionV3(selected, conservative, confidence), delay);
+                new PerceptionSupportDecisionV3(selected, conservative, confidence), delay,
+                arrivalUncertainty);
         }
 
         private static float Lerp(float maximum, float minimum, float awareness) =>
@@ -129,7 +152,10 @@ namespace Volleyball.AI
             using (var hash = SHA256.Create())
             {
                 var bytes = hash.ComputeHash(Encoding.UTF8.GetBytes(value));
-                var integer = BitConverter.ToUInt32(bytes, 0);
+                var integer = ((uint)bytes[0] << 24) |
+                              ((uint)bytes[1] << 16) |
+                              ((uint)bytes[2] << 8) |
+                              bytes[3];
                 return ((integer / (float)uint.MaxValue) * 2f) - 1f;
             }
         }

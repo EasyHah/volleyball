@@ -77,6 +77,17 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Request_AcceptsBoundedPerceivedArrivalDifference()
+        {
+            var request = Fixture.DefenseRequest(Fixture.LineHeavyThreat());
+            var receipt = Fixture.PerceptionReceipt(request,
+                request.Revision, "trajectory-12", arrivalOffset: .2f);
+
+            Assert.That(() => Fixture.WithPerception(request, receipt),
+                Throws.Nothing);
+        }
+
+        [Test]
         public void Perception_MayChangeFloorSupportButNotBlockerIdentity()
         {
             var baselineRequest = Fixture.DefenseRequest(Fixture.LineHeavyThreat());
@@ -156,13 +167,13 @@ namespace Volleyball.EditModeTests
 
             public static PerceptionReceiptV3 PerceptionReceipt(
                 JointDefensePlanningRequestV3 request, long revision,
-                string artifact, string zone = null)
+                string artifact, string zone = null, float arrivalOffset = 0f)
             {
                 var selected = request.Players[5].Id;
                 var threats = request.PublicThreat.Entries.Select((entry, index) =>
                     new PerceivedThreatEntryV3("threat-" + index,
                         zone ?? entry.Zone, entry.Probability,
-                        entry.ArrivalTime)).ToArray();
+                        entry.ArrivalTime + arrivalOffset)).ToArray();
                 var view = new TeamPerceptionSnapshotV3("view-" + revision,
                     artifact, request.DefendingSide, revision, 9,
                     new[] { new PlayerPerceptionSnapshotV3(selected, .8f, .1f) },

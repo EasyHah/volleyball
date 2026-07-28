@@ -9,17 +9,24 @@ namespace Volleyball.Match.Domain.FullRallyV3
     public sealed class CourtPerceptionConfigurationV3
     {
         public CourtPerceptionConfigurationV3(string identity, float minimumRecognitionDelay,
-            float maximumRecognitionDelay, float minimumError, float maximumError)
+            float maximumRecognitionDelay, float minimumError, float maximumError,
+            float minimumArrivalUncertainty, float maximumArrivalUncertainty)
         {
             Identity = CourtPerceptionValidationV3.RequireText(identity, nameof(identity));
             MinimumRecognitionDelay = CourtPerceptionValidationV3.RequireNonNegativeFinite(minimumRecognitionDelay, nameof(minimumRecognitionDelay));
             MaximumRecognitionDelay = CourtPerceptionValidationV3.RequireNonNegativeFinite(maximumRecognitionDelay, nameof(maximumRecognitionDelay));
             MinimumError = CourtPerceptionValidationV3.RequireNonNegativeFinite(minimumError, nameof(minimumError));
             MaximumError = CourtPerceptionValidationV3.RequireNonNegativeFinite(maximumError, nameof(maximumError));
+            MinimumArrivalUncertainty = CourtPerceptionValidationV3.RequireNonNegativeFinite(
+                minimumArrivalUncertainty, nameof(minimumArrivalUncertainty));
+            MaximumArrivalUncertainty = CourtPerceptionValidationV3.RequireNonNegativeFinite(
+                maximumArrivalUncertainty, nameof(maximumArrivalUncertainty));
             if (MinimumRecognitionDelay > MaximumRecognitionDelay)
                 throw new ArgumentOutOfRangeException(nameof(maximumRecognitionDelay));
             if (MinimumError > MaximumError)
                 throw new ArgumentOutOfRangeException(nameof(maximumError));
+            if (MinimumArrivalUncertainty > MaximumArrivalUncertainty)
+                throw new ArgumentOutOfRangeException(nameof(maximumArrivalUncertainty));
         }
 
         public string Identity { get; }
@@ -27,6 +34,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public float MaximumRecognitionDelay { get; }
         public float MinimumError { get; }
         public float MaximumError { get; }
+        public float MinimumArrivalUncertainty { get; }
+        public float MaximumArrivalUncertainty { get; }
     }
 
     public sealed class PerceptionObservationV3<T>

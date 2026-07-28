@@ -71,12 +71,10 @@ namespace Volleyball.AI
             TeamPerceptionSnapshotV3 view)
         {
             var expected = threat.Entries
-                .Select(value => value.Zone + ":" + value.ArrivalTime.ToString("R",
-                    System.Globalization.CultureInfo.InvariantCulture))
+                .Select(value => value.Zone)
                 .OrderBy(value => value, StringComparer.Ordinal);
             var observed = view.Threats
-                .Select(value => value.Zone + ":" + value.ArrivalTime.ToString("R",
-                    System.Globalization.CultureInfo.InvariantCulture))
+                .Select(value => value.Zone)
                 .OrderBy(value => value, StringComparer.Ordinal);
             return expected.SequenceEqual(observed, StringComparer.Ordinal);
         }

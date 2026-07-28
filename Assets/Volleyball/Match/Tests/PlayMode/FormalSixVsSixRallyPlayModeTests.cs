@@ -411,6 +411,7 @@ namespace Volleyball.PlayModeTests
             var low = (PerceptionReceiptV3)create.Invoke(director,
                 new object[] { TeamId.Blue, 7L, 9L, "shared-artifact",
                     null, home.Select(player => player.StableId).ToArray(),
+                    home[0].StableId,
                     false });
 
             foreach (var player in home)
@@ -418,6 +419,7 @@ namespace Volleyball.PlayModeTests
             var high = (PerceptionReceiptV3)create.Invoke(director,
                 new object[] { TeamId.Blue, 7L, 9L, "shared-artifact",
                     null, home.Select(player => player.StableId).ToArray(),
+                    home[0].StableId,
                     false });
 
             Assert.That(high.RecognitionDelaySeconds,

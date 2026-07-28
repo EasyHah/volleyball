@@ -14,11 +14,12 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Configuration_RejectsInvalidIdentityFiniteValuesAndInvertedRanges()
         {
-            Assert.Throws<ArgumentException>(() => new CourtPerceptionConfigurationV3(" ", 0f, 1f, 0f, 1f));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", float.NaN, 1f, 0f, 1f));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", -0.01f, 1f, 0f, 1f));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", 1f, 0f, 0f, 1f));
-            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", 0f, 1f, 2f, 1f));
+            Assert.Throws<ArgumentException>(() => new CourtPerceptionConfigurationV3(" ", 0f, 1f, 0f, 1f, 0f, 1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", float.NaN, 1f, 0f, 1f, 0f, 1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", -0.01f, 1f, 0f, 1f, 0f, 1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", 1f, 0f, 0f, 1f, 0f, 1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", 0f, 1f, 2f, 1f, 0f, 1f));
+            Assert.Throws<ArgumentOutOfRangeException>(() => new CourtPerceptionConfigurationV3("gate-j", 0f, 1f, 0f, 1f, 2f, 1f));
         }
 
         [Test]
@@ -110,8 +111,61 @@ namespace Volleyball.EditModeTests
                 Is.LessThan(low.ObservedBall.Uncertainty));
             Assert.That(high.ObservedBall.Confidence,
                 Is.GreaterThan(low.ObservedBall.Confidence));
+            Assert.That(high.ArrivalUncertaintySeconds,
+                Is.LessThan(low.ArrivalUncertaintySeconds));
+            Assert.That(high.View.Threats[0].Confidence,
+                Is.GreaterThan(low.View.Threats[0].Confidence));
             Assert.That(high.View.AuthoritativeArtifactIdentity,
                 Is.EqualTo(low.View.AuthoritativeArtifactIdentity));
+        }
+
+        [Test]
+        public void Adapter_NoLegalSupportReturnsNoDecision()
+        {
+            var request = Fixture.Request(1f, "line");
+            var withoutSupport = new CourtPerceptionRequestV3(
+                request.MatchSeed, request.Revision, request.SourceSequence,
+                request.ObservingSide, request.Observer, request.ObserverAwareness,
+                request.AuthoritativeArtifactIdentity, request.BallPosition,
+                request.Threats, Array.Empty<PerceivedSupportCandidateV3>(),
+                new PlayerId("home-none"), request.SimulationTime);
+
+            var observed = new CourtPerceptionAdapterV3(Fixture.Configuration)
+                .Observe(withoutSupport);
+
+            Assert.That(observed.SupportDecision, Is.Null);
+        }
+
+        [Test]
+        public void Adapter_CandidatePermutationDoesNotChangeDecision()
+        {
+            var request = Fixture.Request(1f, "line");
+            var reversed = new CourtPerceptionRequestV3(
+                request.MatchSeed, request.Revision, request.SourceSequence,
+                request.ObservingSide, request.Observer, request.ObserverAwareness,
+                request.AuthoritativeArtifactIdentity, request.BallPosition,
+                request.Threats, request.SupportCandidates.Reverse().ToArray(),
+                request.ConservativeSupport, request.SimulationTime);
+            var adapter = new CourtPerceptionAdapterV3(Fixture.Configuration);
+
+            Assert.That(adapter.Observe(reversed).SupportDecision.SelectedPlayer,
+                Is.EqualTo(adapter.Observe(request).SupportDecision.SelectedPlayer));
+        }
+
+        [Test]
+        public void Adapter_PublicErrorsStayWithinConfiguredBounds()
+        {
+            var request = Fixture.Request(0f, "line");
+            var observed = new CourtPerceptionAdapterV3(Fixture.Configuration)
+                .Observe(request);
+
+            Assert.That(Math.Abs(observed.ObservedBall.Value.X -
+                                 request.BallPosition.X),
+                Is.LessThanOrEqualTo(Fixture.Configuration.MaximumError));
+            Assert.That(Math.Abs(observed.View.Threats[0].ArrivalTime -
+                                 request.Threats[0].ArrivalTime),
+                Is.LessThanOrEqualTo(
+                    Fixture.Configuration.MaximumArrivalUncertainty));
         }
 
         [Test]
@@ -128,7 +182,8 @@ namespace Volleyball.EditModeTests
         private static class Fixture
         {
             public static readonly CourtPerceptionConfigurationV3 Configuration =
-                new CourtPerceptionConfigurationV3("gate-j-v1", .05f, .30f, .08f, 1.20f);
+                new CourtPerceptionConfigurationV3(
+                    "gate-j-v1", .05f, .30f, .08f, 1.20f, .03f, .35f);
 
             public static CourtPerceptionRequestV3 Request(float awareness,
                 string hiddenFinalRoute) => new CourtPerceptionRequestV3(

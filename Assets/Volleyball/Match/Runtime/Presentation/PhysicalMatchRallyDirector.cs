@@ -307,7 +307,7 @@ namespace Volleyball.Presentation
         private static readonly CourtPerceptionConfigurationV3
             GateJPerceptionConfiguration =
                 new CourtPerceptionConfigurationV3(
-                    "gate-j-v1", .05f, .30f, .08f, 1.20f);
+                    "gate-j-v1", .05f, .30f, .08f, 1.20f, .03f, .35f);
         private string _status = "Preparing dynamic physical 3v3";
 
         public int CompletedCycles { get; private set; }
@@ -1339,6 +1339,7 @@ namespace Volleyball.Presentation
                             .Append(planning.Plan.PrimaryReceiver)
                             .Distinct()
                             .ToArray(),
+                        planning.Plan.PrimaryReceiver,
                         false));
             }
             ScheduleDecision(planning.Decision, receiveSeconds);
@@ -3243,6 +3244,7 @@ namespace Volleyball.Presentation
                     publicThreat,
                     defensePlayers.Where(player => !player.IsFrontRow)
                         .Select(player => player.Id).ToArray(),
+                    defensePlayers.First(player => !player.IsFrontRow).Id,
                     true)
                 : null;
             if (perception != null)
@@ -5117,6 +5119,7 @@ namespace Volleyball.Presentation
             string artifactIdentity,
             PublicAttackThreatV3 publicThreat,
             IReadOnlyList<StablePlayerId> legalSupport,
+            StablePlayerId conservativeSupport,
             bool defenseAwareness)
         {
             if (!GateJEnabled)
@@ -5141,6 +5144,9 @@ namespace Volleyball.Presentation
             if (allowed.Length == 0)
                 throw new InvalidOperationException(
                     "Gate J requires a declared legal support candidate.");
+            if (!allowed.Contains(conservativeSupport))
+                throw new InvalidOperationException(
+                    "Gate J conservative support must be a legal candidate.");
             var supports = allowed.Select(playerId =>
             {
                 var agent = _players.Values.Single(value =>
@@ -5150,7 +5156,7 @@ namespace Volleyball.Presentation
                 return new PerceivedSupportCandidateV3(
                     playerId, awareness,
                     (BaseMovementSpeed * .5f) - distance,
-                    playerId.Equals(allowed[0]));
+                    playerId.Equals(conservativeSupport));
             }).ToArray();
             var threats = publicThreat == null
                 ? Array.Empty<PerceivedThreatEntryV3>()
@@ -5164,7 +5170,7 @@ namespace Volleyball.Presentation
                     System.Globalization.CultureInfo.InvariantCulture),
                 revision, sourceSequence, ToSide(observingTeam),
                 observer.StableId, awareness, artifactIdentity,
-                _ball.State.Position, threats, supports, allowed[0],
+                _ball.State.Position, threats, supports, conservativeSupport,
                 _ball.SimulationTime);
             var result = new CourtPerceptionAdapterV3(
                 GateJPerceptionConfiguration).Observe(request);
