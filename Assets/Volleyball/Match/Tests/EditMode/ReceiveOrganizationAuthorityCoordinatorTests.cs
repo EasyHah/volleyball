@@ -80,6 +80,22 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlanReceive_NewRevisionDropsPreviousEventPerception()
+        {
+            var fixture = CreateFixture();
+            var coordinator = fixture.Coordinator();
+            var first = coordinator.PlanReceive(fixture.Request(7, 1));
+            coordinator.ApplyPerception(Perception(first.Plan.Side, 7, 1,
+                first.Plan.EmergencyReceivers[0]));
+            coordinator.Invalidate(7, 2, PlanCoverageReason.RallyEnd);
+
+            Assert.That(() => coordinator.PlanReceive(
+                    fixture.Request(8, 3)),
+                Throws.Nothing);
+            Assert.That(coordinator.CurrentPerception, Is.Null);
+        }
+
+        [Test]
         public void MissPrimary_ActivatesOnlyDeclaredEmergencyBranch()
         {
             var fixture = CreateFixture();

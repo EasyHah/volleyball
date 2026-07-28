@@ -111,17 +111,20 @@ namespace Volleyball.AI
                 : identitiesByBlockCandidate[blockers[0].Id];
             var residualZones = orderedThreat.Where(value => value.Zone != blockZone).Select(value => value.Zone).Distinct(StringComparer.Ordinal).ToArray();
             var assignments = request.Assignments.OrderBy(value => value.Rank).ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal).ToArray();
+            IReadOnlyDictionary<ContractPlayerId, int> perceivedFloorOrder = null;
             if (request.Perception != null)
             {
                 var perceivedSupport =
                     request.Perception.SupportDecision.SelectedPlayer;
-                assignments = assignments
-                    .OrderBy(value => blockerIds.Contains(value.PlayerId) ? 0 : 1)
-                    .ThenBy(value => !blockerIds.Contains(value.PlayerId) &&
-                                     value.PlayerId.Equals(perceivedSupport) ? 0 : 1)
+                perceivedFloorOrder = assignments
+                    .Where(value => !blockerIds.Contains(value.PlayerId))
+                    .OrderBy(value =>
+                        value.PlayerId.Equals(perceivedSupport) ? 0 : 1)
                     .ThenBy(value => value.Rank)
                     .ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal)
-                    .ToArray();
+                    .Select((value, index) => new { value.PlayerId, index })
+                    .ToDictionary(value => value.PlayerId,
+                        value => value.index);
             }
             var responsibilities = new List<DefenseResponsibilityV3>(6);
             var residualIndex = 0;
@@ -130,7 +133,16 @@ namespace Volleyball.AI
                 DefenseResponsibilityKindV3 kind;
                 string zone;
                 if (blockerIds.Contains(assignment.PlayerId)) { kind = primaryBlockerId.HasValue && assignment.PlayerId.Equals(primaryBlockerId.Value) ? DefenseResponsibilityKindV3.PrimaryBlock : DefenseResponsibilityKindV3.SupportingBlock; zone = blockZone; }
-                else if (residualZones.Length > 0) { kind = residualIndex++ == 0 ? DefenseResponsibilityKindV3.CrossDefense : DefenseResponsibilityKindV3.DeepDefense; zone = residualZones[(residualIndex - 1) % residualZones.Length]; }
+                else if (residualZones.Length > 0)
+                {
+                    var floorIndex = perceivedFloorOrder == null
+                        ? residualIndex++
+                        : perceivedFloorOrder[assignment.PlayerId];
+                    kind = floorIndex == 0
+                        ? DefenseResponsibilityKindV3.CrossDefense
+                        : DefenseResponsibilityKindV3.DeepDefense;
+                    zone = residualZones[floorIndex % residualZones.Length];
+                }
                 else { kind = DefenseResponsibilityKindV3.ReboundCoverage; zone = blockZone; }
                 responsibilities.Add(new DefenseResponsibilityV3(assignment.PlayerId, kind, zone, RallyPlanBranchV3.Primary));
             }

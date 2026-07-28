@@ -594,6 +594,9 @@ namespace Volleyball.AI
                     "Source sequences must increase monotonically.");
             }
 
+            // A perception receipt is event-owned. It must never leak from the
+            // preceding revision/side into the new planning batch.
+            _perception = null;
             var planning = _planner.PlanReceive(
                 request.ReceiveInput,
                 request.AttackPreparationInput,

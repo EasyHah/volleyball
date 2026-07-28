@@ -91,9 +91,14 @@ namespace Volleyball.EditModeTests
                     .Select(value => value.Actor),
                 perceived.Responsibilities.Where(IsBlock)
                     .Select(value => value.Actor));
-            Assert.That(perceived.Responsibilities
-                    .First(value => !IsBlock(value)).Actor,
-                Is.EqualTo(receipt.SupportDecision.SelectedPlayer));
+            Assert.That(perceived.Responsibilities.Single(value =>
+                    value.Actor.Equals(
+                        receipt.SupportDecision.SelectedPlayer)).Kind,
+                Is.EqualTo(DefenseResponsibilityKindV3.CrossDefense));
+            CollectionAssert.AreEqual(
+                baseline.Responsibilities.Select(value => value.Actor),
+                perceived.Responsibilities.Select(value => value.Actor),
+                "Perception must not reorder command publication identities.");
         }
 
         private static bool IsBlock(DefenseResponsibilityV3 value) =>
