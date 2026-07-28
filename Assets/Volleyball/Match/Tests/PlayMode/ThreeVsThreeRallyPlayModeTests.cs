@@ -39,12 +39,14 @@ namespace Volleyball.PlayModeTests
 
             Assert.That(director.GateIAuthorityEnabled, Is.False);
             Assert.That(director.GateHAuthorityEnabled, Is.False);
+            Assert.That(director.GateJPerceptionEnabled, Is.False);
             Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
             Assert.That(accepted, Is.Not.Empty,
                 "The legacy 3v3 fixture did not accept a contact.");
             Assert.That(accepted.All(contact =>
                 contact.GateISetIntentAuthority == null &&
-                contact.AttackDefenseAuthority == null), Is.True);
+                contact.AttackDefenseAuthority == null &&
+                contact.OrganizationAuthority?.Perception == null), Is.True);
             Assert.That(
                 typeof(PhysicalMatchRallyDirector)
                     .GetField("_attackDefenseCoordinator",

@@ -328,7 +328,7 @@ namespace Volleyball.PlayModeTests
 
         [UnityTest]
         [Timeout(180000)]
-        public IEnumerator Formal6v6_GateIAuthorityIsRecorderInvariant()
+        public IEnumerator Formal6v6_GateJAuthorityIsRecorderInvariant()
         {
             FormalAuthoritySummary baseline = null;
             FormalAuthoritySummary recorded = null;
@@ -359,7 +359,11 @@ namespace Volleyball.PlayModeTests
             CollectionAssert.AreEqual(
                 baseline.GateIAuthorityFingerprints,
                 recorded.GateIAuthorityFingerprints);
+            CollectionAssert.AreEqual(
+                baseline.GateJPerceptionFingerprints,
+                recorded.GateJPerceptionFingerprints);
             Assert.That(recorded.GateIAuthorityFingerprints, Is.Not.Empty);
+            Assert.That(recorded.GateJPerceptionFingerprints, Is.Not.Empty);
             Assert.That(recorded.GateILegacyWriterInvocations, Is.Zero);
             Assert.That(baseline.GateILegacyWriterInvocations, Is.Zero);
             Assert.That(recorded.GateHLegacyWriterInvocations, Is.Zero);
@@ -381,6 +385,50 @@ namespace Volleyball.PlayModeTests
                 string.Join(",", baseline.AcceptedAuthorityFingerprints) +
                 ";gateIFingerprints=" +
                 string.Join(",", baseline.GateIAuthorityFingerprints));
+        }
+
+        [UnityTest]
+        public IEnumerator Formal6v6_GateJLowAndHighAwarenessKeepRuleAuthority()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "FormalIndoor6v6", LoadSceneMode.Single);
+            var director =
+                Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            var players = Object.FindObjectsByType<PrototypePlayerAgent>(
+                FindObjectsSortMode.None);
+            var home = players.Where(player =>
+                    player.Id.Team == TeamId.Blue)
+                .OrderBy(player => player.StableId.Value)
+                .ToArray();
+            var create = typeof(PhysicalMatchRallyDirector).GetMethod(
+                "CreateGateJPerceptionReceipt",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(director.GateJPerceptionEnabled, Is.True);
+            Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Authority));
+
+            foreach (var player in home)
+                player.SetAbility(CreateAwarenessAbility(0f));
+            var low = (PerceptionReceiptV3)create.Invoke(director,
+                new object[] { TeamId.Blue, 7L, 9L, "shared-artifact",
+                    null, home.Select(player => player.StableId).ToArray(),
+                    false });
+
+            foreach (var player in home)
+                player.SetAbility(CreateAwarenessAbility(1f));
+            var high = (PerceptionReceiptV3)create.Invoke(director,
+                new object[] { TeamId.Blue, 7L, 9L, "shared-artifact",
+                    null, home.Select(player => player.StableId).ToArray(),
+                    false });
+
+            Assert.That(high.RecognitionDelaySeconds,
+                Is.LessThan(low.RecognitionDelaySeconds));
+            Assert.That(high.ObservedBall.Uncertainty,
+                Is.LessThan(low.ObservedBall.Uncertainty));
+            Assert.That(high.AuthoritativeArtifactIdentity,
+                Is.EqualTo(low.AuthoritativeArtifactIdentity));
+            Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Authority));
+            Assert.That(director.GateHLegacyWriterInvocations, Is.Zero);
+            Assert.That(director.GateILegacyWriterInvocations, Is.Zero);
         }
 
         [UnityTest]
@@ -824,6 +872,7 @@ namespace Volleyball.PlayModeTests
             var acceptedBallStateVersions = new List<long>();
             var acceptedAuthorityFingerprints = new List<string>();
             var gateIAuthorityFingerprints = new List<string>();
+            var gateJPerceptionFingerprints = new List<string>();
             var maximumAcceptedContactCorrection = 0f;
             director.ReplayContactAccepted += replayEvent =>
             {
@@ -850,6 +899,19 @@ namespace Volleyball.PlayModeTests
                         receipt.Kind + ":" + receipt.PlanRevision + ":" +
                         receipt.SourceSequence + ":" + receipt.Actor.Value + ":" +
                         receipt.Evidence.CoverageDecision.Kind);
+                }
+                var perception = replayEvent.OrganizationAuthority?.Perception ??
+                                 replayEvent.AttackDefenseAuthority?.Perception ??
+                                 replayEvent.AttackDefenseAuthority?.Evidence
+                                     ?.Perception;
+                if (perception != null)
+                {
+                    gateJPerceptionFingerprints.Add(
+                        perception.ViewIdentity + ":" +
+                        perception.Revision + ":" +
+                        perception.SourceSequence + ":" +
+                        perception.AuthoritativeArtifactIdentity + ":" +
+                        perception.SupportDecision.SelectedPlayer.Value);
                 }
                 var player = players.Single(value =>
                     replayEvent.PlayerId.HasValue &&
@@ -905,6 +967,7 @@ namespace Volleyball.PlayModeTests
                 acceptedBallStateVersions,
                 acceptedAuthorityFingerprints,
                 gateIAuthorityFingerprints,
+                gateJPerceptionFingerprints,
                 recorder != null,
                 recorder == null ? 0 : recorder.Complete().Events.Count,
                 director.GateILegacyWriterInvocations,
@@ -977,6 +1040,26 @@ namespace Volleyball.PlayModeTests
                 MatchAttributeDerivationConfigV4.Version1));
         }
 
+        private static PlayerAbilityProfile CreateAwarenessAbility(
+            float awareness)
+        {
+            return new PlayerAbilityProfile(MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(
+                    1.90f, 2.47f, .8f, .8f, .8f, .8f),
+                new TechnicalBaseAttributesV4(
+                    attackTechnique: .8f,
+                    attackPower: .8f,
+                    blockTechnique: .8f,
+                    defenseTechnique: .8f,
+                    receiveTechnique: .8f,
+                    setTechnique: .8f,
+                    serveTechnique: .8f,
+                    softTouch: .8f,
+                    courtAwareness: awareness),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1));
+        }
+
         private sealed class FormalAuthoritySummary
         {
             public FormalAuthoritySummary(
@@ -989,6 +1072,7 @@ namespace Volleyball.PlayModeTests
                 IReadOnlyList<long> acceptedBallStateVersions,
                 IReadOnlyList<string> acceptedAuthorityFingerprints,
                 IReadOnlyList<string> gateIAuthorityFingerprints,
+                IReadOnlyList<string> gateJPerceptionFingerprints,
                 bool hasDiagnosticReplay,
                 int diagnosticRecordCount,
                 int gateILegacyWriterInvocations,
@@ -1004,6 +1088,7 @@ namespace Volleyball.PlayModeTests
                 AcceptedBallStateVersions = acceptedBallStateVersions;
                 AcceptedAuthorityFingerprints = acceptedAuthorityFingerprints;
                 GateIAuthorityFingerprints = gateIAuthorityFingerprints;
+                GateJPerceptionFingerprints = gateJPerceptionFingerprints;
                 HasDiagnosticReplay = hasDiagnosticReplay;
                 DiagnosticRecordCount = diagnosticRecordCount;
                 GateILegacyWriterInvocations = gateILegacyWriterInvocations;
@@ -1020,6 +1105,7 @@ namespace Volleyball.PlayModeTests
             public IReadOnlyList<long> AcceptedBallStateVersions { get; }
             public IReadOnlyList<string> AcceptedAuthorityFingerprints { get; }
             public IReadOnlyList<string> GateIAuthorityFingerprints { get; }
+            public IReadOnlyList<string> GateJPerceptionFingerprints { get; }
             public bool HasDiagnosticReplay { get; }
             public int DiagnosticRecordCount { get; }
             public int GateILegacyWriterInvocations { get; }

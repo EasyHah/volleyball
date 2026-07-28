@@ -213,6 +213,20 @@ namespace Volleyball.PlayModeTests
                     Assert.That(replayEvent.AttackDefenseAuthority.TrajectoryArtifactIdentity,
                         Is.EqualTo(replayEvent.Trajectory.ArtifactIdentity));
                 }
+                if (replayEvent.EventKind == "Receive" ||
+                    replayEvent.EventKind == "Set" ||
+                    replayEvent.EventKind == "Attack" ||
+                    replayEvent.EventKind == "Block")
+                {
+                    Assert.That(replayEvent.PerceptionAuthority, Is.Not.Null);
+                    Assert.That(
+                        replayEvent.PerceptionAuthority
+                            .AuthoritativeArtifactIdentity,
+                        Is.Not.Empty);
+                    Assert.That(
+                        replayEvent.PerceptionAuthority.Confidence,
+                        Is.InRange(0f, 1f));
+                }
             }
             Assert.That(restored.Events.Any(replayEvent =>
                 replayEvent.AttackDefenseAuthority != null), Is.True);
@@ -475,7 +489,7 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
-        public IEnumerator Capture_TwoIndependentGateIFixedSeedRunsAreByteStable()
+        public IEnumerator Capture_TwoIndependentGateJFixedSeedRunsAreByteStable()
         {
             var payloads = new byte[2][];
             var acceptedSequences = new string[2][];
@@ -515,6 +529,8 @@ namespace Volleyball.PlayModeTests
                     "Independent formal run " + run +
                     " did not complete its first rally.");
                 var replay = recorder.Complete();
+                Assert.That(replay.Events.Any(replayEvent =>
+                    replayEvent.PerceptionAuthority != null), Is.True);
                 payloads[run] = Encoding.UTF8.GetBytes(
                     ContractJson.SerializeV4(replay));
                 acceptedSequences[run] = replay.Events
