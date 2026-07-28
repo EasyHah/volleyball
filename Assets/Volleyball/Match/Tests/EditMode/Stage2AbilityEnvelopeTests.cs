@@ -145,6 +145,24 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Envelope_ExposesThePolicyThatActuallyCreatedIt()
+        {
+            var defaultEnvelope = CreateEnvelope(
+                policy: ExecutionEnvelopePolicyV4.Default);
+            var repeatedDefaultEnvelope = CreateEnvelope(
+                policy: ExecutionEnvelopePolicyV4.Default);
+            var gateIEnvelope = CreateEnvelope(
+                policy: ExecutionEnvelopePolicyV4.GateI);
+
+            Assert.That(defaultEnvelope.PolicyIdentity,
+                Has.Length.EqualTo(64));
+            Assert.That(repeatedDefaultEnvelope.PolicyIdentity,
+                Is.EqualTo(defaultEnvelope.PolicyIdentity));
+            Assert.That(gateIEnvelope.PolicyIdentity,
+                Is.Not.EqualTo(defaultEnvelope.PolicyIdentity));
+        }
+
+        [Test]
         public void PhysicalExecutor_UsesExactEnvelopeSampleAndVelocity()
         {
             var derived = MatchV4TestFixture.CreateDerived();

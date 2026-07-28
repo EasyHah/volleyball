@@ -389,6 +389,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
 
         public string DerivedAttributesFingerprint { get; }
 
+        public string PolicyIdentity =>
+            ExecutionEnvelopeCanonicalV4.Sha256(_policy.ToCanonicalBytes());
+
         public string SourceIntentIdentity { get; }
 
         public ExecutionCandidateCategoryV4 CandidateCategory { get; }

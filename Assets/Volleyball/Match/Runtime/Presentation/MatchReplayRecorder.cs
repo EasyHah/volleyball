@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using UnityEngine;
 using Volleyball.AI;
 using Volleyball.Domain.Players;
@@ -312,7 +310,7 @@ namespace Volleyball.Presentation
                     ? "SafeFallback"
                     : "Degraded";
             return new ReplayWorkBudgetRecordV4(
-                Sha256(ExecutionEnvelopePolicyV4.Default.ToCanonicalBytes()),
+                testedEnvelope.PolicyIdentity,
                 candidateCount,
                 sampleCount,
                 expansionCount,
@@ -721,7 +719,7 @@ namespace Volleyball.Presentation
                 envelope.Version,
                 envelope.Identity,
                 envelope.DerivedAttributesFingerprint,
-                Sha256(ExecutionEnvelopePolicyV4.Default.ToCanonicalBytes()),
+                envelope.PolicyIdentity,
                 envelope.SourceIntentIdentity,
                 envelope.CandidateCategory.ToString(),
                 Vector(envelope.BaselineTarget),
@@ -870,18 +868,5 @@ namespace Volleyball.Presentation
                 context.SessionId.ToString("D", CultureInfo.InvariantCulture);
         }
 
-        private static string Sha256(byte[] bytes)
-        {
-            using var sha = SHA256.Create();
-            var hash = sha.ComputeHash(bytes);
-            var output = new StringBuilder(64);
-            for (var index = 0; index < hash.Length; index++)
-            {
-                output.Append(
-                    hash[index].ToString("x2", CultureInfo.InvariantCulture));
-            }
-
-            return output.ToString();
-        }
     }
 }
