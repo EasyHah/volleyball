@@ -100,7 +100,7 @@ The Task 12 full-suite evidence on Unity `6000.0.43f1` is:
 - both legacy production searches returned no matches and `git diff --check`
   was clean.
 
-Gates A–H are complete. Gate H formal authority is enabled only for V3 Authority
+Gates A–J are complete. Gate H formal authority is enabled only for V3 Authority
 with a complete twelve-player formal roster. Immutable Gate F responsibilities
 select receive/organization ownership; the Gate H coordinator owns revision,
 fallback and bounded coverage decisions; the controller is the single writer
@@ -112,8 +112,13 @@ Gate H completion evidence on Unity `6000.0.43f1` is EditMode `627/627`,
 PlayMode `31/31`, and fixed-seed determinism `2/2`, all with zero failures,
 skips or inconclusive results. Gate I completion evidence on Unity `6000.0.43f1`
 is EditMode `719/719`, PlayMode `34/34`, and fixed-seed determinism `2/2`, all
-with zero failures, skips or inconclusive results. Gates J–K remain pending:
-perception/CourtAwareness, then director slimming, Replay/calibration completion.
+with zero failures, skips or inconclusive results. Gate J completion evidence on
+Unity `6000.0.43f1` is EditMode `737/737` and PlayMode `35/35`, including
+strict/canonical Replay compatibility, recorder invariance and independent
+fixed-seed byte/hash stability, all with zero failures, skips or inconclusive
+results. Gate J is restricted to formal twelve-player V3 Authority; 3v3 and
+Shadow/Disabled emit no perception receipt. Gate K remains pending: director
+slimming, Replay UI/overlay, full calibration matrix and performance reporting.
 
 ## Windows delivery
 

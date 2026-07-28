@@ -2,7 +2,7 @@
 
 **日期：** 2026-07-24
 
-**状态：** Gate A–E 已完成；Gate F–K 待规划
+**状态：** Gate A–J 已完成；Gate K 待实施
 
 **范围：** 当前完成度审计、V4 双端权威属性、Career/Match 硬切、共享执行与预测、V3 规则复用、Full Rally 后续交付顺序
 
@@ -519,11 +519,14 @@ base attributes + DominantHand
 - V4 Attack/Block/Defense/SoftTouch 派生属性进入各自唯一消费路径。
 - 实际防守只能在攻击触球后基于可见事实反应。
 
-### Gate J：感知与 CourtAwareness
+### Gate J：感知与 CourtAwareness（已完成）
 
 - 在共享权威物理工件外层建立确定性感知视图。
 - CourtAwareness 只影响观察延迟、不确定性、可见动作解释和支援选择。
 - 对手隐藏计划、最终路线和未来样本保持不可见。
+- 正式十二人 V3 Authority 使用 event-owned perception receipt；3v3 与
+  Shadow/Disabled 保持隔离，Replay V4 以可选 strict/canonical record 留证。
+- 完整验证：EditMode 737/737、PlayMode 35/35，零失败、跳过或 inconclusive。
 
 ### Gate K：Director 瘦身与 Replay/Calibration 完成
 
