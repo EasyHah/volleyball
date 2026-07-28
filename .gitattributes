@@ -1,3 +1,45 @@
-# Unity serializes blank YAML values with a trailing space; keep generated files intact.
-*.asset whitespace=-trailing-space
-*.meta whitespace=-trailing-space
+# Text and Unity YAML. Unity serializes some blank YAML values with a trailing
+# space, so generated .asset/.meta files opt out of that whitespace warning.
+*.cs text eol=lf
+*.py text eol=lf
+*.asmdef text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+CODEOWNERS text eol=lf
+*.unity text eol=lf merge=unityyamlmerge
+*.prefab text eol=lf merge=unityyamlmerge
+*.asset text eol=lf merge=unityyamlmerge whitespace=-trailing-space
+*.meta text eol=lf whitespace=-trailing-space
+
+# Binary source assets require Git LFS. Authoring formats are lockable because
+# they cannot be merged safely; exported runtime media stays non-locking.
+*.[pP][sS][dD] filter=lfs diff=lfs merge=lfs -text lockable
+*.[pP][sS][bB] filter=lfs diff=lfs merge=lfs -text lockable
+*.[bB][lL][eE][nN][dD] filter=lfs diff=lfs merge=lfs -text lockable
+*.[fF][bB][xX] filter=lfs diff=lfs merge=lfs -text lockable
+*.[mM][aA] filter=lfs diff=lfs merge=lfs -text lockable
+*.[mM][bB] filter=lfs diff=lfs merge=lfs -text lockable
+*.[mM][aA][xX] filter=lfs diff=lfs merge=lfs -text lockable
+*.[sS][pP][pP] filter=lfs diff=lfs merge=lfs -text lockable
+*.[kK][rR][aA] filter=lfs diff=lfs merge=lfs -text lockable
+
+*.[pP][nN][gG] filter=lfs diff=lfs merge=lfs -text
+*.[jJ][pP][gG] filter=lfs diff=lfs merge=lfs -text
+*.[jJ][pP][eE][gG] filter=lfs diff=lfs merge=lfs -text
+*.[tT][gG][aA] filter=lfs diff=lfs merge=lfs -text
+*.[tT][iI][fF] filter=lfs diff=lfs merge=lfs -text
+*.[tT][iI][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[eE][xX][rR] filter=lfs diff=lfs merge=lfs -text
+*.[hH][dD][rR] filter=lfs diff=lfs merge=lfs -text
+*.[wW][aA][vV] filter=lfs diff=lfs merge=lfs -text
+*.[aA][iI][fF][fF] filter=lfs diff=lfs merge=lfs -text
+*.[mM][pP]3 filter=lfs diff=lfs merge=lfs -text
+*.[oO][gG][gG] filter=lfs diff=lfs merge=lfs -text
+*.[mM][pP]4 filter=lfs diff=lfs merge=lfs -text
+*.[mM][oO][vV] filter=lfs diff=lfs merge=lfs -text
+*.[tT][tT][fF] filter=lfs diff=lfs merge=lfs -text
+*.[oO][tT][fF] filter=lfs diff=lfs merge=lfs -text

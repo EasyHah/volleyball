@@ -7,7 +7,7 @@ namespace Volleyball.Career.Presentation
 {
     public sealed class CareerPresentationModule : MonoBehaviour
     {
-        public static Type ApplicationBoundary => typeof(CareerMatchRequest);
+        public static Type ApplicationBoundary => typeof(OperationReceiptIndex);
 
         public static Type DomainBoundary => typeof(CareerPlayerRecord);
     }

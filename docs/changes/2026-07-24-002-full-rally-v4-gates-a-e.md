@@ -1,7 +1,7 @@
 # CHG-20260724-002：Full Rally V4 Gates A–E contract cut
 
 - 日期：2026-07-24
-- 状态：已完成
+- 状态：已完成（V4 契约基线）
 - 负责人：多方
 - 影响模块：Career / Shared / Match / Replay / Docs
 - 交互级别：跨模块（重点）
