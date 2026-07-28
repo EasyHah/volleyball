@@ -29,5 +29,24 @@ namespace Volleyball.EditModeTests
                 RallyDecisionCoordinatorV3.CreateReceiveOrganizationPlanner)),
                 Is.Not.Null);
         }
+
+        [Test]
+        public void Director_DoesNotOwnEventScopedAuthorityReceiptStores()
+        {
+            var fields = typeof(PhysicalMatchRallyDirector).GetFields(
+                BindingFlags.Instance | BindingFlags.NonPublic |
+                BindingFlags.Public);
+
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_pendingGateHContactReceipts"));
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_pendingGateISetIntentReceipts"));
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_pendingGateIContactReceipts"));
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_activeGateISetIntent"));
+            Assert.That(fields.Select(field => field.FieldType),
+                Does.Contain(typeof(FormalRallyAuthorityOrchestrator)));
+        }
     }
 }

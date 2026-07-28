@@ -290,18 +290,11 @@ namespace Volleyball.Presentation
         private readonly Dictionary<TeamId, ReceiveOrganizationAuthorityController>
             _receiveOrganizationControllers =
                 new Dictionary<TeamId, ReceiveOrganizationAuthorityController>();
-        private readonly Dictionary<string, ReceiveOrganizationAuthorityReceipt>
-            _pendingGateHContactReceipts =
-                new Dictionary<string, ReceiveOrganizationAuthorityReceipt>(
-                    StringComparer.Ordinal);
         private AttackDefenseAuthorityCoordinator _attackDefenseCoordinator;
         private readonly Dictionary<TeamId, AttackDefenseAuthorityController>
             _attackDefenseControllers = new Dictionary<TeamId, AttackDefenseAuthorityController>();
-        private readonly Dictionary<string, GateISetIntentReceiptV3>
-            _pendingGateISetIntentReceipts = new Dictionary<string, GateISetIntentReceiptV3>(StringComparer.Ordinal);
-        private readonly Dictionary<string, AttackDefenseAuthorityReceipt>
-            _pendingGateIContactReceipts = new Dictionary<string, AttackDefenseAuthorityReceipt>(StringComparer.Ordinal);
-        private GateISetIntentPlanningResultV3 _activeGateISetIntent;
+        private readonly FormalRallyAuthorityOrchestrator
+            _formalAuthority = new FormalRallyAuthorityOrchestrator();
         private long _gateHPlanRevision;
         private long _gateHSourceSequence;
         private static readonly CourtPerceptionConfigurationV3
@@ -818,8 +811,7 @@ namespace Volleyball.Presentation
                 _receiveOrganizationControllers.Clear();
                 _attackDefenseCoordinator = null;
                 _attackDefenseControllers.Clear();
-                _pendingGateISetIntentReceipts.Clear();
-                _pendingGateIContactReceipts.Clear();
+                _formalAuthority.ClearGateI();
                 _pendingV3AuthorityContact = null;
                 if (_ball != null)
                 {
@@ -888,7 +880,7 @@ namespace Volleyball.Presentation
             {
                 _receiveOrganizationCoordinator = null;
                 _receiveOrganizationControllers.Clear();
-                _pendingGateHContactReceipts.Clear();
+                _formalAuthority.ClearGateH();
             }
             GateIAuthorityEnabled =
                 mode == V3RulesMode.Authority && GateHAuthorityEnabled &&
@@ -910,8 +902,7 @@ namespace Volleyball.Presentation
             {
                 _attackDefenseCoordinator = null;
                 _attackDefenseControllers.Clear();
-                _pendingGateISetIntentReceipts.Clear();
-                _pendingGateIContactReceipts.Clear();
+                _formalAuthority.ClearGateI();
             }
             ResetV3Diagnostics();
         }
@@ -1075,9 +1066,7 @@ namespace Volleyball.Presentation
                 // survive into the next receive/organization lifecycle.
                 _attackDefenseCoordinator = new AttackDefenseAuthorityCoordinator(
                     new AttackDefensePlanner(), new DirectorAttackDefenseCommandSink(this));
-                _activeGateISetIntent = null;
-                _pendingGateISetIntentReceipts.Clear();
-                _pendingGateIContactReceipts.Clear();
+                _formalAuthority.ClearGateI();
             }
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
@@ -1612,12 +1601,15 @@ namespace Volleyball.Presentation
                         $"team={decision.Actor.Team} reason={exception.Message}");
                 }
 
-                if (GateIAuthorityEnabled && _activeGateISetIntent != null)
+                if (GateIAuthorityEnabled &&
+                    _formalAuthority.ActiveSetIntent != null)
                 {
                     // Gate H remains the Set contact writer, but executes Gate I's
                     // immutable physical target/velocity exactly.
-                    outgoing = _activeGateISetIntent.Intent.ExecutionClassification.ExecutableSample.Velocity;
-                    _scheduledSetFlightSeconds = _activeGateISetIntent.Intent.SetFlightSeconds;
+                    outgoing = _formalAuthority.ActiveSetIntent.Intent
+                        .ExecutionClassification.ExecutableSample.Velocity;
+                    _scheduledSetFlightSeconds =
+                        _formalAuthority.ActiveSetIntent.Intent.SetFlightSeconds;
                 }
                 else
                 {
@@ -1857,7 +1849,7 @@ namespace Volleyball.Presentation
             var state = _receiveOrganizationCoordinator.State;
             var contactGroup = NextContactGroup();
             var gateIIntent = GateIAuthorityEnabled && decision.Action == TechniqueAction.Set
-                ? _activeGateISetIntent?.Intent : null;
+                ? _formalAuthority.ActiveSetIntent?.Intent : null;
             // Gate H still owns the Set contact and timing, while its Gate I
             // receipt carries an already-solved immutable velocity.  Applying a
             // second skill-error perturbation would make its physical endpoint
@@ -2019,8 +2011,10 @@ namespace Volleyball.Presentation
                 passPrediction ?? _lastTrajectoryPredictionArtifactV4 ?? throw new InvalidOperationException("Accepted pass trajectory is required."),
                 _trajectoryPredictionProviderV4, SimulationParameters, _matchContext.PhysicsConfigurationHash,
                 _gateHSourceSequence));
-            _activeGateISetIntent = result;
-            _pendingGateISetIntentReceipts[GateHReceiptKey(organizer.StableId, TechniqueAction.Set)] = result.Receipt;
+            _formalAuthority.ActiveSetIntent = result;
+            _formalAuthority.StoreGateISetIntent(
+                GateHReceiptKey(organizer.StableId, TechniqueAction.Set),
+                result.Receipt);
             GateISetIntentCommitted?.Invoke(result.Receipt);
             return result;
         }
@@ -2035,8 +2029,9 @@ namespace Volleyball.Presentation
                 receipt.Kind ==
                     ReceiveOrganizationCommandKind.OrganizationContact)
             {
-                _pendingGateHContactReceipts[
-                    GateHReceiptKey(receipt.Actor, receipt.Action)] = receipt;
+                _formalAuthority.StoreGateH(
+                    GateHReceiptKey(receipt.Actor, receipt.Action),
+                    receipt);
             }
 
             ReceiveOrganizationAuthorityCommitted?.Invoke(receipt);
@@ -2052,24 +2047,13 @@ namespace Volleyball.Presentation
             }
 
             var key = GateHReceiptKey(actor, action);
-            if (!_pendingGateHContactReceipts.TryGetValue(
-                    key,
-                    out var receipt))
-            {
-                return null;
-            }
-
-            _pendingGateHContactReceipts.Remove(key);
-            return receipt;
+            return _formalAuthority.TakeGateH(key);
         }
 
         private GateISetIntentReceiptV3 TakeGateISetIntentReceipt(StablePlayerId actor)
         {
             var key = GateHReceiptKey(actor, TechniqueAction.Set);
-            if (!_pendingGateISetIntentReceipts.TryGetValue(key, out var receipt))
-                return null;
-            _pendingGateISetIntentReceipts.Remove(key);
-            return receipt;
+            return _formalAuthority.TakeGateISetIntent(key);
         }
 
         private void HandleGateIAuthorityCommitted(AttackDefenseAuthorityReceipt receipt)
@@ -2080,8 +2064,7 @@ namespace Volleyball.Presentation
                 receipt.Kind == AttackDefenseCommandKind.AttackCover)
             {
                 var key = GateIReceiptKey(receipt.Actor, receipt.Kind);
-                if (!_pendingGateIContactReceipts.TryAdd(key, receipt))
-                    throw new InvalidOperationException("Gate I event-owned receipt cannot be overwritten.");
+                _formalAuthority.StoreGateIContact(key, receipt);
             }
             AttackDefenseAuthorityCommitted?.Invoke(receipt);
         }
@@ -2090,10 +2073,7 @@ namespace Volleyball.Presentation
             StablePlayerId actor, AttackDefenseCommandKind kind)
         {
             var key = GateIReceiptKey(actor, kind);
-            if (!_pendingGateIContactReceipts.TryGetValue(key, out var receipt))
-                return null;
-            _pendingGateIContactReceipts.Remove(key);
-            return receipt;
+            return _formalAuthority.TakeGateIContact(key);
         }
 
         private AttackDefenseAuthorityReceipt TakeGateIContactReceiptForAction(
@@ -2746,7 +2726,7 @@ namespace Volleyball.Presentation
             {
                 _attackDefenseCoordinator.CompleteReorganizationAndReset(
                     _attackDefenseCoordinator.State.Revision, ++_gateHSourceSequence);
-                _pendingGateIContactReceipts.Clear();
+                _formalAuthority.ClearGateIContacts();
             }
 
             switch (contact.Candidate.Action)
@@ -2811,7 +2791,7 @@ namespace Volleyball.Presentation
                             gateISetIntentReceipt);
                         RecordGateISetCalibration(actorId, actor.CurrentSetStyle,
                             contact.Hit.Centeredness);
-                        _activeGateISetIntent = null;
+                        _formalAuthority.ActiveSetIntent = null;
                         break;
                     }
 
@@ -2943,7 +2923,7 @@ namespace Volleyball.Presentation
                 // opportunity. The accepted contact already owns its snapshot,
                 // so carrying the remaining receipts into the next possession
                 // would either misattribute evidence or block the next writer.
-                _pendingGateIContactReceipts.Clear();
+                _formalAuthority.ClearGateIContacts();
             }
             var organization = _receiveOrganizationCoordinator.CurrentPlanning;
             if (organization.Decision.HasDecision)
@@ -3194,7 +3174,7 @@ namespace Volleyball.Presentation
             BallTrajectoryPredictionArtifactV4 trajectory,
             GateISetIntentReceiptV3 receipt)
         {
-            var intent = _activeGateISetIntent?.Intent;
+            var intent = _formalAuthority.ActiveSetIntent?.Intent;
             if (intent == null || receipt == null || classification == null || trajectory == null ||
                 !StableId(actor).Equals(intent.Organizer) ||
                 classification.ExecutableEnvelope.Identity != intent.ExecutionClassification.ExecutableEnvelope.Identity ||

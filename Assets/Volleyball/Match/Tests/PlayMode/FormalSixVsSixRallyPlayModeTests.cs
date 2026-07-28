@@ -527,7 +527,8 @@ namespace Volleyball.PlayModeTests
             // Gate I block-first continuation is a documented V3 correction;
             // the accounting invariant below includes it while rejecting any
             // unexpected parity divergence.
-            Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero);
+            Assert.That(director.V3RuleUnexpectedMismatches, Is.Zero,
+                director.LastV3RuleDiagnostic);
             Assert.That(
                 director.V3RuleParityMatches +
                 director.V3RuleIntentionalCorrections +
