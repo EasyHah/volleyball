@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Volleyball.AI;
 using Volleyball.Match.Domain.FullRallyV3;
+using TeamId = Volleyball.Domain.Prototype.TeamId;
 
 namespace Volleyball.Presentation
 {
@@ -26,6 +27,18 @@ namespace Volleyball.Presentation
         private long _planRevision;
         private long _sourceSequence;
 
+        public ReceiveOrganizationAuthorityCoordinator ReceiveCoordinator
+            { get; set; }
+        public AttackDefenseAuthorityCoordinator AttackCoordinator
+            { get; set; }
+        public IDictionary<TeamId, ReceiveOrganizationAuthorityController>
+            ReceiveControllers { get; } =
+                new Dictionary<TeamId,
+                    ReceiveOrganizationAuthorityController>();
+        public IDictionary<TeamId, AttackDefenseAuthorityController>
+            AttackControllers { get; } =
+                new Dictionary<TeamId,
+                    AttackDefenseAuthorityController>();
         public GateISetIntentPlanningResultV3 ActiveSetIntent { get; set; }
         public long CurrentPlanRevision => _planRevision;
         public long CurrentSourceSequence => _sourceSequence;

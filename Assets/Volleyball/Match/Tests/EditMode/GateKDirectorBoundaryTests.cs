@@ -51,6 +51,12 @@ namespace Volleyball.EditModeTests
                 Has.None.Contains("_gateHSourceSequence"));
             Assert.That(fields.Select(field => field.FieldType),
                 Does.Contain(typeof(FormalRallyAuthorityOrchestrator)));
+            Assert.That(fields.Select(field => field.FieldType),
+                Has.None.EqualTo(
+                    typeof(ReceiveOrganizationAuthorityCoordinator)));
+            Assert.That(fields.Select(field => field.FieldType),
+                Has.None.EqualTo(
+                    typeof(AttackDefenseAuthorityCoordinator)));
         }
     }
 }
