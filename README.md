@@ -27,12 +27,13 @@ Open this repository in Unity Hub with Unity `6000.3.20f1`. Unity will create
 local `Library/` files; they are intentionally ignored.
 
 The committed manifest and lock file are authoritative. They currently contain
-the Unity 6.3 built-in physics/UI modules, Test Framework, the official Input
-System used by Career menus, and the Newtonsoft package used by the Editor-side
-MenShen benchmark. The MenShen assembly and credentials stay Editor-only, although
-the package's global `Newtonsoft.Json.dll` currently remains in Player builds.
-URP and NavMesh remain separate reviewed changes and must not be added as part of
-unrelated feature work.
+the Unity 6.3 physics/UI, adaptive-performance and vector-graphics modules, Test
+Framework, the official Input System used by Career menus, and the Newtonsoft
+package used by the Editor-side MenShen benchmark. The MenShen assembly and
+credentials stay Editor-only, although the package's global
+`Newtonsoft.Json.dll` currently remains in Player builds. Add future rendering,
+input or navigation packages through Unity Package Manager and commit manifest
+and lock changes together.
 
 ## Repository layout
 

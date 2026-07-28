@@ -324,8 +324,8 @@ namespace Volleyball.Career.EditModeTests
             var snapshot = CareerSaveV2LifecycleTestData.MatchReadySnapshot();
             var calls = new List<string>();
             var repository = new MemoryRepository(snapshot, calls);
-            var executor = new CareerMatchExecutorV3(
-                new DeterministicFixtureMatchRunnerV3());
+            var executor = new CareerMatchExecutorV4(
+                new DeterministicFixtureMatchRunnerV4());
             var service = new CareerPendingMatchService(
                 repository,
                 new SpyRandom(calls, CareerMatchTestData.MatchSeed),

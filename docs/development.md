@@ -82,6 +82,107 @@ PlayMode regression coverage for complete 3v3 and formal 6v6 sets with Unity sce
 integration. Use a fixed random seed for deterministic simulation tests. Record
 the Unity editor and package lock versions used to reproduce each test run.
 
+## Full Rally V4 Gates A–E authority
+
+Save/Career, Match, result and replay production paths support only concrete V4
+contracts: `PlayerSnapshotV4`, `TeamSnapshotV4`, `MatchContextV4`,
+`MatchResultV4` and `MatchReplayV4`. There are no V1/V2/V3 readers, upgrades,
+fallback constructors or compatibility adapters. The 3v3 prototype also creates
+a V4 six-player roster and declares its three active players explicitly; it is
+not an exception to the contract boundary.
+
+Attribute-contract version and volleyball-rules version are independent.
+`ContractVersions.MatchV4` and `ContractVersions.ReplayV4` identify persisted
+contracts; `RulesVersions.FullRallyV3` identifies the retained authoritative
+touch, lineup, attack/block eligibility and boundary rules. A V4 contract change
+does not silently rename the rules engine, and a rules change does not silently
+change serialized attributes.
+
+The frozen V4 base input is:
+
+- physical: `HeightMeters`, `StandingReachMeters`, `Jump`, `Mobility`,
+  `Reaction`, `Coordination`;
+- technical: `AttackTechnique`, `AttackPower`, `BlockTechnique`,
+  `DefenseTechnique`, `ReceiveTechnique`, `SetTechnique`, `ServeTechnique`,
+  `SoftTouch`, `CourtAwareness`;
+- identity: `DominantHandV4`.
+
+The frozen derived output is:
+
+- Attack: `DirectionControl`, `SpeedControl`, `PowerCapacity`,
+  `ContactHeightMeters`, `ApproachMobility`;
+- Block: `Timing`, `HandControl`, `ReachHeightMeters`, `LateralMobility`;
+- Defense: `Reaction`, `PlatformControl`, `CoverageMobility`, `Awareness`;
+- Receive: `FirstTouchControl`, `Reaction`, `Movement`, `Awareness`;
+- Set: `PlacementControl`, `TempoControl`, `SoftTouch`, `Movement`,
+  `Awareness`;
+- Serve: `DirectionControl`, `SpeedControl`, `PowerCapacity`, `Consistency`.
+
+The published formula and coefficient table are both version 1. Changing a
+formula or coefficient increments its corresponding version and must change the
+derived result fingerprint, even when rounded numeric outputs happen to match.
+Adding or changing an authoritative base field requires V5. Runtime planning,
+execution and replay consume the immutable derived snapshot and record consumed
+fields separately from the serialized base/derived contract.
+
+Run the complete Gate A–E verification from the checkout under test. Do not add
+`-quit`; Unity 6000 may exit before writing test results when batch tests use it.
+
+```bash
+/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity \
+  -batchmode -projectPath "$PWD" \
+  -runTests -testPlatform EditMode \
+  -testResults /tmp/volleyball-v4-all-editmode.xml \
+  -logFile /tmp/volleyball-v4-all-editmode.log
+
+/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity \
+  -batchmode -projectPath "$PWD" \
+  -runTests -testPlatform PlayMode \
+  -testResults /tmp/volleyball-v4-all-playmode.xml \
+  -logFile /tmp/volleyball-v4-all-playmode.log
+
+rg -n "PlayerAbilitySnapshotV[123]|MatchContextV[12]|MatchResultV[12]|MatchReplayV[12]|InitializeV2|UpgradeFromV2" \
+  Assets/Volleyball --glob '!**/Tests/**'
+git diff --check
+```
+
+The Task 12 full-suite evidence on Unity `6000.0.43f1` is:
+
+- EditMode: `505/505` passed, `0` failed, `0` skipped, `0` inconclusive
+  after replacing three obsolete V3 Stage2 contract tests with one active-roster
+  enumeration regression;
+- PlayMode: `24/24` passed, `0` failed, `0` skipped, `0` inconclusive;
+- both legacy production searches returned no matches and `git diff --check`
+  was clean.
+
+Gates A–K and Full Rally V4 are complete. Gate H formal authority is enabled only for V3 Authority
+with a complete twelve-player formal roster. Immutable Gate F responsibilities
+select receive/organization ownership; the Gate H coordinator owns revision,
+fallback and bounded coverage decisions; the controller is the single writer
+through Gate G player facades. Accepted formal Receive/Set replay events carry
+their own exact authority receipt. Legacy 3v3 and V3 Shadow/Disabled remain
+outside Gate H, while accepted Set hands off to the temporary Gate I attack seam.
+
+Gate H completion evidence on Unity `6000.0.43f1` is EditMode `627/627`,
+PlayMode `31/31`, and fixed-seed determinism `2/2`, all with zero failures,
+skips or inconclusive results. Gate I completion evidence on Unity `6000.0.43f1`
+is EditMode `719/719`, PlayMode `34/34`, and fixed-seed determinism `2/2`, all
+with zero failures, skips or inconclusive results. Gate J completion evidence on
+Unity `6000.0.43f1` is EditMode `737/737` and PlayMode `35/35`, including
+strict/canonical Replay compatibility, recorder invariance and independent
+fixed-seed byte/hash stability, all with zero failures, skips or inconclusive
+results. Gate J is restricted to formal twelve-player V3 Authority; 3v3 and
+Shadow/Disabled emit no perception receipt. Gate K completion evidence is
+EditMode `745/745` and PlayMode `39/39`, with Director ownership scans clean,
+three-panel Replay HTML, deterministic work-budget evidence and a four-axis
+fixed-seed calibration matrix. macOS browser policy prevented opening the local
+`file://` artifact for a visual pass; Windows x64 and profiler validation remain
+release checks.
+
+The current `main` project is pinned to Unity `6000.3.20f1`. After the editor and
+package migration, the complete suites passed EditMode `745/745` and PlayMode
+`39/39` with zero failures, skips or inconclusive results.
+
 ## Windows delivery
 
 Windows x64 is the release platform. Unity `6000.3.20f1` has generated the committed
@@ -104,7 +205,7 @@ once per rally; and the next rally begins automatically.
 From the repository root, run both automated suites with the same Unity editor:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 mkdir -p TestResults
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
   -testResults "$PWD/TestResults/EditMode.xml" \
@@ -129,7 +230,7 @@ Run it from the repository root with Unity `6000.3.20f1`:
 ```bash
 source "$HOME/.zshrc"
 test -n "$MENSHEN_API_KEY" || { echo "MENSHEN_API_KEY is missing"; exit 1; }
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 "$UNITY" -batchmode -quit -projectPath "$PWD" \
   -executeMethod Volleyball.Editor.AI.MenShenBenchmarkCommand.Run \
   -logFile "$PWD/TestResults/MenShen-benchmark.log"
@@ -163,8 +264,8 @@ from their actual world positions, available time and abilities. Defender, sette
 and attacker are scoring preferences rather than action locks, so a reachable
 non-setter can organize and a reachable defender can attack.
 The scene then stops and displays `RESULT READY`; new matches expose one validated
-`MatchResultV2` with all six player statistics, while the explicit legacy initializer
-still exposes `MatchResultV1`. A legal opponent-court
+`MatchResultV4` with all six active-player statistics from a native V4 context.
+A legal opponent-court
 landing after the final touch scores, while an own-court landing, out-of-bounds
 opponent-court landing, antenna fault or contact timeout gives the point away.
 Net contact itself is legal when the ball later crosses the net inside the antenna
@@ -200,7 +301,8 @@ continues to model ordinary imperfect contacts without a team-specific advantage
 
 The default scene uses only the immediate deterministic planner. A runtime adapter
 may implement `IRallyTacticalWeightSource` and be passed to
-`ThreeVsThreeRallyDirector.Initialize` or `ConfigureAiDecisionSource`. While that
+`ThreeVsThreeRallyDirector.InitializePrototypeV4` or
+`ConfigureAiDecisionSource`. While that
 optional request is pending, `AiDecisionTimeController` slows global simulation,
 uses a real-time deadline, and restores the previous `Time.timeScale` and
 `Time.fixedDeltaTime` after success or local fallback. Remote output remains limited
@@ -216,13 +318,12 @@ sets require `0.90`; unavailable techniques fall back to a simpler visible pose
 and receive an additional control penalty. One-hand setting is an explicit
 emergency request, not the automatic result of an ordinary wide set.
 
-New physical matches use `MatchContextV2` and carry each player's metre-based
-`MaxAttackReach`. `AttackContactPlan` is the shared source for the planned takeoff,
+New physical matches use `MatchContextV4` and each player carries one immutable
+`DerivedMatchAttributesV4`. `AttackContactPlan` is the shared source for the planned takeoff,
 setter target and actual striking-palm centre. Set flight time is solved inside the
 selected rhythm's bounds; after the real set contact, the attacker replans from the
 actual trajectory. A-E set quality, fallback, responsibility and counters are
-recorded through the existing replay pipeline. Legacy V1 initialization remains a
-separate supported path and produces a V1 result.
+recorded through Replay V4. No legacy initialization or result path is supported.
 
 ## Formal indoor 6v6 loop
 
@@ -241,19 +342,19 @@ their own half while hands can legally penetrate the net plane for attack or blo
 Run the deterministic full-scene test with:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
   -testFilter "Volleyball.PlayModeTests.FormalSixVsSixRallyPlayModeTests" \
   -testResults "$PWD/TestResults/Formal6v6.xml" \
   -logFile "$PWD/TestResults/Formal6v6.log"
 ```
 
-Formal 6v6 configures `V3RulesMode.Authority`; the legacy 3v3 scene remains
+Formal 6v6 configures `V3RulesMode.Authority`; the V4 3v3 prototype remains
 `Disabled` with no V3 adapter. Run the Phase 1 authority gate and retain its
-local XML evidence with Unity `6000.0.43f1`:
+local XML evidence with Unity `6000.3.20f1`:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 mkdir -p TestResults
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
   -testResults "$PWD/TestResults/FullRallyV3-Phase1-final-edit.xml" \
@@ -269,34 +370,34 @@ The expected local artifacts are
 require one V3 transition and replay event per committed accepted contact, zero
 unexpected mismatches, and one score advance per completed rally.
 
-Run the unified attack-chain calibration (100 in-system setter contacts in each
+Run the unified attack-chain calibration (30 in-system setter contacts in each
 scene plus 20 symmetric formal sets) with:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
   -testFilter "Volleyball.PlayModeTests.AttackChainCalibrationPlayModeTests" \
   -testResults "$PWD/TestResults/AttackChainCalibration.xml" \
   -logFile "$PWD/TestResults/AttackChainCalibration.log"
 ```
 
-## Match Replay V1 artifacts
+## Match Replay V4 artifacts
 
 The formal 6v6 replay test captures its first completed rally as validated
-`MatchReplayV1` JSON and writes an interactive viewer beside it under the ignored
+`MatchReplayV4` JSON and writes an interactive viewer beside it under the ignored
 `TestResults/decision-replay/<run>/` directory. Sampling uses simulation time at
 10 Hz plus an exact snapshot for each recorded event. These files are local
 diagnostics; do not commit `TestResults/` or treat it as a save-game location.
 
-Run the replay contract and artifact checks with Unity `6000.0.43f1`:
+Run the replay contract and artifact checks with Unity `6000.3.20f1`:
 
 ```bash
-UNITY="/Applications/Unity/Unity.app/Contents/MacOS/Unity"
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 mkdir -p TestResults
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform EditMode \
-  -testFilter "Volleyball.EditModeTests.MatchReplayV1Tests" \
-  -testResults "$PWD/TestResults/MatchReplayV1.xml" \
-  -logFile "$PWD/TestResults/MatchReplayV1.log"
+  -testFilter "Volleyball.EditModeTests.MatchReplayV4Tests" \
+  -testResults "$PWD/TestResults/MatchReplayV4.xml" \
+  -logFile "$PWD/TestResults/MatchReplayV4.log"
 "$UNITY" -batchmode -projectPath "$PWD" -runTests -testPlatform PlayMode \
   -testFilter "Volleyball.PlayModeTests.FormalSixVsSixReplayPlayModeTests" \
   -testResults "$PWD/TestResults/FormalReplay.xml" \
@@ -309,8 +410,8 @@ Open one printed `index.html` path in a browser. The page loads its sibling
 `replay.json`; direct local-file viewing also has an embedded fallback. Confirm
 twelve player labels, score/server/rotation state, event navigation, decision
 auto-pause and the six-row candidate table. Readers reject any format version
-other than `1`; a future contract change must add a new version rather than
-silently changing V1 semantics.
+other than `4`; a future contract change must add a new version rather than
+silently changing V4 semantics.
 
 ## Physics-contact upgrade baseline
 

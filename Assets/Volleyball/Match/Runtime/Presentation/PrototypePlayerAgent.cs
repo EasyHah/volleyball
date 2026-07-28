@@ -6,10 +6,33 @@ using Volleyball.AI;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
+    public readonly struct ObservedAttackTakeoff
+    {
+        public ObservedAttackTakeoff(SimVector3 point, float simulationTime)
+        {
+            if (!point.IsFinite)
+            {
+                throw new ArgumentOutOfRangeException(nameof(point));
+            }
+            if (float.IsNaN(simulationTime) || float.IsInfinity(simulationTime))
+            {
+                throw new ArgumentOutOfRangeException(nameof(simulationTime));
+            }
+
+            Point = point;
+            SimulationTime = simulationTime;
+        }
+
+        public SimVector3 Point { get; }
+
+        public float SimulationTime { get; }
+    }
+
     public sealed class PrototypePlayerAgent : MonoBehaviour, IBallContactSource
     {
         public const float NetClearance = 0.18f;
@@ -22,101 +45,81 @@ namespace Volleyball.Presentation
 
         public StablePlayerId StableId { get; private set; }
 
-        public StickFigureRig Rig { get; private set; }
+        public StickFigureRig Rig => _presentation == null ? null : _presentation.Rig;
 
         public PlayerAbilityProfile Ability { get; private set; }
 
-        public PlayerContactSurfaces ContactSurfaces { get; private set; }
+        public PlayerContactSurfaces ContactSurfaces => _contactSurfaceProvider == null
+            ? null
+            : _contactSurfaceProvider.Surfaces;
 
-        public SetTechniqueStyle CurrentSetStyle => _setDecision.ExecutedStyle;
+        public SetTechniqueStyle CurrentSetStyle => _techniqueExecutor.SetDecision.ExecutedStyle;
 
-        public SetTechniqueStyle RequestedSetStyle => _setDecision.RequestedStyle;
+        public SetTechniqueStyle RequestedSetStyle => _techniqueExecutor.SetDecision.RequestedStyle;
 
-        public SimVector3 PreparedForward { get; private set; }
+        public SimVector3 PreparedForward => _locomotion.PreparedForward;
 
-        public Vector3 ScheduledMovementTarget => _hasPhysicalBlockContact || _hasSupportAction
-            ? _supportTargetPosition
-            : _movementTargetPosition;
+        public Vector3 ScheduledMovementTarget => _contactSurfaceProvider.HasPhysicalBlockContact || _actionTimelineState.HasSupportAction
+            ? _locomotion.SupportTarget
+            : _locomotion.ScheduledMovementTarget;
 
-        public string ReplayScheduledAction => _hasPhysicalBlockContact
+        public string ReplayScheduledAction => _contactSurfaceProvider.HasPhysicalBlockContact
             ? TechniqueAction.Block.ToString()
-            : _hasSupportAction
-                ? _supportAction.ToString()
-                : _hasScheduledContact
-                    ? _isControlledHandling ? "Handling" : _scheduledAction.ToString()
+            : _actionTimelineState.HasSupportAction
+                ? _actionTimelineState.SupportAction.ToString()
+                : _actionTimelineState.HasScheduledContact
+                    ? _techniqueExecutor.IsControlledHandling ? "Handling" : _techniqueExecutor.ScheduledAction.ToString()
                     : "Ready";
 
-        public float MovementShortfall { get; private set; }
+        public float MovementShortfall => _locomotion == null ? 0f : _locomotion.MovementShortfall;
 
-        public float ScheduledMovementDistance { get; private set; }
+        public float ScheduledMovementDistance => _locomotion == null ? 0f : _locomotion.ScheduledMovementDistance;
 
-        public int PhysicalBlockContactAssignments { get; private set; }
+        public int PhysicalBlockContactAssignments => _contactSurfaceProvider.PhysicalBlockContactAssignments;
 
-        public float BlockRetargetDistance { get; private set; }
+        public float BlockRetargetDistance => _contactSurfaceProvider.BlockRetargetDistance;
 
-        public float BlockRetargetTimeShift { get; private set; }
+        public float BlockRetargetTimeShift => _contactSurfaceProvider.BlockRetargetTimeShift;
 
-        public float PhysicalBlockContactTime { get; private set; }
+        public float PhysicalBlockContactTime => _contactSurfaceProvider.PhysicalBlockContactTime;
 
-        public float MaximumAppliedContactCorrection { get; private set; }
+        public float MaximumAppliedContactCorrection => _locomotion == null ? 0f : _locomotion.MaximumAppliedContactCorrection;
 
-        public SimVector3 LastScheduledSurfaceCenter { get; private set; }
+        public SimVector3 LastScheduledSurfaceCenter => _contactSurfaceProvider == null ? SimVector3.Zero : _contactSurfaceProvider.LastScheduledSurfaceCenter;
 
-        public SimVector3 LastScheduledSurfaceNormal { get; private set; }
+        public SimVector3 LastScheduledSurfaceNormal => _contactSurfaceProvider == null ? SimVector3.Zero : _contactSurfaceProvider.LastScheduledSurfaceNormal;
 
-        internal float MinimumActiveSurfacePlanError { get; private set; }
+        public ExecutionEnvelopeV4 ScheduledExecutionEnvelopeV4 => _techniqueExecutor.ExecutionEnvelope;
+
+        public ExecutionSampleV4 ScheduledExecutionSampleV4 => _techniqueExecutor.ExecutionSample;
+
+        public ExecutionSampleClassificationV4 ScheduledExecutionClassificationV4 =>
+            _techniqueExecutor.ExecutionClassification;
+
+        public BallTrajectoryPredictionArtifactV4
+            ScheduledTrajectoryPredictionArtifactV4 => _techniqueExecutor.TrajectoryArtifact;
+
+        internal float MinimumActiveSurfacePlanError => _contactSurfaceProvider == null ? float.PositiveInfinity : _contactSurfaceProvider.MinimumActiveSurfacePlanError;
 
         public bool IsWithinOwnCourt => IsWithinOwnCourtBounds(transform.position);
 
-        public bool EmergencyReceiveWindowEnabled => _hasEmergencyReceiveWindow;
+        public bool EmergencyReceiveWindowEnabled => _actionTimelineState.HasEmergencyReceiveWindow;
 
         public event Action<PrototypePlayerAgent, TechniqueAction> SupportActionActivated;
 
-        private ActionTimeline _actionTimeline;
-        private TechniqueAction _scheduledAction;
-        private SkillExecutionError _executionError;
-        private SimVector3 _targetVelocity;
-        private int _contactGroupId;
-        private bool _hasScheduledContact;
-        private Vector3 _motionOrigin;
-        private Vector3 _motionForward;
-        private SimVector3 _plannedContactCenter;
-        private bool _hasPlannedContactCenter;
-        private SetTechniqueDecision _setDecision;
-        private Vector3 _movementStartPosition;
-        private Vector3 _movementTargetPosition;
-        private float _movementStartSimulationTime;
-        private float _movementEndSimulationTime;
-        private bool _hasScheduledMovement;
-        private bool _isMovingThisStep;
-        private ActionTimeline _supportTimeline;
-        private TechniqueAction _supportAction;
-        private Vector3 _supportStartPosition;
-        private Vector3 _supportTargetPosition;
-        private float _supportStartSimulationTime;
-        private float _supportEndSimulationTime;
-        private bool _hasSupportAction;
-        private bool _supportActionActivated;
-        private bool _hasEmergencyReceiveWindow;
-        private float _emergencyReceiveStartSimulationTime;
-        private float _emergencyReceiveEndSimulationTime;
-        private SimVector3 _emergencyReceiveTargetVelocity;
-        private int _emergencyReceiveContactGroupId;
-        private bool _hasPhysicalBlockContact;
-        private SimVector3 _physicalBlockTargetVelocity;
-        private int _physicalBlockContactGroupId;
-        private float _physicalBlockContactRootHeight;
-        private bool _hasAttackApproach;
-        private AttackApproachPlan _attackApproach;
-        private bool _hasAttackContactPlan;
-        private AttackContactPlan _attackContactPlan;
-        private Vector3 _attackTakeoffPosition;
-        private Vector3 _attackContactRootPosition;
-        private bool _continueAttackPreparation;
-        private bool _physicalBlockActivationLogged;
-        private BlockArmContactVolumes _blockArmContactVolumes;
-        private bool _isControlledHandling;
+        public bool TryGetObservedAttackTakeoff(out ObservedAttackTakeoff takeoff)
+        {
+            takeoff = _locomotion.ObservedAttackTakeoff;
+            return _locomotion.HasObservedAttackTakeoff;
+        }
+
+        private readonly PlayerActionTimeline _actionTimelineState = new PlayerActionTimeline();
+        private readonly PlayerTechniqueExecutor _techniqueExecutor = new PlayerTechniqueExecutor();
+        private PlayerPresentation _presentation;
+        private PlayerContactSurfaceProvider _contactSurfaceProvider;
         private float _courtHalfLength = CourtBuilder.HalfLength;
+        private PlayerLocomotion _locomotion;
+
 
         public void Initialize(PlayerId id, Color color, string jerseyNumber)
         {
@@ -136,10 +139,10 @@ namespace Volleyball.Presentation
         {
             Id = id;
             StableId = stableId;
-            Rig = StickFigureRig.Create(transform, color, jerseyNumber);
+            _presentation = new PlayerPresentation(transform, color, jerseyNumber);
             Ability = PlayerAbilityProfile.Default;
-            ContactSurfaces = new PlayerContactSurfaces(Rig, transform);
-            _blockArmContactVolumes = new BlockArmContactVolumes(Rig);
+            _contactSurfaceProvider = new PlayerContactSurfaceProvider(Rig, transform);
+            _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
         }
 
         public void SetAbility(PlayerAbilityProfile ability)
@@ -155,8 +158,119 @@ namespace Volleyball.Presentation
             }
 
             _courtHalfLength = courtHalfLength;
+            _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
         }
 
+        public void ScheduleContact(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            ExecutionSampleClassificationV4 executionClassification,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter = null,
+            bool emergencyOneHand = false,
+            Vector3? movementTarget = null,
+            float movementStartSimulationTime = 0f,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            SetRoute? normalSetRoute = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
+            bool allowGateISoftAttack = false,
+            bool useExactTargetVelocity = false,
+            bool preservePlannedContactRoot = false)
+        {
+            ValidateV4Schedule(action, executionClassification, attackApproach,
+                attackContactPlan, allowGateISoftAttack);
+            _techniqueExecutor.ScheduleV4(
+                action,
+                scheduledSimulationTime,
+                executionClassification,
+                executionError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute,
+                trajectoryArtifact);
+            var command = _techniqueExecutor.ExecutionCommand;
+            ScheduleContactCore(
+                command.Action,
+                command.ScheduledSimulationTime,
+                command.TargetVelocity,
+                command.Error,
+                command.ContactGroupId,
+                command.PlannedContactCenter,
+                command.EmergencyOneHand,
+                command.MovementTarget,
+                command.MovementStartSimulationTime,
+                command.AttackApproach,
+                command.AttackContactPlan,
+                command.NormalSetRoute,
+                applyLegacyAttackPowerScale: false,
+                executionCommand: command,
+                useExactTargetVelocity: useExactTargetVelocity,
+                preservePlannedContactRoot: preservePlannedContactRoot);
+        }
+
+        public void ValidateV4Schedule(
+            TechniqueAction action,
+            ExecutionSampleClassificationV4 classification,
+            AttackApproachPlan? attackApproach = null,
+            AttackContactPlan? attackContactPlan = null,
+            bool allowGateISoftAttack = false)
+        {
+            ValidateScheduleContactArguments(
+                action,
+                attackApproach,
+                attackContactPlan);
+            PlayerTechniqueExecutor.ValidateV4(classification);
+            var expectedCategory = action switch
+            {
+                TechniqueAction.Receive => ExecutionCandidateCategoryV4.Receive,
+                TechniqueAction.Set => ExecutionCandidateCategoryV4.Set,
+                TechniqueAction.Attack => ExecutionCandidateCategoryV4.Attack,
+                TechniqueAction.Block => ExecutionCandidateCategoryV4.Block,
+                TechniqueAction.Serve => ExecutionCandidateCategoryV4.Serve,
+                _ => throw new ArgumentOutOfRangeException(nameof(action))
+            };
+            var category = classification.ExecutableEnvelope.CandidateCategory;
+            if (category != expectedCategory &&
+                !(allowGateISoftAttack && action == TechniqueAction.Attack &&
+                  category == ExecutionCandidateCategoryV4.SoftAction))
+            {
+                throw new InvalidOperationException(
+                    "V4 execution category must match the scheduled action.");
+            }
+        }
+
+        // Validation-only Gate G entry points used by Gate I atomic preflight.
+        // These methods deliberately do not schedule movement, contact, or Set.
+        public void ValidateGateIContact(
+            TechniqueAction action,
+            ExecutionSampleClassificationV4 classification,
+            BallTrajectoryPredictionArtifactV4 trajectory,
+            AttackApproachPlan? approach,
+            AttackContactPlan? contactPlan)
+        {
+            ValidateV4Schedule(action, classification, approach, contactPlan,
+                allowGateISoftAttack: true);
+            _techniqueExecutor.ValidateGateIContact(
+                action, classification, trajectory, approach, contactPlan);
+        }
+
+        public void ValidateGateISupport(
+            TechniqueAction action,
+            float scheduledTime,
+            Vector3 target)
+        {
+            _techniqueExecutor.ValidateGateISupport(action, scheduledTime, target);
+        }
+
+        // Compatibility path for legacy 3v3 callers. Formal V4 scheduling is
+        // routed through PlayerTechniqueExecutor.ScheduleV4 above.
         public void ScheduleContact(
             TechniqueAction action,
             float scheduledSimulationTime,
@@ -170,6 +284,136 @@ namespace Volleyball.Presentation
             AttackApproachPlan? attackApproach = null,
             AttackContactPlan? attackContactPlan = null,
             SetRoute? normalSetRoute = null)
+        {
+            ValidateScheduleContactArguments(action, attackApproach, attackContactPlan);
+            _techniqueExecutor.Clear();
+            ScheduleContactCore(
+                action,
+                scheduledSimulationTime,
+                targetVelocity,
+                executionError,
+                contactGroupId,
+                plannedContactCenter,
+                emergencyOneHand,
+                movementTarget,
+                movementStartSimulationTime,
+                attackApproach,
+                attackContactPlan,
+                normalSetRoute,
+                applyLegacyAttackPowerScale: true);
+        }
+
+        private void ScheduleContactCore(
+            TechniqueAction action,
+            float scheduledSimulationTime,
+            SimVector3 targetVelocity,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            SimVector3? plannedContactCenter,
+            bool emergencyOneHand,
+            Vector3? movementTarget,
+            float movementStartSimulationTime,
+            AttackApproachPlan? attackApproach,
+            AttackContactPlan? attackContactPlan,
+            SetRoute? normalSetRoute,
+            bool applyLegacyAttackPowerScale,
+            PlayerExecutionCommand executionCommand = null,
+            bool useExactTargetVelocity = false,
+            bool preservePlannedContactRoot = false)
+        {
+            ValidateScheduleContactArguments(action, attackApproach, attackContactPlan);
+
+            DisableBlockContactWindow();
+            _locomotion.ClearObservedAttackTakeoff();
+            var powerScale = applyLegacyAttackPowerScale && action == TechniqueAction.Attack
+                ? 0.90f + (Ability.AttackPowerCapacity * 0.10f)
+                : 1f;
+            var resolvedTargetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
+            var setDecision = default(SetTechniqueDecision);
+            if (action == TechniqueAction.Set)
+            {
+                var worldTarget = new Vector3(
+                    resolvedTargetVelocity.X,
+                    resolvedTargetVelocity.Y,
+                    resolvedTargetVelocity.Z);
+                var localTarget = transform.InverseTransformDirection(worldTarget);
+                setDecision = normalSetRoute.HasValue && !emergencyOneHand
+                    ? SetTechniqueSelector.SelectNormal(normalSetRoute.Value, Ability.SetTechnique)
+                    : SetTechniqueSelector.SelectEmergency(
+                        new SimVector3(localTarget.x, localTarget.y, localTarget.z),
+                        Ability.SetTechnique,
+                        emergencyOneHand);
+            }
+            var isControlledHandling = executionCommand?.ControlledHandling == true;
+            _techniqueExecutor.ConfigureLegacy(
+                action, executionError, contactGroupId, resolvedTargetVelocity, attackContactPlan,
+                setDecision, isControlledHandling);
+            _actionTimelineState.ScheduleContact(
+                action,
+                scheduledSimulationTime,
+                executionError.ContactTimingError);
+            var continuePreparedAttack = attackApproach.HasValue &&
+                                         (_locomotion.ContinueAttackPreparation ||
+                                          (_actionTimelineState.HasSupportAction &&
+                                           _actionTimelineState.SupportAction == TechniqueAction.Attack));
+            if (continuePreparedAttack)
+            {
+                ConfigureContinuationMovement(
+                    ToUnity(attackApproach.Value.Takeoff),
+                    _actionTimelineState.ContactTimeline.ActualContactTime);
+            }
+            else
+            {
+                var requestedMovementTarget = attackApproach.HasValue
+                    ? ToUnity(attackApproach.Value.ApproachStart)
+                    : movementTarget.GetValueOrDefault(transform.position);
+                ConfigureScheduledMovement(
+                    requestedMovementTarget,
+                    movementStartSimulationTime + executionError.ReactionDelay,
+                    action == TechniqueAction.Attack
+                        ? _actionTimelineState.ContactTimeline.ActualContactTime
+                        : scheduledSimulationTime,
+                    action,
+                    attackApproach.HasValue ? 0.72f : (float?)null);
+            }
+            if (attackApproach.HasValue)
+            {
+                ConfigureAttackApproach(attackApproach.Value, continuePreparedAttack);
+            }
+            _locomotion.ContinueAttackPreparation = false;
+            _locomotion.MotionOrigin = _locomotion.ScheduledMovementTarget;
+            _locomotion.MotionForward = transform.forward;
+            var authoritativeContactCenter = attackContactPlan?.ContactCenter ?? plannedContactCenter;
+            var contactAction = isControlledHandling ? TechniqueAction.Receive : action;
+            var surfaceAction = isControlledHandling ? TechniqueAction.Set : action;
+            var playerTechnique = action == TechniqueAction.Receive ||
+                                  action == TechniqueAction.Set ||
+                                  action == TechniqueAction.Attack
+                ? 1f
+                : Ability.TechniqueFor(action);
+            if (action == TechniqueAction.Set)
+            {
+                playerTechnique *= setDecision.ControlScale;
+            }
+
+            _contactSurfaceProvider.ScheduleContact(new ScheduledPlayerContact(
+                contactAction,
+                surfaceAction,
+                executionCommand?.ContactGroupId ?? contactGroupId,
+                playerTechnique,
+                resolvedTargetVelocity,
+                CurrentSetContactHand(),
+                authoritativeContactCenter,
+                useExactTargetVelocity,
+                preservePlannedContactRoot));
+            _contactSurfaceProvider.Begin();
+            _actionTimelineState.DisableSupport();
+        }
+
+        private static void ValidateScheduleContactArguments(
+            TechniqueAction action,
+            AttackApproachPlan? attackApproach,
+            AttackContactPlan? attackContactPlan)
         {
             if (attackApproach.HasValue && action != TechniqueAction.Attack)
             {
@@ -196,73 +440,61 @@ namespace Volleyball.Presentation
             {
                 attackContactPlan.Value.Validate();
             }
-
-            DisableBlockContactWindow();
-            _scheduledAction = action;
-            var powerScale = action == TechniqueAction.Attack
-                ? 0.90f + (Ability.AttackPower * 0.10f)
-                : 1f;
-            _targetVelocity = (targetVelocity * powerScale) + executionError.TargetVelocityError;
-            if (action == TechniqueAction.Set)
-            {
-                var worldTarget = new Vector3(
-                    _targetVelocity.X,
-                    _targetVelocity.Y,
-                    _targetVelocity.Z);
-                var localTarget = transform.InverseTransformDirection(worldTarget);
-                _setDecision = normalSetRoute.HasValue && !emergencyOneHand
-                    ? SetTechniqueSelector.SelectNormal(normalSetRoute.Value, Ability.SetTechnique)
-                    : SetTechniqueSelector.SelectEmergency(
-                        new SimVector3(localTarget.x, localTarget.y, localTarget.z),
-                        Ability.SetTechnique,
-                        emergencyOneHand);
-            }
-            _executionError = executionError;
-            _contactGroupId = contactGroupId;
-            _actionTimeline = new ActionTimeline(action, scheduledSimulationTime, executionError.ContactTimingError);
-            _hasAttackApproach = attackApproach.HasValue;
-            _attackApproach = attackApproach.GetValueOrDefault();
-            _hasAttackContactPlan = attackContactPlan.HasValue;
-            _attackContactPlan = attackContactPlan.GetValueOrDefault();
-            var continuePreparedAttack = attackApproach.HasValue &&
-                                         (_continueAttackPreparation ||
-                                          (_hasSupportAction && _supportAction == TechniqueAction.Attack));
-            if (continuePreparedAttack)
-            {
-                ConfigureContinuationMovement(
-                    ToUnity(attackApproach.Value.Takeoff),
-                    _actionTimeline.ActualContactTime);
-            }
-            else
-            {
-                var requestedMovementTarget = attackApproach.HasValue
-                    ? ToUnity(attackApproach.Value.ApproachStart)
-                    : movementTarget.GetValueOrDefault(transform.position);
-                ConfigureScheduledMovement(
-                    requestedMovementTarget,
-                    movementStartSimulationTime + executionError.ReactionDelay,
-                    action == TechniqueAction.Attack
-                        ? _actionTimeline.ActualContactTime
-                        : scheduledSimulationTime,
-                    action,
-                    attackApproach.HasValue ? 0.72f : (float?)null);
-            }
-            if (attackApproach.HasValue)
-            {
-                ConfigureAttackApproach(attackApproach.Value);
-            }
-            _continueAttackPreparation = false;
-            _motionOrigin = _movementTargetPosition;
-            _motionForward = transform.forward;
-            var authoritativeContactCenter = attackContactPlan?.ContactCenter ?? plannedContactCenter;
-            _hasPlannedContactCenter = authoritativeContactCenter.HasValue;
-            _plannedContactCenter = authoritativeContactCenter.GetValueOrDefault();
-            MinimumActiveSurfacePlanError = float.PositiveInfinity;
-            _hasScheduledContact = true;
-            _hasSupportAction = false;
-            _supportActionActivated = false;
         }
 
+        public void ScheduleControlledHandlingContact(
+            float scheduledSimulationTime,
+            ExecutionSampleClassificationV4 executionClassification,
+            SkillExecutionError executionError,
+            int contactGroupId,
+            AttackApproachPlan attackApproach,
+            AttackContactPlan attackContactPlan,
+            float movementStartSimulationTime)
+        {
+            if (attackContactPlan.Outcome != AttackContactOutcome.Handling)
+            {
+                throw new ArgumentException(
+                    "Controlled handling requires a handling contact plan.",
+                    nameof(attackContactPlan));
+            }
+
+            ValidateScheduleContactArguments(
+                TechniqueAction.Attack,
+                attackApproach,
+                attackContactPlan);
+
+            _techniqueExecutor.ScheduleV4(
+                TechniqueAction.Attack,
+                scheduledSimulationTime,
+                executionClassification,
+                executionError,
+                contactGroupId,
+                attackContactPlan.ContactCenter,
+                movementTarget: ToUnity(attackApproach.ApproachStart),
+                movementStartSimulationTime: movementStartSimulationTime,
+                attackApproach: attackApproach,
+                attackContactPlan: attackContactPlan,
+                controlledHandling: true);
+            var command = _techniqueExecutor.ExecutionCommand;
+            ScheduleContactCore(
+                command.Action,
+                command.ScheduledSimulationTime,
+                command.TargetVelocity,
+                command.Error,
+                command.ContactGroupId,
+                command.PlannedContactCenter,
+                command.EmergencyOneHand,
+                command.MovementTarget,
+                command.MovementStartSimulationTime,
+                command.AttackApproach,
+                command.AttackContactPlan,
+                command.NormalSetRoute,
+                applyLegacyAttackPowerScale: false,
+                executionCommand: command);
+            ConfigureControlledHandling(attackContactPlan);
+        }
+
+        // Compatibility path for legacy 3v3 controlled handling callers.
         public void ScheduleControlledHandlingContact(
             float scheduledSimulationTime,
             SimVector3 targetVelocity,
@@ -290,11 +522,28 @@ namespace Volleyball.Presentation
                 movementStartSimulationTime: movementStartSimulationTime,
                 attackApproach: attackApproach,
                 attackContactPlan: attackContactPlan);
-            _isControlledHandling = true;
-            _targetVelocity = targetVelocity + executionError.TargetVelocityError;
-            _attackContactRootPosition = ContactRootPosition(
-                attackContactPlan,
-                TechniqueAction.Set);
+            var resolvedTargetVelocity = targetVelocity + executionError.TargetVelocityError;
+            ConfigureControlledHandling(attackContactPlan);
+            _techniqueExecutor.ConfigureLegacy(
+                TechniqueAction.Attack, executionError, contactGroupId, resolvedTargetVelocity,
+                attackContactPlan, default, true);
+            _contactSurfaceProvider.ScheduleContact(new ScheduledPlayerContact(
+                TechniqueAction.Receive,
+                TechniqueAction.Set,
+                contactGroupId,
+                1f,
+                resolvedTargetVelocity,
+                SetContactHand.Both,
+                attackContactPlan.ContactCenter));
+        }
+
+        private void ConfigureControlledHandling(AttackContactPlan attackContactPlan)
+        {
+            _techniqueExecutor.SetControlledHandling(true);
+            _locomotion.ConfigureAttackContact(
+                ContactRootPosition(attackContactPlan, TechniqueAction.Set),
+                AttackJumpLead(),
+                Ability);
         }
 
         public void ContinueAttackPreparation(
@@ -310,22 +559,18 @@ namespace Volleyball.Presentation
             }
 
             contactPlan.Validate();
-            _continueAttackPreparation = true;
+            _locomotion.ContinueAttackPreparation = true;
             ConfigureContinuationMovement(ToUnity(approach.Takeoff), actualContactTime);
         }
 
         public void CancelScheduledContact()
         {
-            _hasScheduledContact = false;
-            _hasPlannedContactCenter = false;
-            _continueAttackPreparation = false;
-            _actionTimeline = null;
-            _hasSupportAction = false;
-            _supportTimeline = null;
-            _supportActionActivated = false;
-            _hasAttackApproach = false;
-            _hasAttackContactPlan = false;
-            _isControlledHandling = false;
+            _locomotion.ContinueAttackPreparation = false;
+            _actionTimelineState.CancelContact();
+            _actionTimelineState.DisableSupport();
+            _contactSurfaceProvider.Clear();
+            _contactSurfaceProvider.ClearScheduledContact();
+            _techniqueExecutor.Clear();
             DisableBlockContactWindow();
             DisableEmergencyReceiveWindow();
         }
@@ -336,16 +581,16 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             int contactGroupId)
         {
-            _hasEmergencyReceiveWindow = true;
-            _emergencyReceiveStartSimulationTime = startSimulationTime;
-            _emergencyReceiveEndSimulationTime = Mathf.Max(startSimulationTime, endSimulationTime);
-            _emergencyReceiveTargetVelocity = targetVelocity;
-            _emergencyReceiveContactGroupId = contactGroupId;
+            _actionTimelineState.EnableEmergencyReceive(
+                startSimulationTime,
+                endSimulationTime,
+                targetVelocity,
+                contactGroupId);
         }
 
         public void DisableEmergencyReceiveWindow()
         {
-            _hasEmergencyReceiveWindow = false;
+            _actionTimelineState.DisableEmergencyReceive();
         }
 
         public void ScheduleSupportAction(
@@ -361,8 +606,7 @@ namespace Volleyball.Presentation
 
             DisableBlockContactWindow();
             ConfigureSupportAction(action, scheduledSimulationTime, movementTarget, movementStartSimulationTime);
-            _hasSupportAction = true;
-            _supportActionActivated = false;
+            _actionTimelineState.SupportActionActivated = false;
         }
 
         public void ScheduleAttackPreparation(
@@ -376,8 +620,7 @@ namespace Volleyball.Presentation
                 scheduledSetContactTime,
                 approachStart,
                 movementStartSimulationTime);
-            _hasSupportAction = true;
-            _supportActionActivated = false;
+            _actionTimelineState.SupportActionActivated = false;
         }
 
         public void ScheduleSetPreparation(
@@ -391,8 +634,7 @@ namespace Volleyball.Presentation
                 scheduledReceiveContactTime,
                 settingPosition,
                 movementStartSimulationTime);
-            _hasSupportAction = true;
-            _supportActionActivated = false;
+            _actionTimelineState.SupportActionActivated = false;
         }
 
         public void ScheduleBlockContact(
@@ -400,7 +642,9 @@ namespace Volleyball.Presentation
             Vector3 movementTarget,
             float movementStartSimulationTime,
             SimVector3 targetVelocity,
-            int contactGroupId)
+            int contactGroupId,
+            ExecutionSampleClassificationV4 executionClassification = null,
+            BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null)
         {
             if (!targetVelocity.IsFinite)
             {
@@ -408,24 +652,34 @@ namespace Volleyball.Presentation
             }
 
             CancelScheduledContact();
+            if (executionClassification != null)
+            {
+                _techniqueExecutor.ScheduleV4(
+                    TechniqueAction.Block,
+                    scheduledSimulationTime,
+                    executionClassification,
+                    NoExecutionError(),
+                    contactGroupId,
+                    trajectoryArtifact: trajectoryArtifact);
+            }
             transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
+            var blockContactRootHeight = movementTarget.y > 0f
+                ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
+                : MaximumBlockContactRootHeight();
             ConfigureSupportAction(
                 TechniqueAction.Block,
                 scheduledSimulationTime,
                 movementTarget,
-                movementStartSimulationTime);
-            _physicalBlockContactRootHeight = movementTarget.y > 0f
-                ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
-                : MaximumBlockContactRootHeight();
-            _physicalBlockTargetVelocity = targetVelocity;
-            _physicalBlockContactGroupId = contactGroupId;
-            _hasPhysicalBlockContact = true;
-            PhysicalBlockContactTime = scheduledSimulationTime;
-            _physicalBlockActivationLogged = false;
-            PhysicalBlockContactAssignments++;
-            BlockRetargetDistance = 0f;
-            BlockRetargetTimeShift = 0f;
-            ScheduledMovementDistance = Vector3.Distance(_supportStartPosition, _supportTargetPosition);
+                movementStartSimulationTime,
+                isSupportAction: false,
+                blockContactHeight: blockContactRootHeight);
+            _contactSurfaceProvider.Begin();
+            _contactSurfaceProvider.SchedulePhysicalBlock(targetVelocity, contactGroupId, scheduledSimulationTime);
+        }
+
+        private static SkillExecutionError NoExecutionError()
+        {
+            return new SkillExecutionError(0f, SimVector3.Zero, SimVector3.Zero, 0f, 1f, SimVector3.Zero, 1f);
         }
 
         public bool RetargetBlockContact(
@@ -433,7 +687,7 @@ namespace Volleyball.Presentation
             Vector3 movementTarget,
             SimVector3 targetVelocity)
         {
-            if (!_hasPhysicalBlockContact)
+            if (!_contactSurfaceProvider.HasPhysicalBlockContact)
             {
                 return false;
             }
@@ -443,36 +697,28 @@ namespace Volleyball.Presentation
                 throw new ArgumentOutOfRangeException(nameof(targetVelocity));
             }
 
-            var requestedShift = scheduledSimulationTime - _supportTimeline.ScheduledContactTime;
+            var requestedShift = scheduledSimulationTime - _actionTimelineState.SupportTimeline.ScheduledContactTime;
             var appliedShift = Mathf.Clamp(requestedShift, -0.12f, 0.12f);
-            var adjustedContactTime = _supportTimeline.ScheduledContactTime + appliedShift;
-            _supportTimeline = new ActionTimeline(TechniqueAction.Block, adjustedContactTime);
-            PhysicalBlockContactTime = adjustedContactTime;
-            BlockRetargetTimeShift = Mathf.Abs(appliedShift);
-
-            var previousTarget = _supportTargetPosition;
-            _supportTargetPosition = Vector3.MoveTowards(
-                previousTarget,
-                ConstrainGroundPosition(movementTarget),
-                0.549f);
-            _physicalBlockContactRootHeight = movementTarget.y > 0f
+            var adjustedContactTime = _actionTimelineState.SupportTimeline.ScheduledContactTime + appliedShift;
+            _actionTimelineState.ScheduleBlock(adjustedContactTime);
+            var previousTarget = _locomotion.SupportTarget;
+            _locomotion.RetargetSupportMovement(movementTarget, adjustedContactTime);
+            var blockContactRootHeight = movementTarget.y > 0f
                 ? Mathf.Min(MaximumBlockContactRootHeight(), movementTarget.y)
                 : MaximumBlockContactRootHeight();
-            BlockRetargetDistance = Vector3.Distance(previousTarget, _supportTargetPosition);
-            _supportEndSimulationTime = Mathf.Max(
-                _supportStartSimulationTime + 0.01f,
-                adjustedContactTime - 0.10f);
-            _physicalBlockTargetVelocity = targetVelocity;
-            ScheduledMovementDistance = Vector3.Distance(_supportStartPosition, _supportTargetPosition);
+            _locomotion.SetSupportBlockContactHeight(blockContactRootHeight);
+            _contactSurfaceProvider.RetargetPhysicalBlock(
+                targetVelocity, adjustedContactTime, appliedShift,
+                Vector3.Distance(previousTarget, _locomotion.SupportTarget));
             return true;
         }
 
         public void DisableBlockContactWindow()
         {
-            _hasPhysicalBlockContact = false;
-            if (!_hasSupportAction)
+            _contactSurfaceProvider.DisablePhysicalBlock();
+            if (!_actionTimelineState.HasSupportAction)
             {
-                _supportTimeline = null;
+                _actionTimelineState.DisableSupport();
             }
         }
 
@@ -480,30 +726,34 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             float scheduledSimulationTime,
             Vector3 movementTarget,
-            float movementStartSimulationTime)
+            float movementStartSimulationTime,
+            bool isSupportAction = true,
+            float blockContactHeight = 0f)
         {
-            _supportAction = action;
-            _supportTimeline = new ActionTimeline(action, scheduledSimulationTime);
-            _supportStartPosition = ConstrainGroundPosition(transform.position);
-            _supportStartSimulationTime = movementStartSimulationTime;
-            _supportEndSimulationTime = Mathf.Max(
-                _supportStartSimulationTime + 0.01f,
-                scheduledSimulationTime - 0.10f);
-            var availableSeconds = _supportEndSimulationTime - _supportStartSimulationTime;
-            var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
-            _supportTargetPosition = Vector3.MoveTowards(
-                _supportStartPosition,
-                ConstrainGroundPosition(movementTarget),
-                maximumSpeed * availableSeconds);
+            if (isSupportAction)
+            {
+                _actionTimelineState.ScheduleSupport(action, scheduledSimulationTime);
+            }
+            else
+            {
+                _actionTimelineState.ScheduleBlock(scheduledSimulationTime);
+            }
+            _locomotion.ConfigureSupportMovement(
+                action,
+                movementTarget,
+                movementStartSimulationTime,
+                scheduledSimulationTime,
+                Ability,
+                blockContactHeight);
         }
 
         public void PrepareForTraining(Vector3 worldPosition)
         {
             CancelScheduledContact();
             var constrained = ConstrainToOwnCourt(worldPosition);
-            transform.position = constrained;
-            _motionOrigin = constrained;
-            Rig.SetPose(StickFigurePose.Ready, 1f);
+            SetRootPosition(constrained);
+            _locomotion.MotionOrigin = constrained;
+            _presentation.ApplyReadyPose();
         }
 
         public void SetPreparedFacing(TeamCourtFrame frame, SetRoute route)
@@ -513,7 +763,7 @@ namespace Volleyball.Presentation
                 throw new ArgumentOutOfRangeException(nameof(route));
             }
 
-            PreparedForward = PreparedForwardFor(frame);
+            _locomotion.PreparedForward = PreparedForwardFor(frame);
             transform.forward = new Vector3(PreparedForward.X, PreparedForward.Y, PreparedForward.Z);
         }
 
@@ -525,7 +775,7 @@ namespace Volleyball.Presentation
         public void ApplyCrowdingOffset(Vector3 worldOffset)
         {
             worldOffset.y = 0f;
-            transform.position = ConstrainToOwnCourt(transform.position + worldOffset);
+            SetRootPosition(transform.position + worldOffset);
         }
 
         public IReadOnlyList<ContactSurfaceFrame> PreviewContactFrames(TechniqueAction action)
@@ -574,26 +824,19 @@ namespace Volleyball.Presentation
 
             var savedPosition = transform.position;
             var savedRotation = transform.rotation;
-            var savedRotations = Rig.CaptureLocalRotations();
             try
             {
-                transform.position = ConstrainToOwnCourt(rootPosition);
+                SetRootPosition(rootPosition);
                 transform.forward = Id.Team == TeamId.Blue ? Vector3.forward : Vector3.back;
-                Rig.SetPose(StickFigurePose.Block, 1f);
-                var snapshots = new BlockArmContactVolumes(Rig).Capture(false, 0);
-                var frames = new ContactCapsuleFrame[snapshots.Count];
-                for (var index = 0; index < snapshots.Count; index++)
+                return _presentation.WithPreviewBlockPose(() =>
                 {
-                    frames[index] = snapshots[index].Current;
-                }
-
-                return frames;
+                    return _contactSurfaceProvider.PreviewBlockFrames();
+                });
             }
             finally
             {
-                transform.position = savedPosition;
+                SetRootPosition(savedPosition);
                 transform.rotation = savedRotation;
-                Rig.RestoreLocalRotations(savedRotations);
             }
         }
 
@@ -665,25 +908,17 @@ namespace Volleyball.Presentation
             Vector3 worldPosition)
         {
             var savedPosition = transform.position;
-            var savedRotations = Rig.CaptureLocalRotations();
             try
             {
-                transform.position = ConstrainToOwnCourt(worldPosition);
-                Rig.SetPose(ContactPoseFor(action), 1f);
-                var previewSurfaces = new PlayerContactSurfaces(Rig, transform)
-                    .Capture(action, true, 0);
-                var frames = new ContactSurfaceFrame[previewSurfaces.Count];
-                for (var index = 0; index < previewSurfaces.Count; index++)
+                SetRootPosition(worldPosition);
+                return _presentation.WithPreviewPose(action, _techniqueExecutor.SetDecision.ExecutedStyle, () =>
                 {
-                    frames[index] = previewSurfaces[index].Current;
-                }
-
-                return frames;
+                    return _contactSurfaceProvider.PreviewFrames(action, CurrentSetContactHand());
+                });
             }
             finally
             {
-                transform.position = savedPosition;
-                Rig.RestoreLocalRotations(savedRotations);
+                SetRootPosition(savedPosition);
             }
         }
 
@@ -697,91 +932,39 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            transform.position = ConstrainToOwnCourt(transform.position);
+            SetRootPosition(transform.position);
 
-            if (_hasPhysicalBlockContact && !_hasScheduledContact)
+            if (_contactSurfaceProvider.HasPhysicalBlockContact && !_actionTimelineState.HasScheduledContact)
             {
                 CollectPhysicalBlockContacts(simulationTime, deltaSeconds, contacts);
                 return;
             }
 
-            if (_hasSupportAction && !_hasScheduledContact)
+            if (_actionTimelineState.HasSupportAction && !_actionTimelineState.HasScheduledContact)
             {
                 ApplySupportAction(simulationTime, deltaSeconds);
             }
 
-            if (!_hasScheduledContact &&
+            if (!_actionTimelineState.HasScheduledContact &&
                 TryAddEmergencyReceiveContacts(simulationTime, deltaSeconds, contacts))
             {
                 return;
             }
 
-            if (!_hasScheduledContact)
+            if (!_actionTimelineState.HasScheduledContact)
             {
                 return;
             }
 
-            var sample = _actionTimeline.Sample(simulationTime);
-            ApplyScheduledRootMotion(sample, simulationTime);
+            _actionTimelineState.TrySampleContact(simulationTime, out var sample);
+            ApplyScheduledRootMotion(sample, simulationTime, deltaSeconds);
+            CaptureObservedAttackTakeoff(simulationTime);
             ApplyScheduledPose(sample, deltaSeconds);
-            ApplyLimitedContactAlignment(sample);
-            transform.position = ConstrainToOwnCourt(transform.position);
-            var contactAction = _isControlledHandling
-                ? TechniqueAction.Receive
-                : _scheduledAction;
-            var surfaceAction = _isControlledHandling
-                ? TechniqueAction.Set
-                : _scheduledAction;
-            var surfaces = ContactSurfaces.Capture(
-                surfaceAction,
-                sample.SurfaceActive,
-                _contactGroupId,
-                setContactHand: CurrentSetContactHand());
-            LastScheduledSurfaceCenter = SimVector3.Zero;
-            LastScheduledSurfaceNormal = SimVector3.Zero;
-            foreach (var surface in surfaces)
-            {
-                LastScheduledSurfaceCenter += surface.Current.Origin +
-                                              (surface.Current.Normal * SimulatedBall.DefaultRadius);
-                LastScheduledSurfaceNormal += surface.Current.Normal;
-            }
-
-            LastScheduledSurfaceCenter /= surfaces.Count;
-            LastScheduledSurfaceNormal = (LastScheduledSurfaceNormal / surfaces.Count).Normalized;
-            if (sample.SurfaceActive && _hasPlannedContactCenter)
-            {
-                MinimumActiveSurfacePlanError = Mathf.Min(
-                    MinimumActiveSurfacePlanError,
-                    (LastScheduledSurfaceCenter - _plannedContactCenter).Magnitude);
-            }
-            var strikeDirection = _targetVelocity.SqrMagnitude > 0.000001f
-                ? _targetVelocity.Normalized
-                : SimVector3.Up;
-            var response = ResponseFor(contactAction);
-            // AI assistance resolves the physical impulse toward this action's already-imperfect
-            // execution target. Ability still changes that target, reaction time, reachable position,
-            // contact pose and set-style availability before technique control is applied.
-            var playerTechnique = _scheduledAction == TechniqueAction.Receive ||
-                                  _scheduledAction == TechniqueAction.Set ||
-                                  _scheduledAction == TechniqueAction.Attack
-                ? 1f
-                : Ability.TechniqueFor(_scheduledAction);
-            if (_scheduledAction == TechniqueAction.Set)
-            {
-                playerTechnique *= _setDecision.ControlScale;
-            }
-
-            foreach (var surface in surfaces)
-            {
-                contacts.Add(new BallContactCandidate(
-                    surface,
-                    contactAction,
-                    Id,
-                    playerTechnique,
-                    _targetVelocity,
-                    strikeDirection,
-                    response));
-            }
+            ApplyLimitedContactAlignment(sample, deltaSeconds);
+            SetRootPosition(transform.position);
+            _contactSurfaceProvider.Collect(
+                _contactSurfaceProvider.ScheduledContact.WithSample(Id, sample),
+                contacts);
 
             if (sample.Phase == ActionPhase.Complete)
             {
@@ -794,21 +977,21 @@ namespace Volleyball.Presentation
             float deltaSeconds,
             ICollection<BallContactCandidate> contacts)
         {
-            var sample = _supportTimeline.Sample(simulationTime);
-            transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
-            var pose = sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete
-                ? StickFigurePose.Ready
-                : StickFigurePose.Block;
-            Rig.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
-            var armVolumes = _blockArmContactVolumes.Capture(
-                sample.SurfaceActive,
-                _physicalBlockContactGroupId);
+            _actionTimelineState.TrySampleSupport(simulationTime, out var sample);
+            SetRootPosition(_locomotion.SampleSupport(
+                simulationTime,
+                _actionTimelineState.SupportTimeline.ActualContactTime,
+                Ability));
+            _presentation.ApplySupportPose(sample, TechniqueAction.Block, deltaSeconds);
+            var armVolumes = _contactSurfaceProvider.CaptureBlock(
+                sample,
+                _contactSurfaceProvider.PhysicalBlockContactGroupId);
 
             if (sample.SurfaceActive)
             {
-                if (!_physicalBlockActivationLogged)
+                if (!_contactSurfaceProvider.PhysicalBlockActivationLogged)
                 {
-                    _physicalBlockActivationLogged = true;
+                    _contactSurfaceProvider.PhysicalBlockActivationLogged = true;
                     Debug.Log(
                         $"[Physical3v3] block-surface team={Id.Team} actor={Id.Role} " +
                         $"time={simulationTime:0.00} root=({transform.position.x:0.00}," +
@@ -818,26 +1001,20 @@ namespace Volleyball.Presentation
                         $"{armVolumes[2].Current.End.Z:0.00})");
                 }
 
-                var strikeDirection = _physicalBlockTargetVelocity.SqrMagnitude > 0.000001f
-                    ? _physicalBlockTargetVelocity.Normalized
-                    : -new SimVector3(transform.forward.x, transform.forward.y, transform.forward.z);
-                var response = ResponseFor(TechniqueAction.Block);
-                foreach (var armVolume in armVolumes)
-                {
-                    contacts.Add(new BallContactCandidate(
-                        armVolume,
-                        TechniqueAction.Block,
-                        Id,
-                        Ability.TechniqueFor(TechniqueAction.Block),
-                        _physicalBlockTargetVelocity,
-                        strikeDirection,
-                        response));
-                }
+                _contactSurfaceProvider.CollectBlock(
+                    Id,
+                    sample,
+                    _contactSurfaceProvider.PhysicalBlockContactGroupId,
+                    Ability.TechniqueFor(TechniqueAction.Block),
+                    _contactSurfaceProvider.PhysicalBlockTargetVelocity,
+                    -new SimVector3(transform.forward.x, transform.forward.y, transform.forward.z),
+                    armVolumes,
+                    contacts);
             }
 
             if (sample.Phase == ActionPhase.Complete)
             {
-                transform.position = ConstrainToOwnCourt(_supportTargetPosition);
+                SetRootPosition(_locomotion.SupportTarget);
                 DisableBlockContactWindow();
             }
         }
@@ -847,412 +1024,171 @@ namespace Volleyball.Presentation
             float deltaSeconds,
             ICollection<BallContactCandidate> contacts)
         {
-            if (!_hasEmergencyReceiveWindow)
+            if (!_actionTimelineState.HasEmergencyReceiveWindow)
             {
                 return false;
             }
 
-            if (simulationTime < _emergencyReceiveStartSimulationTime)
+            if (simulationTime < _actionTimelineState.EmergencyReceiveStartSimulationTime)
             {
                 return false;
             }
 
-            if (simulationTime > _emergencyReceiveEndSimulationTime)
+            if (simulationTime > _actionTimelineState.EmergencyReceiveEndSimulationTime)
             {
                 DisableEmergencyReceiveWindow();
                 return false;
             }
 
-            Rig.SetPose(StickFigurePose.Receive, Mathf.Clamp01(deltaSeconds * 18f));
-            var strikeDirection = _emergencyReceiveTargetVelocity.SqrMagnitude > 0.000001f
-                ? _emergencyReceiveTargetVelocity.Normalized
-                : SimVector3.Up;
-            var response = ResponseFor(TechniqueAction.Receive);
+            _presentation.ApplyEmergencyReceivePose(deltaSeconds);
+            var targetVelocity = _actionTimelineState.EmergencyReceiveTargetVelocity;
             var playerTechnique = Ability.TechniqueFor(TechniqueAction.Receive);
-            var surfaces = ContactSurfaces.Capture(
-                TechniqueAction.Receive,
-                true,
-                _emergencyReceiveContactGroupId);
-            foreach (var surface in surfaces)
-            {
-                contacts.Add(new BallContactCandidate(
-                    surface,
-                    TechniqueAction.Receive,
+            _contactSurfaceProvider.Collect(
+                new PlayerContactInput(
                     Id,
+                    TechniqueAction.Receive,
+                    TechniqueAction.Receive,
+                    new ActionTimelineSample(ActionPhase.Contact, 0f, 0f, 1f, true),
+                    _actionTimelineState.EmergencyReceiveContactGroupId,
                     playerTechnique,
-                    _emergencyReceiveTargetVelocity,
-                    strikeDirection,
-                    response));
-            }
+                    targetVelocity,
+                    SetContactHand.Both),
+                contacts);
 
             return true;
         }
 
         private void ApplySupportAction(float simulationTime, float deltaSeconds)
         {
-            var sample = _supportTimeline.Sample(simulationTime);
-            transform.position = ConstrainToOwnCourt(EvaluateSupportPosition(simulationTime));
-            if (!_supportActionActivated &&
+            _actionTimelineState.TrySampleSupport(simulationTime, out var sample);
+            SetRootPosition(_locomotion.SampleSupport(
+                simulationTime,
+                _actionTimelineState.SupportTimeline.ActualContactTime,
+                Ability));
+            if (!_actionTimelineState.SupportActionActivated &&
                 (sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact))
             {
-                _supportActionActivated = true;
-                SupportActionActivated?.Invoke(this, _supportAction);
+                _actionTimelineState.SupportActionActivated = true;
+                SupportActionActivated?.Invoke(this, _actionTimelineState.SupportAction);
             }
 
-            var pose = _supportAction switch
-            {
-                TechniqueAction.Block => StickFigurePose.Block,
-                TechniqueAction.Attack => StickFigurePose.Run,
-                TechniqueAction.Set => StickFigurePose.Run,
-                _ => StickFigurePose.Receive
-            };
-            if (sample.Phase == ActionPhase.Prepare && _supportAction == TechniqueAction.Receive)
-            {
-                pose = StickFigurePose.Run;
-            }
-            else if (sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete)
-            {
-                pose = StickFigurePose.Ready;
-            }
-
-            Rig.SetPose(pose, Mathf.Clamp01(deltaSeconds * 12f));
+            _presentation.ApplySupportPose(sample, _actionTimelineState.SupportAction, deltaSeconds);
             if (sample.Phase == ActionPhase.Complete)
             {
-                _hasSupportAction = false;
-                _supportTimeline = null;
-                _supportActionActivated = false;
-                transform.position = ConstrainToOwnCourt(_supportTargetPosition);
+                _actionTimelineState.DisableSupport();
+                _actionTimelineState.SupportActionActivated = false;
+                SetRootPosition(_locomotion.SupportTarget);
             }
         }
 
         private void ApplyScheduledPose(ActionTimelineSample sample, float deltaSeconds)
         {
-            if (_isMovingThisStep && sample.Phase == ActionPhase.Prepare)
+            if (_contactSurfaceProvider.PreservePlannedContactRoot &&
+                _techniqueExecutor.ScheduledAction == TechniqueAction.Receive)
             {
-                Rig.SetPose(StickFigurePose.Run, Mathf.Clamp01(deltaSeconds * 12f));
+                _presentation.ApplyPose(TechniqueAction.Receive,
+                    _techniqueExecutor.SetDecision.ExecutedStyle, 1f);
                 return;
             }
-
-            if (_isControlledHandling)
-            {
-                var handlingPose = sample.Phase == ActionPhase.Recover ||
-                                   sample.Phase == ActionPhase.Complete
-                    ? StickFigurePose.Ready
-                    : StickFigurePose.Set;
-                Rig.SetPoseWithContactError(
-                    handlingPose,
-                    Mathf.Clamp01(deltaSeconds * 14f),
-                    TechniqueAction.Set,
-                    _executionError.ContactPositionError,
-                    _executionError.ContactNormalErrorDegrees,
-                    sample.SurfaceActive ? 1f : 0f);
-                return;
-            }
-
-            if (_scheduledAction == TechniqueAction.Attack && ApplyAttackPose(sample, deltaSeconds))
-            {
-                return;
-            }
-
-            if (_scheduledAction == TechniqueAction.Set && ApplySetPose(sample, deltaSeconds))
-            {
-                return;
-            }
-
-            var pose = _scheduledAction switch
-            {
-                TechniqueAction.Receive => StickFigurePose.Receive,
-                TechniqueAction.Set => StickFigurePose.Set,
-                TechniqueAction.Attack => sample.Phase == ActionPhase.Prepare
-                    ? StickFigurePose.Approach
-                    : sample.Phase == ActionPhase.FollowThrough || sample.Phase == ActionPhase.Recover
-                        ? StickFigurePose.Landing
-                        : StickFigurePose.Spike,
-                TechniqueAction.Block => StickFigurePose.Block,
-                TechniqueAction.Serve => StickFigurePose.Serve,
-                _ => StickFigurePose.Ready
-            };
-            if (sample.Phase == ActionPhase.Recover || sample.Phase == ActionPhase.Complete)
-            {
-                pose = StickFigurePose.Ready;
-            }
-
-            var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
-                ? 1f
-                : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
-            var blend = Mathf.Clamp01(deltaSeconds * 18f * _executionError.SurfaceSpeedScale);
-            Rig.SetPoseWithContactError(
-                pose,
-                blend,
-                _scheduledAction,
-                _executionError.ContactPositionError,
-                _executionError.ContactNormalErrorDegrees,
-                errorWeight);
+            _presentation.ApplyScheduledPose(
+                sample, _techniqueExecutor.ScheduledAction, _techniqueExecutor.IsControlledHandling,
+                _techniqueExecutor.SetDecision.ExecutedStyle, _techniqueExecutor.ScheduledError,
+                _locomotion.IsMovingThisStep, deltaSeconds);
         }
 
-        private bool ApplySetPose(ActionTimelineSample sample, float deltaSeconds)
+        private void ApplyScheduledRootMotion(
+            ActionTimelineSample sample,
+            float simulationTime,
+            float deltaSeconds)
         {
-            var contactPose = SetContactPose(_setDecision.ExecutedStyle);
-            var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
-                ? 1f
-                : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
-            switch (sample.Phase)
+            var locomotionSample = _locomotion.Sample(
+                simulationTime,
+                deltaSeconds,
+                !_techniqueExecutor.IsControlledHandling &&
+                _techniqueExecutor.ScheduledAction == TechniqueAction.Attack &&
+                sample.Phase == ActionPhase.Contact &&
+                _contactSurfaceProvider.HasPlannedContactCenter);
+            var movementPosition = locomotionSample.Position;
+            _locomotion.IsMovingThisStep = _locomotion.HasScheduledMovement && !locomotionSample.MovementComplete;
+            if (_techniqueExecutor.ScheduledAction != TechniqueAction.Attack)
             {
-                case ActionPhase.Prepare:
-                    Rig.SetPoseWithContactError(
-                        StickFigurePose.SetDraw,
-                        Mathf.Clamp01(deltaSeconds * 12f),
-                        TechniqueAction.Set,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        0f);
-                    return true;
-                case ActionPhase.Power:
-                    Rig.SetPoseTransition(
-                        StickFigurePose.SetDraw,
-                        contactPose,
-                        sample.PhaseProgress * 0.8f,
-                        TechniqueAction.Set,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                case ActionPhase.Contact:
-                    Rig.SetPoseTransition(
-                        StickFigurePose.SetDraw,
-                        contactPose,
-                        0.8f + (sample.PhaseProgress * 0.2f),
-                        TechniqueAction.Set,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                case ActionPhase.FollowThrough:
-                    Rig.SetPoseTransition(
-                        contactPose,
-                        StickFigurePose.Ready,
-                        sample.PhaseProgress,
-                        TechniqueAction.Set,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        private bool ApplyAttackPose(ActionTimelineSample sample, float deltaSeconds)
-        {
-            var errorWeight = sample.Phase == ActionPhase.Power || sample.Phase == ActionPhase.Contact
-                ? 1f
-                : sample.Phase == ActionPhase.FollowThrough ? 1f - sample.PhaseProgress : 0f;
-            switch (sample.Phase)
-            {
-                case ActionPhase.Prepare:
-                    Rig.SetPoseWithContactError(
-                        StickFigurePose.SpikeWindup,
-                        Mathf.Clamp01(deltaSeconds * 10f),
-                        TechniqueAction.Attack,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        0f);
-                    return true;
-                case ActionPhase.Power:
-                    Rig.SetPoseTransition(
-                        StickFigurePose.SpikeWindup,
-                        StickFigurePose.Spike,
-                        sample.PhaseProgress,
-                        TechniqueAction.Attack,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                case ActionPhase.Contact when sample.PhaseProgress <= 0.5f:
-                    Rig.SetPoseTransition(
-                        StickFigurePose.SpikeWindup,
-                        StickFigurePose.Spike,
-                        1f,
-                        TechniqueAction.Attack,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                case ActionPhase.Contact:
-                    Rig.SetPoseTransition(
-                        StickFigurePose.Spike,
-                        StickFigurePose.Landing,
-                        (sample.PhaseProgress - 0.5f) * 0.5f,
-                        TechniqueAction.Attack,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                case ActionPhase.FollowThrough:
-                    Rig.SetPoseTransition(
-                        StickFigurePose.Spike,
-                        StickFigurePose.Landing,
-                        0.25f + (sample.PhaseProgress * 0.75f),
-                        TechniqueAction.Attack,
-                        _executionError.ContactPositionError,
-                        _executionError.ContactNormalErrorDegrees,
-                        errorWeight);
-                    return true;
-                default:
-                    return false;
-            }
-        }
-
-        private void ApplyScheduledRootMotion(ActionTimelineSample sample, float simulationTime)
-        {
-            var movementPosition = EvaluateScheduledMovement(simulationTime, out var movementComplete);
-            _isMovingThisStep = _hasScheduledMovement && !movementComplete;
-            if (_scheduledAction != TechniqueAction.Attack)
-            {
-                if (_hasScheduledMovement)
+                if (_locomotion.HasScheduledMovement)
                 {
-                    transform.position = ConstrainToOwnCourt(movementPosition);
+                    SetRootPosition(movementPosition);
                 }
 
                 return;
             }
 
-            var position = EvaluateAttackPosition(simulationTime, movementPosition);
+            var position = movementPosition;
             if (sample.Phase == ActionPhase.Complete)
             {
-                position.y = _motionOrigin.y;
+                position.y = _locomotion.MotionOrigin.y;
             }
 
-            transform.position = ConstrainToOwnCourt(position);
+            SetRootPosition(position);
         }
 
-        private void ApplyLimitedContactAlignment(ActionTimelineSample sample)
+        private void ApplyLimitedContactAlignment(ActionTimelineSample sample, float deltaSeconds)
         {
-            if (!_hasPlannedContactCenter ||
+            if (_contactSurfaceProvider.PreservePlannedContactRoot ||
+                !_contactSurfaceProvider.HasPlannedContactCenter ||
                 sample.Phase != ActionPhase.Power && sample.Phase != ActionPhase.Contact)
             {
                 return;
             }
 
-            var currentFrames = new PlayerContactSurfaces(Rig, transform)
-                .Capture(
-                    _isControlledHandling ? TechniqueAction.Set : _scheduledAction,
-                    true,
-                    _contactGroupId,
-                    setContactHand: CurrentSetContactHand());
-            var currentCenter = SimVector3.Zero;
-            foreach (var frame in currentFrames)
-            {
-                currentCenter += frame.Current.Origin +
-                                 (frame.Current.Normal * SimulatedBall.DefaultRadius);
-            }
-
-            currentCenter /= currentFrames.Count;
-
-            var correction = _plannedContactCenter - currentCenter;
-            var maximumCorrection = _isControlledHandling ? 0.70f : _scheduledAction switch
-            {
-                TechniqueAction.Attack => 0.70f,
-                TechniqueAction.Set => 0.30f,
-                _ => 0.16f
-            };
-            if (correction.Magnitude > maximumCorrection)
-            {
-                // Keep a small numerical margin so the applied vector remains inside the
-                // public bound after single-precision normalization and magnitude recovery.
-                correction = correction.Normalized * (maximumCorrection - 0.0001f);
-            }
-
-            if (sample.Phase == ActionPhase.Power)
-            {
-                correction *= Mathf.SmoothStep(0f, 1f, sample.PhaseProgress);
-            }
-            MaximumAppliedContactCorrection = Mathf.Max(
-                MaximumAppliedContactCorrection,
-                correction.Magnitude);
-            transform.position = ConstrainToOwnCourt(
-                transform.position + new Vector3(correction.X, correction.Y, correction.Z));
+            var action = _techniqueExecutor.IsControlledHandling
+                ? TechniqueAction.Set : _techniqueExecutor.ScheduledAction;
+            var currentCenter = _contactSurfaceProvider.CaptureSurfaceCenter(
+                action, _techniqueExecutor.ScheduledContactGroupId, CurrentSetContactHand());
+            _locomotion.ApplyContactAlignment(
+                _contactSurfaceProvider.PlannedContactCenter, currentCenter,
+                _techniqueExecutor.ScheduledAction, _techniqueExecutor.IsControlledHandling,
+                sample.Phase, sample.PhaseProgress, deltaSeconds);
         }
 
-        private Vector3 EvaluateAttackPosition(float simulationTime, Vector3 movementPosition)
+        private void CaptureObservedAttackTakeoff(float simulationTime)
         {
-            if (_hasAttackApproach)
+            if (_locomotion.HasObservedAttackTakeoff ||
+                _techniqueExecutor.ScheduledAction != TechniqueAction.Attack ||
+                !_actionTimelineState.HasScheduledContact)
             {
-                return EvaluatePlannedAttackPosition(simulationTime, movementPosition);
+                return;
             }
 
-            var takeoffTime = _actionTimeline.ActualContactTime - 0.38f;
-            var landingTime = _actionTimeline.ActualContactTime + 0.45f;
-            var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
-            var jumpHeight = (0.72f + (Ability.Jump * 0.5f)) * 4f * jumpProgress * (1f - jumpProgress);
-            var approachStart = _actionTimeline.ActualContactTime - 0.72f;
-            var approachProgress = Mathf.Clamp01((simulationTime - approachStart) / 0.55f);
-            approachProgress = approachProgress * approachProgress * (3f - (2f * approachProgress));
-            var approachDistance = 0.45f + (Ability.Mobility * 0.35f);
-            var position = movementPosition + (_motionForward * approachDistance * approachProgress);
-            position.y = _motionOrigin.y + jumpHeight;
-            return position;
+            if (!_locomotion.TryGetAttackTakeoff(simulationTime, out var takeoffPosition, out var takeoffTime))
+            {
+                return;
+            }
+
+            _locomotion.RecordObservedAttackTakeoff(new ObservedAttackTakeoff(
+                new SimVector3(
+                    takeoffPosition.x,
+                    takeoffPosition.y,
+                    takeoffPosition.z),
+                takeoffTime));
         }
 
-        private Vector3 EvaluatePlannedAttackPosition(float simulationTime, Vector3 movementPosition)
+        private void ConfigureAttackApproach(AttackApproachPlan approach, bool useContinuationTakeoff)
         {
-            var approachStartTime = _movementEndSimulationTime;
-            var jumpLead = _hasAttackContactPlan
-                ? Mathf.Lerp(0.24f, 0.38f, _attackContactPlan.JumpTiming)
-                : 0.38f;
-            var takeoffTime = Mathf.Max(
-                approachStartTime + 0.01f,
-                _actionTimeline.ActualContactTime - jumpLead);
-            var approachProgress = Mathf.InverseLerp(approachStartTime, takeoffTime, simulationTime);
-            approachProgress = approachProgress * approachProgress * (3f - (2f * approachProgress));
-            var position = Vector3.Lerp(movementPosition, _attackTakeoffPosition, approachProgress);
-
-            if (_hasAttackContactPlan)
+            _locomotion.ConfigureAttackApproach(
+                approach,
+                Ability,
+                _actionTimelineState.ContactTimeline.ActualContactTime,
+                useContinuationTakeoff);
+            if (_techniqueExecutor.HasAttackContactCommand)
             {
-                if (simulationTime <= _actionTimeline.ActualContactTime)
-                {
-                    var ascent = Mathf.InverseLerp(takeoffTime, _actionTimeline.ActualContactTime, simulationTime);
-                    ascent = ascent * ascent * (3f - (2f * ascent));
-                    return Vector3.Lerp(_attackTakeoffPosition, _attackContactRootPosition, ascent);
-                }
-
-                const float plannedLandingSeconds = 0.45f;
-                var descent = Mathf.Clamp01(
-                    (simulationTime - _actionTimeline.ActualContactTime) / plannedLandingSeconds);
-                descent = descent * descent * (3f - (2f * descent));
-                var landed = _attackContactRootPosition;
-                landed.y = _motionOrigin.y;
-                return Vector3.Lerp(_attackContactRootPosition, landed, descent);
+                _locomotion.ConfigureAttackContact(
+                    AttackRootContactPosition(_techniqueExecutor.ScheduledAttackContactPlan),
+                    AttackJumpLead(),
+                    Ability);
             }
-
-            var landingTime = _actionTimeline.ActualContactTime + 0.45f;
-            var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
-            var jumpHeight = (0.72f + (Ability.Jump * 0.5f)) *
-                             _attackApproach.JumpQuality *
-                             4f * jumpProgress * (1f - jumpProgress);
-            position.y = _motionOrigin.y + jumpHeight;
-            return position;
         }
 
-        private void ConfigureAttackApproach(AttackApproachPlan approach)
+        private float AttackJumpLead()
         {
-            var approachStart = _movementTargetPosition;
-            var requestedTakeoff = ConstrainGroundPosition(ToUnity(approach.Takeoff));
-            var takeoffTime = Mathf.Max(
-                _movementEndSimulationTime + 0.01f,
-                _actionTimeline.ActualContactTime - 0.38f);
-            var availableSeconds = takeoffTime - _movementEndSimulationTime;
-            var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
-            _attackTakeoffPosition = Vector3.MoveTowards(
-                approachStart,
-                requestedTakeoff,
-                maximumSpeed * availableSeconds);
-            if (_hasAttackContactPlan)
-            {
-                _attackContactRootPosition = AttackRootContactPosition(_attackContactPlan);
-            }
-            ScheduledMovementDistance += Vector3.Distance(approachStart, _attackTakeoffPosition);
-            MovementShortfall += Vector3.Distance(_attackTakeoffPosition, requestedTakeoff);
+            return Mathf.Lerp(0.24f, 0.38f, _techniqueExecutor.ScheduledAttackContactPlan.JumpTiming);
         }
 
         private void ConfigureScheduledMovement(
@@ -1262,115 +1198,19 @@ namespace Volleyball.Presentation
             TechniqueAction action,
             float? movementLeadOverride = null)
         {
-            _movementStartPosition = ConstrainGroundPosition(transform.position);
-            _movementStartSimulationTime = movementStartSimulationTime;
-            var movementLead = movementLeadOverride ?? (action == TechniqueAction.Attack ? 0.32f : 0.10f);
-            _movementEndSimulationTime = Mathf.Max(
-                _movementStartSimulationTime + 0.01f,
-                scheduledContactTime - movementLead);
-            var availableSeconds = _movementEndSimulationTime - _movementStartSimulationTime;
-            var maximumSpeed = _moveSpeed * (0.65f + (Ability.Mobility * 0.5f));
-            var maximumDistance = maximumSpeed * availableSeconds;
-            _movementTargetPosition = Vector3.MoveTowards(
-                _movementStartPosition,
-                ConstrainGroundPosition(requestedTarget),
-                maximumDistance);
-            ScheduledMovementDistance = Vector3.Distance(
-                _movementStartPosition,
-                _movementTargetPosition);
-            MovementShortfall = Vector3.Distance(_movementTargetPosition, requestedTarget);
-            _hasScheduledMovement = Vector3.Distance(
-                _movementStartPosition,
-                _movementTargetPosition) > 0.01f;
+            _locomotion.ConfigureScheduledMovement(
+                requestedTarget, movementStartSimulationTime, scheduledContactTime, action, Ability, movementLeadOverride);
         }
 
         private void ConfigureContinuationMovement(
             Vector3 requestedTakeoff,
             float scheduledContactTime)
         {
-            _movementStartPosition = ConstrainGroundPosition(transform.position);
-            _movementStartSimulationTime = _supportTimeline != null
-                ? Mathf.Min(_supportTimeline.ActualContactTime, scheduledContactTime)
+            var movementStartSimulationTime = _actionTimelineState.HasSupportAction
+                ? Mathf.Min(_actionTimelineState.SupportTimeline.ActualContactTime, scheduledContactTime)
                 : scheduledContactTime;
-            _movementEndSimulationTime = Mathf.Max(
-                _movementStartSimulationTime + 0.01f,
-                scheduledContactTime - 0.38f);
-            var requestedTarget = ConstrainGroundPosition(requestedTakeoff);
-            _movementTargetPosition = requestedTarget;
-            ScheduledMovementDistance = Vector3.Distance(
-                _movementStartPosition,
-                _movementTargetPosition);
-            MovementShortfall = 0f;
-            _hasScheduledMovement = ScheduledMovementDistance > 0.01f;
-        }
-
-        private Vector3 EvaluateScheduledMovement(float simulationTime, out bool complete)
-        {
-            if (!_hasScheduledMovement || simulationTime >= _movementEndSimulationTime)
-            {
-                complete = true;
-                return _movementTargetPosition;
-            }
-
-            if (simulationTime <= _movementStartSimulationTime)
-            {
-                complete = false;
-                return _movementStartPosition;
-            }
-
-            var progress = Mathf.InverseLerp(
-                _movementStartSimulationTime,
-                _movementEndSimulationTime,
-                simulationTime);
-            progress = progress * progress * (3f - (2f * progress));
-            complete = progress >= 1f;
-            return Vector3.Lerp(_movementStartPosition, _movementTargetPosition, progress);
-        }
-
-        private Vector3 EvaluateSupportPosition(float simulationTime)
-        {
-            var position = EvaluateSupportGroundMovement(simulationTime);
-            if (_supportAction == TechniqueAction.Block)
-            {
-                position.y += EvaluateSupportBlockJump(simulationTime);
-            }
-
-            return position;
-        }
-
-        private Vector3 EvaluateSupportGroundMovement(float simulationTime)
-        {
-            if (simulationTime >= _supportEndSimulationTime)
-            {
-                return _supportTargetPosition;
-            }
-
-            if (simulationTime <= _supportStartSimulationTime)
-            {
-                return _supportStartPosition;
-            }
-
-            var progress = Mathf.InverseLerp(
-                _supportStartSimulationTime,
-                _supportEndSimulationTime,
-                simulationTime);
-            progress = progress * progress * (3f - (2f * progress));
-            return Vector3.Lerp(_supportStartPosition, _supportTargetPosition, progress);
-        }
-
-        private float EvaluateSupportBlockJump(float simulationTime)
-        {
-            var contactTime = _supportTimeline.ActualContactTime;
-            var takeoffTime = contactTime - 0.22f;
-            var landingTime = contactTime + 0.28f;
-            var jumpProgress = Mathf.Clamp01((simulationTime - takeoffTime) / (landingTime - takeoffTime));
-            var contactProgress = 0.22f / 0.50f;
-            var shape = 4f * jumpProgress * (1f - jumpProgress);
-            var contactShape = 4f * contactProgress * (1f - contactProgress);
-            var contactRootHeight = _hasPhysicalBlockContact
-                ? _physicalBlockContactRootHeight
-                : MaximumBlockContactRootHeight();
-            return contactRootHeight * shape / contactShape;
+            _locomotion.ConfigureContinuationMovement(
+                requestedTakeoff, movementStartSimulationTime, scheduledContactTime, Ability);
         }
 
         private float MaximumBlockContactRootHeight()
@@ -1382,11 +1222,30 @@ namespace Volleyball.Presentation
 
         private Vector3 ConstrainGroundPosition(Vector3 position)
         {
-            position.y = 0f;
-            return ConstrainToOwnCourt(position);
+            return _locomotion == null ? LegacyConstrainGroundPosition(position) : _locomotion.ConstrainGroundPosition(position);
+        }
+
+        private void SetRootPosition(Vector3 position)
+        {
+            if (_locomotion == null)
+            {
+                _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
+            }
+            _locomotion.SetRootPosition(position);
         }
 
         private Vector3 ConstrainToOwnCourt(Vector3 position)
+        {
+            return _locomotion == null ? LegacyConstrainToOwnCourt(position) : _locomotion.ConstrainToOwnCourt(position);
+        }
+
+        private Vector3 LegacyConstrainGroundPosition(Vector3 position)
+        {
+            position.y = 0f;
+            return LegacyConstrainToOwnCourt(position);
+        }
+
+        private Vector3 LegacyConstrainToOwnCourt(Vector3 position)
         {
             position.x = Mathf.Clamp(
                 position.x,
@@ -1465,40 +1324,14 @@ namespace Volleyball.Presentation
             return ConstrainToOwnCourt(takeoff + new Vector3(correction.X, correction.Y, correction.Z));
         }
 
-        private static StickFigurePose ContactPoseFor(TechniqueAction action)
-        {
-            return action switch
-            {
-                TechniqueAction.Receive => StickFigurePose.Receive,
-                TechniqueAction.Set => StickFigurePose.Set,
-                TechniqueAction.Attack => StickFigurePose.Spike,
-                TechniqueAction.Block => StickFigurePose.Block,
-                TechniqueAction.Serve => StickFigurePose.Serve,
-                _ => StickFigurePose.Ready
-            };
-        }
-
-        private static StickFigurePose SetContactPose(SetTechniqueStyle style)
-        {
-            return style switch
-            {
-                SetTechniqueStyle.SideLeftTwoHand => StickFigurePose.SetSideLeft,
-                SetTechniqueStyle.SideRightTwoHand => StickFigurePose.SetSideRight,
-                SetTechniqueStyle.BackTwoHand => StickFigurePose.SetBack,
-                SetTechniqueStyle.OneHandLeft => StickFigurePose.SetOneHandLeft,
-                SetTechniqueStyle.OneHandRight => StickFigurePose.SetOneHandRight,
-                _ => StickFigurePose.Set
-            };
-        }
-
         private SetContactHand CurrentSetContactHand()
         {
-            if (_scheduledAction != TechniqueAction.Set)
+            if (_techniqueExecutor.ScheduledAction != TechniqueAction.Set)
             {
                 return SetContactHand.Both;
             }
 
-            return _setDecision.ExecutedStyle switch
+            return _techniqueExecutor.SetDecision.ExecutedStyle switch
             {
                 SetTechniqueStyle.OneHandLeft => SetContactHand.Left,
                 SetTechniqueStyle.OneHandRight => SetContactHand.Right,
@@ -1506,38 +1339,21 @@ namespace Volleyball.Presentation
             };
         }
 
-        private static ContactResponseParameters ResponseFor(TechniqueAction action)
-        {
-            return action switch
-            {
-                TechniqueAction.Receive => new ContactResponseParameters(0.85f, 1f, 0.12f, 0.08f),
-                TechniqueAction.Set => new ContactResponseParameters(0.75f, 1f, 0.08f, 0.08f),
-                TechniqueAction.Attack => new ContactResponseParameters(0.55f, 0.42f, 0.18f, 0.08f),
-                TechniqueAction.Block => new ContactResponseParameters(0.65f, 0.8f, 0.22f, 0.08f),
-                TechniqueAction.Serve => new ContactResponseParameters(0.72f, 1f, 0.15f, 0.08f),
-                _ => new ContactResponseParameters(0.75f, 1f, 0.1f, 0.08f)
-            };
-        }
-
         public IEnumerator MoveTo(Vector3 destination)
         {
-            destination = ConstrainGroundPosition(destination);
-            var speed = 0f;
-            const float acceleration = 24f;
-            while ((transform.position - destination).sqrMagnitude > 0.01f)
+            if (_locomotion == null)
             {
-                Rig.SetPose(StickFigurePose.Run, Time.deltaTime * 8f);
-                var distance = Vector3.Distance(transform.position, destination);
-                var brakingSpeed = Mathf.Sqrt(2f * acceleration * distance);
-                var targetSpeed = Mathf.Min(_moveSpeed * (0.65f + (Ability.Mobility * 0.5f)), brakingSpeed);
-                speed = Mathf.MoveTowards(speed, targetSpeed, acceleration * Time.deltaTime);
-                transform.position = ConstrainToOwnCourt(
-                    Vector3.MoveTowards(transform.position, destination, speed * Time.deltaTime));
+                _locomotion = new PlayerLocomotion(transform, Id.Team, _courtHalfLength, _moveSpeed);
+            }
+
+            var movement = _locomotion.MoveTo(destination, Ability);
+            while (movement.MoveNext())
+            {
+                _presentation.ApplyMovePose(true, Time.deltaTime * 8f);
                 yield return null;
             }
 
-            transform.position = ConstrainToOwnCourt(destination);
-            Rig.SetPose(StickFigurePose.Ready, 0.25f);
+            _presentation.ApplyMovePose(false, 0.25f);
         }
     }
 }

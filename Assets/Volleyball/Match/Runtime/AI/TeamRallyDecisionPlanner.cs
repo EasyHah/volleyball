@@ -579,6 +579,84 @@ namespace Volleyball.AI
                 return TeamRallyDecision.NoDecision;
             }
 
+            var evaluation = EvaluateCandidates(input);
+            return evaluation.BestIndex < 0
+                ? TeamRallyDecision.NoDecision
+                : CreateDecision(input, evaluation, evaluation.BestIndex);
+        }
+
+        public IReadOnlyList<RallyDecisionCandidate> OrderedCandidates(
+            TeamRallyDecisionInput input)
+        {
+            if (input == null)
+            {
+                throw new ArgumentNullException(nameof(input));
+            }
+
+            if (input.Stage == RallyDecisionStage.Block)
+            {
+                return new List<RallyDecisionCandidate>().AsReadOnly();
+            }
+
+            var ordered = new List<RallyDecisionCandidate>(
+                EvaluateCandidates(input).Candidates);
+            ordered.Sort(CompareOrderedCandidates);
+            return ordered.AsReadOnly();
+        }
+
+        internal TeamRallyDecision MaterializeCandidate(
+            TeamRallyDecisionInput input,
+            PlayerId actor)
+        {
+            if (input == null)
+            {
+                throw new ArgumentNullException(nameof(input));
+            }
+
+            if (input.Stage == RallyDecisionStage.Block)
+            {
+                return TeamRallyDecision.NoDecision;
+            }
+
+            var evaluation = EvaluateCandidates(input);
+            for (var index = 0; index < evaluation.Candidates.Count; index++)
+            {
+                var candidate = evaluation.Candidates[index];
+                if (candidate.Actor.Equals(actor))
+                {
+                    return candidate.IsFeasible
+                        ? CreateDecision(input, evaluation, index)
+                        : TeamRallyDecision.NoDecision;
+                }
+            }
+
+            throw new ArgumentException(
+                "The requested actor is not a decision candidate.",
+                nameof(actor));
+        }
+
+        internal static float ReactionDelaySeconds(RallyPlayerSnapshot player)
+        {
+            return ReactionSeconds * (1f - player.Ability.Reaction);
+        }
+
+        internal static float MovementMeters(
+            TeamRallyDecisionInput input,
+            RallyPlayerSnapshot player)
+        {
+            if (input == null)
+            {
+                throw new ArgumentNullException(nameof(input));
+            }
+
+            return GroundDistance(
+                player.WorldPosition,
+                CreateTargets(input).MovementTarget);
+        }
+
+        private static CandidateEvaluation EvaluateCandidates(
+            TeamRallyDecisionInput input)
+        {
             var targets = CreateTargets(input);
             var candidates = new List<RallyDecisionCandidate>();
             var bestIndex = -1;
@@ -598,12 +676,18 @@ namespace Volleyball.AI
                 }
             }
 
-            if (bestIndex < 0)
-            {
-                return TeamRallyDecision.NoDecision;
-            }
+            bestIndex = PreferEligibleSetterForOrganization(input, candidates, bestIndex);
+            return new CandidateEvaluation(targets, candidates, bestIndex);
+        }
 
-            var winner = input.Players[bestIndex];
+        private static TeamRallyDecision CreateDecision(
+            TeamRallyDecisionInput input,
+            CandidateEvaluation evaluation,
+            int selectedIndex)
+        {
+            var targets = evaluation.Targets;
+            var candidates = evaluation.Candidates;
+            var winner = input.Players[selectedIndex];
             var winningApproach = input.Stage == RallyDecisionStage.Attack
                 ? CreateAttackApproach(input, winner, targets.Takeoff, targets.BallTarget)
                 : (AttackApproachPlan?)null;
@@ -616,10 +700,31 @@ namespace Volleyball.AI
                 winningContactPlan?.ContactCenter ?? targets.ContactTarget,
                 targets.MovementTarget,
                 targets.BallTarget,
-                candidates[bestIndex].Score,
+                candidates[selectedIndex].Score,
                 candidates,
                 winningApproach,
                 winningContactPlan);
+        }
+
+        private static int CompareOrderedCandidates(
+            RallyDecisionCandidate left,
+            RallyDecisionCandidate right)
+        {
+            if (left.IsFeasible != right.IsFeasible)
+            {
+                return left.IsFeasible ? -1 : 1;
+            }
+
+            var score = right.Score.Total.CompareTo(left.Score.Total);
+            if (score != 0)
+            {
+                return score;
+            }
+
+            var role = ((int)left.Actor.Role).CompareTo((int)right.Actor.Role);
+            return role != 0
+                ? role
+                : left.Actor.RosterSlot.CompareTo(right.Actor.RosterSlot);
         }
 
         private static bool ExcludesActor(TeamRallyDecisionInput input, PlayerId actor)
@@ -627,6 +732,34 @@ namespace Volleyball.AI
             return input.Stage != RallyDecisionStage.Receive &&
                    input.LastCountedActor.HasValue &&
                    input.LastCountedActor.Value.Equals(actor);
+        }
+
+        private static int PreferEligibleSetterForOrganization(
+            TeamRallyDecisionInput input,
+            IReadOnlyList<RallyDecisionCandidate> candidates,
+            int fallbackIndex)
+        {
+            if (input.Stage != RallyDecisionStage.Organize)
+            {
+                return fallbackIndex;
+            }
+
+            var setterIndex = -1;
+            for (var index = 0; index < candidates.Count; index++)
+            {
+                var candidate = candidates[index];
+                if (!candidate.IsFeasible || candidate.Actor.Role != PlayerRole.Setter)
+                {
+                    continue;
+                }
+
+                if (setterIndex < 0 || IsBetter(candidates, index, setterIndex))
+                {
+                    setterIndex = index;
+                }
+            }
+
+            return setterIndex >= 0 ? setterIndex : fallbackIndex;
         }
 
         private static bool IsBetter(IReadOnlyList<RallyDecisionCandidate> candidates, int index, int bestIndex)
@@ -663,13 +796,15 @@ namespace Volleyball.AI
             var reachability = (speed * effectiveSeconds) - distance;
             var nominalRole = NominalRole(input.Stage, player.Id.Role) * input.Weights.RolePreference;
             var approachScore = approach.HasValue
-                ? approach.Value.JumpQuality * (player.Ability.Jump + player.Ability.AttackTechnique) * input.Weights.ApproachDistance
+                ? approach.Value.JumpQuality *
+                  player.Ability.Jump *
+                  input.Weights.ApproachDistance
                 : 0f;
             var angleScore = approach.HasValue
                 ? -approach.Value.AnglePenalty * (1f - (0.5f * input.Weights.DirectionTolerance))
                 : 0f;
             var techniqueScore = input.Stage == RallyDecisionStage.Attack
-                ? player.Ability.AttackPower * player.Ability.AttackTechnique
+                ? 0f
                 : player.Ability.TechniqueFor(ToTechniqueAction(input.Stage));
             // Feasibility is selected separately, so role preference cannot rescue a negative margin.
             var total = (reachability * input.Weights.Reachability) + nominalRole + approachScore + angleScore + techniqueScore;
@@ -804,7 +939,9 @@ namespace Volleyball.AI
 
                 var role = NominalRole(RallyDecisionStage.Attack, player.Id.Role);
                 if (!provisional.HasValue || role > bestRole ||
-                    role.Equals(bestRole) && player.Ability.MaxAttackReach > provisional.Value.Ability.MaxAttackReach)
+                    role.Equals(bestRole) &&
+                    player.Ability.PlannedAttackContactHeightMeters >
+                    provisional.Value.Ability.PlannedAttackContactHeightMeters)
                 {
                     provisional = player;
                     bestRole = role;
@@ -832,7 +969,7 @@ namespace Volleyball.AI
                                   (movementSpeed <= 0f ? 0f : approach.Distance / movementSpeed);
             var jumpTiming = Clamp(availableSeconds / FullJumpPreparationSeconds, 0f, 1f);
             return AttackContactPlanner.Plan(new AttackContactInput(
-                player.Ability.MaxAttackReach,
+                player.Ability.PlannedAttackContactHeightMeters,
                 approach.JumpQuality,
                 jumpTiming,
                 SetQualityGrade.A,
@@ -880,7 +1017,7 @@ namespace Volleyball.AI
 
         private static float EffectiveSeconds(TeamRallyDecisionInput input, RallyPlayerSnapshot player)
         {
-            return Math.Max(0f, input.AvailableSeconds - (ReactionSeconds * (1f - player.Ability.Reaction)));
+            return Math.Max(0f, input.AvailableSeconds - ReactionDelaySeconds(player));
         }
 
         private static float MovementSpeed(TeamRallyDecisionInput input, RallyPlayerSnapshot player)
@@ -930,6 +1067,25 @@ namespace Volleyball.AI
             public SimVector3 BallTarget { get; }
 
             public SimVector3 Takeoff { get; }
+        }
+
+        private readonly struct CandidateEvaluation
+        {
+            public CandidateEvaluation(
+                DecisionTargets targets,
+                IReadOnlyList<RallyDecisionCandidate> candidates,
+                int bestIndex)
+            {
+                Targets = targets;
+                Candidates = candidates;
+                BestIndex = bestIndex;
+            }
+
+            public DecisionTargets Targets { get; }
+
+            public IReadOnlyList<RallyDecisionCandidate> Candidates { get; }
+
+            public int BestIndex { get; }
         }
     }
 }

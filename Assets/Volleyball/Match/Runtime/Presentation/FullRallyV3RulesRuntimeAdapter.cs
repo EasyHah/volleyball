@@ -14,29 +14,41 @@ namespace Volleyball.Presentation
 
     public sealed class FullRallyV3RulesRuntimeAdapter
     {
-        private readonly MatchContextV3 _context;
+        private readonly int _rulesVersion;
         private OnCourtEligibilitySnapshot _eligibility;
         private RallyRulesEngineV3 _engine;
 
         public FullRallyV3RulesRuntimeAdapter(
-            MatchContextV3 context,
+            int rulesVersion,
             OnCourtEligibilitySnapshot eligibility,
             TeamSide initialPossession,
             V3RulesMode mode)
         {
-            _context = context ?? throw new ArgumentNullException(nameof(context));
+            if (rulesVersion != 3)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(rulesVersion),
+                    rulesVersion,
+                    "FullRallyV3RulesRuntimeAdapter requires rules version 3.");
+            }
+
+            _rulesVersion = rulesVersion;
             _eligibility = eligibility ?? throw new ArgumentNullException(nameof(eligibility));
             if (!Enum.IsDefined(typeof(V3RulesMode), mode))
             {
                 throw new ArgumentOutOfRangeException(nameof(mode));
             }
 
-            ValidateEligibility(_context, eligibility);
             Mode = mode;
             BeginRally(initialPossession);
         }
 
         public V3RulesMode Mode { get; }
+
+        public int RulesVersion => _rulesVersion;
+
+        // Immutable per-rally rules facts for downstream authority planners.
+        public OnCourtEligibilitySnapshot Eligibility => _eligibility;
 
         public void BeginRally(TeamSide initialPossession)
         {
@@ -49,7 +61,6 @@ namespace Volleyball.Presentation
         {
             var refreshedEligibility =
                 eligibility ?? throw new ArgumentNullException(nameof(eligibility));
-            ValidateEligibility(_context, refreshedEligibility);
             _eligibility = refreshedEligibility;
             BeginRally(initialPossession);
         }
@@ -69,8 +80,33 @@ namespace Volleyball.Presentation
             RallyContactClassificationV3 classification,
             long contactGroup)
         {
+            return EvaluateContactCore(actor, side, classification, contactGroup, null);
+        }
+
+        public RuleTransitionV3 EvaluateContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
+            return EvaluateContactCore(
+                actor,
+                side,
+                classification,
+                contactGroup,
+                attackGeometry ?? throw new ArgumentNullException(nameof(attackGeometry)));
+        }
+
+        private RuleTransitionV3 EvaluateContactCore(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
             var contact = CreateContact(actor, side, classification, contactGroup);
-            var eligibilityRejection = EvaluateEligibility(contact);
+            var eligibilityRejection = EvaluateEligibility(contact, attackGeometry);
             return eligibilityRejection ?? _engine.CanAttempt(contact);
         }
 
@@ -80,8 +116,33 @@ namespace Volleyball.Presentation
             RallyContactClassificationV3 classification,
             long contactGroup)
         {
+            return CommitContactCore(actor, side, classification, contactGroup, null);
+        }
+
+        public RuleTransitionV3 CommitContact(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
+            return CommitContactCore(
+                actor,
+                side,
+                classification,
+                contactGroup,
+                attackGeometry ?? throw new ArgumentNullException(nameof(attackGeometry)));
+        }
+
+        private RuleTransitionV3 CommitContactCore(
+            PlayerId actor,
+            TeamSide side,
+            RallyContactClassificationV3 classification,
+            long contactGroup,
+            AttackGeometryFactV3 attackGeometry)
+        {
             var contact = CreateContact(actor, side, classification, contactGroup);
-            var eligibilityRejection = EvaluateEligibility(contact);
+            var eligibilityRejection = EvaluateEligibility(contact, attackGeometry);
             return eligibilityRejection ?? _engine.Apply(contact);
         }
 
@@ -112,7 +173,9 @@ namespace Volleyball.Presentation
             return contact;
         }
 
-        private RuleTransitionV3 EvaluateEligibility(ActualContactEventV3 contact)
+        private RuleTransitionV3 EvaluateEligibility(
+            ActualContactEventV3 contact,
+            AttackGeometryFactV3 attackGeometry)
         {
             OnCourtPlayerEligibilityV3 eligibleActor;
             try
@@ -130,6 +193,12 @@ namespace Volleyball.Presentation
                 return Reject(RuleRejectionReasonV3.ActionIneligible);
             }
 
+            if (attackGeometry != null &&
+                !AttackEligibilityRulesV3.CanAttempt(eligibleActor, attackGeometry).IsEligible)
+            {
+                return Reject(RuleRejectionReasonV3.ActionIneligible);
+            }
+
             return null;
         }
 
@@ -138,33 +207,5 @@ namespace Volleyball.Presentation
             return RuleTransitionV3.Reject(reason, _engine.State);
         }
 
-        private static void ValidateEligibility(
-            MatchContextV3 context,
-            OnCourtEligibilitySnapshot eligibility)
-        {
-            var sidesByPlayer = new Dictionary<PlayerId, TeamSide>();
-            AddTeam(context.Home, sidesByPlayer);
-            AddTeam(context.Away, sidesByPlayer);
-            foreach (var player in eligibility.Players)
-            {
-                if (!sidesByPlayer.TryGetValue(player.PlayerId, out var expectedSide) ||
-                    expectedSide != player.Side)
-                {
-                    throw new ArgumentException(
-                        "On-court eligibility must use players and sides from the V3 context.",
-                        nameof(eligibility));
-                }
-            }
-        }
-
-        private static void AddTeam(
-            TeamSnapshotV3 team,
-            IDictionary<PlayerId, TeamSide> sidesByPlayer)
-        {
-            foreach (var player in team.Players)
-            {
-                sidesByPlayer.Add(player.PlayerId, team.Side);
-            }
-        }
     }
 }

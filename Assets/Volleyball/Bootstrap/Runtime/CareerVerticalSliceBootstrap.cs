@@ -30,8 +30,8 @@ namespace Volleyball.Bootstrap
                 var profileRepository = new LocalPlayerProfileRepository(paths, fileSystem);
                 var catalogRepository = new LocalProfileCatalogRepository(paths, fileSystem);
                 var random = new CareerDeterministicRandom();
-                var executor = new CareerMatchExecutorV3(
-                    new DeterministicFixtureMatchRunnerV3());
+                var executor = new CareerMatchExecutorV4(
+                    new DeterministicFixtureMatchRunnerV4());
                 var adapter = new CareerUiUseCasesAdapter(
                     new CareerLocalUiWorkflow(
                         profileRepository,

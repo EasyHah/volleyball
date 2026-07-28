@@ -3,14 +3,23 @@ using System.Collections.Generic;
 using UnityEngine;
 using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
-using MatchContextV3 = Volleyball.Shared.Contracts.MatchContextV3;
-using MatchContextV2 = Volleyball.Shared.Contracts.MatchContextV2;
-using PlayerAbilitySnapshotV2 = Volleyball.Shared.Contracts.PlayerAbilitySnapshotV2;
+using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
+using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
+using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
+using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
-using PlayerSnapshotV2 = Volleyball.Shared.Contracts.PlayerSnapshotV2;
+using PlayerSnapshotV4 = Volleyball.Shared.Contracts.PlayerSnapshotV4;
+using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
+using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
-using TeamSnapshotV2 = Volleyball.Shared.Contracts.TeamSnapshotV2;
+using TeamSnapshotV4 = Volleyball.Shared.Contracts.TeamSnapshotV4;
+using TrajectoryPredictionCacheEvictionPolicyV4 =
+    Volleyball.Shared.Contracts.TrajectoryPredictionCacheEvictionPolicyV4;
+using TrajectoryPredictionProviderConfigurationV4 =
+    Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV4;
 
 namespace Volleyball.Presentation
 {
@@ -30,15 +39,13 @@ namespace Volleyball.Presentation
             var agents = CreateRoster(context);
             var scoreDisplay = ScoreDisplay.Create(transform);
             var director = gameObject.AddComponent<FormalSixVsSixRallyDirector>();
-            director.InitializeV2(
+            director.InitializeV4(
                 ball,
                 agents,
                 context,
                 scoreDisplay,
                 configuration: Configuration);
-            director.ConfigureV3Rules(
-                MatchContextV3.UpgradeFromV2(context),
-                V3RulesMode.Authority);
+            director.ConfigureV3Rules(V3RulesMode.Authority);
             var rosterDisplay = gameObject.AddComponent<MatchRosterDisplay>();
             rosterDisplay.Initialize(director, agents);
             var cameras = gameObject.AddComponent<RallyCameraController>();
@@ -73,7 +80,7 @@ namespace Volleyball.Presentation
             return ballObject.AddComponent<SimulatedBall>();
         }
 
-        private List<PrototypePlayerAgent> CreateRoster(MatchContextV2 context)
+        private List<PrototypePlayerAgent> CreateRoster(MatchContextV4 context)
         {
             var agents = new List<PrototypePlayerAgent>(12);
             CreateTeamAgents(agents, TeamId.Blue, context.Home, BlueColor);
@@ -84,7 +91,7 @@ namespace Volleyball.Presentation
         private void CreateTeamAgents(
             ICollection<PrototypePlayerAgent> agents,
             TeamId team,
-            TeamSnapshotV2 snapshot,
+            TeamSnapshotV4 snapshot,
             Color color)
         {
             for (var index = 0; index < snapshot.Players.Count; index++)
@@ -105,7 +112,7 @@ namespace Volleyball.Presentation
                     player.PlayerId,
                     color,
                     player.JerseyNumber.ToString());
-                agent.SetAbility(new PlayerAbilityProfile(player.Ability));
+                agent.SetAbility(new PlayerAbilityProfile(player.Derived));
                 agent.SetCourtHalfLength(Configuration.CourtHalfLength);
                 agents.Add(agent);
             }
@@ -124,40 +131,30 @@ namespace Volleyball.Presentation
             };
         }
 
-        private static PlayerAbilityProfile AbilityFor(PlayerPosition position)
+        private static MatchContextV4 CreateSandboxContext()
         {
-            return position switch
-            {
-                PlayerPosition.Setter => new PlayerAbilityProfile(
-                    0.90f, 0.93f, 0.80f, 0.80f, 0.95f, 0.74f, 0.70f),
-                PlayerPosition.Libero => new PlayerAbilityProfile(
-                    0.94f, 0.95f, 0.72f, 0.97f, 0.76f, 0.62f, 0.60f),
-                PlayerPosition.MiddleBlocker => new PlayerAbilityProfile(
-                    0.87f, 0.91f, 0.97f, 0.72f, 0.70f, 0.91f, 0.92f),
-                PlayerPosition.Opposite => new PlayerAbilityProfile(
-                    0.90f, 0.89f, 0.95f, 0.75f, 0.74f, 0.95f, 0.95f),
-                PlayerPosition.OutsideHitter => new PlayerAbilityProfile(
-                    0.92f, 0.91f, 0.93f, 0.86f, 0.76f, 0.94f, 0.92f),
-                _ => PlayerAbilityProfile.Default
-            };
-        }
-
-        private static MatchContextV2 CreateSandboxContext()
-        {
-            return MatchContextV2.Create(
+            return MatchContextV4.Create(
                 Guid.Parse("66666666-2222-6666-2222-666666666666"),
                 7351,
                 CreateTeam("formal-home", "Blue", TeamSide.Home, "home"),
-                CreateTeam("formal-away", "Orange", TeamSide.Away, "away"));
+                CreateTeam("formal-away", "Orange", TeamSide.Away, "away"),
+                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                    new BallSimulationParameters(-9.8f, 0.9995f)),
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
+                rulesVersion: RulesVersions.FullRallyV3);
         }
 
-        private static TeamSnapshotV2 CreateTeam(
+        private static TeamSnapshotV4 CreateTeam(
             string id,
             string name,
             TeamSide side,
             string prefix)
         {
-            return new TeamSnapshotV2(
+            return new TeamSnapshotV4(
                 new Volleyball.Shared.Contracts.TeamId(id),
                 name,
                 side,
@@ -172,37 +169,60 @@ namespace Volleyball.Presentation
                 });
         }
 
-        private static PlayerSnapshotV2 CreatePlayer(
+        private static PlayerSnapshotV4 CreatePlayer(
             string id,
             string name,
             int number,
             PlayerPosition position)
         {
-            var ability = AbilityFor(position);
-            return new PlayerSnapshotV2(
+            return new PlayerSnapshotV4(
                 new StablePlayerId(id),
                 name,
                 number,
                 position,
-                new PlayerAbilitySnapshotV2(
-                    ability.Mobility,
-                    ability.Reaction,
-                    ability.Jump,
-                    ability.ReceiveTechnique,
-                    ability.SetTechnique,
-                    ability.AttackTechnique,
-                    ability.AttackPower,
-                    ReachFor(position)));
+                DominantHandV4.Right,
+                PhysicalFor(position),
+                TechnicalFor(position),
+                MatchAttributeDerivationConfigV4.Version1);
         }
 
-        private static float ReachFor(PlayerPosition position)
+        private static PhysicalBaseAttributesV4 PhysicalFor(
+            PlayerPosition position)
         {
             return position switch
             {
-                PlayerPosition.MiddleBlocker => 3.48f,
-                PlayerPosition.OutsideHitter => 3.42f,
-                PlayerPosition.Opposite => 3.42f,
-                _ => 3.20f
+                PlayerPosition.Setter => new PhysicalBaseAttributesV4(
+                    1.91f, 2.43f, 0.80f, 0.90f, 0.93f, 0.91f),
+                PlayerPosition.Libero => new PhysicalBaseAttributesV4(
+                    1.84f, 2.34f, 0.72f, 0.94f, 0.95f, 0.94f),
+                PlayerPosition.MiddleBlocker => new PhysicalBaseAttributesV4(
+                    2.04f, 2.62f, 0.97f, 0.87f, 0.91f, 0.90f),
+                PlayerPosition.Opposite => new PhysicalBaseAttributesV4(
+                    2.00f, 2.57f, 0.95f, 0.90f, 0.89f, 0.90f),
+                PlayerPosition.OutsideHitter => new PhysicalBaseAttributesV4(
+                    1.96f, 2.51f, 0.93f, 0.92f, 0.91f, 0.92f),
+                _ => new PhysicalBaseAttributesV4(
+                    1.90f, 2.42f, 0.80f, 0.80f, 0.80f, 0.80f)
+            };
+        }
+
+        private static TechnicalBaseAttributesV4 TechnicalFor(
+            PlayerPosition position)
+        {
+            return position switch
+            {
+                PlayerPosition.Setter => new TechnicalBaseAttributesV4(
+                    0.74f, 0.70f, 0.72f, 0.80f, 0.80f, 0.95f, 0.72f, 0.94f, 0.93f),
+                PlayerPosition.Libero => new TechnicalBaseAttributesV4(
+                    0.62f, 0.60f, 0.65f, 0.97f, 0.97f, 0.76f, 0.68f, 0.90f, 0.95f),
+                PlayerPosition.MiddleBlocker => new TechnicalBaseAttributesV4(
+                    0.91f, 0.92f, 0.96f, 0.72f, 0.72f, 0.70f, 0.82f, 0.76f, 0.86f),
+                PlayerPosition.Opposite => new TechnicalBaseAttributesV4(
+                    0.95f, 0.95f, 0.91f, 0.75f, 0.75f, 0.74f, 0.91f, 0.78f, 0.88f),
+                PlayerPosition.OutsideHitter => new TechnicalBaseAttributesV4(
+                    0.94f, 0.92f, 0.86f, 0.86f, 0.86f, 0.76f, 0.90f, 0.82f, 0.91f),
+                _ => new TechnicalBaseAttributesV4(
+                    0.80f, 0.80f, 0.80f, 0.80f, 0.80f, 0.80f, 0.80f, 0.80f, 0.80f)
             };
         }
     }

@@ -911,7 +911,7 @@ namespace Volleyball.Career.EditModeTests
                 new LineageId(Guid.NewGuid()),
                 9,
                 new CareerMatchLifecycleVersions(
-                    CareerMatchLifecycleVersions.ContractV3,
+                    CareerMatchLifecycleVersions.ContractV4,
                     1,
                     1,
                     1,
@@ -1012,7 +1012,7 @@ namespace Volleyball.Career.EditModeTests
                 identity.LineageId,
                 identity.Revision,
                 new CareerMatchLifecycleVersions(
-                    CareerMatchLifecycleVersions.ContractV3,
+                    CareerMatchLifecycleVersions.ContractV4,
                     1,
                     1,
                     1,
@@ -1382,7 +1382,7 @@ namespace Volleyball.Career.EditModeTests
                 case "revision": revision--; break;
                 case "versions":
                     versions = new CareerMatchLifecycleVersions(
-                        CareerMatchLifecycleVersions.ContractV3,
+                        CareerMatchLifecycleVersions.ContractV4,
                         2,
                         1,
                         1,
@@ -1459,7 +1459,7 @@ namespace Volleyball.Career.EditModeTests
                     LineageId = new LineageId(Guid.NewGuid()),
                     Revision = 9,
                     Versions = new CareerMatchLifecycleVersions(
-                        CareerMatchLifecycleVersions.ContractV3,
+                        CareerMatchLifecycleVersions.ContractV4,
                         1,
                         1,
                         1,

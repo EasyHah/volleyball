@@ -59,14 +59,19 @@ namespace Volleyball.EditModeTests
         [Test]
         public void BeginRally_RefreshesRotationAndServerEligibility()
         {
-            var legacyContext = CreateFormalV2Context();
-            var set = new MatchSet(legacyContext, TeamSide.Home);
-            var context = MatchContextV3.UpgradeFromV2(legacyContext);
+            var context = CreateFormalV4Context();
+            var set = new MatchSet(context, TeamSide.Home);
             var initialHome = RotationFor(set, TeamSide.Home);
             var initialAway = RotationFor(set, TeamSide.Away);
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
-                CreateEligibility(context, initialHome, initialAway),
+                RulesVersions.FullRallyV3,
+                OnCourtLineupRulesV3.Create(
+                    context,
+                    initialHome,
+                    initialAway,
+                    initialHome[0],
+                    initialAway[0],
+                    Array.Empty<LiberoReplacementV3>()),
                 TeamSide.Home,
                 V3RulesMode.Shadow);
             var initialAwayServer = set.ServerFor(TeamSide.Away);
@@ -120,7 +125,7 @@ namespace Volleyball.EditModeTests
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
 
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                RulesVersions.FullRallyV3,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -129,11 +134,247 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CommitContact_ObservedGeometryDecidesOtherwiseIdenticalAttackEligibility()
+        {
+            var illegalGeometry = new AttackGeometryFactV3(
+                HomeRotation[4], TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 1f, -1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.50f, -0.2f),
+                attackLineDistanceFromCenter: 3f,
+                netHeight: 2.43f);
+            var legalGeometry = new AttackGeometryFactV3(
+                HomeRotation[4], TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 1f, -3.1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.50f, -0.2f),
+                attackLineDistanceFromCenter: 3f,
+                netHeight: 2.43f);
+
+            var legal = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                901L,
+                legalGeometry);
+            var illegal = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                901L,
+                illegalGeometry);
+
+            Assert.That(legal.Accepted, Is.True);
+            Assert.That(illegal.Accepted, Is.False);
+            Assert.That(illegal.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [TestCase(2.43f, true)]
+        [TestCase(2.431f, false)]
+        public void EvaluateContact_ObservedHeightThresholdReturnsExactV3Decision(
+            float observedContactHeight,
+            bool expectedAccepted)
+        {
+            var geometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, observedContactHeight, -0.2f),
+                attackLineDistanceFromCenter: 3f,
+                netHeight: 2.43f);
+
+            var transition = CreateAdapter().EvaluateContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                902L,
+                geometry);
+
+            Assert.That(transition.Accepted, Is.EqualTo(expectedAccepted));
+            Assert.That(
+                transition.RejectionReason,
+                Is.EqualTo(
+                    expectedAccepted
+                        ? RuleRejectionReasonV3.None
+                        : RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [Test]
+        public void CommitContact_RejectsGeometryForAnotherActorOrSide()
+        {
+            var actorMismatch = new AttackGeometryFactV3(
+                HomeRotation[5],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+            var sideMismatch = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Away,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, 3.1f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, 0.2f),
+                3f,
+                2.43f);
+
+            Assert.That(
+                () => CreateAdapter().CommitContact(
+                    HomeRotation[4],
+                    TeamSide.Home,
+                    RallyContactClassificationV3.TeamContact,
+                    903L,
+                    actorMismatch),
+                Throws.ArgumentException);
+            Assert.That(
+                () => CreateAdapter().CommitContact(
+                    HomeRotation[4],
+                    TeamSide.Home,
+                    RallyContactClassificationV3.TeamContact,
+                    904L,
+                    sideMismatch),
+                Throws.ArgumentException);
+        }
+
+        [Test]
+        public void CommitContact_PlannedLegalObservedIllegal_UsesObservedTransition()
+        {
+            var plannedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+            var observedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            var transition = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                905L,
+                observedGeometry);
+
+            Assert.That(plannedGeometry.IsTakeoffInFrontZone, Is.False);
+            Assert.That(observedGeometry.IsTakeoffInFrontZone, Is.True);
+            Assert.That(transition.Accepted, Is.False);
+            Assert.That(
+                transition.RejectionReason,
+                Is.EqualTo(RuleRejectionReasonV3.ActionIneligible));
+        }
+
+        [Test]
+        public void CommitContact_PlannedIllegalObservedLegal_UsesObservedTransition()
+        {
+            var plannedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+            var observedGeometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            var transition = CreateAdapter().CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                906L,
+                observedGeometry);
+
+            Assert.That(plannedGeometry.IsTakeoffInFrontZone, Is.True);
+            Assert.That(observedGeometry.IsTakeoffInFrontZone, Is.False);
+            Assert.That(transition.Accepted, Is.True);
+            Assert.That(transition.RejectionReason, Is.EqualTo(RuleRejectionReasonV3.None));
+        }
+
+        [Test]
+        public void AttackGeometryEvaluateAndCommit_ReturnIdenticalDecisionAndCommitOnce()
+        {
+            var adapter = CreateAdapter();
+            var geometry = new AttackGeometryFactV3(
+                HomeRotation[4],
+                TeamSide.Home,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -3.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            var evaluation = adapter.EvaluateContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                907L,
+                geometry);
+            var committed = adapter.CommitContact(
+                HomeRotation[4],
+                TeamSide.Home,
+                RallyContactClassificationV3.TeamContact,
+                907L,
+                geometry);
+
+            Assert.That(evaluation.Accepted, Is.True);
+            Assert.That(evaluation.RejectionReason, Is.EqualTo(committed.RejectionReason));
+            Assert.That(evaluation.Before.CountedHits, Is.Zero);
+            Assert.That(committed.Before.CountedHits, Is.Zero);
+            Assert.That(committed.After.CountedHits, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CreateObservedAttackGeometryFact_UsesCollisionPointAndValidatesTakeoffTime()
+        {
+            var method = typeof(PhysicalMatchRallyDirector).GetMethod(
+                "CreateObservedAttackGeometryFact",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var takeoff = new ObservedAttackTakeoff(
+                new Volleyball.Domain.Simulation.SimVector3(0f, 0f, -1.2f),
+                4.62f);
+            var hit = new Volleyball.Domain.Simulation.SweptBallHit(
+                0.5f,
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.55f, -0.2f),
+                new Volleyball.Domain.Simulation.SimVector3(0f, 2.42f, -0.2f),
+                Volleyball.Domain.Simulation.SimVector3.Up,
+                Volleyball.Domain.Simulation.SimVector3.Zero,
+                908,
+                1f);
+
+            Assert.That(method, Is.Not.Null);
+            var fact = (AttackGeometryFactV3)method.Invoke(
+                null,
+                new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 5f });
+
+            Assert.That(fact.TakeoffPoint, Is.EqualTo(takeoff.Point));
+            Assert.That(fact.ContactPoint, Is.EqualTo(hit.ContactPoint));
+            Assert.That(fact.IsContactAboveNet, Is.False);
+            var equalTimeException = Assert.Throws<TargetInvocationException>(() => method.Invoke(
+                null,
+                new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 4.62f }));
+            var laterTakeoffException = Assert.Throws<TargetInvocationException>(() => method.Invoke(
+                null,
+                new object[] { HomeRotation[4], TeamSide.Home, takeoff, hit, 4.61f }));
+            Assert.That(
+                equalTimeException.InnerException,
+                Is.TypeOf<InvalidOperationException>());
+            Assert.That(
+                laterTakeoffException.InnerException,
+                Is.TypeOf<InvalidOperationException>());
+        }
+
+        [Test]
         public void EvaluateContact_IsPureAcrossMultipleCandidatesAndCommitAdvancesOnce()
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                RulesVersions.FullRallyV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -177,7 +418,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                RulesVersions.FullRallyV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -204,7 +445,7 @@ namespace Volleyball.EditModeTests
         {
             var context = CreateContext();
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                context,
+                RulesVersions.FullRallyV3,
                 CreateEligibility(context, HomeRotation, AwayRotation),
                 TeamSide.Home,
                 V3RulesMode.Authority);
@@ -254,6 +495,18 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PhysicalDirector_ExposesShadowPlanReplayEvent()
+        {
+            var replayEvent = typeof(PhysicalMatchRallyDirector).GetEvent(
+                "ReplayShadowPlanRecorded");
+
+            Assert.That(replayEvent, Is.Not.Null);
+            Assert.That(
+                replayEvent.EventHandlerType,
+                Is.EqualTo(typeof(Action<RallyPlanV3>)));
+        }
+
+        [Test]
         public void ConfigureV3Rules_RejectsMidRallyConfiguration()
         {
             var gameObject = new GameObject("active-formal-director");
@@ -264,9 +517,7 @@ namespace Volleyball.EditModeTests
                 SetPrivateField(director, "_rallyActive", true);
 
                 Assert.That(
-                    () => director.ConfigureV3Rules(
-                        MatchContextV3.UpgradeFromV2(context),
-                        V3RulesMode.Shadow),
+                    () => director.ConfigureV3Rules(V3RulesMode.Shadow),
                     Throws.TypeOf<InvalidOperationException>());
             }
             finally
@@ -276,23 +527,23 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void ConfigureV3Rules_InvalidReplacementPreservesExistingShadowConfiguration()
+        public void ConfigureV3Rules_DisablingRemovesExistingShadowConfiguration()
         {
             var gameObject = new GameObject("configured-formal-director");
             try
             {
                 var director = gameObject.AddComponent<PhysicalMatchRallyDirector>();
-                var context = PrepareFormalDirector(director);
-                director.ConfigureV3Rules(
-                    MatchContextV3.UpgradeFromV2(context),
-                    V3RulesMode.Shadow);
+                PrepareFormalDirector(director);
+                director.ConfigureV3Rules(V3RulesMode.Shadow);
                 var originalAdapter = GetPrivateField(director, "_v3RulesAdapter");
+                Assert.That(director.GateHAuthorityEnabled, Is.False);
 
-                Assert.That(
-                    () => director.ConfigureV3Rules(CreateContext(), V3RulesMode.Shadow),
-                    Throws.TypeOf<ArgumentException>());
-                Assert.That(GetPrivateField(director, "_v3RulesAdapter"), Is.SameAs(originalAdapter));
-                Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Shadow));
+                director.ConfigureV3Rules(V3RulesMode.Disabled);
+
+                Assert.That(originalAdapter, Is.Not.Null);
+                Assert.That(GetPrivateField(director, "_v3RulesAdapter"), Is.Null);
+                Assert.That(director.V3RulesMode, Is.EqualTo(V3RulesMode.Disabled));
+                Assert.That(director.GateHAuthorityEnabled, Is.False);
             }
             finally
             {
@@ -305,23 +556,34 @@ namespace Volleyball.EditModeTests
             var context = CreateContext();
             var eligibility = CreateEligibility(context, HomeRotation, AwayRotation);
             return new FullRallyV3RulesRuntimeAdapter(
-                context,
+                RulesVersions.FullRallyV3,
                 eligibility,
                 TeamSide.Home,
                 V3RulesMode.Shadow);
         }
 
-        private static MatchContextV3 CreateContext()
+        private static MatchContextV4 CreateContext()
         {
-            return MatchContextV3.Create(
+            var positions = new[]
+            {
+                PlayerPosition.Setter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter,
+                PlayerPosition.OutsideHitter
+            };
+            return MatchV4TestFixture.CreateContextForRotations(
                 Guid.Parse("463f889f-8043-46d0-af82-b9331f316eae"),
                 7351,
-                CreateTeam("home", TeamSide.Home, HomeRotation),
-                CreateTeam("away", TeamSide.Away, AwayRotation));
+                HomeRotation,
+                positions,
+                AwayRotation,
+                positions);
         }
 
         private static OnCourtEligibilitySnapshot CreateEligibility(
-            MatchContextV3 context,
+            MatchContextV4 context,
             PlayerId[] homeRotation,
             PlayerId[] awayRotation)
         {
@@ -334,10 +596,13 @@ namespace Volleyball.EditModeTests
                 Array.Empty<LiberoReplacementV3>());
         }
 
-        private static MatchContextV2 PrepareFormalDirector(PhysicalMatchRallyDirector director)
+        private static MatchContextV4 PrepareFormalDirector(PhysicalMatchRallyDirector director)
         {
-            var context = CreateFormalV2Context();
-            SetPrivateField(director, "_set", new MatchSet(context, TeamSide.Home));
+            var context = CreateFormalV4Context();
+            var set = new MatchSet(context, TeamSide.Home);
+            SetPrivateField(director, "_set", set);
+            SetPrivateField(director, "_formalSet", set);
+            SetPrivateField(director, "_matchContext", context);
             SetPrivateField(
                 director,
                 "_configuration",
@@ -345,12 +610,12 @@ namespace Volleyball.EditModeTests
             return context;
         }
 
-        private static MatchContextV2 CreateFormalV2Context()
+        private static MatchContextV4 CreateFormalV4Context()
         {
             var createContext = typeof(FormalSixVsSixRallyBootstrap).GetMethod(
                 "CreateSandboxContext",
                 BindingFlags.Static | BindingFlags.NonPublic);
-            return (MatchContextV2)createContext.Invoke(null, null);
+            return (MatchContextV4)createContext.Invoke(null, null);
         }
 
         private static PlayerId[] RotationFor(MatchSet set, TeamSide side)
@@ -385,42 +650,5 @@ namespace Volleyball.EditModeTests
                        BindingFlags.Instance | BindingFlags.NonPublic);
         }
 
-        private static TeamSnapshotV3 CreateTeam(
-            string teamId,
-            TeamSide side,
-            PlayerId[] rotation)
-        {
-            var players = new PlayerSnapshotV3[rotation.Length];
-            for (var index = 0; index < players.Length; index++)
-            {
-                players[index] = new PlayerSnapshotV3(
-                    rotation[index],
-                    rotation[index].Value,
-                    index + 1,
-                    index == 0 ? PlayerPosition.Setter : PlayerPosition.OutsideHitter,
-                    new PlayerAbilitySnapshotV3(
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        3.3f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        0.5f,
-                        ContractVersions.MatchV3,
-                        0,
-                        false,
-                        Array.Empty<string>()));
-            }
-
-            return new TeamSnapshotV3(
-                new TeamId(teamId),
-                teamId,
-                side,
-                players);
-        }
     }
 }

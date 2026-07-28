@@ -34,7 +34,7 @@ namespace Volleyball.Career.Persistence
                 exception is DecoderFallbackException)
             {
                 throw new ArgumentException(
-                    "Career match payload failed the authoritative Shared Match V3 contract.",
+                    "Career match payload failed the authoritative Shared Match V4 contract.",
                     nameof(snapshot),
                     exception);
             }
@@ -49,7 +49,7 @@ namespace Volleyball.Career.Persistence
                 "pendingMatch.canonicalContextUtf8");
             RequireEqual(
                 pending.Versions.ContractVersion,
-                CareerMatchLifecycleVersions.ContractV3,
+                CareerMatchLifecycleVersions.ContractV4,
                 "pendingMatch.versions.contractVersion");
             RequireEqual(context.ContractVersion, pending.Versions.ContractVersion, "pendingMatch.contractVersion");
             RequireEqual(context.ContextHash, pending.ContextDigest.Value, "pendingMatch.contextHash");
@@ -117,51 +117,51 @@ namespace Volleyball.Career.Persistence
 
             if (!hasProtagonistStats)
             {
-                throw Contradiction(path + " result omits the current Career player's V3 stats.");
+                throw Contradiction(path + " result omits the current Career player's V4 stats.");
             }
 
             RequireCurrentPlayer(context, snapshot, path);
         }
 
-        private static MatchContextV3 DecodeContext(byte[] bytes, string path)
+        private static MatchContextV4 DecodeContext(byte[] bytes, string path)
         {
-            var context = ContractJson.DeserializeContextV3(StrictUtf8.GetString(bytes));
+            var context = ContractJson.DeserializeMatchContextV4(StrictUtf8.GetString(bytes));
             RequireSameBytes(bytes, Serialize(context), path);
             return context;
         }
 
-        private static MatchResultV3 DecodeResult(
+        private static MatchResultV4 DecodeResult(
             byte[] bytes,
-            MatchContextV3 context,
+            MatchContextV4 context,
             string path)
         {
-            var result = ContractJson.DeserializeResultV3(StrictUtf8.GetString(bytes));
+            var result = ContractJson.DeserializeMatchResultV4(StrictUtf8.GetString(bytes));
             RequireSameBytes(bytes, Serialize(result), path);
             result.ValidateAgainst(context);
             return result;
         }
 
-        private static byte[] Serialize(MatchContextV3 context)
+        private static byte[] Serialize(MatchContextV4 context)
         {
-            return StrictUtf8.GetBytes(ContractJson.SerializeV3(context));
+            return StrictUtf8.GetBytes(ContractJson.SerializeV4(context));
         }
 
-        private static byte[] Serialize(MatchResultV3 result)
+        private static byte[] Serialize(MatchResultV4 result)
         {
-            return StrictUtf8.GetBytes(ContractJson.SerializeV3(result));
+            return StrictUtf8.GetBytes(ContractJson.SerializeV4(result));
         }
 
-        private static List<PlayerSnapshotV3> FlattenPlayers(MatchContextV3 context)
+        private static List<PlayerSnapshotV4> FlattenPlayers(MatchContextV4 context)
         {
-            var players = new List<PlayerSnapshotV3>(
-                context.Home.Players.Count + context.Away.Players.Count);
-            players.AddRange(context.Home.Players);
-            players.AddRange(context.Away.Players);
+            var players = new List<PlayerSnapshotV4>(
+                context.Home.RotationOrder.Count + context.Away.RotationOrder.Count);
+            players.AddRange(context.Home.RotationOrder);
+            players.AddRange(context.Away.RotationOrder);
             return players;
         }
 
         private static void RequireCurrentPlayer(
-            MatchContextV3 context,
+            MatchContextV4 context,
             CareerSaveSnapshot snapshot,
             string path)
         {
@@ -170,7 +170,7 @@ namespace Volleyball.Career.Persistence
                 throw Contradiction(path + " requires the current Career player and team.");
             }
 
-            TeamSnapshotV3 careerTeam = null;
+            TeamSnapshotV4 careerTeam = null;
             if (context.Home.TeamId.Equals(snapshot.TeamId.Value))
             {
                 careerTeam = context.Home;
@@ -185,8 +185,8 @@ namespace Volleyball.Career.Persistence
                 throw Contradiction(path + " current Career team is absent from context.");
             }
 
-            PlayerSnapshotV3 protagonist = null;
-            foreach (var player in careerTeam.Players)
+            PlayerSnapshotV4 protagonist = null;
+            foreach (var player in careerTeam.RotationOrder)
             {
                 if (player.PlayerId.Equals(snapshot.Player.PlayerId))
                 {
@@ -226,7 +226,7 @@ namespace Volleyball.Career.Persistence
         {
             if (!EqualityComparer<T>.Default.Equals(actual, expected))
             {
-                throw Contradiction(path + " contradicts the canonical Shared Match V3 payload.");
+                throw Contradiction(path + " contradicts the canonical Shared Match V4 payload.");
             }
         }
 

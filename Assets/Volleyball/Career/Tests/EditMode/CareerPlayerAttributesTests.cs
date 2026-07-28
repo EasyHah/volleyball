@@ -225,7 +225,8 @@ namespace Volleyball.Career.EditModeTests
 
                         return Array.Empty<Type>();
                     }),
-                Has.None.EqualTo(typeof(PlayerAbilitySnapshotV1)));
+                Has.None.Matches<Type>(type =>
+                    type.Name.StartsWith("PlayerAbilitySnapshotV", StringComparison.Ordinal)));
         }
 
         [Test]

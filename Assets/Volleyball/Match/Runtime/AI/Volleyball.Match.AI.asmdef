@@ -1,6 +1,6 @@
 {
   "name": "Volleyball.Match.AI",
   "rootNamespace": "Volleyball.AI",
-  "references": ["Volleyball.Match.Domain"],
+  "references": ["Volleyball.Shared", "Volleyball.Match.Domain"],
   "noEngineReferences": true
 }

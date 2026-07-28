@@ -35,6 +35,8 @@ LLM、联网来源和表现层只能提出有界战术偏好，不能直接设�
 
 Receive、Set 和 Attack 是计数触球：只能由当前持球队完成；同一球员不得连续完成两次计数触球；每个球权最多三次，第四次为犯规。触球还必须处于对应的有效时间窗、队伍、动作和候选球员范围内；非法候选必须在改变球速前被拒绝。
 
+Attack 的资格查询必须使用该次物理接触实际观测到的起跳点、触球点、进攻线距离和网高；计划点、派生能力、角色或动作名称不得替代实际几何。几何不合法时必须以既有规则拒绝原因码拒绝，且不得改变球速、修正几何或将样本夹回合法范围。
+
 ### R-REF-003 拦网触球
 
 Block 是物理触球并更新最后触球球员/队伍，也计入该球员的接触和负荷统计；它不消耗本队三次计数触球。一个物理事件最多接受一次 Block，即使多段手臂或多个拦网者同时覆盖球。
@@ -95,7 +97,7 @@ Block 是物理触球并更新最后触球球员/队伍，也计入该球员的�
 | --- | --- | --- |
 | R-REF-001, R-REF-006 | `MatchSet` | `MatchSetTests` |
 | R-GOV-001 | `PhysicalRallyTacticPlanner` | `PhysicalRallyTacticPlannerTests` |
-| R-REF-002, R-REF-003 | 正式 6v6：`RallyRulesEngineV3`、`SimulatedBall`；旧版 3v3：`RallyTouchState`、`SimulatedBall` | `FullRallyV3RulesEngineTests`、`SimulatedBallTests`、正式 6v6 / 3v3 PlayMode 测试 |
+| R-REF-002, R-REF-003 | 正式 6v6：`RallyRulesEngineV3`、`FullRallyV3RulesRuntimeAdapter`、`SimulatedBall`；旧版 3v3：`RallyTouchState`、`SimulatedBall` | `FullRallyV3RulesEngineTests`、`FullRallyV3RuntimeAdapterTests`、`SimulatedBallTests`、正式 6v6 / 3v3 PlayMode 测试 |
 | R-REF-004, R-REF-005 | `PhysicalMatchRallyDirector`、`MatchRallyReferee` | `MatchRallyRefereeTests`、物理回合 PlayMode 测试 |
 | R-PLAY-001--003 | `PrototypePlayerAgent`、`PhysicalMatchRallyDirector` | 边界、轮转和拦网测试 |
 | R-OFF-001--005 | `TeamRallyDecisionPlanner`、`SetFlightSolver`、`PhysicalMatchRallyDirector` | 传球、助跑、攻击链和校准测试 |

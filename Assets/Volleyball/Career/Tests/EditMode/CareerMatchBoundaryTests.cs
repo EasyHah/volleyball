@@ -12,11 +12,11 @@ namespace Volleyball.Career.EditModeTests
     public sealed class CareerMatchBoundaryTests
     {
         [Test]
-        public void RuntimeAssemblies_KeepSharedV3InsidePureMatchIntegration()
+        public void RuntimeAssemblies_KeepSharedV4InsidePureMatchIntegration()
         {
             var domain = References(typeof(CareerPlayerAttributes).Assembly);
             var application = References(typeof(CareerMatchLaunch).Assembly);
-            var integration = References(typeof(CareerMatchV3Mapper).Assembly);
+            var integration = References(typeof(CareerMatchV4Mapper).Assembly);
 
             Assert.That(domain.Where(IsVolleyballAssembly),
                 Is.EquivalentTo(new[] { "Volleyball.Shared" }));

@@ -8,6 +8,10 @@
 - 关联分支：`geometric-counterplay`（设计稿）/ `codex/full-rally-v3-phase-1`
 - 关联提交或 PR：本地提交（见当前 commit）
 
+> 后续阶段路线图：`docs/superpowers/plans/2026-07-24-full-rally-v3-phase-2-9-roadmap.md`。它将
+> Phase 2--9 拆为可独立验收的 envelope/影子规划/组件/组织/攻防/感知/导演瘦身/回放校准闸门；
+> V4 不是本期依赖。
+
 > [!IMPORTANT]
 > Full Rally V3 将新增独立的 V3 比赛上下文、结果、球员能力快照与 Replay V2 契约。
 > Shared 提供版本显式的 DTO、JSON、哈希和迁移边界；Match 消费这些契约实现回合规划与回放；
@@ -25,6 +29,13 @@ trajectory prediction contract。
 实际触球转换、动作资格、边界规则、shadow 比较与正式 6v6 权威闸门已落地。不表示 Full Rally
 V3 planner、cache、完整 replay payload 或平衡公式已实现。GPU backend 不进入当前 Phase 0/P1；
 第一版以 CPU deterministic backend 为权威。
+
+2026-07-24 属性语义修正：`PlayerAbilitySnapshotV3` 是兼容的混合输入契约，并非已经完全接入的
+“比赛属性层”。正式运行时仍消费 V2-shaped `PlayerAbilityProfile`；`AttackControl`、`SoftTouch`、
+`BlockTechnique`、`CourtAwareness` 当前为 reserved axes，不能表述为已独立影响正式比赛。
+`MaxAttackReach` 仅为进攻触球高度输入，不是身高或拦网高度。V4 将引入基础身体层、技术基础层、
+派生比赛属性层及版本化确定性换算；详见
+`docs/superpowers/specs/2026-07-24-v3-ability-semantics-and-v4-layered-attributes-design.md`。
 
 SP/GM 审查结论：用户原始 P0 四条仍是核心阻塞项；GM 追加的 Replay 契约方向、hash 拆族、
 deterministic work budget、migration invariants、`PlanCoverageDecision`、shared envelope 和
@@ -133,6 +144,33 @@ Phase 1 最终验证使用 Unity `6000.0.43f1`：
 - shanked pass、terminal event 等更多真实 executor/planner 场景测试。
 - 两队 gate-5 共享物理预测 cache 的真实实现与 perf calibration。
 - 手动场景验证。
+- 已确认后续顺序先加入 Phase 1.5 兼容运行时稳定化：连续攻手根节点、唯一的 2.5 号位
+  `SetterOrganizationZone`、二传优先代传回退，以及当前已生效属性的固定种子/回放证据。它不等待
+  planner，也不激活四个 reserved V3 轴。随后真实接线 `AttackControl` 和共享 execution envelope，
+  再做十二人 shadow、组件边界、接发组织的 V3-plan 迁移、攻防重组、`CourtAwareness` 感知、director
+  清理与回放校准。`SoftTouch` 与 `BlockTechnique` 只在 Phase 6 的对应动作 envelope 独立生效；
+  `CourtAwareness` 只在 Phase 7 的感知输入独立生效。此前四轴必须继续显示为 reserved，不能冒充
+  正式比赛属性。
+
+Phase 1.5 兼容运行时稳定化已完成（Unity `6000.0.43f1`）：
+
+- 新增唯一纯策略来源 `SetterOrganizationZone`：以进攻方坐标定义默认组织点
+  `(x=1.5m, depth=1.1m)`，经 `TeamCourtFrame` 镜像到两队世界坐标；横向和深度质量分级在该类型
+  中集中维护。正常一传、二传预备根节点和回放诊断共用此策略，既有攻点/攻线与“实际二传离网超过
+  4m 后移助跑带”规则未改。
+- `Organize` 阶段优先选择合法可达的注册二传；仅当其不可达或为上一次触球者时保留非二传代传。
+  回放只在实际 `Organize` 决策上写入策略目标、预测一传落点、区域等级、二传可达状态/预备移动、
+  实际组织者和回退原因；不把预测值伪称为接触后的实测结果。
+- 攻手根节点运动从助跑、起跳、接触到落地均受速度/时间约束；攻击触球对齐的单次修正上限为
+  `0.18m`，余量保留为可观察的运动短缺。接发、二传和 controlled-handling 的既有修正上限未修改。
+- 新增固定种子 (`73421`) 的单变量基准，覆盖当前真正生效的 V2-shaped 字段：`Mobility`、
+  `Reaction`、`Jump`、`ReceiveTechnique`、`SetTechnique`、`AttackTechnique`、`AttackPower`、
+  `MaxAttackReach`。回放同时列出决策候选实际消费的这些字段。`AttackControl`、`SoftTouch`、
+  `BlockTechnique`、`CourtAwareness` 仍为 reserved；接线顺序分别为 Stage 2、Stage 6、Stage 6、
+  Stage 7。
+- 最终验证：全量 EditMode `TestResults/Stage15-final-edit.xml` 为 467/467 passed；正式 6v6
+  PlayMode `TestResults/Stage15-formal-play.xml` 为 5/5 passed（69.116 秒）；组织回放 HTML 标签
+  定向回归 `TestResults/Stage15-label-green.xml` 为 1/1 passed。`git diff --check` 无输出。
 
 ## 回滚与风险
 

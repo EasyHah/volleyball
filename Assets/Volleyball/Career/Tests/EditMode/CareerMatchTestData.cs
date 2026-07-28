@@ -18,7 +18,7 @@ namespace Volleyball.Career.EditModeTests
             Guid.Parse("55555555-5555-5555-5555-555555555555");
 
         public static CareerMatchVersions Versions(
-            int contractVersion = CareerMatchVersions.ContractV3,
+            int contractVersion = CareerMatchVersions.ContractV4,
             int contentVersion = 1,
             int rulesetVersion = 1,
             int careerRandomAlgorithmVersion = 1,

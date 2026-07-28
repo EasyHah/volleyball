@@ -3,10 +3,10 @@
 ## Authority
 
 `Assets/Volleyball/Shared/Runtime/` is the single source of truth for cross-module
-match contracts. New Career matches use `MatchContextV3` and `MatchResultV3`.
-Legacy V1/V2 types remain only where the Match owner needs compatibility; Career
-must not create a parallel Shared assembly or expose any Shared match DTO from its
-Domain or Application public API.
+match contracts. New Career matches use concrete `MatchContextV4` and
+`MatchResultV4`. V1/V2/V3 production readers, adapters and fallback constructors
+are not supported. Career must not create a parallel Shared assembly or expose
+Shared match DTOs from its Domain or Application public API.
 
 Career owns identity, attributes, fatigue, mindset, coach trust, progression and
 settlement consequences. Match consumes a frozen context and reports facts.

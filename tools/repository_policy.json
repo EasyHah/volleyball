@@ -14,9 +14,9 @@
     "/tools/** @hoshisora1"
   ],
   "frozenTrees": {
-    "Assets/Volleyball/Match": "5ea19d4ae54fe3c8ee34d7c579f638de5460f43f",
+    "Assets/Volleyball/Match": "c7d047bb2018c8faa4a9c5b939f76adaaca8d369",
     "Assets/Volleyball/Match.meta": "23d5e66a3e4158bd421c4d3ee573e0d4e7339627",
-    "Assets/Volleyball/Shared/Runtime": "d30088e882276769aaef79c86fafbee761b7db41",
+    "Assets/Volleyball/Shared/Runtime": "76d70c3c229a9834471f0eed7874bda22efa7f63",
     "Assets/Volleyball/Shared/Runtime.meta": "9085d85a3a423a82a6303df4ca3fe3819d8d30ea"
   },
   "requiredGitattributes": [
@@ -42,7 +42,7 @@
     },
     "Volleyball.Match.AI": {
       "path": "Assets/Volleyball/Match/Runtime/AI/Volleyball.Match.AI.asmdef",
-      "references": ["Volleyball.Match.Domain"],
+      "references": ["Volleyball.Shared", "Volleyball.Match.Domain"],
       "noEngineReferences": true
     },
     "Volleyball.Match.Presentation": {

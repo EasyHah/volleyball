@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -5,6 +6,7 @@ using NUnit.Framework;
 using Volleyball.Bootstrap;
 using Volleyball.Career.Application;
 using Volleyball.Career.Domain;
+using Volleyball.Career.MatchIntegration;
 using Volleyball.Career.Persistence;
 using Volleyball.Career.Presentation;
 using Volleyball.Presentation;
@@ -23,13 +25,15 @@ namespace Volleyball.Career.EditModeTests
 
             AssertReferences(typeof(OperationReceiptIndex), "Volleyball.Career.Domain");
             AssertReferences(typeof(OperationReceiptIndex), "Volleyball.Shared");
-            AssertDoesNotReference(typeof(OperationReceiptIndex), "Volleyball.Shared.MatchV2");
             AssertDoesNotReference(typeof(OperationReceiptIndex), "Volleyball.Match.Domain");
 
             AssertReferences(typeof(CareerSaveSnapshotMapper), "Volleyball.Career.Domain");
             AssertReferences(typeof(CareerSaveSnapshotMapper), "Volleyball.Shared");
             AssertDoesNotReference(typeof(CareerSaveSnapshotMapper), "Volleyball.Match.Domain");
             AssertDoesNotReference(typeof(CareerSaveSnapshotMapper), "UnityEngine.CoreModule");
+
+            AssertReferences(typeof(CareerMatchV4Mapper), "Volleyball.Shared");
+            AssertDoesNotReference(typeof(CareerMatchV4Mapper), "Volleyball.Match.Domain");
 
             AssertReferences(typeof(CareerPresentationModule), "Volleyball.Career.Application");
             AssertDoesNotReference(typeof(ThreeVsThreeRallyBootstrap), "Volleyball.Career.Domain");
@@ -39,63 +43,65 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
-        public void CareerPublicSignatures_DoNotExposeLegacyMatchContracts()
+        public void CareerMatchBoundary_UsesConcreteV4ContractsAndRejectsLegacyContracts()
         {
-            var assemblies = new[]
+            Assert.That(
+                typeof(CareerMatchV4Mapper).GetMethod(nameof(CareerMatchV4Mapper.ToContext))
+                    ?.ReturnType,
+                Is.EqualTo(typeof(MatchContextV4)));
+
+            var prohibited = new[]
             {
-                typeof(CareerPlayerRecord).Assembly,
-                typeof(OperationReceiptIndex).Assembly,
-                typeof(CareerSaveSnapshotMapper).Assembly
-            };
-            var forbiddenTypePrefixes = new[]
-            {
-                "Volleyball.Shared.Contracts.MatchContextV",
-                "Volleyball.Shared.Contracts.MatchResultV",
-                "Volleyball.Shared.Contracts.PlayerAbilitySnapshotV"
+                "PlayerAbilitySnapshotV1",
+                "PlayerAbilitySnapshotV2",
+                "PlayerAbilitySnapshotV3",
+                "MatchContextV1",
+                "MatchContextV2",
+                "MatchContextV3",
+                "MatchResultV1",
+                "MatchResultV2",
+                "MatchResultV3",
+                "IMatchContext",
+                "IMatchResult"
             };
 
-            foreach (var assembly in assemblies)
+            AssertNoPublicEntryPointUses(typeof(CareerPlayerRecord).Assembly, prohibited);
+            AssertNoPublicEntryPointUses(typeof(CareerMatchV4Mapper).Assembly, prohibited);
+            AssertNoPublicEntryPointUses(typeof(CareerPresentationModule).Assembly, prohibited);
+        }
+
+        private static void AssertNoPublicEntryPointUses(
+            Assembly assembly,
+            IReadOnlyCollection<string> prohibited)
+        {
+            foreach (var signatureType in PublicSignatureTypes(assembly))
             {
-                foreach (var signatureType in PublicSignatureTypes(assembly))
-                {
-                    var fullName = signatureType.FullName ?? signatureType.Name;
-                    Assert.That(
-                        forbiddenTypePrefixes.Any(fullName.StartsWith),
-                        Is.False,
-                        assembly.GetName().Name + " publicly exposes legacy match type " + fullName + ".");
-                }
+                Assert.That(
+                    prohibited,
+                    Has.None.EqualTo(signatureType.Name),
+                    assembly.GetName().Name + " exposes legacy contract " +
+                    signatureType.FullName + ".");
             }
         }
 
-        [Test]
-        public void SharedMatchContracts_ExposeExplicitVersionedInterfaces()
-        {
-            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV1)), Is.True);
-            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV2)), Is.True);
-            Assert.That(typeof(IMatchContext).IsAssignableFrom(typeof(MatchContextV3)), Is.True);
-            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV1)), Is.True);
-            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV2)), Is.True);
-            Assert.That(typeof(IMatchResult).IsAssignableFrom(typeof(MatchResultV3)), Is.True);
-        }
-
-        private static void AssertReferences(System.Type type, string assemblyName)
+        private static void AssertReferences(Type type, string assemblyName)
         {
             Assert.That(References(type), Does.Contain(assemblyName));
         }
 
-        private static void AssertDoesNotReference(System.Type type, string assemblyName)
+        private static void AssertDoesNotReference(Type type, string assemblyName)
         {
             Assert.That(References(type), Does.Not.Contain(assemblyName));
         }
 
-        private static string[] References(System.Type type)
+        private static string[] References(Type type)
         {
             return type.Assembly.GetReferencedAssemblies()
                 .Select(reference => reference.Name)
                 .ToArray();
         }
 
-        private static IEnumerable<System.Type> PublicSignatureTypes(Assembly assembly)
+        private static IEnumerable<Type> PublicSignatureTypes(Assembly assembly)
         {
             const BindingFlags flags = BindingFlags.Public |
                                        BindingFlags.Instance |
@@ -149,7 +155,7 @@ namespace Volleyball.Career.EditModeTests
             }
         }
 
-        private static IEnumerable<System.Type> Expand(System.Type type)
+        private static IEnumerable<Type> Expand(Type type)
         {
             yield return type;
 

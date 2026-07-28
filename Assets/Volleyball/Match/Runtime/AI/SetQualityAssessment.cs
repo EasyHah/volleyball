@@ -227,7 +227,7 @@ namespace Volleyball.AI
             }
 
             if (float.IsNaN(maxAttackReach) || float.IsInfinity(maxAttackReach) ||
-                maxAttackReach < AttackContactPlanner.MinimumAttackReach || maxAttackReach > 3.55f)
+                maxAttackReach < 1.95f || maxAttackReach > 3.95f)
             {
                 throw new ArgumentOutOfRangeException(nameof(maxAttackReach));
             }

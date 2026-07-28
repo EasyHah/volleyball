@@ -14,130 +14,70 @@ namespace Volleyball.Domain.Players
 
     public readonly struct PlayerAbilityProfile
     {
-        public PlayerAbilityProfile(
-            float mobility,
-            float reaction,
-            float jump,
-            float receiveTechnique,
-            float setTechnique,
-            float attackTechnique,
-            float attackPower,
-            float maxAttackReach = 3.20f)
-        {
-            Mobility = Validate(mobility, nameof(mobility));
-            Reaction = Validate(reaction, nameof(reaction));
-            Jump = Validate(jump, nameof(jump));
-            ReceiveTechnique = Validate(receiveTechnique, nameof(receiveTechnique));
-            SetTechnique = Validate(setTechnique, nameof(setTechnique));
-            AttackTechnique = Validate(attackTechnique, nameof(attackTechnique));
-            AttackPower = Validate(attackPower, nameof(attackPower));
-            MaxAttackReach = ValidateAttackReach(maxAttackReach, nameof(maxAttackReach));
-        }
+        private static readonly DerivedMatchAttributesV4 DefaultDerived =
+            MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(1.90f, 2.47f, 0.8f, 0.8f, 0.8f, 0.8f),
+                new TechnicalBaseAttributesV4(
+                    0.8f,
+                    0.8f,
+                    0.8f,
+                    0.8f,
+                    0.8f,
+                    0.8f,
+                    0.8f,
+                    0.8f,
+                    0.8f),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
 
-        public PlayerAbilityProfile(PlayerAbilitySnapshotV1 snapshot)
-            : this(
-                snapshot?.Mobility ?? throw new ArgumentNullException(nameof(snapshot)),
-                snapshot.Reaction,
-                snapshot.Jump,
-                snapshot.ReceiveTechnique,
-                snapshot.SetTechnique,
-                snapshot.AttackTechnique,
-                snapshot.AttackPower,
-                3.20f)
+        public PlayerAbilityProfile(DerivedMatchAttributesV4 derived)
         {
-        }
-
-        public PlayerAbilityProfile(PlayerAbilitySnapshotV2 snapshot)
-            : this(
-                snapshot?.Mobility ?? throw new ArgumentNullException(nameof(snapshot)),
-                snapshot.Reaction,
-                snapshot.Jump,
-                snapshot.ReceiveTechnique,
-                snapshot.SetTechnique,
-                snapshot.AttackTechnique,
-                snapshot.AttackPower,
-                snapshot.MaxAttackReach)
-        {
+            Derived = derived ?? throw new ArgumentNullException(nameof(derived));
         }
 
         public static PlayerAbilityProfile Default =>
-            new PlayerAbilityProfile(0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+            new PlayerAbilityProfile(DefaultDerived);
 
-        public float Mobility { get; }
+        public DerivedMatchAttributesV4 Derived { get; }
 
-        public float Reaction { get; }
+        public MatchAttributesV4 Attributes => RequireDerived().Attributes;
 
-        public float Jump { get; }
+        public float Mobility => Attributes.Defense.CoverageMobility;
 
-        public float ReceiveTechnique { get; }
+        public float Reaction => Attributes.Defense.Reaction;
 
-        public float SetTechnique { get; }
+        public float Jump => Attributes.Block.Timing;
 
-        public float AttackTechnique { get; }
+        public float ReceiveTechnique => Attributes.Receive.FirstTouchControl;
 
-        public float AttackPower { get; }
+        public float SetTechnique => Attributes.Set.PlacementControl;
 
-        public float MaxAttackReach { get; }
+        public float AttackDirectionControl => Attributes.Attack.DirectionControl;
 
-        public PlayerAbilitySnapshotV1 ToSnapshot()
-        {
-            return new PlayerAbilitySnapshotV1(
-                Mobility,
-                Reaction,
-                Jump,
-                ReceiveTechnique,
-                SetTechnique,
-                AttackTechnique,
-                AttackPower);
-        }
+        public float AttackSpeedControl => Attributes.Attack.SpeedControl;
 
-        public PlayerAbilitySnapshotV2 ToSnapshotV2()
-        {
-            return new PlayerAbilitySnapshotV2(
-                Mobility,
-                Reaction,
-                Jump,
-                ReceiveTechnique,
-                SetTechnique,
-                AttackTechnique,
-                AttackPower,
-                MaxAttackReach);
-        }
+        public float AttackPowerCapacity => Attributes.Attack.PowerCapacity;
+
+        public float PlannedAttackContactHeightMeters =>
+            Attributes.Attack.ContactHeightMeters;
 
         public float TechniqueFor(TechniqueAction action)
         {
             return action switch
             {
-                TechniqueAction.Receive => ReceiveTechnique,
-                TechniqueAction.Set => SetTechnique,
-                TechniqueAction.Attack => AttackTechnique,
-                TechniqueAction.Block => ReceiveTechnique,
-                TechniqueAction.Serve => AttackTechnique,
+                TechniqueAction.Receive => Attributes.Receive.FirstTouchControl,
+                TechniqueAction.Set => Attributes.Set.PlacementControl,
+                TechniqueAction.Attack => Attributes.Attack.DirectionControl,
+                TechniqueAction.Block => Attributes.Block.HandControl,
+                TechniqueAction.Serve => Attributes.Serve.DirectionControl,
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
             };
         }
 
-        private static float Validate(float value, string parameterName)
+        private DerivedMatchAttributesV4 RequireDerived()
         {
-            if (float.IsNaN(value) || float.IsInfinity(value) || value < 0f || value > 1f)
-            {
-                throw new ArgumentOutOfRangeException(parameterName, value, "Ability must be finite and in the range [0, 1].");
-            }
-
-            return value;
-        }
-
-        private static float ValidateAttackReach(float value, string parameterName)
-        {
-            if (float.IsNaN(value) || float.IsInfinity(value) || value < 3.20f || value > 3.55f)
-            {
-                throw new ArgumentOutOfRangeException(
-                    parameterName,
-                    value,
-                    "Max attack reach must be finite and in the range [3.20, 3.55].");
-            }
-
-            return value;
+            return Derived ?? throw new InvalidOperationException(
+                "A player ability profile must wrap V4 derived match attributes.");
         }
     }
 }

@@ -8,7 +8,7 @@ namespace Volleyball.Career.EditModeTests
     public sealed class CareerSaveV2LifecycleValidationTests
     {
         [Test]
-        public void PendingMatchV3_RoundTripsThroughSaveSchemaV2()
+        public void PendingMatchV4_RoundTripsThroughSaveSchemaV2()
         {
             var source = CareerSaveV2LifecycleTestData.AwaitingMatchSnapshot();
 
@@ -16,7 +16,7 @@ namespace Volleyball.Career.EditModeTests
                 CareerSaveSnapshotMapper.ToDocument(source));
 
             Assert.That(restored.Versions.ContractVersion, Is.EqualTo(2));
-            Assert.That(restored.PendingMatch.Versions.ContractVersion, Is.EqualTo(3));
+            Assert.That(restored.PendingMatch.Versions.ContractVersion, Is.EqualTo(4));
             Assert.That(
                 restored.PendingMatch.CanonicalContextUtf8,
                 Is.EqualTo(source.PendingMatch.CanonicalContextUtf8));

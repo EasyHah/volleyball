@@ -1,6 +1,8 @@
+using System;
 using System.Reflection;
 using System.Linq;
 using NUnit.Framework;
+using Volleyball.Domain;
 using Volleyball.Domain.Players;
 using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
@@ -15,7 +17,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void SharedAssembly_DoesNotReferenceMatchAssemblies()
         {
-            var references = typeof(MatchContextV1).Assembly
+            var references = typeof(MatchContextV4).Assembly
                 .GetReferencedAssemblies()
                 .Select(reference => reference.Name)
                 .ToArray();
@@ -26,106 +28,91 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void MatchDomain_ReferencesSharedAndAbilitySnapshotRoundTrips()
+        public void MatchDomain_ReferencesSharedAndAbilityProfileWrapsOnlyDerivedV4Attributes()
         {
             var references = typeof(PlayerAbilityProfile).Assembly
                 .GetReferencedAssemblies()
                 .Select(reference => reference.Name)
                 .ToArray();
-            var original = new PlayerAbilityProfile(
-                0.71f,
-                0.72f,
-                0.73f,
-                0.74f,
-                0.75f,
-                0.76f,
-                0.77f);
-
-            var restored = new PlayerAbilityProfile(original.ToSnapshot());
+            var derived = MatchV4TestFixture.CreateDerived();
+            var profile = new PlayerAbilityProfile(derived);
 
             Assert.That(references, Does.Contain("Volleyball.Shared"));
-            Assert.That(restored.Mobility, Is.EqualTo(original.Mobility));
-            Assert.That(restored.Reaction, Is.EqualTo(original.Reaction));
-            Assert.That(restored.Jump, Is.EqualTo(original.Jump));
-            Assert.That(restored.ReceiveTechnique, Is.EqualTo(original.ReceiveTechnique));
-            Assert.That(restored.SetTechnique, Is.EqualTo(original.SetTechnique));
-            Assert.That(restored.AttackTechnique, Is.EqualTo(original.AttackTechnique));
-            Assert.That(restored.AttackPower, Is.EqualTo(original.AttackPower));
+            Assert.That(profile.Derived, Is.SameAs(derived));
+            Assert.That(
+                typeof(PlayerAbilityProfile).GetConstructors()
+                    .SelectMany(constructor => constructor.GetParameters())
+                    .Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[] { typeof(DerivedMatchAttributesV4) }));
+            Assert.That(typeof(PlayerAbilityProfile).GetProperty("AttackTechnique"), Is.Null);
+            Assert.That(typeof(PlayerAbilityProfile).GetProperty("AttackPower"), Is.Null);
+            Assert.That(typeof(PlayerAbilityProfile).GetProperty("MaxAttackReach"), Is.Null);
         }
 
         [Test]
         public void MatchPlayerBinding_KeepsStableCareerIdentitySeparateFromPrototypeSlot()
         {
-            var snapshot = new PlayerAbilitySnapshotV1(
-                0.71f,
-                0.72f,
-                0.73f,
-                0.74f,
-                0.75f,
-                0.76f,
-                0.77f);
+            var snapshot = MatchV4TestFixture.CreatePlayer();
             var binding = new MatchPlayerBinding(
-                new StablePlayerId("career-player-0042"),
+                snapshot,
                 new Volleyball.Domain.Prototype.PlayerId(
                     PrototypeTeamId.Blue,
                     PrototypePlayerRole.Setter),
-                snapshot);
+                TeamSide.Home,
+                rotationPosition: 4);
 
             Assert.That(binding.StablePlayerId.Value, Is.EqualTo("career-player-0042"));
             Assert.That(binding.Slot.Team, Is.EqualTo(PrototypeTeamId.Blue));
             Assert.That(binding.Slot.Role, Is.EqualTo(PrototypePlayerRole.Setter));
-            Assert.That(binding.Ability.SetTechnique, Is.EqualTo(0.75f));
-        }
-
-        [Test]
-        public void PlayerAbilityProfile_ProjectsV1ToDeterministicSafeReachAndPreservesV2Reach()
-        {
-            var legacy = new PlayerAbilityProfile(new PlayerAbilitySnapshotV1(
-                0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f));
-            var v2 = new PlayerAbilityProfile(new PlayerAbilitySnapshotV2(
-                0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 0.7f, 3.42f));
-
-            Assert.That(legacy.MaxAttackReach, Is.EqualTo(3.20f));
-            Assert.That(v2.MaxAttackReach, Is.EqualTo(3.42f));
-            Assert.That(v2.ToSnapshotV2().MaxAttackReach, Is.EqualTo(3.42f));
+            Assert.That(binding.Side, Is.EqualTo(TeamSide.Home));
+            Assert.That(binding.RotationPosition, Is.EqualTo(4));
+            Assert.That(binding.DominantHand, Is.EqualTo(DominantHandV4.Right));
+            Assert.That(binding.Derived, Is.SameAs(snapshot.Derived));
+            Assert.That(typeof(MatchPlayerBinding).GetProperty("Ability"), Is.Null);
         }
 
         [Test]
         public void MatchPlayerBinding_RejectsInvalidPrototypeSlot()
         {
-            var snapshot = new PlayerAbilitySnapshotV1(
-                0.7f,
-                0.7f,
-                0.7f,
-                0.7f,
-                0.7f,
-                0.7f,
-                0.7f);
+            var snapshot = MatchV4TestFixture.CreatePlayer();
 
             Assert.That(
                 () => new MatchPlayerBinding(
-                    new StablePlayerId("career-player-0042"),
+                    snapshot,
                     new Volleyball.Domain.Prototype.PlayerId(
                         (PrototypeTeamId)99,
                         PrototypePlayerRole.Setter),
-                    snapshot),
+                    TeamSide.Home,
+                    rotationPosition: 4),
                 Throws.TypeOf<System.ArgumentException>());
         }
 
         [Test]
-        public void PhysicalDirector_AddsDistinctV3ConfigurationWithoutChangingInitializeApis()
+        public void PhysicalDirector_ExposesOnlyV4FormalInitializationAndResultContracts()
         {
             var publicDeclaredMethods = typeof(PhysicalMatchRallyDirector)
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             var configure = publicDeclaredMethods.SingleOrDefault(method =>
                 method.Name == "ConfigureV3Rules");
+            var initialize = publicDeclaredMethods.SingleOrDefault(method =>
+                method.Name == "InitializeV4");
 
-            Assert.That(publicDeclaredMethods.Count(method => method.Name == "Initialize"), Is.EqualTo(1));
-            Assert.That(publicDeclaredMethods.Count(method => method.Name == "InitializeV2"), Is.EqualTo(1));
+            Assert.That(publicDeclaredMethods.Count(method => method.Name == "Initialize"), Is.Zero);
+            Assert.That(publicDeclaredMethods.Count(method => method.Name == "InitializeV2"), Is.Zero);
+            Assert.That(initialize, Is.Not.Null);
+            Assert.That(initialize.GetParameters()[2].ParameterType, Is.EqualTo(typeof(MatchContextV4)));
             Assert.That(configure, Is.Not.Null);
             Assert.That(
                 configure.GetParameters().Select(parameter => parameter.ParameterType),
-                Is.EqualTo(new[] { typeof(MatchContextV3), typeof(V3RulesMode) }));
+                Is.EqualTo(new[] { typeof(V3RulesMode) }));
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector).GetProperty("MatchContext").PropertyType,
+                Is.EqualTo(typeof(MatchContextV4)));
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector).GetProperty("Result").PropertyType,
+                Is.EqualTo(typeof(MatchResultV4)));
+            Assert.That(typeof(PhysicalMatchRallyDirector).GetProperty("MatchContextV2"), Is.Null);
+            Assert.That(typeof(PhysicalMatchRallyDirector).GetProperty("ResultV2"), Is.Null);
         }
 
         [Test]
@@ -149,6 +136,125 @@ namespace Volleyball.EditModeTests
                 Assert.That(property.GetMethod, Is.Not.Null, propertyName);
                 Assert.That(property.GetSetMethod(false), Is.Null, propertyName);
             }
+        }
+
+        [Test]
+        public void PhysicalDirector_ExposesReadOnlyGateHFormalAuthorityBoundary()
+        {
+            var enabled = typeof(PhysicalMatchRallyDirector)
+                .GetProperty(nameof(PhysicalMatchRallyDirector.GateHAuthorityEnabled));
+            var legacy = typeof(PhysicalMatchRallyDirector)
+                .GetProperty(nameof(PhysicalMatchRallyDirector.GateHLegacyWriterInvocations));
+            var authorityEvent = typeof(PhysicalMatchRallyDirector)
+                .GetEvent(nameof(PhysicalMatchRallyDirector.ReceiveOrganizationAuthorityCommitted));
+            var gateHReceive = typeof(PhysicalMatchRallyDirector)
+                .GetMethod(
+                    "ScheduleGateHReceive",
+                    BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.That(enabled, Is.Not.Null);
+            Assert.That(enabled.GetSetMethod(false), Is.Null);
+            Assert.That(legacy, Is.Not.Null);
+            Assert.That(legacy.GetSetMethod(false), Is.Null);
+            Assert.That(authorityEvent, Is.Not.Null);
+            Assert.That(gateHReceive, Is.Not.Null);
+            Assert.That(
+                typeof(ReceiveOrganizationAuthorityController)
+                    .GetMethod(nameof(
+                        ReceiveOrganizationAuthorityController.PreflightAndCommit)),
+                Is.Not.Null);
+        }
+
+        [Test]
+        public void PlannedAttackGeometry_IsNeverExposedAsObservedGeometry()
+        {
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector).GetProperty("LastActualAttackContactCenter"),
+                Is.Null);
+            Assert.That(
+                typeof(PhysicalMatchRallyDirector).GetProperty("LastReplannedAttackContactCenter"),
+                Is.Not.Null);
+            Assert.That(
+                typeof(ReplaySetChainEvent).GetProperty("ActualAttackContactCenter"),
+                Is.Null);
+            Assert.That(
+                typeof(ReplaySetChainEvent).GetProperty("ReplannedAttackContactCenter"),
+                Is.Not.Null);
+        }
+
+        [Test]
+        public void FormalMatchBoundary_HasNoLegacyContextResultOrInitializationTypes()
+        {
+            var legacyTypeNames = new[]
+            {
+                "MatchContextV1",
+                "MatchContextV2",
+                "MatchContextV3",
+                "MatchResultV1",
+                "MatchResultV2",
+                "MatchResultV3",
+                "PlayerAbilitySnapshotV1",
+                "PlayerAbilitySnapshotV2",
+                "PlayerAbilitySnapshotV3"
+            };
+            var formalTypes = new[]
+            {
+                typeof(MatchSet),
+                typeof(PhysicalMatchRallyDirector),
+                typeof(FormalSixVsSixRallyDirector),
+                typeof(FormalSixVsSixRallyBootstrap)
+            };
+
+            foreach (var type in formalTypes)
+            {
+                var members = type.GetMembers(
+                    BindingFlags.Public |
+                    BindingFlags.NonPublic |
+                    BindingFlags.Instance |
+                    BindingFlags.Static |
+                    BindingFlags.DeclaredOnly);
+                foreach (var member in members)
+                {
+                    var exposedTypes = member switch
+                    {
+                        MethodInfo method => method.GetParameters()
+                            .Select(parameter => parameter.ParameterType)
+                            .Append(method.ReturnType),
+                        ConstructorInfo constructor => constructor.GetParameters()
+                            .Select(parameter => parameter.ParameterType),
+                        PropertyInfo property => new[] { property.PropertyType },
+                        FieldInfo field => new[] { field.FieldType },
+                        _ => Array.Empty<Type>()
+                    };
+                    Assert.That(
+                        exposedTypes.Any(candidate => legacyTypeNames.Contains(candidate.Name)),
+                        Is.False,
+                        type.Name + "." + member.Name);
+                }
+            }
+        }
+
+        [Test]
+        public void V3RulesAdapter_SelectsRulesVersionWithoutOwningALegacyMatchContext()
+        {
+            var constructor = typeof(FullRallyV3RulesRuntimeAdapter)
+                .GetConstructors()
+                .Single();
+
+            Assert.That(
+                constructor.GetParameters().Select(parameter => parameter.ParameterType),
+                Is.EqualTo(new[]
+                {
+                    typeof(int),
+                    typeof(Volleyball.Match.Domain.FullRallyV3.OnCourtEligibilitySnapshot),
+                    typeof(TeamSide),
+                    typeof(V3RulesMode)
+                }));
+            Assert.That(
+                typeof(FullRallyV3RulesRuntimeAdapter)
+                    .GetFields(BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Select(field => field.FieldType),
+                Has.None.Matches<Type>(type => type.Name == "MatchContextV3"));
         }
     }
 }

@@ -148,7 +148,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 552251a9c7ced224e8ff7bd14ec53979, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Volleyball.Bootstrap::Volleyball.Bootstrap.CareerVerticalSliceBootstrap
   menuActions: {fileID: 0}
 --- !u!114 &684014893
@@ -161,7 +161,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3787a389f9d293c41be910f1016bd884, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Volleyball.Career.Presentation::Volleyball.Career.Presentation.CareerUiShell
 --- !u!114 &684014894
 MonoBehaviour:
@@ -173,7 +173,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: UnityEngine.dll::UnityEngine.UIElements.UIDocument
   m_PanelSettings: {fileID: 11400000, guid: ffb82015990d30e4c8d041e7b01f6239, type: 2}
   m_ParentUI: {fileID: 0}

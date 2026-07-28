@@ -89,6 +89,34 @@ namespace Volleyball.Match.Domain.FullRallyV3
     {
         public static ActionEligibilityDecisionV3 CanAttempt(
             OnCourtPlayerEligibilityV3 player,
+            AttackGeometryFactV3 geometry)
+        {
+            var eligiblePlayer = AttackAttemptFactsV3.RequirePlayer(player);
+            var observedGeometry =
+                geometry ?? throw new ArgumentNullException(nameof(geometry));
+            if (!eligiblePlayer.PlayerId.Equals(observedGeometry.Actor))
+            {
+                throw new ArgumentException(
+                    "Attack geometry actor must match the eligible player.",
+                    nameof(geometry));
+            }
+            if (eligiblePlayer.Side != observedGeometry.Side)
+            {
+                throw new ArgumentException(
+                    "Attack geometry side must match the eligible player's side.",
+                    nameof(geometry));
+            }
+
+            return CanAttempt(
+                eligiblePlayer,
+                observedGeometry.TakeoffPoint,
+                observedGeometry.ContactPoint,
+                observedGeometry.AttackLineDistanceFromCenter,
+                observedGeometry.NetHeight);
+        }
+
+        public static ActionEligibilityDecisionV3 CanAttempt(
+            OnCourtPlayerEligibilityV3 player,
             SimVector3 takeoffPoint,
             SimVector3 contactPoint,
             float attackLineDistanceFromCenter,

@@ -145,7 +145,7 @@ namespace Volleyball.Career.EditModeTests
         public void Launch_PreservesAllInputFieldsWithoutDefaultsOrInference()
         {
             var versions = CareerMatchTestData.Versions(
-                CareerMatchVersions.ContractV3,
+                CareerMatchVersions.ContractV4,
                 7,
                 8,
                 9,

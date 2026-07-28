@@ -16,7 +16,8 @@ namespace Volleyball.Presentation
             float playerTechnique,
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
-            ContactResponseParameters responseParameters)
+            ContactResponseParameters responseParameters,
+            bool useExactTargetVelocity = false)
             : this(
                 surface,
                 action,
@@ -24,7 +25,8 @@ namespace Volleyball.Presentation
                 playerTechnique,
                 targetVelocity,
                 strikeDirection,
-                responseParameters)
+                responseParameters,
+                useExactTargetVelocity)
         {
         }
 
@@ -35,8 +37,10 @@ namespace Volleyball.Presentation
             float playerTechnique,
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
-            ContactResponseParameters responseParameters)
+            ContactResponseParameters responseParameters,
+            bool useExactTargetVelocity = false)
         {
+            ValidateExactTargetVelocity(action, useExactTargetVelocity);
             Surface = surface;
             Capsule = default;
             IsCapsule = false;
@@ -46,6 +50,7 @@ namespace Volleyball.Presentation
             TargetVelocity = targetVelocity;
             StrikeDirection = strikeDirection;
             ResponseParameters = responseParameters;
+            UseExactTargetVelocity = useExactTargetVelocity;
         }
 
         public BallContactCandidate(
@@ -54,7 +59,8 @@ namespace Volleyball.Presentation
             float playerTechnique,
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
-            ContactResponseParameters responseParameters)
+            ContactResponseParameters responseParameters,
+            bool useExactTargetVelocity = false)
             : this(
                 capsule,
                 action,
@@ -62,7 +68,8 @@ namespace Volleyball.Presentation
                 playerTechnique,
                 targetVelocity,
                 strikeDirection,
-                responseParameters)
+                responseParameters,
+                useExactTargetVelocity)
         {
         }
 
@@ -73,8 +80,10 @@ namespace Volleyball.Presentation
             float playerTechnique,
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
-            ContactResponseParameters responseParameters)
+            ContactResponseParameters responseParameters,
+            bool useExactTargetVelocity = false)
         {
+            ValidateExactTargetVelocity(action, useExactTargetVelocity);
             Surface = default;
             Capsule = capsule;
             IsCapsule = true;
@@ -84,6 +93,7 @@ namespace Volleyball.Presentation
             TargetVelocity = targetVelocity;
             StrikeDirection = strikeDirection;
             ResponseParameters = responseParameters;
+            UseExactTargetVelocity = useExactTargetVelocity;
         }
 
         public ContactSurfaceSnapshot Surface { get; }
@@ -103,6 +113,23 @@ namespace Volleyball.Presentation
         public SimVector3 StrikeDirection { get; }
 
         public ContactResponseParameters ResponseParameters { get; }
+
+        // Only Gate I's immutable Set intent uses this. Gate H remains the
+        // contact/timing writer; this prevents the generic control blend from
+        // silently changing the already-authoritative V4 sample velocity.
+        public bool UseExactTargetVelocity { get; }
+
+        private static void ValidateExactTargetVelocity(
+            TechniqueAction action,
+            bool useExactTargetVelocity)
+        {
+            if (useExactTargetVelocity && action != TechniqueAction.Set)
+            {
+                throw new ArgumentException(
+                    "Exact target velocity is reserved for the Gate I Set handoff.",
+                    nameof(useExactTargetVelocity));
+            }
+        }
     }
 
     public enum BallContactDisposition
@@ -475,7 +502,14 @@ namespace Volleyball.Presentation
                         State,
                         playerHit,
                         playerCandidate.ResponseParameters);
-                var technique = TechniqueControlPolicy.Apply(new TechniqueControlInput(
+                var technique = playerCandidate.UseExactTargetVelocity
+                    ? new TechniqueControlResult(
+                        physical.PhysicalOutgoing,
+                        playerCandidate.TargetVelocity,
+                        playerCandidate.TargetVelocity,
+                        playerCandidate.TargetVelocity,
+                        1f)
+                    : TechniqueControlPolicy.Apply(new TechniqueControlInput(
                     playerCandidate.Action,
                     physical.PhysicalOutgoing,
                     playerCandidate.TargetVelocity,

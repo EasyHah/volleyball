@@ -24,6 +24,7 @@ namespace Volleyball.Career.Domain
     {
         public const int ContractV2 = 2;
         public const int ContractV3 = 3;
+        public const int ContractV4 = 4;
 
         public CareerMatchLifecycleVersions(
             int contractVersion,
@@ -33,12 +34,14 @@ namespace Volleyball.Career.Domain
             int? matchSimulationVersion,
             int? matchRandomAlgorithmVersion)
         {
-            if (contractVersion != ContractV2 && contractVersion != ContractV3)
+            if (contractVersion != ContractV2 &&
+                contractVersion != ContractV3 &&
+                contractVersion != ContractV4)
             {
                 throw new ArgumentOutOfRangeException(
                     nameof(contractVersion),
                     contractVersion,
-                    "The durable match lifecycle supports explicit contract versions 2 and 3.");
+                    "The durable envelope recognizes contract versions 2 through 4; production payloads require V4.");
             }
 
             var hasSimulation = matchSimulationVersion.HasValue;

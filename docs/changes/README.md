@@ -12,7 +12,17 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
-| CHG-20260727-001 | 2026-07-27 | 已自动验证，待人工验收 | Shared / Career / Bootstrap / Tests / Docs | **跨模块（重点）** | [Career 接入 Shared V3 并移除并行 Match V2](2026-07-27-001-career-shared-v3-integration.md) |
+| CHG-20260728-003 | 2026-07-28 | 已自动验证，待人工验收 | Shared / Match / Career / Bootstrap / Packages / ProjectSettings / Tests / Docs | **跨模块（重点）** | [Career 合入 Full Rally V4](2026-07-28-003-career-shared-v4-upgrade.md) |
+| CHG-20260728-002 | 2026-07-28 | 已完成 | ProjectSettings / Packages / Docs | 模块内部 | [Unity 6000.3 项目升级](2026-07-28-002-unity-6000-3-upgrade.md) |
+| CHG-20260728-001 | 2026-07-28 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate K 完成](2026-07-28-001-full-rally-v4-gate-k-completion.md) |
+| CHG-20260727-002 | 2026-07-27 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate J 感知与 CourtAwareness](2026-07-27-002-full-rally-v4-gate-j-perception-court-awareness.md) |
+| CHG-20260727-001 | 2026-07-27 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate I 攻防与重组权威](2026-07-27-001-full-rally-v4-gate-i-attack-defense-reorganization-authority.md) |
+| CHG-20260727-003 | 2026-07-27 | 已自动验证，待人工验收 | Shared / Career / Bootstrap / Tests / Docs | **跨模块（重点）** | [Career 接入 Shared V3 并移除并行 Match V2](2026-07-27-003-career-shared-v3-integration.md) |
+| CHG-20260726-002 | 2026-07-26 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate H 接发与组织权威](2026-07-26-002-full-rally-v4-gate-h-receive-organization-authority.md) |
+| CHG-20260726-001 | 2026-07-26 | 已完成 | Match / Docs | 模块内部 | [Full Rally V4 Gate G player component boundaries](2026-07-26-001-full-rally-v4-gate-g-player-component-boundaries.md) |
+| CHG-20260725-001 | 2026-07-26 | 已完成 | Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gate F 十二人责任计划 Shadow](2026-07-25-001-full-rally-v4-gate-f-shadow-plans.md) |
+| CHG-20260724-002 | 2026-07-24 | 已完成 | Career / Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gates A–E contract cut](2026-07-24-002-full-rally-v4-gates-a-e.md) |
+| CHG-20260724-001 | 2026-07-24 | 进行中 | Match / Docs | 模块内部 | [Stage 2 能力投影、共享执行 envelope 与物理预测 cache](2026-07-24-001-stage2-ability-envelope-and-prediction.md) |
 | CHG-20260723-005 | 2026-07-23 | 已完成 | Career.Domain / Career.Application / Career.MatchIntegration / Tests / Docs | **跨模块（重点）** | [Career 首场比赛持久化生命周期](2026-07-23-005-career-first-match-lifecycle.md) |
 | CHG-20260723-004 | 2026-07-23 | 进行中 | Career.Application / Career.Persistence / Career.Presentation / Bootstrap / Tests / Tools / Docs | **跨模块（重点）** | [Career 恢复、开发诊断与 Windows 构建](2026-07-23-004-career-recovery-windows-build.md) |
 | CHG-20260723-003 | 2026-07-23 | 已完成 | Career.Application / Career.Presentation / Bootstrap / Project Settings / Tests / Docs | **跨模块（重点）** | [Career 首周 UI 可玩垂直切片](2026-07-23-003-career-ui-vertical-slice.md) |

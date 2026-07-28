@@ -29,13 +29,11 @@ namespace Volleyball.Presentation
         public IReadOnlyList<ContactCapsuleSnapshot> Capture(bool active, int contactGroupId)
         {
             var snapshots = new ContactCapsuleSnapshot[Segments.Length];
+            var currentFrames = CaptureCurrent();
             for (var index = 0; index < Segments.Length; index++)
             {
                 var segment = Segments[index];
-                var current = new ContactCapsuleFrame(
-                    ToSimulation(_rig.GetJoint(segment.StartJoint).position),
-                    ToSimulation(_rig.GetJoint(segment.EndJoint).position),
-                    segment.Radius);
+                var current = currentFrames[index];
                 var previous = _previous.TryGetValue(segment.Name, out var stored)
                     ? stored
                     : current;
@@ -48,6 +46,21 @@ namespace Volleyball.Presentation
             }
 
             return snapshots;
+        }
+
+        public IReadOnlyList<ContactCapsuleFrame> CaptureCurrent()
+        {
+            var frames = new ContactCapsuleFrame[Segments.Length];
+            for (var index = 0; index < Segments.Length; index++)
+            {
+                var segment = Segments[index];
+                frames[index] = new ContactCapsuleFrame(
+                    ToSimulation(_rig.GetJoint(segment.StartJoint).position),
+                    ToSimulation(_rig.GetJoint(segment.EndJoint).position),
+                    segment.Radius);
+            }
+
+            return frames;
         }
 
         private static SimVector3 ToSimulation(Vector3 value)

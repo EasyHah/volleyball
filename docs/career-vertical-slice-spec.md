@@ -1,8 +1,8 @@
 # 球员生涯首个垂直切片规格
 
-> 2026-07-27 契约更新：本文中 `Shared.MatchV2`/`IMatchRunnerV2` 是已被取代的早期
-> 实现路径。当前切片直接消费搭档维护的 `Volleyball.Shared` V3，开发期比赛由
-> `DeterministicFixtureMatchRunnerV3` 产生 `MatchResultV3`；真实物理比赛接线仍延期，
+> 2026-07-28 契约更新：本文中 V2/V3 runner 是已被取代的早期实现路径。当前切片
+> 直接消费搭档维护的 `Volleyball.Shared` V4，开发期比赛由
+> `DeterministicFixtureMatchRunnerV4` 产生 `MatchResultV4`；真实物理比赛接线仍延期，
 > Career Domain/Application 的所有权和“比赛报告事实、生涯计算后果”原则不变。
 
 ## 1. 文档目的

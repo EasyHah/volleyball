@@ -1,8 +1,8 @@
 # 球员生涯领域规则基线
 
-> 2026-07-27 集成补充：当前比赛事实输入为 Shared `MatchResultV3` 经
+> 2026-07-28 集成补充：当前比赛事实输入为 Shared `MatchResultV4` 经
 > `Career.MatchIntegration` 映射后的 Career 自有事实。早期文中提到的
-> `Volleyball.Shared.MatchV2` fixture 不再是运行时或数据权威。
+> V1–V3 fixture 不再是运行时或数据权威。
 
 - 状态：首个技术闭环实施基线
 - 适用范围：Career Domain、Application、Content、MatchIntegration 与相关测试

@@ -653,7 +653,7 @@ namespace Volleyball.Career.EditModeTests
         public void Calculate_RejectsUnsupportedPendingRuleVersions(string axis)
         {
             var versions = new CareerMatchLifecycleVersions(
-                CareerMatchLifecycleVersions.ContractV3,
+                CareerMatchLifecycleVersions.ContractV4,
                 axis == "content" ? 2 : 1,
                 axis == "rules" ? 2 : 1,
                 1,
@@ -677,7 +677,7 @@ namespace Volleyball.Career.EditModeTests
         {
             var pending = Pending();
             var versions = new CareerMatchVersions(
-                CareerMatchVersions.ContractV3,
+                CareerMatchVersions.ContractV4,
                 axis == "content" ? 2 : 1,
                 axis == "rules" ? 2 : 1,
                 axis == "career-random" ? 2 : 1,
@@ -852,7 +852,7 @@ namespace Volleyball.Career.EditModeTests
                 new LineageId(Guid.Parse("22222222-2222-2222-2222-222222222222")),
                 9,
                 versions ?? new CareerMatchLifecycleVersions(
-                    CareerMatchLifecycleVersions.ContractV3,
+                    CareerMatchLifecycleVersions.ContractV4,
                     1,
                     1,
                     1,

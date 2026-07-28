@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.FullRallyV3;
 
 namespace Volleyball.AI
 {
@@ -114,6 +115,36 @@ namespace Volleyball.AI
         }
     }
 
+    /// <summary>
+    /// The complete, non-selecting result for one geometric route.  Gate I uses
+    /// this as evidence before ranking candidates; the legacy selector below
+    /// deliberately continues to expose only its winning route.
+    /// </summary>
+    public sealed class AttackRouteEvaluation
+    {
+        internal AttackRouteEvaluation(GeometricAttackRoute route, AttackRouteSelection? selection,
+            float legalCrossingRatio, float netAntennaOrOutRatio, string eliminationReason,
+            string envelopeIdentity, IReadOnlyList<string> trajectoryArtifactIdentities)
+        {
+            Route = route; Selection = selection; LegalCrossingRatio = legalCrossingRatio;
+            NetAntennaOrOutRatio = netAntennaOrOutRatio;
+            EliminationReason = eliminationReason ?? string.Empty;
+            EnvelopeIdentity = envelopeIdentity ?? throw new ArgumentNullException(nameof(envelopeIdentity));
+            TrajectoryArtifactIdentities = trajectoryArtifactIdentities ?? throw new ArgumentNullException(nameof(trajectoryArtifactIdentities));
+        }
+        public GeometricAttackRoute Route { get; }
+        public AttackRouteSelection? Selection { get; }
+        public float LegalCrossingRatio { get; }
+        public float NetAntennaOrOutRatio { get; }
+        public float MinimumArmClearance => Selection?.MinimumArmClearance ?? float.NegativeInfinity;
+        public SimVector3 Target => Selection?.Target ?? default;
+        public SimVector3 InitialVelocity => Selection?.InitialVelocity ?? default;
+        public float ExpectedValue => Selection.HasValue ? Selection.Value.MinimumArmClearance : float.MinValue;
+        public string EliminationReason { get; }
+        public string EnvelopeIdentity { get; }
+        public IReadOnlyList<string> TrajectoryArtifactIdentities { get; }
+    }
+
     public static class AttackRouteSelector
     {
         private const float BallRadius = 0.12f;
@@ -149,6 +180,34 @@ namespace Volleyball.AI
             }
 
             return best;
+        }
+
+        public static IReadOnlyList<AttackRouteEvaluation> EvaluateAll(
+            AttackRouteSelectionInput input,
+            ExecutionEnvelopeV4 envelope,
+            IReadOnlyList<BallTrajectoryPredictionArtifactV4> samples)
+        {
+            if (envelope == null) throw new ArgumentNullException(nameof(envelope));
+            if (samples == null) throw new ArgumentNullException(nameof(samples));
+            var identities = new List<string>(samples.Count);
+            for (var index = 0; index < samples.Count; index++)
+            {
+                if (samples[index] == null) throw new ArgumentException("Trajectory samples cannot contain null.", nameof(samples));
+                identities.Add(samples[index].ArtifactIdentity);
+            }
+            var evaluations = new List<AttackRouteEvaluation>();
+            foreach (GeometricAttackRoute route in Enum.GetValues(typeof(GeometricAttackRoute)))
+            {
+                if (TryEvaluate(input, route, out var selection, out _))
+                {
+                    evaluations.Add(new AttackRouteEvaluation(route, selection, 1f, 0f, string.Empty, envelope.Identity, identities));
+                }
+                else
+                {
+                    evaluations.Add(new AttackRouteEvaluation(route, null, 0f, 1f, "IllegalCrossingOrLanding", envelope.Identity, identities));
+                }
+            }
+            return evaluations.AsReadOnly();
         }
 
         private static bool TryEvaluate(

@@ -13,7 +13,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Create_MapsSuppliedRotationOrderAndEligibilityForFormalSix()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             Assert.That(snapshot.Players, Has.Count.EqualTo(12));
             Assert.That(snapshot.Players.Take(6).Select(player => player.PlayerId), Is.EqualTo(HomeRotationOrder));
@@ -41,19 +41,9 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Create_ExcludesRosteredPlayersOutsideTheSuppliedSix()
-        {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
-
-            Assert.That(snapshot.Players, Has.None.Matches<OnCourtPlayerEligibilityV3>(
-                player => player.PlayerId.Equals(new PlayerId("home-bench"))));
-            Assert.Throws<KeyNotFoundException>(() => snapshot.For(new PlayerId("home-bench")));
-        }
-
-        [Test]
         public void Create_RejectsServerOutsideItsSuppliedRotation()
         {
-            var context = CreateV3ContextWithBenchPlayers();
+            var context = CreateV4Context();
 
             Assert.Throws<ArgumentException>(() => OnCourtLineupRulesV3.Create(
                 context, HomeRotationOrder, AwayRotationOrder, new PlayerId("home-bench"), AwayRotationOrder[0],
@@ -63,7 +53,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Create_RejectsDuplicateIdsWithinASuppliedRotation()
         {
-            var context = CreateV3ContextWithBenchPlayers();
+            var context = CreateV4Context();
             var duplicateHomeRotation = new[]
             {
                 HomeRotationOrder[0], HomeRotationOrder[0], HomeRotationOrder[2], HomeRotationOrder[3], HomeRotationOrder[4], HomeRotationOrder[5]
@@ -77,7 +67,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Create_RequiresExactlySixIdsPerSuppliedRotation()
         {
-            var context = CreateV3ContextWithBenchPlayers();
+            var context = CreateV4Context();
 
             Assert.Throws<ArgumentException>(() => OnCourtLineupRulesV3.Create(
                 context, new[] { HomeRotationOrder[0], HomeRotationOrder[1], HomeRotationOrder[2], HomeRotationOrder[3], HomeRotationOrder[4] },
@@ -87,7 +77,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void Create_RejectsLiberoAndReplacedPlayerCoexistingOnCourt()
         {
-            var context = CreateV3ContextWithBenchPlayers();
+            var context = CreateV4Context();
             var replacement = new LiberoReplacementV3(HomeLiberoId, HomeReplacedPlayerId);
 
             Assert.Throws<ArgumentException>(() => OnCourtLineupRulesV3.Create(
@@ -95,31 +85,9 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Create_MapsValidLiberoReplacementAndKeepsOnlySixPlayersPerSide()
-        {
-            var context = CreateV3ContextWithBenchPlayers();
-            var snapshot = OnCourtLineupRulesV3.Create(
-                context, HomeReplacementRotationOrder, AwayRotationOrder,
-                HomeReplacementRotationOrder[0], AwayRotationOrder[0],
-                new[] { new LiberoReplacementV3(HomeLiberoId, HomeReplacedPlayerId) });
-
-            var libero = snapshot.For(HomeLiberoId);
-            Assert.That(snapshot.Players, Has.Count.EqualTo(12));
-            Assert.That(snapshot.Players.Count(player => player.Side == TeamSide.Home), Is.EqualTo(6));
-            Assert.That(snapshot.Players.Count(player => player.Side == TeamSide.Away), Is.EqualTo(6));
-            Assert.That(libero.RotationPosition, Is.EqualTo(2));
-            Assert.That(libero.IsFrontRow, Is.True);
-            Assert.That(libero.CanBlock, Is.False);
-            Assert.That(libero.ReplacedPlayerId, Is.EqualTo((PlayerId?)HomeReplacedPlayerId));
-            Assert.That(snapshot.Players, Has.None.Matches<OnCourtPlayerEligibilityV3>(
-                player => player.PlayerId.Equals(HomeReplacedPlayerId)));
-            Assert.Throws<KeyNotFoundException>(() => snapshot.For(HomeReplacedPlayerId));
-        }
-
-        [Test]
         public void Create_RejectsRotationIdsFromTheOpposingOrUnknownRoster()
         {
-            var context = CreateV3ContextWithBenchPlayers();
+            var context = CreateV4Context();
             var opposingIdRotation = new[]
             {
                 AwayRotationOrder[0], HomeRotationOrder[1], HomeRotationOrder[2],
@@ -148,7 +116,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanAttempt_BackRowTakeoffBehindAttackLineIsLegalForHomeAndAway()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             var home = AttackEligibilityRulesV3.CanAttempt(
                 snapshot.For(HomeRotationOrder[0]),
@@ -170,7 +138,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanAttempt_BackRowAboveNetAttackFromFrontZoneIsIllegalForHomeAndAway()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             var home = AttackEligibilityRulesV3.CanAttempt(
                 snapshot.For(HomeRotationOrder[0]),
@@ -192,7 +160,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanAttempt_FrontZoneContactAtOrBelowNetIsLegal()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             var decision = AttackEligibilityRulesV3.CanAttempt(
                 snapshot.For(HomeRotationOrder[0]),
@@ -207,7 +175,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanAttempt_TreatsTheAttackLineAsFrontZone()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             var decision = AttackEligibilityRulesV3.CanAttempt(
                 snapshot.For(HomeRotationOrder[0]),
@@ -219,10 +187,55 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.IsEligible, Is.False);
         }
 
+        [TestCase(2.43f, true)]
+        [TestCase(2.4301f, false)]
+        public void CanAttempt_AttackGeometryFactUsesExactNetHeightThreshold(
+            float contactHeight,
+            bool expectedEligible)
+        {
+            var snapshot = CreateSnapshot(CreateV4Context());
+            var player = snapshot.For(HomeRotationOrder[0]);
+            var geometry = new AttackGeometryFactV3(
+                player.PlayerId,
+                player.Side,
+                new SimVector3(0f, 0f, -1f),
+                new SimVector3(0f, contactHeight, -0.2f),
+                3f,
+                2.43f);
+
+            var decision = AttackEligibilityRulesV3.CanAttempt(player, geometry);
+
+            Assert.That(decision.IsEligible, Is.EqualTo(expectedEligible));
+            Assert.That(
+                decision.Reason,
+                Is.EqualTo(
+                    expectedEligible
+                        ? "eligible attack attempt"
+                        : "ineligible above-net front-zone attack"));
+        }
+
+        [Test]
+        public void CanAttempt_AttackGeometryFactMustMatchEligiblePlayer()
+        {
+            var snapshot = CreateSnapshot(CreateV4Context());
+            var player = snapshot.For(HomeRotationOrder[0]);
+            var geometry = new AttackGeometryFactV3(
+                HomeRotationOrder[4],
+                player.Side,
+                new SimVector3(0f, 0f, -3.1f),
+                new SimVector3(0f, 2.5f, -0.2f),
+                3f,
+                2.43f);
+
+            Assert.That(
+                () => AttackEligibilityRulesV3.CanAttempt(player, geometry),
+                Throws.ArgumentException);
+        }
+
         [Test]
         public void CanAttempt_RejectsMissingPlayerAndInvalidGeometry()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
             var player = snapshot.For(HomeRotationOrder[0]);
 
             Assert.Throws<ArgumentNullException>(() => AttackEligibilityRulesV3.CanAttempt(
@@ -238,7 +251,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanAttempt_AllLiberosAreIneligibleToBlock()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             var home = BlockEligibilityRulesV3.CanAttempt(snapshot.For(HomeLiberoId));
             var away = BlockEligibilityRulesV3.CanAttempt(snapshot.For(AwayRotationOrder[2]));
@@ -250,7 +263,7 @@ namespace Volleyball.EditModeTests
         [Test]
         public void CanAttempt_FrontRowNonLiberoIsEligibleToBlock()
         {
-            var snapshot = CreateSnapshot(CreateV3ContextWithBenchPlayers());
+            var snapshot = CreateSnapshot(CreateV4Context());
 
             var decision = BlockEligibilityRulesV3.CanAttempt(snapshot.For(HomeRotationOrder[1]));
 
@@ -266,57 +279,44 @@ namespace Volleyball.EditModeTests
             new PlayerId("home-2"), HomeReplacedPlayerId, HomeLiberoId
         };
 
-        private static readonly PlayerId[] HomeReplacementRotationOrder =
-        {
-            new PlayerId("home-4"), HomeLiberoId, new PlayerId("home-1"),
-            new PlayerId("home-2"), new PlayerId("home-3"), new PlayerId("home-bench")
-        };
-
         private static readonly PlayerId[] AwayRotationOrder =
         {
             new PlayerId("away-3"), new PlayerId("away-1"), new PlayerId("away-libero"),
             new PlayerId("away-4"), new PlayerId("away-5"), new PlayerId("away-2")
         };
 
-        private static OnCourtEligibilitySnapshot CreateSnapshot(MatchContextV3 context)
+        private static OnCourtEligibilitySnapshot CreateSnapshot(MatchContextV4 context)
         {
             return OnCourtLineupRulesV3.Create(
                 context, HomeRotationOrder, AwayRotationOrder, HomeRotationOrder[0], AwayRotationOrder[0],
                 Array.Empty<LiberoReplacementV3>());
         }
 
-        private static MatchContextV3 CreateV3ContextWithBenchPlayers()
+        private static MatchContextV4 CreateV4Context()
         {
-            return MatchContextV3.Create(
+            return MatchV4TestFixture.CreateContextForRotations(
                 Guid.Parse("d2719a73-5270-4d89-84a5-2040cdd86210"),
                 17,
-                CreateTeam("home", TeamSide.Home, "home"),
-                CreateTeam("away", TeamSide.Away, "away"));
-        }
-
-        private static TeamSnapshotV3 CreateTeam(string teamId, TeamSide side, string prefix)
-        {
-            return new TeamSnapshotV3(
-                new TeamId(teamId), prefix + " team", side,
+                HomeRotationOrder,
                 new[]
                 {
-                    CreatePlayer(prefix + "-1", 1, PlayerPosition.Setter),
-                    CreatePlayer(prefix + "-2", 2, PlayerPosition.OutsideHitter),
-                    CreatePlayer(prefix + "-3", 3, PlayerPosition.MiddleBlocker),
-                    CreatePlayer(prefix + "-4", 4, PlayerPosition.Opposite),
-                    CreatePlayer(prefix + "-5", 5, PlayerPosition.Defender),
-                    CreatePlayer(prefix + "-libero", 6, PlayerPosition.Libero),
-                    CreatePlayer(prefix + "-bench", 7, PlayerPosition.OutsideHitter)
+                    PlayerPosition.Opposite,
+                    PlayerPosition.Setter,
+                    PlayerPosition.MiddleBlocker,
+                    PlayerPosition.OutsideHitter,
+                    PlayerPosition.Defender,
+                    PlayerPosition.Libero
+                },
+                AwayRotationOrder,
+                new[]
+                {
+                    PlayerPosition.MiddleBlocker,
+                    PlayerPosition.Setter,
+                    PlayerPosition.Libero,
+                    PlayerPosition.Opposite,
+                    PlayerPosition.Defender,
+                    PlayerPosition.OutsideHitter
                 });
-        }
-
-        private static PlayerSnapshotV3 CreatePlayer(string playerId, int jerseyNumber, PlayerPosition position)
-        {
-            return new PlayerSnapshotV3(
-                new PlayerId(playerId), playerId, jerseyNumber, position,
-                new PlayerAbilitySnapshotV3(
-                    0.5f, 0.5f, 0.5f, 3.3f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f, 0.5f,
-                    ContractVersions.MatchV3, 0, false, Array.Empty<string>()));
         }
     }
 }

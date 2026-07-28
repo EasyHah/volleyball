@@ -134,7 +134,7 @@ namespace Volleyball.Career.Application
             CareerMatchFacts completedFacts)
         {
             var pending = pendingMatch.Versions;
-            if (pending.ContractVersion != CareerMatchLifecycleVersions.ContractV3 ||
+            if (pending.ContractVersion != CareerMatchLifecycleVersions.ContractV4 ||
                 pending.ContentVersion != SupportedContentVersion ||
                 pending.RulesetVersion != SupportedRulesetVersion)
             {

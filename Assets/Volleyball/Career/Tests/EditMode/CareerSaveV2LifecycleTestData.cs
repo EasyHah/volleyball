@@ -15,7 +15,7 @@ namespace Volleyball.Career.EditModeTests
         {
             var before = MatchReadyBase();
             var contextBytes = ContextBytes();
-            var context = ContractJson.DeserializeContextV3(
+            var context = ContractJson.DeserializeMatchContextV4(
                 System.Text.Encoding.UTF8.GetString(contextBytes));
             var identity = NextIdentity(before, 9);
             var operationId = new OperationId(
@@ -34,10 +34,10 @@ namespace Volleyball.Career.EditModeTests
                 identity.LineageId,
                 identity.Revision,
                 new CareerMatchLifecycleVersions(
-                    CareerMatchLifecycleVersions.ContractV3,
-                    CareerMatchV3Mapper.ContentVersion,
-                    CareerMatchV3Mapper.RulesetVersion,
-                    CareerMatchV3Mapper.CareerRandomAlgorithmVersion,
+                    CareerMatchLifecycleVersions.ContractV4,
+                    CareerMatchV4Mapper.ContentVersion,
+                    CareerMatchV4Mapper.RulesetVersion,
+                    CareerMatchV4Mapper.CareerRandomAlgorithmVersion,
                     null,
                     null),
                 CareerMatchLifecycleExecutionMode.Fixture,
@@ -409,9 +409,9 @@ namespace Volleyball.Career.EditModeTests
                 new CareerAttributeProgress(6890, 808));
         }
 
-        private static CareerMatchExecutorV3 Executor()
+        private static CareerMatchExecutorV4 Executor()
         {
-            return new CareerMatchExecutorV3(new DeterministicFixtureMatchRunnerV3());
+            return new CareerMatchExecutorV4(new DeterministicFixtureMatchRunnerV4());
         }
 
         private static CareerSaveIdentity NextIdentity(

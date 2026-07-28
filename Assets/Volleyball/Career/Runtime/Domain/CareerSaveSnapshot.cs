@@ -734,14 +734,14 @@ namespace Volleyball.Career.Domain
 
             ValidatePendingCareerIdentity(player, teamId, pendingMatch);
 
-            if (pendingMatch.Versions.ContractVersion != CareerMatchLifecycleVersions.ContractV3 ||
+            if (pendingMatch.Versions.ContractVersion != CareerMatchLifecycleVersions.ContractV4 ||
                 pendingMatch.Versions.ContentVersion != versions.ContentVersion ||
                 pendingMatch.Versions.RulesetVersion != versions.RulesetVersion ||
                 pendingMatch.Versions.CareerRandomAlgorithmVersion !=
                     versions.CareerRandomAlgorithmVersion)
             {
                 throw new ArgumentException(
-                    "PendingMatch must use Match V3 while Career-owned versions equal snapshot versions.",
+                    "PendingMatch must use Match V4 while Career-owned versions equal snapshot versions.",
                     nameof(pendingMatch));
             }
 

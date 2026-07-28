@@ -84,6 +84,56 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AdvanceSimulation_GateIExactSetUsesImmutableVelocityWhileNormalSetRetainsTechniqueControl()
+        {
+            var target = new SimVector3(0f, 8f, 2f);
+            var exactObject = new GameObject("SimulatedBallExactGateISet");
+            var normalObject = new GameObject("SimulatedBallNormalSet");
+            try
+            {
+                exactObject.transform.position = normalObject.transform.position =
+                    new Vector3(0f, 1.3f, 0f);
+                var exact = exactObject.AddComponent<SimulatedBall>();
+                var normal = normalObject.AddComponent<SimulatedBall>();
+                exact.RegisterContactSource(new StaticContactSource(
+                    TechniqueAction.Set, useExactTargetVelocity: true));
+                normal.RegisterContactSource(new StaticContactSource(
+                    TechniqueAction.Set, useExactTargetVelocity: false));
+                exact.Launch(new Vector3(0f, -40f, 0f));
+                normal.Launch(new Vector3(0f, -40f, 0f));
+
+                exact.AdvanceSimulation(1d / 120d);
+                normal.AdvanceSimulation(1d / 120d);
+
+                Assert.That(exact.State.Velocity, Is.EqualTo(target));
+                Assert.That((normal.State.Velocity - target).Magnitude,
+                    Is.GreaterThan(0.01f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(exactObject);
+                Object.DestroyImmediate(normalObject);
+            }
+        }
+
+        [Test]
+        public void BallContactCandidate_ExactTargetVelocityRejectsNonSetActions()
+        {
+            var frame = new ContactSurfaceFrame(
+                new SimVector3(0f, 1f, 0f), SimVector3.Up,
+                new SimVector3(1f, 0f, 0f), new SimVector3(0f, 0f, 1f), 1f, 1f);
+
+            Assert.Throws<System.ArgumentException>(() => new BallContactCandidate(
+                new ContactSurfaceSnapshot(frame, frame, true, 78),
+                TechniqueAction.Attack,
+                1f,
+                new SimVector3(0f, 8f, 2f),
+                SimVector3.Up,
+                new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f),
+                useExactTargetVelocity: true));
+        }
+
+        [Test]
         public void AdvanceSimulation_AttackResponseIgnoresVisualPalmVelocityWithoutChangingSweptHit()
         {
             var gameObject = new GameObject("SimulatedBallStableAttackResponse");
@@ -327,6 +377,17 @@ namespace Volleyball.EditModeTests
 
         private sealed class StaticContactSource : IBallContactSource
         {
+            private readonly TechniqueAction _action;
+            private readonly bool _useExactTargetVelocity;
+
+            public StaticContactSource(
+                TechniqueAction action = TechniqueAction.Receive,
+                bool useExactTargetVelocity = false)
+            {
+                _action = action;
+                _useExactTargetVelocity = useExactTargetVelocity;
+            }
+
             public void CollectContacts(
                 float simulationTime,
                 float deltaSeconds,
@@ -341,11 +402,12 @@ namespace Volleyball.EditModeTests
                     1f);
                 contacts.Add(new BallContactCandidate(
                     new ContactSurfaceSnapshot(frame, frame, true, 77),
-                    TechniqueAction.Receive,
+                    _action,
                     0.8f,
                     new SimVector3(0f, 8f, 2f),
                     SimVector3.Up,
-                    new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f)));
+                    new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f),
+                    _useExactTargetVelocity));
             }
         }
 

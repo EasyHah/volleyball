@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Volleyball.AI;
 using Volleyball.Domain.Players;
@@ -71,6 +72,53 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.Action, Is.EqualTo(TechniqueAction.Set));
         }
 
+        [Test]
+        public void Plan_OrganizeReachableSetterWinsEvenWhenBackupHasTheHigherScore()
+        {
+            var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
+            var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+                new RallyPlayerSnapshot(setter, new SimVector3(1f, 0f, -2f), Ability(0f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(1f)),
+                availableSeconds: 2f));
+
+            var defenderCandidate = FindCandidate(decision, PlayerRole.Defender);
+            var setterCandidate = FindCandidate(decision, PlayerRole.Setter);
+            Assert.That(defenderCandidate.Score.Total, Is.GreaterThan(setterCandidate.Score.Total));
+            Assert.That(decision.Actor, Is.EqualTo(setter));
+        }
+
+        [Test]
+        public void Plan_OrganizeFallsBackWhenTheSetterIsUnreachable()
+        {
+            var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
+            var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+                new RallyPlayerSnapshot(setter, new SimVector3(20f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                availableSeconds: 0.5f));
+
+            Assert.That(FindCandidate(decision, PlayerRole.Setter).IsFeasible, Is.False);
+            Assert.That(decision.Actor, Is.EqualTo(defender));
+        }
+
+        [Test]
+        public void Plan_OrganizeFallsBackWhenTheSetterIsExcludedByThePreviousTouch()
+        {
+            var setter = new PlayerId(TeamId.Blue, PlayerRole.Setter);
+            var defender = new PlayerId(TeamId.Blue, PlayerRole.Defender);
+            var decision = new TeamRallyDecisionPlanner(17).Plan(CreateOrganizeInput(
+                new RallyPlayerSnapshot(setter, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(new PlayerId(TeamId.Blue, PlayerRole.Attacker), new SimVector3(3f, 0f, -2f), Ability(0.8f)),
+                new RallyPlayerSnapshot(defender, new SimVector3(0f, 0f, -2f), Ability(0.8f)),
+                lastCountedActor: setter));
+
+            Assert.That(FindCandidate(decision, PlayerRole.Setter).IsFeasible, Is.False);
+            Assert.That(decision.Actor, Is.EqualTo(defender));
+        }
+
         [TestCase(TeamId.Blue)]
         [TestCase(TeamId.Orange)]
         public void Plan_OrganizeTargetsTheFutureAttackerContactPointInTheTeamCourtFrame(TeamId team)
@@ -137,6 +185,31 @@ namespace Volleyball.EditModeTests
             Assert.That(decision.AttackContactPlan.HasValue, Is.True);
             Assert.That(decision.AttackContactPlan.Value.Takeoff, Is.EqualTo(takeoff));
             Assert.That(decision.AttackContactPlan.Value.ContactCenter.Y, Is.InRange(3.20f, 3.55f));
+        }
+
+        [Test]
+        public void Plan_AttackSelectionIsIndependentOfExecutionControlAndPowerCapacity()
+        {
+            var lowExecutionRatings = AbilityWithAttack(attackTechnique: 0.2f, attackPower: 0.2f);
+            var highExecutionRatings = AbilityWithAttack(attackTechnique: 0.95f, attackPower: 0.95f);
+            var firstLow = new TeamRallyDecisionPlanner(17).Plan(
+                CreateAttackSelectionInput(lowExecutionRatings, highExecutionRatings));
+            var firstHigh = new TeamRallyDecisionPlanner(17).Plan(
+                CreateAttackSelectionInput(highExecutionRatings, lowExecutionRatings));
+
+            Assert.That(
+                highExecutionRatings.AttackDirectionControl,
+                Is.GreaterThan(lowExecutionRatings.AttackDirectionControl));
+            Assert.That(
+                highExecutionRatings.AttackSpeedControl,
+                Is.GreaterThan(lowExecutionRatings.AttackSpeedControl));
+            Assert.That(
+                highExecutionRatings.AttackPowerCapacity,
+                Is.GreaterThan(lowExecutionRatings.AttackPowerCapacity));
+            Assert.That(firstHigh.Actor, Is.EqualTo(firstLow.Actor));
+            Assert.That(firstLow.Candidates[0].Score, Is.EqualTo(firstHigh.Candidates[0].Score));
+            Assert.That(firstLow.Candidates[1].Score, Is.EqualTo(firstHigh.Candidates[1].Score));
+            Assert.That(firstLow.Candidates[0].Score, Is.EqualTo(firstLow.Candidates[1].Score));
         }
 
         [Test]
@@ -409,6 +482,30 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void OrderedCandidates_ReversedInputProducesTheSameStableOrder()
+        {
+            var players = new[]
+            {
+                Snapshot(PlayerRole.OutsideHitter, 4, 0.25f),
+                Snapshot(PlayerRole.Setter, 3, 1f),
+                Snapshot(PlayerRole.Defender, 5, 0f),
+                Snapshot(PlayerRole.Attacker, 1, 0.5f)
+            };
+            var reversed = players.Reverse().ToArray();
+            var planner = new TeamRallyDecisionPlanner(17);
+
+            var first = planner.OrderedCandidates(CreateRawInput(players));
+            var second = planner.OrderedCandidates(CreateRawInput(reversed));
+
+            Assert.That(
+                second.Select(candidate => candidate.Actor),
+                Is.EqualTo(first.Select(candidate => candidate.Actor)));
+            Assert.That(
+                ((IList<RallyDecisionCandidate>)first).IsReadOnly,
+                Is.True);
+        }
+
+        [Test]
         public void TeamRallyDecisionInput_RejectsInvalidTeamsCountsActorsAndFiniteValues()
         {
             var blueSetter = new RallyPlayerSnapshot(
@@ -461,7 +558,7 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Plan_NonPreferredRoleCanWinWhenItsReachabilityScoreIsHigher()
+        public void Plan_OrganizeSetterWinsWhenAnotherReachableRoleScoresHigher()
         {
             var decision = new TeamRallyDecisionPlanner(17).Plan(CreateInput(
                 TeamId.Blue,
@@ -472,12 +569,12 @@ namespace Volleyball.EditModeTests
                 new SimVector3(0f, 0f, -2f),
                 availableSeconds: 0.5f));
 
-            Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Defender)));
-            Assert.That(decision.Score.NominalRole, Is.Zero);
-            Assert.That(decision.Score.Total, Is.GreaterThan(0f));
+            Assert.That(decision.Actor, Is.EqualTo(new PlayerId(TeamId.Blue, PlayerRole.Setter)));
+            Assert.That(decision.Score.NominalRole, Is.GreaterThan(0f));
             var setter = FindCandidate(decision, PlayerRole.Setter);
             Assert.That(setter.IsFeasible, Is.True);
-            Assert.That(decision.Score.Total, Is.GreaterThan(setter.Score.Total));
+            var defender = FindCandidate(decision, PlayerRole.Defender);
+            Assert.That(defender.Score.Total, Is.GreaterThan(setter.Score.Total));
         }
 
         [Test]
@@ -660,6 +757,41 @@ namespace Volleyball.EditModeTests
                 attackerAbility: Ability(attackerMobility));
         }
 
+        private static TeamRallyDecisionInput CreateAttackSelectionInput(
+            PlayerAbilityProfile first,
+            PlayerAbilityProfile second)
+        {
+            var tactic = CreateTactic(SpikeRoute.Line);
+            var takeoff = new SimVector3(tactic.AttackerPosition.X, 0f, tactic.AttackerPosition.Z);
+            return new TeamRallyDecisionInput(
+                TeamId.Blue,
+                tactic,
+                new[]
+                {
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter, 0),
+                        takeoff,
+                        first),
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.OutsideHitter, 1),
+                        takeoff,
+                        second),
+                    new RallyPlayerSnapshot(
+                        new PlayerId(TeamId.Blue, PlayerRole.Defender, 2),
+                        new SimVector3(20f, 0f, -6f),
+                        Ability(0.8f))
+                },
+                new SimVector3(0f, 3f, -1f),
+                2f,
+                5f,
+                0,
+                null,
+                0,
+                0,
+                RallyDecisionStage.Attack,
+                RallyTacticalWeights.Default);
+        }
+
         private static TeamRallyDecisionInput CreateInput(
             TeamId team,
             RallyDecisionStage stage,
@@ -729,6 +861,28 @@ namespace Volleyball.EditModeTests
                 RallyTacticalWeights.Default);
         }
 
+        private static TeamRallyDecisionInput CreateOrganizeInput(
+            RallyPlayerSnapshot setter,
+            RallyPlayerSnapshot attacker,
+            RallyPlayerSnapshot defender,
+            float availableSeconds = 2f,
+            PlayerId? lastCountedActor = null)
+        {
+            return new TeamRallyDecisionInput(
+                TeamId.Blue,
+                CreateTactic(SpikeRoute.Line),
+                new[] { setter, attacker, defender },
+                new SimVector3(0f, 2f, -2f),
+                availableSeconds,
+                5f,
+                0,
+                lastCountedActor,
+                0,
+                0,
+                RallyDecisionStage.Organize,
+                RallyTacticalWeights.Default);
+        }
+
         private static TeamRallyDecision AttackDecisionForApproachDistance(float desiredDistance)
         {
             var tactic = CreateTactic(SpikeRoute.Line);
@@ -784,7 +938,21 @@ namespace Volleyball.EditModeTests
 
         private static PlayerAbilityProfile Ability(float mobility)
         {
-            return new PlayerAbilityProfile(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+            return MatchV4TestFixture.CreateAbility(mobility, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f, 0.8f);
+        }
+
+        private static PlayerAbilityProfile AbilityWithAttack(
+            float attackTechnique,
+            float attackPower)
+        {
+            return MatchV4TestFixture.CreateAbility(
+                0.8f,
+                0.8f,
+                0.8f,
+                0.8f,
+                0.8f,
+                attackTechnique,
+                attackPower);
         }
 
         private static RallyPlayerSnapshot Snapshot(PlayerRole role, int slot, float x)
