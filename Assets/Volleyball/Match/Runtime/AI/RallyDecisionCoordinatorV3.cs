@@ -29,6 +29,15 @@ namespace Volleyball.AI
                 throw new ArgumentNullException(nameof(input)));
         }
 
+        public bool HasFeasibleCandidate(TeamRallyDecisionInput input)
+        {
+            var candidates = OrderedCandidates(input);
+            for (var index = 0; index < candidates.Count; index++)
+                if (candidates[index].IsFeasible)
+                    return true;
+            return false;
+        }
+
         public ReceiveOrganizationResponsibilityPlanner
             CreateReceiveOrganizationPlanner()
         {

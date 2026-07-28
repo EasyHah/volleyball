@@ -48,10 +48,13 @@ namespace Volleyball.PlayModeTests
                 contact.AttackDefenseAuthority == null &&
                 contact.OrganizationAuthority?.Perception == null), Is.True);
             Assert.That(
-                typeof(PhysicalMatchRallyDirector)
-                    .GetField("_attackDefenseCoordinator",
-                        BindingFlags.Instance | BindingFlags.NonPublic)
-                    .GetValue(director),
+                ((FormalRallyAuthorityOrchestrator)
+                    typeof(PhysicalMatchRallyDirector)
+                        .GetField("_formalAuthority",
+                            BindingFlags.Instance |
+                            BindingFlags.NonPublic)
+                        .GetValue(director))
+                    .AttackCoordinator,
                 Is.Null);
         }
 

@@ -1255,8 +1255,7 @@ namespace Volleyball.Presentation
                     receiveSeconds),
                 _touchState.CountedTeamTouches,
                 _touchState.LastCountedActor);
-            if (!_decisionCoordinator.OrderedCandidates(receiveInput)
-                    .Any(candidate => candidate.IsFeasible))
+            if (!_decisionCoordinator.HasFeasibleCandidate(receiveInput))
             {
                 _scheduledDecision = null;
                 _scheduledPrimaryActor = null;
