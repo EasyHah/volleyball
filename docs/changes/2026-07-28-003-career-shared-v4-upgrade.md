@@ -17,6 +17,9 @@
 - 离线 fixture 冻结自己的 physics/predictor 配置哈希。未来接真实物理比赛时，Match
   runner 必须提供实际配置哈希，不能沿用 fixture 标识。
 - 保留 Career UI 所需的 Input System `1.17.0`，同时采用上游 Unity 6000.3 包基线。
+- Career 与 Match 的传入、传出、取消恢复、规范序列化及后续详细报告边界统一记录在
+  [`career-match-v4-integration-contract.md`](../career-match-v4-integration-contract.md)，
+  供双方 Codex 在合并前读取。
 
 ## 兼容、回滚与所有权
 

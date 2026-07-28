@@ -1,5 +1,9 @@
 # Contract Consumption
 
+The normative Career-to-Match V4 handoff, validation, lifecycle and merge
+requirements are defined in
+[`career-match-v4-integration-contract.md`](career-match-v4-integration-contract.md).
+
 ## Authority
 
 `Assets/Volleyball/Shared/Runtime/` is the single source of truth for cross-module
