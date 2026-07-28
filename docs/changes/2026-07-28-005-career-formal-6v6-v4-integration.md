@@ -6,7 +6,7 @@
 - 影响模块：Career.MatchIntegration / Bootstrap / Match.Presentation / Tests / Docs / Tools
 - 交互级别：跨模块（重点）
 - 关联分支：`milestone/career-formal-6v6-v4`
-- 关联提交或 PR：尚未创建
+- 关联提交或 PR：`e04bc61` / [PR #4](https://github.com/EasyHah/volleyball/pull/4)
 
 > [!IMPORTANT]
 > Match 提供生产者中立的外部 `MatchContextV4` 场景入口，Bootstrap 负责 additive 场景生命周期，
