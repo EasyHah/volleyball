@@ -567,6 +567,17 @@ namespace Volleyball.PlayModeTests
             Assert.That(MatchReplayArtifactWriter.Render(second),
                 Is.EqualTo(MatchReplayArtifactWriter.Render(first)));
             Assert.That(second.Events.Count, Is.EqualTo(first.Events.Count));
+            TestContext.WriteLine(
+                $"[GateKReplayCalibration] replayHash={first.ReplayHash} " +
+                $"events={first.Events.Count} workUnits=" +
+                string.Join(",", first.Events.Select(replayEvent =>
+                    replayEvent.WorkBudget.DeterministicWorkUnits)) +
+                " degradation=" +
+                string.Join(",", first.Events.Select(replayEvent =>
+                    replayEvent.WorkBudget.DegradationStep)) +
+                " outcomes=" +
+                string.Join(",", first.Events.Select(replayEvent =>
+                    replayEvent.WorkBudget.BudgetOutcome)));
             for (var eventIndex = 0;
                  eventIndex < first.Events.Count;
                  eventIndex++)
