@@ -1578,12 +1578,59 @@ namespace Volleyball.Presentation
                 {
                     if (!GateIAuthorityEnabled)
                     {
-                        outgoingTarget = SelectGeometricSetTarget(
-                            decision,
-                            outgoingTarget,
-                            _ball.SimulationTime + flightSeconds);
+                        if (_plannedAttackDecision == null ||
+                            !_plannedAttackDecision.HasDecision)
+                        {
+                            throw new InvalidOperationException(
+                                "No planned attacker is available for target scoring.");
+                        }
+
+                        var setter = _players[decision.Actor];
+                        var setterPosition = ToSimulation(
+                            setter.transform.position);
+                        var setterDepth = -new TeamCourtFrame(
+                                decision.Actor.Team)
+                            .ToLocal(setterPosition).Z;
+                        var preferredX = outgoingTarget.X;
+                        var setTargetSelection =
+                            _decisionCoordinator.SelectSetTarget(
+                                new SetTargetSelectionInput(
+                                    decision.Actor.Team,
+                                    _plannedAttackDecision.Actor.Role,
+                                    Mathf.Max(0f, setterDepth),
+                                    outgoingTarget.Y,
+                                    preferredX,
+                                    PredictedBlockArmFrames(
+                                        decision.Actor.Team,
+                                        outgoingTarget,
+                                        _ball.SimulationTime +
+                                        flightSeconds +
+                                        SetFlightSolver
+                                            .PreferredFlightSeconds(
+                                                TacticFor(
+                                                    decision.Actor.Team)
+                                                    .SetRhythm)),
+                                    new[]
+                                    {
+                                        Mathf.Clamp(
+                                            preferredX - 0.9f,
+                                            -4.2f,
+                                            4.2f),
+                                        preferredX,
+                                        Mathf.Clamp(
+                                            preferredX + 0.9f,
+                                            -4.2f,
+                                            4.2f)
+                                    }));
+                        outgoingTarget = setTargetSelection.Target;
                         _scheduledGeometricSetTarget = outgoingTarget;
                         GeometricSetTargetSelections++;
+                        Debug.Log(
+                            $"[{_configuration.LogTag}] geometric-set-target " +
+                            $"team={decision.Actor.Team} target=(" +
+                            $"{outgoingTarget.X:0.00},{outgoingTarget.Y:0.00}," +
+                            $"{outgoingTarget.Z:0.00}) clearance=" +
+                            $"{setTargetSelection.MinimumArmClearance:0.000}");
                     }
                 }
                 catch (InvalidOperationException exception)
@@ -4136,7 +4183,13 @@ namespace Volleyball.Presentation
                 ScheduledMultiBlockUnits++;
             }
 
-            if (TrySelectCoverPlayer(defendingTeam, _scheduledBlockers, intercept.Point, out var cover))
+            if (_decisionCoordinator.TrySelectCoveragePlayer(
+                    CaptureTeamPlayerSnapshots(defendingTeam),
+                    _scheduledBlockers,
+                    ToSimulation(CoverageTarget(
+                        defendingTeam,
+                        intercept.Point)),
+                    out var cover))
             {
                 _players[cover].ScheduleSupportAction(
                     TechniqueAction.Receive,
@@ -4621,49 +4674,6 @@ namespace Volleyball.Presentation
                 landing.Z);
         }
 
-        private SimVector3 SelectGeometricSetTarget(
-            TeamRallyDecision setDecision,
-            SimVector3 fallbackTarget,
-            float setContactTime)
-        {
-            if (_plannedAttackDecision == null || !_plannedAttackDecision.HasDecision)
-            {
-                throw new InvalidOperationException("No planned attacker is available for target scoring.");
-            }
-
-            var setter = _players[setDecision.Actor];
-            var setterPosition = new SimVector3(
-                setter.transform.position.x,
-                setter.transform.position.y,
-                setter.transform.position.z);
-            var setterDepth = -new TeamCourtFrame(setDecision.Actor.Team)
-                .ToLocal(setterPosition).Z;
-            var preferredX = fallbackTarget.X;
-            var lateralCandidates = new[]
-            {
-                Mathf.Clamp(preferredX - 0.9f, -4.2f, 4.2f),
-                preferredX,
-                Mathf.Clamp(preferredX + 0.9f, -4.2f, 4.2f)
-            };
-            var selected = SetTargetSelector.Select(new SetTargetSelectionInput(
-                setDecision.Actor.Team,
-                _plannedAttackDecision.Actor.Role,
-                Mathf.Max(0f, setterDepth),
-                fallbackTarget.Y,
-                preferredX,
-                PredictedBlockArmFrames(
-                    setDecision.Actor.Team,
-                    fallbackTarget,
-                    setContactTime + SetFlightSolver.PreferredFlightSeconds(
-                        TacticFor(setDecision.Actor.Team).SetRhythm)),
-                lateralCandidates));
-            Debug.Log(
-                $"[{_configuration.LogTag}] geometric-set-target team={setDecision.Actor.Team} " +
-                $"target=({selected.Target.X:0.00},{selected.Target.Y:0.00}," +
-                $"{selected.Target.Z:0.00}) clearance={selected.MinimumArmClearance:0.000}");
-            return selected.Target;
-        }
-
         private IReadOnlyList<ContactCapsuleFrame> PredictedBlockArmFrames(
             TeamId attackingTeam,
             SimVector3 attackContactCenter,
@@ -4829,41 +4839,6 @@ namespace Volleyball.Presentation
             }
 
             return best;
-        }
-
-        private bool TrySelectCoverPlayer(
-            TeamId team,
-            ISet<PlayerId> blockers,
-            SimVector3 intercept,
-            out PlayerId cover)
-        {
-            var target = CoverageTarget(team, intercept);
-            cover = default;
-            var found = false;
-            var bestDistance = float.PositiveInfinity;
-            foreach (var pair in _players)
-            {
-                var id = pair.Key;
-                if (id.Team != team)
-                {
-                    continue;
-                }
-
-                if (blockers.Contains(id))
-                {
-                    continue;
-                }
-
-                var distance = Vector3.Distance(pair.Value.transform.position, target);
-                if (distance < bestDistance)
-                {
-                    cover = id;
-                    bestDistance = distance;
-                    found = true;
-                }
-            }
-
-            return found;
         }
 
         private PrototypePlayerAgent FindPlayer(TeamId team, Predicate<PlayerRole> preferredRole)

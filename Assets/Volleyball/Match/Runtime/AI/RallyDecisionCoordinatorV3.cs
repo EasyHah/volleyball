@@ -66,6 +66,45 @@ namespace Volleyball.AI
             return false;
         }
 
+        public SetTargetSelection SelectSetTarget(SetTargetSelectionInput input)
+        {
+            return SetTargetSelector.Select(input);
+        }
+
+        public bool TrySelectCoveragePlayer(
+            IReadOnlyList<RallyPlayerSnapshot> players,
+            ISet<PlayerId> excludedPlayers,
+            SimVector3 coverageTarget,
+            out PlayerId selectedPlayer)
+        {
+            if (players == null)
+                throw new ArgumentNullException(nameof(players));
+            if (excludedPlayers == null)
+                throw new ArgumentNullException(nameof(excludedPlayers));
+            if (!coverageTarget.IsFinite)
+                throw new ArgumentOutOfRangeException(nameof(coverageTarget));
+
+            selectedPlayer = default;
+            var found = false;
+            var bestDistance = float.PositiveInfinity;
+            for (var index = 0; index < players.Count; index++)
+            {
+                var player = players[index];
+                if (excludedPlayers.Contains(player.Id))
+                    continue;
+
+                var distance = (player.WorldPosition - coverageTarget).Magnitude;
+                if (distance < bestDistance)
+                {
+                    selectedPlayer = player.Id;
+                    bestDistance = distance;
+                    found = true;
+                }
+            }
+
+            return found;
+        }
+
         public ReceiveOrganizationResponsibilityPlanner
             CreateReceiveOrganizationPlanner()
         {
