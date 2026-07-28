@@ -307,6 +307,30 @@ namespace Volleyball.EditModeTests
             Assert.That(highDefense.MaximumVelocity, Is.EqualTo(lowDefense.MaximumVelocity));
         }
 
+        [Test]
+        public void FixedKey_BlockTechniqueChangesBlockControlNotReachOrMobility()
+        {
+            var low = GateIDerived(blockTechnique: 0.1f);
+            var high = GateIDerived(blockTechnique: 0.9f);
+            var lowBlock = GateIEnvelope(
+                low, ExecutionCandidateCategoryV4.Block);
+            var highBlock = GateIEnvelope(
+                high, ExecutionCandidateCategoryV4.Block);
+
+            Assert.That(
+                highBlock.TargetError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(
+                    lowBlock.TargetError.MaximumAbsoluteError.Magnitude));
+            Assert.That(
+                highBlock.VelocityError.MaximumAbsoluteError.Magnitude,
+                Is.LessThan(
+                    lowBlock.VelocityError.MaximumAbsoluteError.Magnitude));
+            Assert.That(highBlock.MaximumVelocity,
+                Is.EqualTo(lowBlock.MaximumVelocity));
+            Assert.That(high.Attributes.Block.ReachHeightMeters,
+                Is.EqualTo(low.Attributes.Block.ReachHeightMeters));
+        }
+
         private static ExecutionEnvelopeV4 GateIEnvelope(
             DerivedMatchAttributesV4 derived,
             ExecutionCandidateCategoryV4 category)
@@ -325,11 +349,13 @@ namespace Volleyball.EditModeTests
 
         private static DerivedMatchAttributesV4 GateIDerived(
             float softTouch = .72f,
-            float defenseTechnique = .72f)
+            float defenseTechnique = .72f,
+            float blockTechnique = .72f)
         {
             return MatchAttributeDerivationV4.Derive(
                 new PhysicalBaseAttributesV4(1.91f, 2.43f, .73f, .71f, .72f, .70f),
-                new TechnicalBaseAttributesV4(.76f, .77f, .72f, defenseTechnique, .74f, .75f, .76f, softTouch, .78f),
+                new TechnicalBaseAttributesV4(.76f, .77f, blockTechnique,
+                    defenseTechnique, .74f, .75f, .76f, softTouch, .78f),
                 DominantHandV4.Right,
                 MatchAttributeDerivationConfigV4.Version1);
         }

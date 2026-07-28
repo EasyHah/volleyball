@@ -295,8 +295,6 @@ namespace Volleyball.Presentation
             _attackDefenseControllers = new Dictionary<TeamId, AttackDefenseAuthorityController>();
         private readonly FormalRallyAuthorityOrchestrator
             _formalAuthority = new FormalRallyAuthorityOrchestrator();
-        private long _gateHPlanRevision;
-        private long _gateHSourceSequence;
         private static readonly CourtPerceptionConfigurationV3
             GateJPerceptionConfiguration =
                 new CourtPerceptionConfigurationV3(
@@ -1304,8 +1302,8 @@ namespace Volleyball.Presentation
                     pair.Value.StableId))
                 .ToArray();
             var request = new ReceiveOrganizationAuthorityRequestV3(
-                ++_gateHPlanRevision,
-                ++_gateHSourceSequence,
+                _formalAuthority.NextPlanRevision(),
+                _formalAuthority.NextSourceSequence(),
                 receiveInput,
                 organizationInput,
                 attackInput,
@@ -1872,7 +1870,7 @@ namespace Volleyball.Presentation
             {
                 commands.Add(new ReceiveOrganizationAuthorityCommand(
                     state.Revision,
-                    _gateHSourceSequence,
+                    _formalAuthority.CurrentSourceSequence,
                     ReceiveOrganizationCommandKind.PrimaryReceive,
                     stableActor,
                     RallyPlanBranchV3.Primary,
@@ -1885,7 +1883,7 @@ namespace Volleyball.Presentation
                 {
                     commands.Add(new ReceiveOrganizationAuthorityCommand(
                         state.Revision,
-                        _gateHSourceSequence,
+                        _formalAuthority.CurrentSourceSequence,
                         ReceiveOrganizationCommandKind.EmergencyReceive,
                         planning.Plan.EmergencyReceivers[index],
                         RallyPlanBranchV3.Contingency,
@@ -1905,7 +1903,7 @@ namespace Volleyball.Presentation
 
                 commands.Add(new ReceiveOrganizationAuthorityCommand(
                     state.Revision,
-                    _gateHSourceSequence,
+                    _formalAuthority.CurrentSourceSequence,
                     ReceiveOrganizationCommandKind.SetterPreparation,
                     planning.Plan.RegisteredSetter,
                     RallyPlanBranchV3.Primary,
@@ -1917,7 +1915,7 @@ namespace Volleyball.Presentation
             {
                 commands.Add(new ReceiveOrganizationAuthorityCommand(
                     state.Revision,
-                    _gateHSourceSequence,
+                    _formalAuthority.CurrentSourceSequence,
                     ReceiveOrganizationCommandKind.OrganizationContact,
                     stableActor,
                     stableActor.Equals(planning.Plan.RegisteredSetter)
@@ -1933,7 +1931,7 @@ namespace Volleyball.Presentation
             {
                 commands.Add(new ReceiveOrganizationAuthorityCommand(
                     state.Revision,
-                    _gateHSourceSequence,
+                    _formalAuthority.CurrentSourceSequence,
                     ReceiveOrganizationCommandKind.AttackPreparation,
                     planning.Plan.AttackPreparation,
                     RallyPlanBranchV3.Primary,
@@ -1944,7 +1942,7 @@ namespace Volleyball.Presentation
 
             var evidence = new ReceiveOrganizationAuthorityEvidenceV3(
                 state.Revision,
-                _gateHSourceSequence,
+                _formalAuthority.CurrentSourceSequence,
                 state.Phase,
                 planning.Plan,
                 planning.SetterEvidence,
@@ -1955,7 +1953,7 @@ namespace Volleyball.Presentation
             _receiveOrganizationControllers[decision.Actor.Team]
                 .PreflightAndCommit(new ReceiveOrganizationCommandBatch(
                     state.Revision,
-                    _gateHSourceSequence,
+                    _formalAuthority.CurrentSourceSequence,
                     commands,
                     evidence));
             _scheduledPrimaryActor = decision.Actor;
@@ -2006,11 +2004,11 @@ namespace Volleyball.Presentation
                     _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
                     pair.Value.Ability.Derived)).ToArray();
             var result = _attackDefenseCoordinator.PlanSetIntent(new SetIntentPlanningRequestV3(
-                _gateHPlanRevision, ++_gateHSourceSequence, side, organizer.StableId,
+                _formalAuthority.CurrentPlanRevision, _formalAuthority.NextSourceSequence(), side, organizer.StableId,
                 _ball.SimulationTime + flightSeconds, PredictBallState(flightSeconds), players, organizer.Ability.Derived,
                 passPrediction ?? _lastTrajectoryPredictionArtifactV4 ?? throw new InvalidOperationException("Accepted pass trajectory is required."),
                 _trajectoryPredictionProviderV4, SimulationParameters, _matchContext.PhysicsConfigurationHash,
-                _gateHSourceSequence));
+                _formalAuthority.CurrentSourceSequence));
             _formalAuthority.ActiveSetIntent = result;
             _formalAuthority.StoreGateISetIntent(
                 GateHReceiptKey(organizer.StableId, TechniqueAction.Set),
@@ -2111,7 +2109,7 @@ namespace Volleyball.Presentation
             if (responsibility == null)
                 throw new InvalidOperationException(
                     "Incidental Gate I defense actor is outside the committed roster.");
-            var sourceSequence = _gateHSourceSequence + 1;
+            var sourceSequence = _formalAuthority.PeekNextSourceSequence();
             var evidence = _attackDefenseCoordinator
                 .PreviewIncidentalDefenseContact(
                     plan.Revision,
@@ -2725,7 +2723,7 @@ namespace Volleyball.Presentation
             if (completedToolRecoveryReceive)
             {
                 _attackDefenseCoordinator.CompleteReorganizationAndReset(
-                    _attackDefenseCoordinator.State.Revision, ++_gateHSourceSequence);
+                    _attackDefenseCoordinator.State.Revision, _formalAuthority.NextSourceSequence());
                 _formalAuthority.ClearGateIContacts();
             }
 
@@ -2777,10 +2775,10 @@ namespace Volleyball.Presentation
                     {
                         _receiveOrganizationCoordinator.CommitOrganization(
                             _receiveOrganizationCoordinator.State.Revision,
-                            ++_gateHSourceSequence);
+                            _formalAuthority.NextSourceSequence());
                         _receiveOrganizationCoordinator.HandOffToAttack(
                             _receiveOrganizationCoordinator.State.Revision,
-                            ++_gateHSourceSequence);
+                            _formalAuthority.NextSourceSequence());
                     }
 
                     if (GateIAuthorityEnabled)
@@ -2886,14 +2884,14 @@ namespace Volleyball.Presentation
             {
                 _receiveOrganizationCoordinator.ActivateEmergency(
                     state.Revision,
-                    ++_gateHSourceSequence,
+                    _formalAuthority.NextSourceSequence(),
                     stableActor);
             }
             else
             {
                 _receiveOrganizationCoordinator.CommitReceive(
                     state.Revision,
-                    ++_gateHSourceSequence);
+                    _formalAuthority.NextSourceSequence());
             }
 
             var landing = PredictGate5BallCenterV4(
@@ -2903,7 +2901,7 @@ namespace Volleyball.Presentation
             _receiveOrganizationCoordinator.AcceptReceive(
                 new AcceptedReceiveV3(
                     state.Revision,
-                    ++_gateHSourceSequence,
+                    _formalAuthority.NextSourceSequence(),
                     stableActor,
                     landing,
                     PlanCoverageReason.WithinConditionalEnvelope,
@@ -2917,7 +2915,7 @@ namespace Volleyball.Presentation
             {
                 _attackDefenseCoordinator.CompleteReorganizationAndReset(
                     _attackDefenseCoordinator.State.Revision,
-                    ++_gateHSourceSequence);
+                    _formalAuthority.NextSourceSequence());
                 // Receipts for committed block/floor commands that did not
                 // become the accepted physical contact belong to the completed
                 // opportunity. The accepted contact already owns its snapshot,
@@ -2969,7 +2967,7 @@ namespace Volleyball.Presentation
             if (exit == null)
                 throw new InvalidOperationException("Accepted Gate I contact requires a declared reorganization exit.");
             _attackDefenseCoordinator.AcceptContact(new GateIContactEvidenceV3(
-                receipt.PlanRevision, ++_gateHSourceSequence, receipt.Actor,
+                receipt.PlanRevision, _formalAuthority.NextSourceSequence(), receipt.Actor,
                 receipt.Evidence.CoverageDecision.Reason, receipt.Kind,
                 receipt.Branch,
                 receipt.ExecutionClassification.ExecutableEnvelope.Identity,
@@ -3072,7 +3070,7 @@ namespace Volleyball.Presentation
             var outgoing = ReturnVelocitySolver.Solve(contactCenter, target, .60f,
                 SimulatedBall.DefaultFixedStep, SimulationParameters).InitialVelocity;
             var identity = "gate-i-tool-recovery:" + state.Revision + ":" +
-                recovery.RecoveryActor.Value + ":" + _gateHSourceSequence;
+                recovery.RecoveryActor.Value + ":" + _formalAuthority.CurrentSourceSequence;
             var envelope = PlanExecutionEnvelopeV4(receiver.Ability.Derived,
                 new ExecutionIntentV4(identity, ExecutionCandidateCategoryV4.Receive,
                     target, outgoing, .5f), identity + ":sample",
@@ -3115,7 +3113,7 @@ namespace Volleyball.Presentation
             if (recovery == null || !actor.Equals(recovery.RecoveryActor) ||
                 classification == null || trajectory == null)
                 throw new InvalidOperationException("Tool recovery Receive requires the declared actual saver evidence.");
-            var source = _gateHSourceSequence + 1;
+            var source = _formalAuthority.PeekNextSourceSequence();
             return new AttackDefenseAuthorityReceipt(state.Revision, source, state.Phase,
                 AttackDefenseCommandKind.FloorDefense, actor, RallyPlanBranchV3.Primary,
                 classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
@@ -3137,7 +3135,7 @@ namespace Volleyball.Presentation
                 !planned.Actor.Equals(recovery.Blocker) || classification == null ||
                 trajectory == null)
                 throw new InvalidOperationException("Tool recovery Block requires the declared blocker and actual accepted evidence.");
-            var source = _gateHSourceSequence + 1;
+            var source = _formalAuthority.PeekNextSourceSequence();
             return new AttackDefenseAuthorityReceipt(state.Revision, source, state.Phase,
                 AttackDefenseCommandKind.BlockContact, planned.Actor, planned.Branch,
                 classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
@@ -3158,11 +3156,11 @@ namespace Volleyball.Presentation
             AttackDefenseAuthorityReceipt receipt)
         {
             var state = _attackDefenseCoordinator.State;
-            return new AttackDefenseAuthorityReceipt(state.Revision, _gateHSourceSequence,
+            return new AttackDefenseAuthorityReceipt(state.Revision, _formalAuthority.CurrentSourceSequence,
                 state.Phase, receipt.Kind, receipt.Actor, receipt.Branch,
                 receipt.ExecutionClassification, receipt.TrajectoryArtifact,
                 new AttackDefenseAuthorityEvidenceV3(state.Revision,
-                    _gateHSourceSequence, state.Phase, state.Plan,
+                    _formalAuthority.CurrentSourceSequence, state.Phase, state.Plan,
                     state.CoverageDecision,
                     _attackDefenseCoordinator.CurrentPerception),
                 receipt.ToolRecoveryActualObservation,
@@ -3189,14 +3187,14 @@ namespace Volleyball.Presentation
                     _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
                     pair.Value.Ability.Derived)).ToArray();
             _attackDefenseCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
-                ++_gateHSourceSequence, accepted), new AttackPlanningRequestV3(intent.PlanRevision,
+                _formalAuthority.NextSourceSequence(), accepted), new AttackPlanningRequestV3(intent.PlanRevision,
                 intent, accepted, players, _trajectoryPredictionProviderV4,
                 SimulationParameters, _matchContext.PhysicsConfigurationHash,
                 // Gate I candidate trajectories start from this accepted Set's
                 // physical ball snapshot, not from a planner-invented version.
                 (long)(uint)BitConverter.ToInt32(
                     BitConverter.GetBytes(_ball.SimulationTime), 0)));
-            _attackDefenseCoordinator.PublishThreat(intent.PlanRevision, ++_gateHSourceSequence);
+            _attackDefenseCoordinator.PublishThreat(intent.PlanRevision, _formalAuthority.NextSourceSequence());
             var defending = Opponent(actor.Team);
             var defensePlayers = _players.Where(pair => pair.Key.Team == defending)
                 .OrderBy(pair => pair.Key.RosterSlot).Select(pair => new DefensePlayerSnapshotV3(
@@ -3218,7 +3216,7 @@ namespace Volleyball.Presentation
                 ? CreateGateJPerceptionReceipt(
                     defending,
                     intent.PlanRevision,
-                    _gateHSourceSequence,
+                    _formalAuthority.CurrentSourceSequence,
                     intent.TrajectoryArtifact.ArtifactIdentity,
                     publicThreat,
                     defensePlayers.Where(player => !player.IsFrontRow)
@@ -3231,8 +3229,8 @@ namespace Volleyball.Presentation
             var defense = new JointDefensePlanner().Plan(new JointDefensePlanningRequestV3(intent.PlanRevision,
                 Opponent(ToSide(actor.Team)), publicThreat,
                 defensePlayers, assignments, exits, perception));
-            _attackDefenseCoordinator.CommitDefense(intent.PlanRevision, ++_gateHSourceSequence, defense);
-            _attackDefenseCoordinator.CommitFinalAttack(intent.PlanRevision, ++_gateHSourceSequence);
+            _attackDefenseCoordinator.CommitDefense(intent.PlanRevision, _formalAuthority.NextSourceSequence(), defense);
+            _attackDefenseCoordinator.CommitFinalAttack(intent.PlanRevision, _formalAuthority.NextSourceSequence());
         }
 
         private void RecordGateISetCalibration(

@@ -45,6 +45,10 @@ namespace Volleyball.EditModeTests
                 Has.None.Contains("_pendingGateIContactReceipts"));
             Assert.That(fields.Select(field => field.Name),
                 Has.None.Contains("_activeGateISetIntent"));
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_gateHPlanRevision"));
+            Assert.That(fields.Select(field => field.Name),
+                Has.None.Contains("_gateHSourceSequence"));
             Assert.That(fields.Select(field => field.FieldType),
                 Does.Contain(typeof(FormalRallyAuthorityOrchestrator)));
         }

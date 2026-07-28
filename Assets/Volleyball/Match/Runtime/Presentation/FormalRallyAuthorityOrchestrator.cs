@@ -23,8 +23,27 @@ namespace Volleyball.Presentation
             _gateIContactReceipts =
                 new Dictionary<string, AttackDefenseAuthorityReceipt>(
                     StringComparer.Ordinal);
+        private long _planRevision;
+        private long _sourceSequence;
 
         public GateISetIntentPlanningResultV3 ActiveSetIntent { get; set; }
+        public long CurrentPlanRevision => _planRevision;
+        public long CurrentSourceSequence => _sourceSequence;
+
+        public long NextPlanRevision()
+        {
+            return ++_planRevision;
+        }
+
+        public long NextSourceSequence()
+        {
+            return ++_sourceSequence;
+        }
+
+        public long PeekNextSourceSequence()
+        {
+            return _sourceSequence + 1;
+        }
 
         public void StoreGateH(string key,
             ReceiveOrganizationAuthorityReceipt receipt)
