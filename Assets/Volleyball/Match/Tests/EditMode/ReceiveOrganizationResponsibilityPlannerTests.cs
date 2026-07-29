@@ -176,6 +176,39 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlanReceive_CommittedContinuationReceiverBecomesPrimaryWithoutInventingActor()
+        {
+            var fixture = CreateFixture(RuntimeTeamId.Blue, TeamSide.Home);
+            var input = CreateInput(
+                RuntimeTeamId.Blue,
+                RallyDecisionStage.Receive,
+                fixture.RuntimePlayers,
+                fixture.Bindings[3].RuntimePlayerId,
+                new SimVector3(0f, 2f, -2f),
+                1f);
+            var feasible = new TeamRallyDecisionPlanner(17)
+                .OrderedCandidates(input)
+                .Where(candidate => candidate.IsFeasible)
+                .ToArray();
+            Assert.That(feasible.Length, Is.GreaterThanOrEqualTo(2));
+            var committed = fixture.StableFor(feasible[1].Actor);
+
+            var result = CreatePlanner().PlanReceive(
+                input,
+                CreateAttackInput(RuntimeTeamId.Blue, fixture.RuntimePlayers),
+                fixture.Eligibility,
+                fixture.Bindings,
+                revision: 13,
+                committedContinuationReceiver: committed);
+
+            Assert.That(result.Plan.PrimaryReceiver, Is.EqualTo(committed));
+            Assert.That(result.Decision.Actor, Is.EqualTo(feasible[1].Actor));
+            Assert.That(
+                result.Plan.EmergencyReceivers.Contains(committed),
+                Is.False);
+        }
+
+        [Test]
         public void PlanReceive_RejectsBindingToOffCourtPlayerBeforePublishingResponsibilities()
         {
             var fixture = CreateFixture(RuntimeTeamId.Blue, TeamSide.Home);

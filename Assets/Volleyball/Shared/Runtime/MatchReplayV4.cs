@@ -636,6 +636,27 @@ namespace Volleyball.Shared.Contracts
         internal string Identity => ActorPlayerId + "\n" + Kind + "\n" + Zone + "\n" + Branch;
     }
 
+    public sealed class ReplayAttackCoverageResponsibilityRecordV4
+    {
+        public ReplayAttackCoverageResponsibilityRecordV4(
+            string actorPlayerId,
+            string branch)
+        {
+            ActorPlayerId = ReplayContractGuardV4.Required(
+                actorPlayerId,
+                nameof(actorPlayerId));
+            Branch = ReplayContractGuardV4.OneOf(
+                branch,
+                nameof(branch),
+                "Primary",
+                "Contingency");
+        }
+
+        public string ActorPlayerId { get; }
+        public string Branch { get; }
+        internal string Identity => ActorPlayerId + "\n" + Branch;
+    }
+
     public sealed class ReplayToolRecoveryRecordV4
     {
         public ReplayToolRecoveryRecordV4(string candidateIdentity,
@@ -671,6 +692,8 @@ namespace Volleyball.Shared.Contracts
         private readonly ReplayAttackDefenseCandidateRecordV4[] _candidates;
         private readonly ReplayPublicAttackThreatRecordV4[] _publicThreat;
         private readonly ReplayDefenseResponsibilityRecordV4[] _defenseResponsibilities;
+        private readonly ReplayAttackCoverageResponsibilityRecordV4[]
+            _attackCoverageResponsibilities;
 
         public ReplayAttackDefenseAuthorityRecordV4(int planRevision,
             int sourceSequenceNumber, string phase, string branch,
@@ -681,7 +704,9 @@ namespace Volleyball.Shared.Contracts
             string selectedCandidateIdentity, string testedEnvelopeIdentity,
             string executableEnvelopeIdentity, string sampleEnvelopeIdentity,
             string trajectoryArtifactIdentity, ReplayToolRecoveryRecordV4 recovery,
-            ReplayCoverageDecisionRecordV4 coverage)
+            ReplayCoverageDecisionRecordV4 coverage,
+            IReadOnlyList<ReplayAttackCoverageResponsibilityRecordV4>
+                attackCoverageResponsibilities = null)
         {
             PlanRevision = ReplayContractGuardV4.NonNegative(planRevision, nameof(planRevision));
             SourceSequenceNumber = ReplayContractGuardV4.Positive(sourceSequenceNumber, nameof(sourceSequenceNumber));
@@ -694,6 +719,9 @@ namespace Volleyball.Shared.Contracts
             _candidates = CopyCandidates(candidates);
             _publicThreat = CopyThreat(publicThreat);
             _defenseResponsibilities = CopyResponsibilities(defenseResponsibilities);
+            _attackCoverageResponsibilities = CopyAttackCoverage(
+                attackCoverageResponsibilities ??
+                Array.Empty<ReplayAttackCoverageResponsibilityRecordV4>());
             SelectedCandidateIdentity = selectedCandidateIdentity == null ? string.Empty : selectedCandidateIdentity.Trim();
             TestedEnvelopeIdentity = ReplayContractGuardV4.Hash(testedEnvelopeIdentity, nameof(testedEnvelopeIdentity));
             ExecutableEnvelopeIdentity = ReplayContractGuardV4.Hash(executableEnvelopeIdentity, nameof(executableEnvelopeIdentity));
@@ -709,7 +737,9 @@ namespace Volleyball.Shared.Contracts
             if (Phase == "SetIntentPlanned")
             {
                 if (_candidates.Length != 0 || _publicThreat.Length != 0 ||
-                    _defenseResponsibilities.Length != 0 || selected != null || Recovery != null)
+                    _defenseResponsibilities.Length != 0 ||
+                    _attackCoverageResponsibilities.Length != 0 ||
+                    selected != null || Recovery != null)
                     throw new ContractValidationException("SetIntentPlanned contains only the immutable SetIntent evidence.");
             }
             else if (_candidates.Length == 0)
@@ -737,6 +767,11 @@ namespace Volleyball.Shared.Contracts
         public IReadOnlyList<ReplayAttackDefenseCandidateRecordV4> Candidates => new ReadOnlyCollection<ReplayAttackDefenseCandidateRecordV4>(_candidates);
         public IReadOnlyList<ReplayPublicAttackThreatRecordV4> PublicThreat => new ReadOnlyCollection<ReplayPublicAttackThreatRecordV4>(_publicThreat);
         public IReadOnlyList<ReplayDefenseResponsibilityRecordV4> DefenseResponsibilities => new ReadOnlyCollection<ReplayDefenseResponsibilityRecordV4>(_defenseResponsibilities);
+        public IReadOnlyList<ReplayAttackCoverageResponsibilityRecordV4>
+            AttackCoverageResponsibilities =>
+                new ReadOnlyCollection<
+                    ReplayAttackCoverageResponsibilityRecordV4>(
+                    _attackCoverageResponsibilities);
         public string SelectedCandidateIdentity { get; }
         public string TestedEnvelopeIdentity { get; }
         public string ExecutableEnvelopeIdentity { get; }
@@ -771,6 +806,25 @@ namespace Volleyball.Shared.Contracts
             if (copy.Any(value => value == null) || copy.Select(value => value.Identity).Distinct(StringComparer.Ordinal).Count() != copy.Length)
                 throw new ContractValidationException("Defense responsibilities must be non-null with distinct identities.");
             Array.Sort(copy, (left, right) => string.CompareOrdinal(left.Identity, right.Identity));
+            return copy;
+        }
+
+        private static ReplayAttackCoverageResponsibilityRecordV4[]
+            CopyAttackCoverage(
+                IReadOnlyList<ReplayAttackCoverageResponsibilityRecordV4>
+                    source)
+        {
+            if (source == null)
+                throw new ContractValidationException(
+                    "attackCoverageResponsibilities are required.");
+            var copy = source.ToArray();
+            if (copy.Any(value => value == null) ||
+                copy.Select(value => value.Identity)
+                    .Distinct(StringComparer.Ordinal).Count() != copy.Length)
+                throw new ContractValidationException(
+                    "Attack coverage responsibilities must be non-null with distinct identities.");
+            Array.Sort(copy, (left, right) =>
+                string.CompareOrdinal(left.Identity, right.Identity));
             return copy;
         }
     }
@@ -1348,13 +1402,21 @@ namespace Volleyball.Shared.Contracts
                 AttackDefenseAuthority.Recovery != null &&
                 AttackDefenseAuthority.Recovery.BlockerPlayerId == ActorPlayerId;
             var observedToolReceive = EventKind == "Receive" &&
-                AttackDefenseAuthority.Phase == "ReorganizationPlanned" &&
+                (AttackDefenseAuthority.Phase ==
+                    "ToolRecoveryAwaitingReceive" ||
+                 AttackDefenseAuthority.Phase == "ReorganizationPlanned") &&
                 selected?.ActionClass == "BlockToolRecovery" &&
                 AttackDefenseAuthority.Recovery != null &&
                 AttackDefenseAuthority.Recovery.RecoveryPlayerId == ActorPlayerId;
+            var observedAttackCover = EventKind == "Receive" &&
+                (AttackDefenseAuthority.Phase == "AwaitingActualContact" ||
+                 AttackDefenseAuthority.Phase == "ReorganizationPlanned") &&
+                AttackDefenseAuthority.AttackCoverageResponsibilities.Any(
+                    value => value.ActorPlayerId == ActorPlayerId);
             if (!plannedDefense && !observedDefense && !observedToolBlock && !observedToolReceive)
                 throw new ContractValidationException("Gate I defense evidence requires an awaiting or reorganization phase.");
-            if (!observedToolReceive && !AttackDefenseAuthority.DefenseResponsibilities.Any(value =>
+            if (!observedToolReceive && !observedAttackCover &&
+                !AttackDefenseAuthority.DefenseResponsibilities.Any(value =>
                 value.ActorPlayerId == ActorPlayerId))
                 throw new ContractValidationException("Gate I defense event actor must have a declared responsibility.");
         }
@@ -1552,27 +1614,9 @@ namespace Volleyball.Shared.Contracts
                     ReplayHash,
                     StringComparison.Ordinal) &&
                 (!allowLegacyShadowCoverageHash ||
-                 (!string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeLegacyShadowCoverageHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeLegacyDefenseAttemptHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeLegacyShadowAndDefenseAttemptHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeLegacyWithoutScenarioHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeHistoricalLegacyShadowCoverageHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeHistoricalLegacyDefenseAttemptHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeHistoricalLegacyShadowAndDefenseAttemptHash(this),
-                     StringComparison.Ordinal))))
+                 !CanonicalMatchReplayJsonV4.MatchesSupportedLegacyHash(
+                     this,
+                     suppliedReplayHash)))
             {
                 throw new ContractValidationException(
                     "replayHash does not match the canonical V4 replay segment.");
@@ -2082,6 +2126,61 @@ namespace Volleyball.Shared.Contracts
             return ComputeHash(Payload(replay, true, false, false));
         }
 
+        public static string ComputeLegacyAttackCoverageHash(
+            MatchReplayV4 replay)
+        {
+            return ComputeHash(Payload(replay, false, true, true, false));
+        }
+
+        public static bool MatchesSupportedLegacyHash(
+            MatchReplayV4 replay,
+            string suppliedHash)
+        {
+            for (var legacyShadowCoverage = 0;
+                 legacyShadowCoverage <= 1;
+                 legacyShadowCoverage++)
+            {
+                for (var includeDefenseAttempts = 0;
+                     includeDefenseAttempts <= 1;
+                     includeDefenseAttempts++)
+                {
+                    for (var includeScenario = 0;
+                         includeScenario <= 1;
+                         includeScenario++)
+                    {
+                        for (var includeAttackCoverage = 0;
+                             includeAttackCoverage <= 1;
+                             includeAttackCoverage++)
+                        {
+                            if (legacyShadowCoverage == 0 &&
+                                includeDefenseAttempts == 1 &&
+                                includeScenario == 1 &&
+                                includeAttackCoverage == 1)
+                            {
+                                continue;
+                            }
+
+                            var candidate = ComputeHash(Payload(
+                                replay,
+                                legacyShadowCoverage == 1,
+                                includeDefenseAttempts == 1,
+                                includeScenario == 1,
+                                includeAttackCoverage == 1));
+                            if (string.Equals(
+                                    candidate,
+                                    suppliedHash,
+                                    StringComparison.Ordinal))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+
         private static string ComputeHash(string payload)
         {
             using var sha = SHA256.Create();
@@ -2141,6 +2240,8 @@ namespace Volleyball.Shared.Contracts
             var events = new MatchReplayEventV4[eventValues.Count];
             var hasLegacyShadowCoverage = false;
             var hasCurrentShadowCoverage = false;
+            var hasLegacyAttackCoverageResponsibilities = false;
+            var hasCurrentAttackCoverageResponsibilities = false;
             for (var index = 0; index < events.Length; index++)
             {
                 var eventValue = StrictJsonV4.AsObject(
@@ -2156,6 +2257,14 @@ namespace Volleyball.Shared.Contracts
                     {
                         hasCurrentShadowCoverage = true;
                     }
+                }
+                if (HasLegacyAttackCoverageResponsibilities(eventValue))
+                {
+                    hasLegacyAttackCoverageResponsibilities = true;
+                }
+                else if (HasCurrentAttackCoverageResponsibilities(eventValue))
+                {
+                    hasCurrentAttackCoverageResponsibilities = true;
                 }
                 events[index] = ParseEvent(eventValue);
             }
@@ -2177,6 +2286,12 @@ namespace Volleyball.Shared.Contracts
                 throw new ContractValidationException(
                     "Mixed legacy and current shadow coverage is not supported.");
             }
+            if (hasLegacyAttackCoverageResponsibilities &&
+                hasCurrentAttackCoverageResponsibilities)
+            {
+                throw new ContractValidationException(
+                    "Mixed legacy and current attack coverage responsibilities are not supported.");
+            }
 
             return MatchReplayV4.Restore(
                 StrictJsonV4.RequiredString(root, "replayId"),
@@ -2188,7 +2303,10 @@ namespace Volleyball.Shared.Contracts
                     ? StrictJsonV4.RequiredInt(root, "sourceSequenceAnchor")
                     : 0,
                 StrictJsonV4.RequiredString(root, "replayHash"),
-                hasLegacyShadowCoverage || !hasDefenseAttempts || !hasScenario);
+                hasLegacyShadowCoverage ||
+                hasLegacyAttackCoverageResponsibilities ||
+                !hasDefenseAttempts ||
+                !hasScenario);
         }
 
         private static ReplayScenarioProvenanceV4 ParseScenario(
@@ -2253,6 +2371,28 @@ namespace Volleyball.Shared.Contracts
             return coverage.Properties.Count == 2 &&
                 coverage.Properties.ContainsKey("decision") &&
                 coverage.Properties.ContainsKey("score");
+        }
+
+        private static bool HasLegacyAttackCoverageResponsibilities(
+            StrictJsonObjectV4 value)
+        {
+            var authority = StrictJsonV4.OptionalNullableObject(
+                value,
+                "attackDefenseAuthority");
+            return authority != null &&
+                !authority.Properties.ContainsKey(
+                    "attackCoverageResponsibilities");
+        }
+
+        private static bool HasCurrentAttackCoverageResponsibilities(
+            StrictJsonObjectV4 value)
+        {
+            var authority = StrictJsonV4.OptionalNullableObject(
+                value,
+                "attackDefenseAuthority");
+            return authority != null &&
+                authority.Properties.ContainsKey(
+                    "attackCoverageResponsibilities");
         }
 
         private static MatchReplayEventV4 ParseEvent(
@@ -2461,12 +2601,27 @@ namespace Volleyball.Shared.Contracts
             ParseAttackDefenseAuthority(StrictJsonObjectV4 value)
         {
             if (value == null) return null;
-            StrictJsonV4.RequireExactProperties(value, "planRevision",
-                "sourceSequenceNumber", "phase", "branch", "setTarget",
-                "candidates", "publicThreat", "defenseResponsibilities",
-                "selectedCandidateIdentity", "testedEnvelopeIdentity",
-                "executableEnvelopeIdentity", "sampleEnvelopeIdentity",
-                "trajectoryArtifactIdentity", "recovery", "coverage");
+            var hasAttackCoverage = value.Properties.ContainsKey(
+                "attackCoverageResponsibilities");
+            if (hasAttackCoverage)
+            {
+                StrictJsonV4.RequireExactProperties(value, "planRevision",
+                    "sourceSequenceNumber", "phase", "branch", "setTarget",
+                    "candidates", "publicThreat", "defenseResponsibilities",
+                    "attackCoverageResponsibilities",
+                    "selectedCandidateIdentity", "testedEnvelopeIdentity",
+                    "executableEnvelopeIdentity", "sampleEnvelopeIdentity",
+                    "trajectoryArtifactIdentity", "recovery", "coverage");
+            }
+            else
+            {
+                StrictJsonV4.RequireExactProperties(value, "planRevision",
+                    "sourceSequenceNumber", "phase", "branch", "setTarget",
+                    "candidates", "publicThreat", "defenseResponsibilities",
+                    "selectedCandidateIdentity", "testedEnvelopeIdentity",
+                    "executableEnvelopeIdentity", "sampleEnvelopeIdentity",
+                    "trajectoryArtifactIdentity", "recovery", "coverage");
+            }
             var candidateValues = StrictJsonV4.RequiredArray(value, "candidates");
             var candidates = new ReplayAttackDefenseCandidateRecordV4[candidateValues.Count];
             for (var index = 0; index < candidates.Length; index++)
@@ -2512,6 +2667,32 @@ namespace Volleyball.Shared.Contracts
                     StrictJsonV4.RequiredString(item, "kind"), StrictJsonV4.RequiredString(item, "zone"),
                     StrictJsonV4.RequiredString(item, "branch"));
             }
+            var attackCoverageValues = hasAttackCoverage
+                ? StrictJsonV4.RequiredArray(
+                    value,
+                    "attackCoverageResponsibilities")
+                : new List<StrictJsonValueV4>();
+            var attackCoverage =
+                new ReplayAttackCoverageResponsibilityRecordV4[
+                    attackCoverageValues.Count];
+            for (var index = 0;
+                 index < attackCoverage.Length;
+                 index++)
+            {
+                var item = StrictJsonV4.AsObject(
+                    attackCoverageValues[index],
+                    "attackCoverageResponsibilities[" + index + "]");
+                StrictJsonV4.RequireExactProperties(
+                    item,
+                    "actorPlayerId",
+                    "branch");
+                attackCoverage[index] =
+                    new ReplayAttackCoverageResponsibilityRecordV4(
+                        StrictJsonV4.RequiredString(
+                            item,
+                            "actorPlayerId"),
+                        StrictJsonV4.RequiredString(item, "branch"));
+            }
             var recoveryValue = StrictJsonV4.RequiredNullableObject(value, "recovery");
             ReplayToolRecoveryRecordV4 recovery = null;
             if (recoveryValue != null)
@@ -2538,7 +2719,9 @@ namespace Volleyball.Shared.Contracts
                 StrictJsonV4.RequiredString(value, "selectedCandidateIdentity"),
                 StrictJsonV4.RequiredString(value, "testedEnvelopeIdentity"), StrictJsonV4.RequiredString(value, "executableEnvelopeIdentity"),
                 StrictJsonV4.RequiredString(value, "sampleEnvelopeIdentity"), StrictJsonV4.RequiredString(value, "trajectoryArtifactIdentity"),
-                recovery, ParseCoverage(StrictJsonV4.RequiredObject(value, "coverage")));
+                recovery,
+                ParseCoverage(StrictJsonV4.RequiredObject(value, "coverage")),
+                attackCoverage);
         }
 
         private static ReplayPerceptionAuthorityRecordV4
@@ -3007,7 +3190,8 @@ namespace Volleyball.Shared.Contracts
             MatchReplayV4 replay,
             bool legacyShadowCoverage = false,
             bool includeDefenseAttempts = true,
-            bool includeScenario = true)
+            bool includeScenario = true,
+            bool includeAttackCoverageResponsibilities = true)
         {
             var output = new StringBuilder(32768);
             output.Append("{\"formatVersion\":4,\"replayId\":")
@@ -3023,7 +3207,11 @@ namespace Volleyball.Shared.Contracts
             for (var index = 0; index < replay.Events.Count; index++)
             {
                 if (index > 0) output.Append(',');
-                AppendEvent(output, replay.Events[index], legacyShadowCoverage);
+                AppendEvent(
+                    output,
+                    replay.Events[index],
+                    legacyShadowCoverage,
+                    includeAttackCoverageResponsibilities);
             }
             output.Append(']');
             if (includeDefenseAttempts)
@@ -3081,7 +3269,8 @@ namespace Volleyball.Shared.Contracts
         private static void AppendEvent(
             StringBuilder output,
             MatchReplayEventV4 replayEvent,
-            bool legacyShadowCoverage)
+            bool legacyShadowCoverage,
+            bool includeAttackCoverageResponsibilities)
         {
             output.Append("{\"sequenceNumber\":").Append(replayEvent.SequenceNumber);
             output.Append(",\"eventKind\":").Append(Quote(replayEvent.EventKind));
@@ -3151,7 +3340,10 @@ namespace Volleyball.Shared.Contracts
             if (replayEvent.AttackDefenseAuthority != null)
             {
                 output.Append(",\"attackDefenseAuthority\":");
-                AppendAttackDefenseAuthority(output, replayEvent.AttackDefenseAuthority);
+                AppendAttackDefenseAuthority(
+                    output,
+                    replayEvent.AttackDefenseAuthority,
+                    includeAttackCoverageResponsibilities);
             }
 
             if (replayEvent.PerceptionAuthority != null)
@@ -3294,7 +3486,8 @@ namespace Volleyball.Shared.Contracts
         }
 
         private static void AppendAttackDefenseAuthority(StringBuilder output,
-            ReplayAttackDefenseAuthorityRecordV4 authority)
+            ReplayAttackDefenseAuthorityRecordV4 authority,
+            bool includeAttackCoverageResponsibilities)
         {
             output.Append("{\"planRevision\":").Append(authority.PlanRevision);
             output.Append(",\"sourceSequenceNumber\":").Append(authority.SourceSequenceNumber);
@@ -3341,7 +3534,26 @@ namespace Volleyball.Shared.Contracts
                 output.Append(",\"branch\":").Append(Quote(responsibility.Branch));
                 output.Append('}');
             }
-            output.Append("],\"selectedCandidateIdentity\":").Append(Quote(authority.SelectedCandidateIdentity));
+            output.Append(']');
+            if (includeAttackCoverageResponsibilities)
+            {
+                output.Append(",\"attackCoverageResponsibilities\":[");
+                for (var index = 0;
+                     index < authority.AttackCoverageResponsibilities.Count;
+                     index++)
+                {
+                    if (index > 0) output.Append(',');
+                    var responsibility =
+                        authority.AttackCoverageResponsibilities[index];
+                    output.Append("{\"actorPlayerId\":")
+                        .Append(Quote(responsibility.ActorPlayerId));
+                    output.Append(",\"branch\":")
+                        .Append(Quote(responsibility.Branch));
+                    output.Append('}');
+                }
+                output.Append(']');
+            }
+            output.Append(",\"selectedCandidateIdentity\":").Append(Quote(authority.SelectedCandidateIdentity));
             output.Append(",\"testedEnvelopeIdentity\":").Append(Quote(authority.TestedEnvelopeIdentity));
             output.Append(",\"executableEnvelopeIdentity\":").Append(Quote(authority.ExecutableEnvelopeIdentity));
             output.Append(",\"sampleEnvelopeIdentity\":").Append(Quote(authority.SampleEnvelopeIdentity));

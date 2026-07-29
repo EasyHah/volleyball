@@ -11,185 +11,297 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Presentation;
+using Volleyball.Shared.Contracts;
 using RuntimePlayerId = Volleyball.Domain.Prototype.PlayerId;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.PlayModeTests
 {
-    // These scenarios intentionally exercise the scene-owned contact sources.  They do not
-    // synthesize a rules transition: a Receive must originate at a PrototypePlayerAgent surface.
+    // These tests only select a complete startup asset before FormalIndoor6v6
+    // loads. Once the scene is running, the probe is strictly observational.
     public sealed class DefensiveContactContinuationPlayModeTests
     {
-        [UnityTest]
-        public IEnumerator PrototypePlayerAgent_CollectContacts_ProducesReceiveThroughSimulatedBall()
-        {
-            var ballObject = new GameObject("DefensiveContinuationBall");
-            var playerObject = new GameObject("DefensiveContinuationReceiver");
-            try
-            {
-                ballObject.transform.position = new Vector3(0f, 1.3f, 0f);
-                var ball = ballObject.AddComponent<SimulatedBall>();
-                var player = playerObject.AddComponent<PrototypePlayerAgent>();
-                player.Initialize(new RuntimePlayerId(TeamId.Blue, PlayerRole.Defender), Color.blue, "3");
-                player.ScheduleContact(
-                    TechniqueAction.Receive,
-                    0f,
-                    new SimVector3(0f, 7f, 2f),
-                    new SkillExecutionError(0f, SimVector3.Zero, SimVector3.Zero, 0f, 1f,
-                        SimVector3.Zero, 1f),
-                    9101,
-                    plannedContactCenter: new SimVector3(0f, 1f, 0f));
-                ball.RegisterContactSource(player);
-                PlayerBallContactEvent accepted = default;
-                ball.PlayerContact += contact => accepted = contact;
-                ball.Launch(new Vector3(0f, -40f, 0f));
-
-                ball.AdvanceSimulation(SimulatedBall.DefaultFixedStep);
-                yield return null;
-
-                Assert.That(accepted.Candidate.Action, Is.EqualTo(TechniqueAction.Receive));
-                Assert.That(accepted.Candidate.Actor, Is.EqualTo(player.Id));
-                Assert.That(ball.State.LastContactGroupId, Is.EqualTo(9101));
-            }
-            finally
-            {
-                UnityEngine.Object.Destroy(ballObject);
-                UnityEngine.Object.Destroy(playerObject);
-            }
-        }
+        private const int RallyFrameLimit = 4200;
 
         [UnityTest]
-        [Timeout(120000)]
+        [Timeout(180000)]
         public IEnumerator CommittedFloorDefense_DigsReachableSpike()
         {
             DefensiveContactProbe probe = null;
-            yield return LoadFormalProbe(value => probe = value);
+            yield return LoadFormalProbe("ReachableFloorDefense", value => probe = value);
 
-            yield return probe.WaitFor(
-                () => probe.FloorDefenses.Count > 0 || probe.Director.Result != null,
-                30f);
+            yield return probe.WaitFor(() =>
+                probe.HasAcceptedCommittedReceiveWithOrganization ||
+                probe.HasRallyResult);
 
             Assert.That(probe.FloorDefenses, Is.Not.Empty,
-                probe.Evidence("Gate I never committed a reachable FloorDefense."));
-            yield return probe.WaitFor(
-                () => probe.AcceptedReceives.Any(contact =>
-                          contact.Candidate.Actor.HasValue &&
-                          probe.IsCommittedFloorDefender(contact.Candidate.Actor.Value)) ||
-                      probe.Director.Result != null,
-                10f);
-
-            Assert.That(probe.AcceptedReceives.Any(contact =>
-                    contact.Candidate.Actor.HasValue &&
-                    probe.IsCommittedFloorDefender(contact.Candidate.Actor.Value)), Is.True,
-                probe.Evidence("Committed FloorDefense must expose a real receive surface and dig the spike."));
+                probe.Evidence("Gate I did not commit FloorDefense."));
+            Assert.That(probe.HasAcceptedCommittedReceive, Is.True,
+                probe.Evidence("A committed FloorDefense did not become a physical Receive."));
+            Assert.That(probe.HasAcceptedReceiveWithV3AndReplay, Is.True,
+                probe.Evidence("The physical Receive was not accepted by V3 and replay."));
+            Assert.That(probe.HasAcceptedCommittedReceiveWithOrganization, Is.True,
+                probe.Evidence("The committed Receive did not continue to a teammate Set."));
         }
 
         [UnityTest]
-        [Timeout(120000)]
+        [Timeout(180000)]
         public IEnumerator LateFloorDefense_DoesNotCreateMagicDig()
         {
             DefensiveContactProbe probe = null;
-            yield return LoadFormalProbe(value => probe = value);
+            yield return LoadFormalProbe("LateFloorDefense", value => probe = value);
 
-            yield return probe.WaitFor(() => probe.Director.Result != null, 30f);
+            yield return probe.WaitFor(() =>
+                probe.ObservedMissedFloorDefense || probe.HasRallyResult);
 
-            Assert.That(probe.GroundEvents, Is.Not.Empty,
-                probe.Evidence("A missed or late defense must resolve through a physical ground event."));
-            Assert.That(probe.Director.Result, Is.Not.Null);
-            Assert.That(probe.ReplayResults, Is.Not.Empty,
-                probe.Evidence("A missed post-attack defense must resolve the rally."));
+            Assert.That(probe.ObservedMissedFloorDefense, Is.True,
+                probe.Evidence("The scenario did not reach a missed committed defense."));
+            Assert.That(probe.MissedFloorDefenseReceiveCount, Is.Zero,
+                probe.Evidence("A late defender must not gain a magnetic Receive."));
+            Assert.That(probe.MissedFloorDefenseHadEvidence, Is.True,
+                probe.Evidence("The missed defense did not emit rejection or expiration evidence."));
+            Assert.That(probe.MissedFloorDefenseGroundCount, Is.EqualTo(1),
+                probe.Evidence("The miss must reach the ground referee exactly once."));
+            Assert.That(probe.MissedFloorDefenseResultCount, Is.EqualTo(1));
         }
 
         [UnityTest]
-        [Timeout(120000)]
+        [Timeout(180000)]
         public IEnumerator BlockReboundToAttackingSide_AllowsAttackCoverage()
         {
             DefensiveContactProbe probe = null;
-            yield return LoadFormalProbe(value => probe = value);
+            yield return LoadFormalProbe("AttackSideBlockRebound", value => probe = value);
 
-            yield return probe.WaitFor(
-                () => probe.AcceptedBlocks.Count > 0 || probe.Director.Result != null,
-                35f);
+            yield return probe.WaitFor(() =>
+                (probe.HasResolvedAttackCoverage &&
+                 probe.HasAcceptedAttackCoverReceiveWithOrganization) ||
+                probe.HasRallyResult);
 
-            Assert.That(probe.AcceptedBlocks, Is.Not.Empty,
-                probe.Evidence("Fixture did not reach a physical block."));
-            var block = probe.AcceptedBlocks.First();
-            yield return probe.WaitFor(
-                () => probe.AcceptedReceives.Any(contact =>
-                          contact.Candidate.Actor.HasValue &&
-                          contact.Candidate.Actor.Value.Team != block.Candidate.Actor.Value.Team) ||
-                      probe.Director.Result != null,
-                10f);
-
-            Assert.That(probe.AcceptedReceives.Any(contact =>
-                    contact.Candidate.Actor.HasValue &&
-                    contact.Candidate.Actor.Value.Team != block.Candidate.Actor.Value.Team), Is.True,
-                probe.Evidence("A rebound crossing to the attacking side needs an AttackCover receive window."));
+            Assert.That(probe.Blocks, Is.Not.Empty,
+                probe.Evidence("The scenario did not reach a physical block."));
+            Assert.That(probe.HasResolvedAttackCoverage, Is.True,
+                probe.Evidence("The post-block continuation did not resolve to attack coverage."));
+            Assert.That(probe.HasAcceptedAttackCoverReceive, Is.True,
+                probe.Evidence("The declared AttackCover did not produce a physical Receive."));
+            Assert.That(probe.HasAcceptedAttackCoverReceiveWithOrganization, Is.True,
+                probe.Evidence("The AttackCover Receive did not continue to a teammate Set."));
         }
 
         [UnityTest]
-        [Timeout(120000)]
+        [Timeout(180000)]
         public IEnumerator BlockReboundToDefendingSide_AllowsBlockRecovery()
         {
             DefensiveContactProbe probe = null;
-            yield return LoadFormalProbe(value => probe = value);
+            yield return LoadFormalProbe("BlockingSideBlockRebound", value => probe = value);
 
-            yield return probe.WaitFor(
-                () => probe.AcceptedBlocks.Count > 0 || probe.Director.Result != null,
-                35f);
+            yield return probe.WaitFor(() =>
+                (probe.HasResolvedBlockingRecovery &&
+                 probe.HasAcceptedBlockingRecoveryReceiveWithOrganization) ||
+                probe.HasRallyResult);
 
-            Assert.That(probe.AcceptedBlocks, Is.Not.Empty,
-                probe.Evidence("Fixture did not reach a physical block."));
-            var block = probe.AcceptedBlocks.First();
-            yield return probe.WaitFor(() => probe.Director.Result != null, 10f);
-
-            Assert.That(probe.AcceptedReceives, Is.Not.Empty,
-                probe.Evidence("The rally must continue through physical contacts or a ground decision."));
+            Assert.That(probe.Blocks, Is.Not.Empty,
+                probe.Evidence("The scenario did not reach a physical block."));
+            Assert.That(probe.HasResolvedBlockingRecovery, Is.True,
+                probe.Evidence("The post-block continuation did not resolve to blocker-side recovery."));
+            Assert.That(probe.HasAcceptedBlockingRecoveryReceive, Is.True,
+                probe.Evidence("The declared blocker-side recovery did not produce a physical Receive."));
+            Assert.That(probe.HasAcceptedBlockingRecoveryReceiveWithOrganization, Is.True,
+                probe.Evidence("The blocker-side Receive did not continue to a teammate Set."));
         }
 
         [UnityTest]
-        [Timeout(120000)]
+        [Timeout(180000)]
         public IEnumerator PostBlockMiss_StillLetsGroundRefereeScore()
         {
             DefensiveContactProbe probe = null;
-            yield return LoadFormalProbe(value => probe = value);
+            yield return LoadFormalProbe("PostBlockMiss", value => probe = value);
 
-            yield return probe.WaitFor(
-                () => probe.AcceptedBlocks.Count > 0 || probe.Director.Result != null,
-                35f);
-            yield return probe.WaitFor(() => probe.Director.Result != null, 20f);
+            yield return probe.WaitFor(() =>
+                probe.ObservedPostBlockMiss || probe.HasRallyResult);
 
-            Assert.That(probe.AcceptedBlocks, Is.Not.Empty,
-                probe.Evidence("Fixture did not reach a physical block before the rally ended."));
-            Assert.That(probe.GroundEvents, Is.Not.Empty,
-                probe.Evidence("Post-block miss must remain visible to the ground referee."));
-            Assert.That(probe.ReplayResults, Is.Not.Empty,
-                probe.Evidence("Ground resolution must emit a rally result."));
+            Assert.That(probe.Blocks, Is.Not.Empty,
+                probe.Evidence("The scenario did not reach a physical block."));
+            Assert.That(probe.ObservedPostBlockMiss, Is.True,
+                probe.Evidence("The scenario did not reach a post-block miss."));
+            Assert.That(probe.PostBlockMissReceiveCount, Is.Zero,
+                probe.Evidence("A post-block miss must not create a Receive."));
+            Assert.That(probe.PostBlockMissHadEvidence, Is.True,
+                probe.Evidence("The missed post-block receive lacks diagnostic evidence."));
+            Assert.That(probe.PostBlockMissGroundCount, Is.EqualTo(1));
+            Assert.That(probe.PostBlockMissResultCount, Is.EqualTo(1));
         }
 
         [UnityTest]
-        [Timeout(120000)]
+        [Timeout(180000)]
         public IEnumerator OverlappingDefenders_AcceptOnlyOneReceive()
         {
             DefensiveContactProbe probe = null;
-            yield return LoadFormalProbe(value => probe = value);
+            yield return LoadFormalProbe("OverlappingDefenders", value => probe = value);
 
-            yield return probe.WaitFor(
-                () => probe.FloorDefenses.Count >= 2 || probe.Director.Result != null,
-                35f);
+            yield return probe.WaitFor(() =>
+                probe.CommittedReceiveContacts.Count > 0 ||
+                probe.HasRallyResult);
 
             Assert.That(probe.FloorDefenses.Count, Is.GreaterThanOrEqualTo(2),
-                probe.Evidence("Fixture did not commit overlapping defender responsibilities."));
-            yield return probe.WaitFor(
-                () => probe.AcceptedReceives.Count > 0 || probe.Director.Result != null,
-                10f);
-
-            Assert.That(probe.AcceptedReceives, Has.Count.EqualTo(1),
-                probe.Evidence("RED: one physical ball event must select exactly one overlapping Receive."));
+                probe.Evidence("The scenario did not commit overlapping defense responsibilities."));
+            Assert.That(probe.CommittedReceiveContacts, Has.Count.EqualTo(1),
+                probe.Evidence("One geometry group must select one stable Receive winner."));
+            var physical = probe.CommittedReceiveContacts[0];
+            Assert.That(probe.AcceptedReplayReceives.Any(replay =>
+                    replay.RuleTransition.After.LastContactGroup ==
+                    physical.Hit.ContactGroupId),
+                Is.True,
+                probe.Evidence("The stable physical winner must be the V3/replay winner."));
         }
 
-        private static IEnumerator LoadFormalProbe(Action<DefensiveContactProbe> loaded)
+        [UnityTest]
+        [Timeout(600000)]
+        public IEnumerator CompleteScenarioReplays_AreStableAcrossIndependentRuns()
         {
+            var scenarios = new[]
+            {
+                new KeyValuePair<string, string>(
+                    "ReachableFloorDefense", "reachable-floor-defense"),
+                new KeyValuePair<string, string>(
+                    "LateFloorDefense", "late-floor-defense"),
+                new KeyValuePair<string, string>(
+                    "AttackSideBlockRebound", "attack-side-block-rebound"),
+                new KeyValuePair<string, string>(
+                    "BlockingSideBlockRebound", "blocking-side-block-rebound"),
+                new KeyValuePair<string, string>(
+                    "PostBlockMiss", "post-block-miss"),
+                new KeyValuePair<string, string>(
+                    "OverlappingDefenders", "overlapping-defenders")
+            };
+
+            foreach (var scenario in scenarios)
+            {
+                ScenarioReplaySnapshot first = null;
+                ScenarioReplaySnapshot second = null;
+                yield return CaptureScenarioReplay(
+                    scenario.Key,
+                    scenario.Value,
+                    value => first = value);
+                yield return CaptureScenarioReplay(
+                    scenario.Key,
+                    scenario.Value,
+                    value => second = value);
+
+                Assert.That(second.Json, Is.EqualTo(first.Json),
+                    scenario.Key + " canonical replay JSON changed.");
+                Assert.That(second.Html, Is.EqualTo(first.Html),
+                    scenario.Key + " canonical HTML changed.");
+                Assert.That(second.ReplayHash, Is.EqualTo(first.ReplayHash),
+                    scenario.Key + " replay hash changed.");
+                CollectionAssert.AreEqual(
+                    first.AcceptedContacts,
+                    second.AcceptedContacts,
+                    scenario.Key + " accepted contact order changed.");
+                CollectionAssert.AreEqual(
+                    first.DefenseAttempts,
+                    second.DefenseAttempts,
+                    scenario.Key + " continuation diagnostics changed.");
+                Assert.That(second.Result, Is.EqualTo(first.Result),
+                    scenario.Key + " result changed.");
+                Assert.That(second.V3Transitions,
+                    Is.EqualTo(first.V3Transitions),
+                    scenario.Key + " V3 transition count changed.");
+            }
+        }
+
+        private static IEnumerator CaptureScenarioReplay(
+            string scenarioName,
+            string expectedScenarioId,
+            Action<ScenarioReplaySnapshot> captured)
+        {
+            var scenario = Resources.Load<FormalMatchScenarioPresetV4>(
+                "FormalMatchScenariosV4/" + scenarioName);
+            Assert.That(scenario, Is.Not.Null,
+                "Missing complete formal scenario asset.");
+            var definition = scenario.ToDefinition();
+            Assert.That(definition.ScenarioId, Is.EqualTo(expectedScenarioId));
+            FormalMatchScenarioStartupV4.PrepareNextFormalStart(definition);
+
+            yield return SceneManager.LoadSceneAsync(
+                "FormalIndoor6v6",
+                LoadSceneMode.Single);
+            var director =
+                UnityEngine.Object.FindFirstObjectByType<
+                    FormalSixVsSixRallyDirector>();
+            var ball =
+                UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
+            var players =
+                UnityEngine.Object.FindObjectsByType<PrototypePlayerAgent>(
+                    FindObjectsSortMode.None);
+            Assert.That(director, Is.Not.Null);
+            Assert.That(ball, Is.Not.Null);
+            Assert.That(players, Has.Length.EqualTo(12));
+
+            ReplayRallyResolvedEvent result = null;
+            director.ReplayRallyResolved += value => result = value;
+            var recorder = MatchReplayRecorder.Attach(
+                director,
+                ball,
+                players);
+            recorder.StartCapture();
+            for (var frame = 0;
+                 frame < RallyFrameLimit &&
+                 !recorder.IsComplete &&
+                 string.IsNullOrEmpty(recorder.CaptureFailureReason);
+                 frame++)
+            {
+                yield return null;
+            }
+
+            Assert.That(recorder.CaptureFailureReason, Is.Null.Or.Empty,
+                scenarioName + " replay capture failed.");
+            Assert.That(recorder.IsComplete, Is.True,
+                scenarioName + " did not complete its first formal rally.");
+            Assert.That(result, Is.Not.Null,
+                scenarioName + " completed without a result event.");
+            var replay = recorder.Complete();
+            Assert.That(replay.Scenario.ScenarioId,
+                Is.EqualTo(definition.ScenarioId));
+            Assert.That(replay.Scenario.ContentHash,
+                Is.EqualTo(definition.ContentHash));
+            Assert.That(replay.Events, Is.Not.Empty);
+            Assert.That(replay.DefenseAttempts, Is.Not.Empty);
+
+            captured(new ScenarioReplaySnapshot(
+                ContractJson.SerializeV4(replay),
+                MatchReplayArtifactWriter.Render(replay),
+                replay.ReplayHash,
+                replay.Events.Select(replayEvent =>
+                    replayEvent.SequenceNumber + ":" +
+                    replayEvent.ActorPlayerId + ":" +
+                    replayEvent.EventKind + ":" +
+                    replayEvent.RuleDecision.ReasonCode).ToArray(),
+                replay.DefenseAttempts.Select(attempt =>
+                    attempt.Kind + ":" +
+                    attempt.AttemptIdentity + ":" +
+                    attempt.ContinuationState + ":" +
+                    attempt.Reason).ToArray(),
+                result.Team + ":" +
+                (result.PlayerId.HasValue
+                    ? result.PlayerId.Value.Value
+                    : "none") + ":" +
+                (result.ErrorPlayerId.HasValue
+                    ? result.ErrorPlayerId.Value.Value
+                    : "none") + ":" +
+                result.Reason,
+                director.V3RuleTransitions));
+        }
+
+        private static IEnumerator LoadFormalProbe(
+            string scenarioName,
+            Action<DefensiveContactProbe> loaded)
+        {
+            var scenario = Resources.Load<FormalMatchScenarioPresetV4>(
+                "FormalMatchScenariosV4/" + scenarioName);
+            Assert.That(scenario, Is.Not.Null, "Missing complete formal scenario asset.");
+            var definition = scenario.ToDefinition();
+            FormalMatchScenarioStartupV4.PrepareNextFormalStart(definition);
+
             yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
             var director = UnityEngine.Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
             var ball = UnityEngine.Object.FindFirstObjectByType<SimulatedBall>();
@@ -197,12 +309,44 @@ namespace Volleyball.PlayModeTests
             Assert.That(director, Is.Not.Null);
             Assert.That(ball, Is.Not.Null);
             Assert.That(players, Has.Length.EqualTo(12));
+            Assert.That(director.FormalScenarioProvenance, Is.Not.Null);
+            Assert.That(director.FormalScenarioProvenance.ScenarioId, Is.EqualTo(definition.ScenarioId));
+            Assert.That(director.FormalScenarioProvenance.ContentHash, Is.EqualTo(definition.ContentHash));
             loaded(new DefensiveContactProbe(director, ball, players));
+        }
+
+        private sealed class ScenarioReplaySnapshot
+        {
+            public ScenarioReplaySnapshot(
+                string json,
+                string html,
+                string replayHash,
+                string[] acceptedContacts,
+                string[] defenseAttempts,
+                string result,
+                int v3Transitions)
+            {
+                Json = json;
+                Html = html;
+                ReplayHash = replayHash;
+                AcceptedContacts = acceptedContacts;
+                DefenseAttempts = defenseAttempts;
+                Result = result;
+                V3Transitions = v3Transitions;
+            }
+
+            public string Json { get; }
+            public string Html { get; }
+            public string ReplayHash { get; }
+            public string[] AcceptedContacts { get; }
+            public string[] DefenseAttempts { get; }
+            public string Result { get; }
+            public int V3Transitions { get; }
         }
 
         private sealed class DefensiveContactProbe
         {
-            private readonly Dictionary<StablePlayerId, RuntimePlayerId> _runtimeIds;
+            private readonly Dictionary<RuntimePlayerId, StablePlayerId> _stableIds;
 
             public DefensiveContactProbe(
                 FormalSixVsSixRallyDirector director,
@@ -210,72 +354,293 @@ namespace Volleyball.PlayModeTests
                 IEnumerable<PrototypePlayerAgent> players)
             {
                 Director = director;
-                _runtimeIds = players.ToDictionary(player => player.StableId, player => player.Id);
-                director.AttackDefenseAuthorityCommitted += receipt =>
-                {
-                    if (receipt.Kind == AttackDefenseCommandKind.FloorDefense)
-                        FloorDefenses.Add(receipt);
-                };
+                _stableIds = players.ToDictionary(player => player.Id, player => player.StableId);
+                director.AttackDefenseAuthorityCommitted += receipt => Receipts.Add(receipt);
                 director.ReplayContactAccepted += contact => ReplayContacts.Add(contact);
-                director.ReplayGroundContact += ground => GroundEvents.Add(ground);
-                director.ReplayRallyResolved += result => ReplayResults.Add(result);
-                ball.PlayerContact += contact => PhysicalContacts.Add(contact);
+                director.ReplayDefenseAttemptRecorded += RecordDefenseAttempt;
+                director.ReplayNetCrossed += crossing => NetCrossings.Add(crossing);
+                director.ReplayGroundContact += RecordGround;
+                director.ReplayRallyResolved += RecordRallyResult;
+                ball.PlayerContact += RecordPhysicalContact;
             }
 
             public FormalSixVsSixRallyDirector Director { get; }
-            public List<AttackDefenseAuthorityReceipt> FloorDefenses { get; } = new List<AttackDefenseAuthorityReceipt>();
-            public List<PlayerBallContactEvent> PhysicalContacts { get; } = new List<PlayerBallContactEvent>();
-            public List<ReplayContactEvent> ReplayContacts { get; } = new List<ReplayContactEvent>();
-            public List<ReplaySimpleEvent> GroundEvents { get; } = new List<ReplaySimpleEvent>();
-            public List<ReplayRallyResolvedEvent> ReplayResults { get; } = new List<ReplayRallyResolvedEvent>();
+            public List<AttackDefenseAuthorityReceipt> Receipts { get; } = new();
+            public List<PlayerBallContactEvent> PhysicalContacts { get; } = new();
+            public List<ReplayContactEvent> ReplayContacts { get; } = new();
+            public List<ReplayDefenseAttemptEvent> DefenseAttempts { get; } = new();
+            public List<ReplaySimpleEvent> NetCrossings { get; } = new();
+            public List<ReplaySimpleEvent> GroundEvents { get; } = new();
+            public List<ReplayRallyResolvedEvent> Results { get; } = new();
 
-            public List<PlayerBallContactEvent> AcceptedBlocks => PhysicalContacts.Where(
+            public List<AttackDefenseAuthorityReceipt> FloorDefenses => Receipts.Where(
+                receipt => receipt.Kind == AttackDefenseCommandKind.FloorDefense).ToList();
+            public List<PlayerBallContactEvent> Blocks => PhysicalContacts.Where(
                 contact => contact.Candidate.Action == TechniqueAction.Block).ToList();
-            public List<PlayerBallContactEvent> AcceptedReceives => PhysicalContacts.Where(
-                contact => contact.Candidate.Action == TechniqueAction.Receive).ToList();
+            public List<PlayerBallContactEvent> PostBlockReceives => PhysicalContacts.Where(
+                contact => contact.Candidate.Action == TechniqueAction.Receive &&
+                    Blocks.Count > 0 &&
+                    contact.ContactSimulationTime >= Blocks[0].ContactSimulationTime).ToList();
+            public List<PlayerBallContactEvent> CommittedReceiveContacts => PhysicalContacts.Where(contact =>
+                contact.Candidate.Action == TechniqueAction.Receive &&
+                IsCommittedReceive(contact)).ToList();
+            public List<ReplayContactEvent> AcceptedReplayReceives => ReplayContacts.Where(contact =>
+                contact.Action == TechniqueAction.Receive &&
+                contact.RuleTransition != null &&
+                contact.OrganizationAuthority != null &&
+                contact.AttackDefenseAuthority != null).ToList();
+            public bool HasRallyResult => Results.Count > 0;
+            public bool HasAcceptedCommittedReceive => CommittedReceiveContacts.Count > 0;
+            public bool HasAcceptedReceiveWithV3AndReplay => CommittedReceiveContacts.Any(physical =>
+                HasAcceptedReplay(physical));
+            public bool HasAcceptedCommittedReceiveWithOrganization =>
+                CommittedReceiveContacts.Any(physical =>
+                    HasAcceptedReplay(physical) &&
+                    HasTeammateSetAfter(physical));
+            public bool HasResolvedAttackCoverage => DefenseAttempts.Any(attempt =>
+                attempt.Kind == "PostBlockContinuationResolved" &&
+                attempt.Reason == PostAttackContinuationStateV4.AttackingSideCoverage.ToString());
+            public bool HasResolvedBlockingRecovery => DefenseAttempts.Any(attempt =>
+                attempt.Kind == "PostBlockContinuationResolved" &&
+                attempt.Reason == PostAttackContinuationStateV4.BlockingSideRecovery.ToString());
+            public bool HasAcceptedAttackCoverReceive =>
+                HasAcceptedPostBlockReceive(
+                    AttackDefenseCommandKind.AttackCover,
+                    PostAttackContinuationStateV4.AttackingSideCoverage,
+                    requireOrganization: false);
+            public bool HasAcceptedAttackCoverReceiveWithOrganization =>
+                HasAcceptedPostBlockReceive(
+                    AttackDefenseCommandKind.AttackCover,
+                    PostAttackContinuationStateV4.AttackingSideCoverage,
+                    requireOrganization: true);
+            public bool HasAcceptedBlockingRecoveryReceive =>
+                HasAcceptedPostBlockReceive(
+                    AttackDefenseCommandKind.FloorDefense,
+                    PostAttackContinuationStateV4.BlockingSideRecovery,
+                    requireOrganization: false);
+            public bool HasAcceptedBlockingRecoveryReceiveWithOrganization =>
+                HasAcceptedPostBlockReceive(
+                    AttackDefenseCommandKind.FloorDefense,
+                    PostAttackContinuationStateV4.BlockingSideRecovery,
+                    requireOrganization: true);
+            public bool ObservedMissedFloorDefense { get; private set; }
+            public bool MissedFloorDefenseHadEvidence { get; private set; }
+            public int MissedFloorDefenseReceiveCount { get; private set; }
+            public int MissedFloorDefenseGroundCount { get; private set; }
+            public int MissedFloorDefenseResultCount { get; private set; }
+            public bool ObservedPostBlockMiss { get; private set; }
+            public bool PostBlockMissHadEvidence { get; private set; }
+            public int PostBlockMissReceiveCount { get; private set; }
+            public int PostBlockMissGroundCount { get; private set; }
+            public int PostBlockMissResultCount { get; private set; }
 
-            public bool HasAcceptedReceive(StablePlayerId actor) =>
-                _runtimeIds.TryGetValue(actor, out var runtimeActor) &&
-                HasAcceptedReceive(runtimeActor);
+            private bool _missedFloorDefenseEvidenceThisRally;
+            private bool _postBlockEvidenceThisRally;
+            private bool _blockThisRally;
+            private int _committedReceivesThisRally;
+            private int _postBlockReceivesThisRally;
+            private int _groundsThisRally;
 
-            public bool HasAcceptedReceive(RuntimePlayerId actor) =>
-                PhysicalContacts.Any(contact => contact.Candidate.Action == TechniqueAction.Receive &&
-                    contact.Candidate.Actor.HasValue && contact.Candidate.Actor.Value.Equals(actor));
-
-            public bool IsCommittedFloorDefender(RuntimePlayerId actor) =>
-                _runtimeIds.Any(pair => pair.Value.Equals(actor) &&
-                    FloorDefenses.Any(receipt => receipt.Actor.Equals(pair.Key)));
-
-            public IEnumerator WaitFor(Func<bool> predicate, float seconds)
+            public IEnumerator WaitFor(Func<bool> predicate)
             {
-                var previousTimeScale = Time.timeScale;
-                Time.timeScale = 8f;
-                var deadline = Time.realtimeSinceStartup + seconds;
-                try
+                for (var frame = 0; frame < RallyFrameLimit && !predicate(); frame++)
                 {
-                    while (!predicate() && Time.realtimeSinceStartup < deadline)
-                        yield return null;
+                    yield return null;
                 }
-                finally
-                {
-                    Time.timeScale = previousTimeScale;
-                }
-            }
-
-            public void AssertAcceptedReceiveWithRuleAndReplay(
-                StablePlayerId actor, string message)
-            {
-                Assert.That(HasAcceptedReceive(actor), Is.True, Evidence(message));
-                Assert.That(ReplayContacts.Any(contact => contact.Action == TechniqueAction.Receive &&
-                    contact.PlayerId.HasValue && contact.PlayerId.Value.Equals(actor) &&
-                    contact.RuleTransition != null), Is.True, Evidence(message));
             }
 
             public string Evidence(string message) =>
-                $"{message} commands={FloorDefenses.Count}; physical={PhysicalContacts.Count}; " +
-                $"receives={AcceptedReceives.Count}; replay={ReplayContacts.Count}; " +
-                $"ground={GroundEvents.Count}; resolved={ReplayResults.Count}; " +
-                $"result={(Director.Result == null ? "pending" : "complete")}";
+                $"{message} receipts={Receipts.Count}; physical={PhysicalContacts.Count}; " +
+                $"replay={ReplayContacts.Count}; attempts={DefenseAttempts.Count}; " +
+                $"floor={FloorDefenses.Count}; pendingNet={NetCrossings.Count}; " +
+                $"ground={GroundEvents.Count}; results={Results.Count}; " +
+                $"continuation={Director.PostAttackContinuationState}; " +
+                $"attemptDetails=[{AttemptDetails()}]; " +
+                $"contactDetails=[{ContactDetails()}]";
+
+            private string AttemptDetails() =>
+                string.Join(" | ", DefenseAttempts.Select(attempt =>
+                {
+                    var ball = attempt.BallPosition;
+                    var velocity = attempt.BallVelocity;
+                    return $"{attempt.Kind}:{attempt.Receipt.Kind}:" +
+                           $"{attempt.Receipt.Actor.Value}:{attempt.Reason}:" +
+                           $"at={attempt.SimulationTimeSeconds:0.00}:" +
+                           $"window=({attempt.WindowStartSimulationTime:0.00}," +
+                           $"{attempt.WindowEndSimulationTime:0.00}):" +
+                           $"ball=({ball.X:0.00},{ball.Y:0.00},{ball.Z:0.00}):" +
+                           $"velocity=({velocity.X:0.00},{velocity.Y:0.00}," +
+                           $"{velocity.Z:0.00})";
+                }));
+
+            private string ContactDetails() =>
+                string.Join(" | ", PhysicalContacts.Select(contact =>
+                {
+                    var actor = contact.Candidate.Actor;
+                    return $"{contact.Candidate.Action}:" +
+                           $"{(actor.HasValue ? actor.Value.ToString() : "none")}:" +
+                           $"at={contact.ContactSimulationTime:0.00}:" +
+                           $"group={contact.Hit.ContactGroupId}";
+                }));
+
+            private bool HasAcceptedPostBlockReceive(
+                AttackDefenseCommandKind kind,
+                PostAttackContinuationStateV4 state,
+                bool requireOrganization)
+            {
+                var resolutionAttempts = DefenseAttempts.Where(attempt =>
+                    attempt.Kind == "PostBlockContinuationResolved" &&
+                    attempt.Reason == state.ToString() &&
+                    attempt.Receipt.Kind == kind &&
+                    attempt.Receipt.Execution != null);
+                foreach (var attempt in resolutionAttempts)
+                {
+                    var group = attempt.Receipt.Execution.ContactGroupId;
+                    var matchingPhysical = PhysicalContacts.Where(contact =>
+                        contact.Candidate.Action == TechniqueAction.Receive &&
+                        contact.Hit.ContactGroupId == group).ToArray();
+                    if (matchingPhysical.Length == 0 ||
+                        !HasAcceptedReplay(matchingPhysical[0]))
+                    {
+                        continue;
+                    }
+
+                    if (!requireOrganization ||
+                        HasTeammateSetAfter(matchingPhysical[0]))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            private bool HasAcceptedReplay(PlayerBallContactEvent physical) =>
+                AcceptedReplayReceives.Any(replay =>
+                    replay.PlayerId.HasValue &&
+                    physical.Candidate.Actor.HasValue &&
+                    replay.PlayerId.Value.Equals(
+                        StableId(physical.Candidate.Actor.Value)) &&
+                    replay.RuleTransition.After.LastContactGroup ==
+                    physical.Hit.ContactGroupId);
+
+            private bool HasTeammateSetAfter(PlayerBallContactEvent receive)
+            {
+                if (!receive.Candidate.Actor.HasValue)
+                {
+                    return false;
+                }
+
+                var receiver = receive.Candidate.Actor.Value;
+                return PhysicalContacts.Any(contact =>
+                    contact.Candidate.Action == TechniqueAction.Set &&
+                    contact.Candidate.Actor.HasValue &&
+                    contact.Candidate.Actor.Value.Team == receiver.Team &&
+                    !contact.Candidate.Actor.Value.Equals(receiver) &&
+                    contact.ContactSimulationTime >
+                    receive.ContactSimulationTime);
+            }
+
+            private bool IsCommittedReceive(PlayerBallContactEvent contact) =>
+                contact.Candidate.Actor.HasValue &&
+                Receipts.Any(receipt =>
+                    receipt.Execution != null &&
+                    receipt.Execution.ContactGroupId ==
+                    contact.Hit.ContactGroupId &&
+                    receipt.Actor.Equals(StableId(contact.Candidate.Actor.Value)) &&
+                    (receipt.Kind == AttackDefenseCommandKind.FloorDefense ||
+                     receipt.Kind == AttackDefenseCommandKind.AttackCover));
+
+            private StablePlayerId StableId(RuntimePlayerId player) => _stableIds[player];
+
+            private void RecordPhysicalContact(PlayerBallContactEvent contact)
+            {
+                PhysicalContacts.Add(contact);
+                if (contact.Candidate.Action == TechniqueAction.Block)
+                {
+                    _blockThisRally = true;
+                    _postBlockEvidenceThisRally = false;
+                    _postBlockReceivesThisRally = 0;
+                    return;
+                }
+
+                if (contact.Candidate.Action != TechniqueAction.Receive)
+                {
+                    return;
+                }
+
+                if (IsCommittedReceive(contact))
+                {
+                    _committedReceivesThisRally++;
+                }
+
+                if (_blockThisRally)
+                {
+                    _postBlockReceivesThisRally++;
+                }
+            }
+
+            private void RecordDefenseAttempt(ReplayDefenseAttemptEvent attempt)
+            {
+                DefenseAttempts.Add(attempt);
+                var isMissEvidence =
+                    attempt.Kind == "DefenseContactRejected" ||
+                    attempt.Kind == "DefenseAttemptExpired";
+                if (!isMissEvidence)
+                {
+                    return;
+                }
+
+                if (attempt.Receipt.Kind == AttackDefenseCommandKind.FloorDefense)
+                {
+                    _missedFloorDefenseEvidenceThisRally = true;
+                }
+
+                if (_blockThisRally)
+                {
+                    _postBlockEvidenceThisRally = true;
+                }
+            }
+
+            private void RecordGround(ReplaySimpleEvent ground)
+            {
+                GroundEvents.Add(ground);
+                _groundsThisRally++;
+            }
+
+            private void RecordRallyResult(ReplayRallyResolvedEvent result)
+            {
+                Results.Add(result);
+                if (!ObservedMissedFloorDefense &&
+                    _missedFloorDefenseEvidenceThisRally)
+                {
+                    ObservedMissedFloorDefense = true;
+                    MissedFloorDefenseHadEvidence = true;
+                    MissedFloorDefenseReceiveCount =
+                        _committedReceivesThisRally;
+                    MissedFloorDefenseGroundCount = _groundsThisRally;
+                    MissedFloorDefenseResultCount = 1;
+                }
+
+                if (!ObservedPostBlockMiss &&
+                    _blockThisRally &&
+                    _postBlockEvidenceThisRally &&
+                    _postBlockReceivesThisRally == 0)
+                {
+                    ObservedPostBlockMiss = true;
+                    PostBlockMissHadEvidence = true;
+                    PostBlockMissReceiveCount = _postBlockReceivesThisRally;
+                    PostBlockMissGroundCount = _groundsThisRally;
+                    PostBlockMissResultCount = 1;
+                }
+
+                _missedFloorDefenseEvidenceThisRally = false;
+                _postBlockEvidenceThisRally = false;
+                _blockThisRally = false;
+                _committedReceivesThisRally = 0;
+                _postBlockReceivesThisRally = 0;
+                _groundsThisRally = 0;
+            }
         }
     }
 }

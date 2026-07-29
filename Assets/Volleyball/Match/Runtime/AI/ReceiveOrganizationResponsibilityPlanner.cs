@@ -152,6 +152,23 @@ namespace Volleyball.AI
             IReadOnlyList<ReceiveOrganizationPlayerBindingV3> bindings,
             long revision)
         {
+            return PlanReceive(
+                receiveInput,
+                attackPreparationInput,
+                eligibility,
+                bindings,
+                revision,
+                null);
+        }
+
+        public ReceiveOrganizationPlanningResult PlanReceive(
+            TeamRallyDecisionInput receiveInput,
+            TeamRallyDecisionInput attackPreparationInput,
+            OnCourtEligibilitySnapshot eligibility,
+            IReadOnlyList<ReceiveOrganizationPlayerBindingV3> bindings,
+            long revision,
+            StablePlayerId? committedContinuationReceiver)
+        {
             var context = ValidateAndResolve(
                 receiveInput,
                 RallyDecisionStage.Receive,
@@ -169,14 +186,30 @@ namespace Volleyball.AI
                     "Receive planning requires at least one reachable receiver.");
             }
 
+            var selected = feasible[0];
+            if (committedContinuationReceiver.HasValue)
+            {
+                var matched = feasible
+                    .Where(candidate => context.StableFor(candidate.Actor)
+                        .Equals(committedContinuationReceiver.Value))
+                    .ToArray();
+                if (matched.Length != 1)
+                {
+                    throw new InvalidOperationException(
+                        "The committed continuation receiver must be a reachable on-court candidate.");
+                }
+
+                selected = matched[0];
+            }
+
             var decision = _decisionPlanner.MaterializeCandidate(
                 receiveInput,
-                feasible[0].Actor);
+                selected.Actor);
             var attackDecision = _decisionPlanner.Plan(attackPreparationInput);
             var plan = CreatePlan(
                 context,
                 ordered,
-                feasible[0].Actor,
+                selected.Actor,
                 attackDecision,
                 revision);
             return new ReceiveOrganizationPlanningResult(

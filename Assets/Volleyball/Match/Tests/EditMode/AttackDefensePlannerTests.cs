@@ -54,6 +54,49 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PlanSetIntent_DefensiveNetPositionTransitionsToAttackableFrontZone()
+        {
+            var home = Request();
+            var homeAttacker = home.Players[0];
+            var homeRequest = WithPlayers(home, new[]
+            {
+                new GateITacticalPlayerV3(homeAttacker.Player, TeamSide.Home,
+                    new SimVector3(1.1f, 0f, -.18f), true,
+                    homeAttacker.Attributes)
+            }, TeamSide.Home);
+            var awayRequest = WithPlayers(home, new[]
+            {
+                new GateITacticalPlayerV3(homeAttacker.Player, TeamSide.Away,
+                    new SimVector3(-1.1f, 0f, .18f), true,
+                    homeAttacker.Attributes)
+            }, TeamSide.Away);
+
+            var planner = new AttackDefensePlanner();
+            var homeIntent = planner.PlanSetIntent(homeRequest);
+            var awayIntent = planner.PlanSetIntent(awayRequest);
+
+            Assert.That(homeIntent.Target.X, Is.EqualTo(1.1f));
+            Assert.That(homeIntent.Target.Z, Is.EqualTo(-.945f));
+            Assert.That(awayIntent.Target.X, Is.EqualTo(-1.1f));
+            Assert.That(awayIntent.Target.Z, Is.EqualTo(.945f));
+            Assert.That(System.Math.Abs(homeIntent.Target.Z),
+                Is.GreaterThanOrEqualTo(.6f));
+            Assert.That(System.Math.Abs(awayIntent.Target.Z),
+                Is.GreaterThanOrEqualTo(.6f));
+        }
+
+        [Test]
+        public void PlanSetIntent_ExistingLegalAttackDepthRemainsAnInputFact()
+        {
+            var request = Request();
+
+            var intent = new AttackDefensePlanner().PlanSetIntent(request);
+
+            Assert.That(intent.Target.Z,
+                Is.EqualTo(request.Players[0].WorldPosition.Z));
+        }
+
+        [Test]
         public void PlanningRequests_ExposeFactsButNoLegacyTargetOrCandidateInjectionSurface()
         {
             var setNames = typeof(SetIntentPlanningRequestV3).GetProperties().Select(x => x.Name).ToArray();
@@ -424,6 +467,27 @@ namespace Volleyball.EditModeTests
             return new SetIntentPlanningRequestV3(7, 1, TeamSide.Home, new PlayerId("home-setter"), 1f,
                 new BallState(new SimVector3(0f, 3f, -2f), new SimVector3(0f, 4f, 1f), .12f),
                 new[] { new GateITacticalPlayerV3(new PlayerId("home-attacker"), TeamSide.Home, new SimVector3(0f, 2f, -2f), true, derived) }, derived, artifact);
+        }
+
+        private static SetIntentPlanningRequestV3 WithPlayers(
+            SetIntentPlanningRequestV3 source,
+            GateITacticalPlayerV3[] players,
+            TeamSide side)
+        {
+            return new SetIntentPlanningRequestV3(
+                source.Revision,
+                source.SourceSequence,
+                side,
+                source.Organizer,
+                source.ExpectedSetContactTime,
+                source.AcceptedPass,
+                players,
+                source.OrganizerAttributes,
+                source.PassPrediction,
+                source.TrajectoryProvider,
+                source.SimulationParameters,
+                source.PhysicsConfigurationHash,
+                source.AcceptedPassStateVersion);
         }
 
         private static AcceptedSetEvidenceV3 Evidence(GateISetIntentV3 intent) =>

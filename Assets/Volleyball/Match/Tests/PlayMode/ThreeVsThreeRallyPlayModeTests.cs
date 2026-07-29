@@ -191,15 +191,38 @@ namespace Volleyball.PlayModeTests
 
         [UnityTest]
         [Timeout(180000)]
-        public IEnumerator AcceptedBlock_DefersReceiveUntilCrossingAndLetsGroundRefereeScore()
+        public IEnumerator AcceptedBlock_DefersReceiveUntilCrossingAndThenContinuesOrScores()
         {
             yield return SceneManager.LoadSceneAsync("Physical3v3Rally", LoadSceneMode.Single);
             var director = Object.FindFirstObjectByType<ThreeVsThreeRallyDirector>();
             var originalTimeScale = Time.timeScale;
+            var awaitingPostBlockContact = false;
+            var observedPostBlockReceive = false;
+            director.ReplayContactAccepted += replayEvent =>
+            {
+                if (replayEvent.Action == TechniqueAction.Block)
+                {
+                    awaitingPostBlockContact = true;
+                }
+                else if (awaitingPostBlockContact &&
+                         replayEvent.Action == TechniqueAction.Receive)
+                {
+                    observedPostBlockReceive = true;
+                    awaitingPostBlockContact = false;
+                }
+                else if (awaitingPostBlockContact)
+                {
+                    // Only the immediately following physical contact can
+                    // prove the block continuation. A Set, Attack, Serve, or
+                    // any other touch closes this candidate.
+                    awaitingPostBlockContact = false;
+                }
+            };
             try
             {
                 var timeout = Time.realtimeSinceStartup + 120f;
-                while (director.PostBlockGroundPoints == 0 &&
+                while (!observedPostBlockReceive &&
+                       director.PostBlockGroundPoints == 0 &&
                        director.PrototypeResult == null &&
                        Time.realtimeSinceStartup < timeout)
                 {
@@ -210,7 +233,12 @@ namespace Volleyball.PlayModeTests
                 Assert.That(director.PostBlockPossessionDeferrals, Is.GreaterThan(0));
                 Assert.That(director.PrematurePostBlockReceiveWindows, Is.Zero);
                 Assert.That(director.PrematurePostBlockEmergencyWindows, Is.Zero);
-                Assert.That(director.PostBlockGroundPoints, Is.GreaterThan(0));
+                Assert.That(
+                    observedPostBlockReceive ||
+                    director.PostBlockGroundPoints > 0,
+                    Is.True,
+                    "An accepted block must either continue through the next " +
+                    "physical Receive or reach the ground referee.");
             }
             finally
             {

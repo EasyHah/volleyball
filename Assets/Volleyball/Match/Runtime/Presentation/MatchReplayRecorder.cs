@@ -460,7 +460,10 @@ namespace Volleyball.Presentation
                 ToReplayDefenseResponsibilities(plan.Defense), selected?.CandidateIdentity ?? string.Empty,
                 classification.TestedEnvelope.Identity, classification.ExecutableEnvelope.Identity,
                 classification.Sample.EnvelopeIdentity, trajectory.ArtifactIdentity,
-                ToReplayRecovery(plan, selected, receipt), ToReplayCoverage(evidence.CoverageDecision));
+                ToReplayRecovery(plan, selected, receipt),
+                ToReplayCoverage(evidence.CoverageDecision),
+                ToReplayAttackCoverageResponsibilities(
+                    plan.AttackCoverageResponsibilities));
         }
 
         private static bool IsReplayActionFor(AttackDefenseCommandKind kind, TechniqueAction action) =>
@@ -478,6 +481,15 @@ namespace Volleyball.Presentation
 
         private static ReplayDefenseResponsibilityRecordV4[] ToReplayDefenseResponsibilities(JointDefensePlanV3 defense) => defense.Responsibilities.Select(responsibility =>
             new ReplayDefenseResponsibilityRecordV4(responsibility.Actor.Value, responsibility.Kind.ToString(), responsibility.Zone, ToReplayBranch(responsibility.Branch))).ToArray();
+
+        private static ReplayAttackCoverageResponsibilityRecordV4[]
+            ToReplayAttackCoverageResponsibilities(
+                IReadOnlyList<AttackCoverageResponsibilityV3>
+                    responsibilities) =>
+                responsibilities.Select(responsibility =>
+                    new ReplayAttackCoverageResponsibilityRecordV4(
+                        responsibility.Actor.Value,
+                        ToReplayBranch(responsibility.Branch))).ToArray();
 
         private static ReplayToolRecoveryRecordV4 ToReplayRecovery(AttackDefensePlanV3 plan, AttackCandidateV3 selected,
             AttackDefenseAuthorityReceipt receipt = null)

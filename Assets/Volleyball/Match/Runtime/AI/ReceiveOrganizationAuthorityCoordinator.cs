@@ -577,6 +577,13 @@ namespace Volleyball.AI
         public ReceiveOrganizationAuthorityStateV3 PlanReceive(
             ReceiveOrganizationAuthorityRequestV3 request)
         {
+            return PlanReceive(request, null);
+        }
+
+        public ReceiveOrganizationAuthorityStateV3 PlanReceive(
+            ReceiveOrganizationAuthorityRequestV3 request,
+            StablePlayerId? committedContinuationReceiver)
+        {
             if (request == null)
             {
                 throw new ArgumentNullException(nameof(request));
@@ -602,7 +609,8 @@ namespace Volleyball.AI
                 request.AttackPreparationInput,
                 request.Eligibility,
                 request.Bindings,
-                request.Revision);
+                request.Revision,
+                committedContinuationReceiver);
             var coverage = Coverage(
                 request.Revision,
                 PlanCoverageDecisionKind.CoveredActivateBranch,

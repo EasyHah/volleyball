@@ -123,6 +123,26 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CloseWindow_StopsFurtherContactsWithoutChangingTouchLedger()
+        {
+            var state = new RallyTouchState(TeamId.Blue);
+            Accept(state, BlueDefender, TechniqueAction.Receive, 1f);
+            state.OpenWindow(Window(BlueSetter, TechniqueAction.Set, 2f, 3f));
+
+            state.CloseWindow();
+
+            Assert.That(state.ContactWindow, Is.Null);
+            Assert.That(state.CountedTeamTouches, Is.EqualTo(1));
+            Assert.That(state.LastCountedActor, Is.EqualTo(BlueDefender));
+            Assert.That(state.LastPhysicalTouch, Is.EqualTo(BlueDefender));
+            Assert.That(
+                state.Evaluate(BlueSetter, TechniqueAction.Set, 2f),
+                Is.EqualTo(new RallyContactEvaluation(
+                    RallyContactDisposition.Ignore,
+                    RallyContactRejectionReason.WindowClosed)));
+        }
+
+        [Test]
         public void SynchronizeAuthoritativeContact_UpdatesCompatibilityStateAfterLegacyRejection()
         {
             var state = new RallyTouchState(TeamId.Blue);

@@ -212,6 +212,11 @@ namespace Volleyball.Domain.Prototype
             ContactWindow = window ?? throw new ArgumentNullException(nameof(window));
         }
 
+        public void CloseWindow()
+        {
+            ContactWindow = null;
+        }
+
         public RallyContactEvaluation Evaluate(PlayerId actor, TechniqueAction action, float simulationTime)
         {
             RallyContactWindow.ValidateActor(actor, nameof(actor));

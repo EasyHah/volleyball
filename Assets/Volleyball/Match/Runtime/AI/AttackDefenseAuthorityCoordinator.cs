@@ -328,7 +328,9 @@ namespace Volleyball.AI
             RallyPlanBranchV3 branch = RallyPlanBranchV3.Primary)
         {
             if ((State.Phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact &&
-                 State.Phase != AttackDefenseAuthorityPhaseV3.ReorganizationPlanned) ||
+                 State.Phase != AttackDefenseAuthorityPhaseV3.ReorganizationPlanned &&
+                 State.Phase !=
+                    AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive) ||
                 sourceSequence <= _lastSequence ||
                 (kind != AttackDefenseCommandKind.FloorDefense &&
                  kind != AttackDefenseCommandKind.AttackCover) ||
@@ -336,11 +338,20 @@ namespace Volleyball.AI
                 throw new InvalidOperationException(
                     "Actual continuation requires a current physical receive opportunity.");
 
-            var isDeclared = kind == AttackDefenseCommandKind.FloorDefense
-                ? State.Plan.Defense.Responsibilities.Any(value =>
-                    value.Actor.Equals(actor) && value.Branch == branch)
-                : State.Plan.AttackCoverageResponsibilities.Any(value =>
-                    value.Actor.Equals(actor) && value.Branch == branch);
+            var isDeclaredToolRecovery =
+                State.Phase ==
+                    AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive &&
+                kind == AttackDefenseCommandKind.AttackCover &&
+                branch == RallyPlanBranchV3.Primary &&
+                State.Plan?.SelectedAction?.ToolRecoveryEvidence != null &&
+                State.Plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor
+                    .Equals(actor);
+            var isDeclared = isDeclaredToolRecovery ||
+                (kind == AttackDefenseCommandKind.FloorDefense
+                    ? State.Plan.Defense.Responsibilities.Any(value =>
+                        value.Actor.Equals(actor) && value.Branch == branch)
+                    : State.Plan.AttackCoverageResponsibilities.Any(value =>
+                        value.Actor.Equals(actor) && value.Branch == branch));
             if (!isDeclared)
                 throw new InvalidOperationException(
                     "Actual continuation actor is outside the declared opportunity.");
@@ -348,8 +359,24 @@ namespace Volleyball.AI
             _lastSequence = sourceSequence;
             _committedDefenseExecutions[DefenseExecutionKey(actor, kind, branch)] =
                 execution;
+            var continuationPhase =
+                State.Phase ==
+                AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
+                    ? AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
+                    : AttackDefenseAuthorityPhaseV3.AwaitingActualContact;
+            if (continuationPhase ==
+                AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive)
+            {
+                if (kind != AttackDefenseCommandKind.AttackCover ||
+                    State.Plan?.SelectedAction?.ToolRecoveryEvidence == null ||
+                    !State.Plan.SelectedAction.ToolRecoveryEvidence
+                        .RecoveryActor.Equals(actor))
+                    throw new InvalidOperationException(
+                        "Tool recovery continuation must retain its declared recovery actor.");
+                _toolRecoveryReceiveExecution = execution;
+            }
             State = new AttackDefenseAuthorityStateV3(
-                AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
+                continuationPhase,
                 State.Revision,
                 State.AttackingSide,
                 State.Plan,
@@ -582,19 +609,24 @@ namespace Volleyball.AI
                     : contact.ActionKind == AttackDefenseCommandKind.AttackCover
                         ? attackCoverage != null
                         : false;
-            var expectedEnvelope = _committedDefenseExecutions.TryGetValue(
+            var hasCommittedExecution =
+                _committedDefenseExecutions.TryGetValue(
                 DefenseExecutionKey(contact.Actor, contact.ActionKind, contact.Branch),
-                out var committedExecution)
-                ? committedExecution.ExecutionClassification.ExecutableEnvelope.Identity
+                out var committedExecution);
+            var expectedEnvelope = hasCommittedExecution
+                ? committedExecution.ExecutionClassification.ExecutableEnvelope
+                    .Identity
                 : "gate-i-" + State.Revision + "-" + (int)contact.ActionKind + "-" + contact.Actor.Value;
+            var expectedTrajectory = hasCommittedExecution
+                ? committedExecution.TrajectoryArtifact.ArtifactIdentity
+                : _intent.TrajectoryArtifact.ArtifactIdentity;
             var incidental = contact.ActionKind ==
                 AttackDefenseCommandKind.FloorDefense &&
                 contact.CoverageReason ==
                     PlanCoverageReason.ResponsibleActorChanged;
             if (!kindMatches || (!incidental &&
                 (contact.EnvelopeIdentity != expectedEnvelope ||
-                 contact.TrajectoryArtifactIdentity !=
-                    _intent.TrajectoryArtifact.ArtifactIdentity)) ||
+                 contact.TrajectoryArtifactIdentity != expectedTrajectory)) ||
                 (incidental && (string.IsNullOrWhiteSpace(contact.EnvelopeIdentity) ||
                  string.IsNullOrWhiteSpace(contact.TrajectoryArtifactIdentity))))
                 throw new InvalidOperationException("Defense evidence must exactly match a committed responsibility.");

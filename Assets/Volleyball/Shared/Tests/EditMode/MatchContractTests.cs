@@ -239,6 +239,28 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void ReplayAttackDefenseAuthority_AttackCoverRetainsExplicitAttackingSideResponsibility()
+        {
+            var replayEvent = CreateGateIDefenseEvent(
+                "blue-player-2",
+                sequenceNumber: 0);
+            var authority = CreateObservedDefenseAuthority(
+                replayEvent,
+                "orange-player-2",
+                attackCoveragePlayerId: "blue-player-2");
+            var recorded = WithGateIAuthority(
+                replayEvent,
+                null,
+                authority);
+
+            Assert.That(
+                recorded.AttackDefenseAuthority
+                    .AttackCoverageResponsibilities.Single()
+                    .ActorPlayerId,
+                Is.EqualTo("blue-player-2"));
+        }
+
+        [Test]
         public void ReplayAttackDefenseAuthority_AwaitingDefenseRejectsUnknownActor()
         {
             var replayEvent = CreateGateIDefenseEvent("away-unknown");
@@ -1266,7 +1288,9 @@ namespace Volleyball.Shared.EditModeTests
                 new ReplayCoverageDecisionRecordV4("Covered", 0f));
         }
 
-        private static MatchReplayEventV4 CreateGateIDefenseEvent(string actorPlayerId)
+        private static MatchReplayEventV4 CreateGateIDefenseEvent(
+            string actorPlayerId,
+            int sequenceNumber = 4)
         {
             var identity = new string('d', 64);
             var fingerprint = new string('e', 64);
@@ -1299,7 +1323,7 @@ namespace Volleyball.Shared.EditModeTests
                     new ReplayVector3RecordV4(0f, 5f, 1f), .5f),
                 Array.Empty<string>());
             return new MatchReplayEventV4(
-                4, "Receive", actorPlayerId, 2f, 0, 0,
+                sequenceNumber, "Receive", actorPlayerId, 2f, 0, 0,
                 envelope, envelope, trajectory,
                 new[]
                 {
@@ -1320,7 +1344,8 @@ namespace Volleyball.Shared.EditModeTests
                 MatchReplayEventV4 replayEvent,
                 string defenderPlayerId,
                 string phase = "AwaitingActualContact",
-                string selectedCandidateIdentity = "attack-selected")
+                string selectedCandidateIdentity = "attack-selected",
+                string attackCoveragePlayerId = null)
         {
             var candidate = new ReplayAttackDefenseCandidateRecordV4(
                 "attack-selected", "home-attacker", "PowerLine",
@@ -1357,7 +1382,16 @@ namespace Volleyball.Shared.EditModeTests
                         : "ResponsibleActorChanged",
                     Array.Empty<string>(),
                     phase == "DefenseCommitted" ? 0 : 1,
-                    "Primary"));
+                    "Primary"),
+                attackCoveragePlayerId == null
+                    ? Array.Empty<
+                        ReplayAttackCoverageResponsibilityRecordV4>()
+                    : new[]
+                    {
+                        new ReplayAttackCoverageResponsibilityRecordV4(
+                            attackCoveragePlayerId,
+                            "Primary")
+                    });
         }
 
         private static MatchReplayEventV4 WithGateIAuthority(
