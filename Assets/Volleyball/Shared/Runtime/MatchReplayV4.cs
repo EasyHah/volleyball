@@ -1415,14 +1415,76 @@ namespace Volleyball.Shared.Contracts
         }
     }
 
+    // Defense windows are not contact events: misses and deterministic losers
+    // need canonical evidence without inventing a counted-touch replay event.
+    public sealed class ReplayDefenseAttemptRecordV4
+    {
+        public ReplayDefenseAttemptRecordV4(
+            string attemptIdentity, string kind, string commandKind,
+            string actorPlayerId, string team, int planRevision,
+            int sourceSequenceNumber, string envelopeIdentity,
+            string trajectoryArtifactIdentity, float windowStartSimulationTime,
+            float windowEndSimulationTime, float simulationTimeSeconds,
+            ReplayVector3RecordV4 ballPosition,
+            ReplayVector3RecordV4 ballVelocity, string continuationState,
+            string reason, int? winningContactGroupId = null,
+            string winningActorPlayerId = null)
+        {
+            AttemptIdentity = ReplayContractGuardV4.Required(attemptIdentity, nameof(attemptIdentity));
+            Kind = ReplayContractGuardV4.OneOf(kind, nameof(kind),
+                "DefenseAttemptOpened", "DefenseCandidateSampled",
+                "DefenseContactAccepted", "DefenseContactRejected",
+                "DefenseAttemptExpired", "PostBlockContinuationResolved");
+            CommandKind = ReplayContractGuardV4.Required(commandKind, nameof(commandKind));
+            ActorPlayerId = ReplayContractGuardV4.Required(actorPlayerId, nameof(actorPlayerId));
+            Team = ReplayContractGuardV4.Required(team, nameof(team));
+            PlanRevision = ReplayContractGuardV4.NonNegative(planRevision, nameof(planRevision));
+            SourceSequenceNumber = ReplayContractGuardV4.NonNegative(sourceSequenceNumber, nameof(sourceSequenceNumber));
+            EnvelopeIdentity = ReplayContractGuardV4.Hash(envelopeIdentity, nameof(envelopeIdentity));
+            TrajectoryArtifactIdentity = ReplayContractGuardV4.Hash(trajectoryArtifactIdentity, nameof(trajectoryArtifactIdentity));
+            WindowStartSimulationTime = ReplayContractGuardV4.Finite(windowStartSimulationTime, nameof(windowStartSimulationTime));
+            WindowEndSimulationTime = ReplayContractGuardV4.Finite(windowEndSimulationTime, nameof(windowEndSimulationTime));
+            SimulationTimeSeconds = ReplayContractGuardV4.Finite(simulationTimeSeconds, nameof(simulationTimeSeconds));
+            if (WindowStartSimulationTime < 0f || WindowEndSimulationTime < WindowStartSimulationTime || SimulationTimeSeconds < 0f)
+                throw new ContractValidationException("Defense-attempt times must be non-negative and ordered.");
+            BallPosition = ballPosition ?? throw new ContractValidationException("ballPosition is required.");
+            BallVelocity = ballVelocity ?? throw new ContractValidationException("ballVelocity is required.");
+            ContinuationState = ReplayContractGuardV4.Required(continuationState, nameof(continuationState));
+            Reason = reason ?? string.Empty;
+            WinningContactGroupId = winningContactGroupId;
+            WinningActorPlayerId = winningActorPlayerId;
+        }
+
+        public string AttemptIdentity { get; }
+        public string Kind { get; }
+        public string CommandKind { get; }
+        public string ActorPlayerId { get; }
+        public string Team { get; }
+        public int PlanRevision { get; }
+        public int SourceSequenceNumber { get; }
+        public string EnvelopeIdentity { get; }
+        public string TrajectoryArtifactIdentity { get; }
+        public float WindowStartSimulationTime { get; }
+        public float WindowEndSimulationTime { get; }
+        public float SimulationTimeSeconds { get; }
+        public ReplayVector3RecordV4 BallPosition { get; }
+        public ReplayVector3RecordV4 BallVelocity { get; }
+        public string ContinuationState { get; }
+        public string Reason { get; }
+        public int? WinningContactGroupId { get; }
+        public string WinningActorPlayerId { get; }
+    }
+
     public sealed class MatchReplayV4
     {
         private readonly MatchReplayEventV4[] _events;
+        private readonly ReplayDefenseAttemptRecordV4[] _defenseAttempts;
 
         private MatchReplayV4(
             string replayId,
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events,
+            IReadOnlyList<ReplayDefenseAttemptRecordV4> defenseAttempts,
             int sourceSequenceAnchor,
             string suppliedReplayHash,
             bool allowLegacyShadowCoverageHash)
@@ -1440,6 +1502,7 @@ namespace Volleyball.Shared.Contracts
             }
 
             _events = CopySortAndValidateEvents(events);
+            _defenseAttempts = CopyDefenseAttempts(defenseAttempts);
             SourceSequenceAnchor = ReplayContractGuardV4.NonNegative(
                 sourceSequenceAnchor,
                 nameof(sourceSequenceAnchor));
@@ -1451,10 +1514,15 @@ namespace Volleyball.Shared.Contracts
                     ReplayHash,
                     StringComparison.Ordinal) &&
                 (!allowLegacyShadowCoverageHash ||
-                 !string.Equals(
-                     suppliedReplayHash,
+                 (!string.Equals(suppliedReplayHash,
                      CanonicalMatchReplayJsonV4.ComputeLegacyShadowCoverageHash(this),
-                     StringComparison.Ordinal)))
+                     StringComparison.Ordinal) &&
+                  !string.Equals(suppliedReplayHash,
+                     CanonicalMatchReplayJsonV4.ComputeLegacyDefenseAttemptHash(this),
+                     StringComparison.Ordinal) &&
+                  !string.Equals(suppliedReplayHash,
+                     CanonicalMatchReplayJsonV4.ComputeLegacyShadowAndDefenseAttemptHash(this),
+                     StringComparison.Ordinal))))
             {
                 throw new ContractValidationException(
                     "replayHash does not match the canonical V4 replay segment.");
@@ -1468,6 +1536,9 @@ namespace Volleyball.Shared.Contracts
         public int SourceSequenceAnchor { get; }
         public IReadOnlyList<MatchReplayEventV4> Events =>
             new ReadOnlyCollection<MatchReplayEventV4>(_events);
+        public IReadOnlyList<ReplayDefenseAttemptRecordV4> DefenseAttempts =>
+            new ReadOnlyCollection<ReplayDefenseAttemptRecordV4>(
+                _defenseAttempts);
         public string ReplayHash { get; }
 
         public static MatchReplayV4 Create(
@@ -1475,7 +1546,8 @@ namespace Volleyball.Shared.Contracts
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events)
         {
-            return new MatchReplayV4(replayId, context, events, 0, null, false);
+            return new MatchReplayV4(replayId, context, events,
+                Array.Empty<ReplayDefenseAttemptRecordV4>(), 0, null, false);
         }
 
         public static MatchReplayV4 Create(
@@ -1485,13 +1557,27 @@ namespace Volleyball.Shared.Contracts
             int sourceSequenceAnchor)
         {
             return new MatchReplayV4(
-                replayId, context, events, sourceSequenceAnchor, null, false);
+                replayId, context, events,
+                Array.Empty<ReplayDefenseAttemptRecordV4>(),
+                sourceSequenceAnchor, null, false);
+        }
+
+        public static MatchReplayV4 Create(
+            string replayId,
+            MatchContextV4 context,
+            IReadOnlyList<MatchReplayEventV4> events,
+            IReadOnlyList<ReplayDefenseAttemptRecordV4> defenseAttempts,
+            int sourceSequenceAnchor)
+        {
+            return new MatchReplayV4(replayId, context, events,
+                defenseAttempts, sourceSequenceAnchor, null, false);
         }
 
         internal static MatchReplayV4 Restore(
             string replayId,
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events,
+            IReadOnlyList<ReplayDefenseAttemptRecordV4> defenseAttempts,
             int sourceSequenceAnchor,
             string replayHash,
             bool allowLegacyShadowCoverageHash)
@@ -1502,9 +1588,7 @@ namespace Volleyball.Shared.Contracts
             }
 
             return new MatchReplayV4(
-                replayId,
-                context,
-                events,
+                replayId, context, events, defenseAttempts,
                 sourceSequenceAnchor,
                 replayHash,
                 allowLegacyShadowCoverageHash);
@@ -1514,6 +1598,7 @@ namespace Volleyball.Shared.Contracts
         {
             Context.Validate();
             CopySortAndValidateEvents(_events);
+            CopyDefenseAttempts(_defenseAttempts);
             ValidateEventsAgainstContext(Context, _events, SourceSequenceAnchor);
             ReplayContractGuardV4.Hash(ReplayHash, nameof(ReplayHash));
             if (CanonicalMatchReplayJsonV4.ComputeHash(this) != ReplayHash)
@@ -1560,6 +1645,18 @@ namespace Volleyball.Shared.Contracts
                 }
             }
 
+            return copy;
+        }
+
+        private static ReplayDefenseAttemptRecordV4[] CopyDefenseAttempts(
+            IReadOnlyList<ReplayDefenseAttemptRecordV4> source)
+        {
+            if (source == null || source.Count == 0)
+                return Array.Empty<ReplayDefenseAttemptRecordV4>();
+            var copy = new ReplayDefenseAttemptRecordV4[source.Count];
+            for (var index = 0; index < copy.Length; index++)
+                copy[index] = source[index] ?? throw new ContractValidationException(
+                    "defenseAttempts cannot contain null records.");
             return copy;
         }
 
@@ -1882,6 +1979,17 @@ namespace Volleyball.Shared.Contracts
             return ComputeHash(Payload(replay, true));
         }
 
+        public static string ComputeLegacyDefenseAttemptHash(MatchReplayV4 replay)
+        {
+            return ComputeHash(Payload(replay, false, false));
+        }
+
+        public static string ComputeLegacyShadowAndDefenseAttemptHash(
+            MatchReplayV4 replay)
+        {
+            return ComputeHash(Payload(replay, true, false));
+        }
+
         private static string ComputeHash(string payload)
         {
             using var sha = SHA256.Create();
@@ -1900,7 +2008,11 @@ namespace Volleyball.Shared.Contracts
         {
             var hasSourceSequenceAnchor =
                 root.Properties.ContainsKey("sourceSequenceAnchor");
-            if (root.Properties.Count != (hasSourceSequenceAnchor ? 6 : 5))
+            var hasDefenseAttempts = root.Properties.ContainsKey(
+                "defenseAttempts");
+            var expectedProperties = (hasSourceSequenceAnchor ? 6 : 5) +
+                (hasDefenseAttempts ? 1 : 0);
+            if (root.Properties.Count != expectedProperties)
             {
                 throw new ContractValidationException(
                     "JSON object fields do not match the native V4 schema.");
@@ -1954,6 +2066,15 @@ namespace Volleyball.Shared.Contracts
                 }
                 events[index] = ParseEvent(eventValue);
             }
+            var attemptValues = hasDefenseAttempts
+                ? StrictJsonV4.RequiredArray(root, "defenseAttempts")
+                : new List<StrictJsonValueV4>();
+            var defenseAttempts = new ReplayDefenseAttemptRecordV4[
+                attemptValues.Count];
+            for (var index = 0; index < defenseAttempts.Length; index++)
+                defenseAttempts[index] = ParseDefenseAttempt(
+                    StrictJsonV4.AsObject(attemptValues[index],
+                        "defenseAttempts[" + index + "]"));
 
             if (hasLegacyShadowCoverage && hasCurrentShadowCoverage)
             {
@@ -1965,11 +2086,46 @@ namespace Volleyball.Shared.Contracts
                 StrictJsonV4.RequiredString(root, "replayId"),
                 context,
                 events,
+                defenseAttempts,
                 hasSourceSequenceAnchor
                     ? StrictJsonV4.RequiredInt(root, "sourceSequenceAnchor")
                     : 0,
                 StrictJsonV4.RequiredString(root, "replayHash"),
-                hasLegacyShadowCoverage);
+                hasLegacyShadowCoverage || !hasDefenseAttempts);
+        }
+
+        private static ReplayDefenseAttemptRecordV4 ParseDefenseAttempt(
+            StrictJsonObjectV4 value)
+        {
+            StrictJsonV4.RequireExactProperties(value,
+                "attemptIdentity", "kind", "commandKind", "actorPlayerId",
+                "team", "planRevision", "sourceSequenceNumber",
+                "envelopeIdentity", "trajectoryArtifactIdentity",
+                "windowStartSimulationTime", "windowEndSimulationTime",
+                "simulationTimeSeconds", "ballPosition", "ballVelocity",
+                "continuationState", "reason", "winningContactGroupId",
+                "winningActorPlayerId");
+            var group = StrictJsonV4.RequiredNullableInt(value,
+                "winningContactGroupId");
+            return new ReplayDefenseAttemptRecordV4(
+                StrictJsonV4.RequiredString(value, "attemptIdentity"),
+                StrictJsonV4.RequiredString(value, "kind"),
+                StrictJsonV4.RequiredString(value, "commandKind"),
+                StrictJsonV4.RequiredString(value, "actorPlayerId"),
+                StrictJsonV4.RequiredString(value, "team"),
+                StrictJsonV4.RequiredInt(value, "planRevision"),
+                StrictJsonV4.RequiredInt(value, "sourceSequenceNumber"),
+                StrictJsonV4.RequiredString(value, "envelopeIdentity"),
+                StrictJsonV4.RequiredString(value, "trajectoryArtifactIdentity"),
+                StrictJsonV4.RequiredFloat(value, "windowStartSimulationTime"),
+                StrictJsonV4.RequiredFloat(value, "windowEndSimulationTime"),
+                StrictJsonV4.RequiredFloat(value, "simulationTimeSeconds"),
+                ParseVector(StrictJsonV4.RequiredObject(value, "ballPosition")),
+                ParseVector(StrictJsonV4.RequiredObject(value, "ballVelocity")),
+                StrictJsonV4.RequiredString(value, "continuationState"),
+                StrictJsonV4.RequiredString(value, "reason"), group,
+                StrictJsonV4.RequiredNullableString(value,
+                    "winningActorPlayerId"));
         }
 
         private static bool HasShadowCoverage(StrictJsonObjectV4 value)
@@ -2741,7 +2897,8 @@ namespace Volleyball.Shared.Contracts
 
         private static string Payload(
             MatchReplayV4 replay,
-            bool legacyShadowCoverage = false)
+            bool legacyShadowCoverage = false,
+            bool includeDefenseAttempts = true)
         {
             var output = new StringBuilder(32768);
             output.Append("{\"formatVersion\":4,\"replayId\":")
@@ -2759,9 +2916,46 @@ namespace Volleyball.Shared.Contracts
                 if (index > 0) output.Append(',');
                 AppendEvent(output, replay.Events[index], legacyShadowCoverage);
             }
-
-            output.Append("]}");
+            output.Append(']');
+            if (includeDefenseAttempts)
+            {
+                output.Append(",\"defenseAttempts\":[");
+                for (var index = 0; index < replay.DefenseAttempts.Count; index++)
+                {
+                    if (index > 0) output.Append(',');
+                    AppendDefenseAttempt(output, replay.DefenseAttempts[index]);
+                }
+                output.Append(']');
+            }
+            output.Append('}');
             return output.ToString();
+        }
+
+        private static void AppendDefenseAttempt(
+            StringBuilder output,
+            ReplayDefenseAttemptRecordV4 attempt)
+        {
+            output.Append("{\"attemptIdentity\":").Append(Quote(attempt.AttemptIdentity));
+            output.Append(",\"kind\":").Append(Quote(attempt.Kind));
+            output.Append(",\"commandKind\":").Append(Quote(attempt.CommandKind));
+            output.Append(",\"actorPlayerId\":").Append(Quote(attempt.ActorPlayerId));
+            output.Append(",\"team\":").Append(Quote(attempt.Team));
+            output.Append(",\"planRevision\":").Append(attempt.PlanRevision);
+            output.Append(",\"sourceSequenceNumber\":").Append(attempt.SourceSequenceNumber);
+            output.Append(",\"envelopeIdentity\":").Append(Quote(attempt.EnvelopeIdentity));
+            output.Append(",\"trajectoryArtifactIdentity\":").Append(Quote(attempt.TrajectoryArtifactIdentity));
+            output.Append(",\"windowStartSimulationTime\":"); Float(output, attempt.WindowStartSimulationTime);
+            output.Append(",\"windowEndSimulationTime\":"); Float(output, attempt.WindowEndSimulationTime);
+            output.Append(",\"simulationTimeSeconds\":"); Float(output, attempt.SimulationTimeSeconds);
+            output.Append(",\"ballPosition\":"); Vector(output, attempt.BallPosition);
+            output.Append(",\"ballVelocity\":"); Vector(output, attempt.BallVelocity);
+            output.Append(",\"continuationState\":").Append(Quote(attempt.ContinuationState));
+            output.Append(",\"reason\":").Append(Quote(attempt.Reason));
+            output.Append(",\"winningContactGroupId\":");
+            if (attempt.WinningContactGroupId.HasValue) output.Append(attempt.WinningContactGroupId.Value); else output.Append("null");
+            output.Append(",\"winningActorPlayerId\":");
+            if (attempt.WinningActorPlayerId == null) output.Append("null"); else output.Append(Quote(attempt.WinningActorPlayerId));
+            output.Append('}');
         }
 
         private static void AppendEvent(

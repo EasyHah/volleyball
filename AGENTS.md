@@ -1,0 +1,210 @@
+<!-- CODEGRAPH_START -->
+## CodeGraph
+
+In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the repo root), reach for it BEFORE grep/find or reading files when you need to understand or locate code:
+
+- **MCP tool** (when available): `codegraph_explore` answers most code questions in one call -- the relevant symbols' verbatim source plus the call paths between them, including dynamic-dispatch hops grep can't follow. Name a file or symbol in the query to read its current line-numbered source. If it's listed but deferred, load it by name via tool search.
+- **Shell** (always works): `codegraph explore "<symbol names or question>"` prints the same output.
+
+If there is no `.codegraph/` directory, skip CodeGraph entirely -- indexing is the user's decision.
+<!-- CODEGRAPH_END -->
+
+## Unity Temporary Files
+
+- Unity may generate `Assets/InitTestScene*.unity` and matching `.meta` files during tests.
+- Treat these as temporary development artifacts: ignore them while developing, and delete them before merging a branch.
+# Codex 项目开发工作流
+
+## 一、风险判断
+
+风险等级根据影响范围判断，不根据代码行数判断。
+
+### 小改动
+
+必须同时满足：
+
+- 不修改存档结构、随机算法或结算规则。
+- 不修改 Shared、程序集依赖或搭档负责区域。
+- 不修改 Packages、ProjectSettings、构建列表或输入配置。
+- 不改变跨页面、跨模块的状态流程。
+- 出错后容易发现、容易回退。
+
+示例：
+
+- 颜色、间距、文案和简单布局。
+- 单个控件显示错误。
+- 局部空引用保护。
+- 单文件、无状态迁移的逻辑修正。
+
+如果修改过程中触及高风险区域，立即升级流程，不继续按小改动处理。
+
+### 普通功能
+
+适用于：
+
+- 单个 Career 功能。
+- 一个完整页面。
+- 状态展示或局部交互。
+- 已有架构内的训练、事件或结算逻辑。
+- 不改变存档 Schema 和公共契约的模块内功能。
+
+### 核心或高风险改动
+
+满足任意一项即属于高风险：
+
+- 存档格式、迁移、备份或恢复。
+- 原子保存、并发写入和幂等结算。
+- 随机算法或可复现性。
+- Career 与 Match 的公共契约。
+- Shared、Bootstrap、Assembly Definition。
+- Packages、ProjectSettings、输入系统或构建流程。
+- 场景结构、大型 Prefab 或公共资源。
+- 搭档负责区域。
+- 大规模重构或跨模块行为变化。
+
+不确定时，默认提升一级风险。
+
+## 二、小改动流程
+
+1. 确认根因。
+2. 直接修改。
+3. 执行一个最相关的检查：
+   - UI：实际画面验收；
+   - 逻辑：一个 focused 测试；
+   - 文档：链接和格式检查。
+4. 检查最终 diff，排除无关文件。
+5. 与同一问题有关的小修复可以合并成一个提交。
+
+默认不做：
+
+- 独立设计文档。
+- Agent 复核。
+- 完整测试套件。
+- Windows 构建。
+- 为每个细小变化单独提交。
+- 多轮代码审查。
+
+## 三、普通功能流程
+
+1. 对照当前里程碑确认范围。
+2. 在对话中给出简短方案，不另建正式设计文档。
+3. 完成一个可独立使用的功能闭环。
+4. 添加少量高价值测试，通常为 1–5 个。
+5. 运行：
+   - focused 测试；
+   - 受影响模块测试；
+   - 必要的实际界面或流程验收。
+6. 检查 diff 后提交。
+
+普通功能只有在涉及以下内容时才执行 Windows 构建：
+
+- 场景或资源加载。
+- UI Toolkit 运行时接线。
+- Input System。
+- Package 或 ProjectSettings。
+- 平台相关文件系统行为。
+- 构建代码或 IL2CPP。
+- 编辑器测试无法覆盖的真实 Player 行为。
+
+## 四、高风险改动流程
+
+1. 确认已有设计文档；只有出现新决策时才修改设计文档。
+2. 明确：
+   - 兼容性；
+   - 旧数据处理；
+   - 回滚方式；
+   - 模块所有权；
+   - 验收条件。
+3. 将实现拆成少量可独立验证的阶段。
+4. 数据、契约和恢复逻辑优先测试先行。
+5. 每个阶段运行 focused 测试。
+6. 实现冻结后：
+   - 运行一次受影响模块回归；
+   - 必要时运行一次完整 EditMode；
+   - 仅在影响场景、输入或比赛时运行 PlayMode；
+   - 必要时进行 Windows 构建和存档恢复。
+7. 最多进行一次独立 Agent 全面复核。
+8. 若复核发现高优先级问题，集中修复后只做一次针对性复审。
+9. 检查完成后提交并推送功能分支。
+10. Shared、共同区域或搭档模块改动必须通过 Pull Request。
+
+## 五、测试选择
+
+| 改动类型 | 默认验证 |
+| --- | --- |
+| 文案、颜色、间距 | 画面检查或一个 focused 测试 |
+| 单模块纯规则 | focused EditMode + 受影响模块 |
+| UI 页面与控制器 | focused EditMode + 一个关键 PlayMode 流程 |
+| 存档、随机、幂等 | focused 故障测试 + 模块回归 |
+| Shared 或程序集 | 双方相关模块 + 一次完整 EditMode |
+| 输入、场景、包和设置 | focused + PlayMode + Windows 构建 |
+| 里程碑结束 | 一次集中回归和人工闭环 |
+
+测试原则：
+
+- 测试用于阻止真实回归，不追求数量。
+- 完整测试只在代码冻结后运行一次。
+- 最终测试后若只修改文档，不重跑 Unity。
+- 最终测试后若只修改局部测试或样式，只重跑受影响部分。
+- Match 物理 PlayMode 仅在 Match、Shared、场景或公共运行时发生变化时运行。
+- 不把旧测试结果描述成修改后的新验证结果。
+
+## 六、Agent 使用原则
+
+在用户已经授权的范围内，Codex 可以自行判断是否使用 Agent。
+
+- 小改动不使用 Agent。
+- 普通功能默认不使用；只有真正独立、可并行的任务才使用。
+- 高风险改动完成后可使用一个独立复核 Agent。
+- 同一批文件同时只能有一个实现者。
+- 不使用多个 Agent 重复审查同一问题。
+- 不让 Agent 因为范围不清而长时间停留在规划阶段。
+- Agent 无实际产出或持续空转时，及时中断并接管。
+- 实现 Agent 的测试报告不能代替最终验证。
+
+## 七、Git 工作流
+
+- 开始新阶段前检查 origin/main 和搭档最新提交。
+- 一个里程碑使用一个功能分支。
+- 小改动和普通功能可以提交到当前里程碑分支。
+- 高风险共同改动可使用独立短分支。
+- 每个提交只表达一个完整目的。
+- 小改动可以累计后推送；重要检查点和里程碑必须推送。
+- 里程碑完成后不继续在同一分支开发下一个里程碑。
+- Shared、Bootstrap、公共设置或搭档区域的改动必须创建 PR。
+- 推送不等于合并。
+- 未经用户或搭档明确授权，不合并到 main。
+- 不覆盖搭档未合并或未提交的修改。
+
+## 八、文档规则
+
+- 根目录 AGENTS.md 保存长期有效的开发规则、命令和验收要求。
+- 架构文档只记录真正的设计决策。
+- 一个里程碑保留一份汇总变更记录。
+- 小改动只需要清晰的提交信息。
+- 普通功能优先更新现有里程碑记录，不创建新设计文档。
+- 测试结果不在多个文档中重复抄写。
+- Codex 重复犯同一种错误时，再把规则加入 AGENTS.md。
+
+## 九、完成状态
+
+统一使用以下状态：
+
+- **已实现**：代码完成，但验证尚未结束。
+- **已自动验证**：要求的自动检查通过。
+- **待人工验收**：仍需实际操作、视觉或手柄检查。
+- **完成**：自动验证和必要人工验收全部通过。
+
+不得因为代码已提交或 Agent 已批准就直接声称完成。
+
+## 十、进度沟通
+
+Codex 只在以下节点汇报：
+
+- 开始一个新阶段。
+- 发现需要升级风险等级。
+- 出现真实阻塞或失败。
+- 完成一个可验证检查点。
+- 阶段最终完成。
+
+长时间测试或构建期间提供简短状态，但不逐条播报每个内部步骤。

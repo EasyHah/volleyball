@@ -1,0 +1,138 @@
+.career-shell {
+    flex-grow: 1;
+    min-width: 960px;
+    min-height: 540px;
+    background-color: rgb(15, 24, 36);
+    color: rgb(231, 238, 247);
+}
+
+.top-bar {
+    min-height: 82px;
+    flex-direction: row;
+    align-items: center;
+    padding: 14px 28px;
+    background-color: rgb(23, 37, 53);
+    border-bottom-width: 2px;
+    border-bottom-color: rgb(56, 88, 112);
+}
+
+.title-block { flex-grow: 1; }
+.app-title { font-size: 25px; -unity-font-style: bold; color: rgb(244, 249, 253); }
+.route-title { font-size: 15px; color: rgb(127, 202, 226); margin-top: 3px; }
+.prototype-label { font-size: 13px; color: rgb(246, 192, 91); }
+
+.save-band {
+    min-height: 42px;
+    flex-direction: row;
+    align-items: center;
+    padding-left: 28px;
+    padding-right: 28px;
+    background-color: rgb(19, 31, 45);
+}
+
+.save-state { min-width: 180px; color: rgb(122, 221, 181); -unity-font-style: bold; }
+.feedback { flex-grow: 1; color: rgb(190, 203, 216); }
+.route-scroll { flex-grow: 1; padding: 24px 28px; }
+.route-content { width: 100%; max-width: 1240px; align-self: center; padding-bottom: 24px; }
+
+.bottom-bar {
+    min-height: 68px;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px 28px;
+    background-color: rgb(19, 31, 45);
+    border-top-width: 1px;
+    border-top-color: rgb(46, 66, 86);
+}
+
+.bottom-spacer { flex-grow: 1; }
+.page-title { font-size: 28px; -unity-font-style: bold; margin-bottom: 8px; color: rgb(246, 249, 252); }
+.section-title { font-size: 19px; -unity-font-style: bold; margin-top: 18px; margin-bottom: 8px; color: rgb(139, 210, 231); }
+.hint { font-size: 14px; color: rgb(177, 191, 205); margin-bottom: 12px; white-space: normal; }
+.card-row { flex-direction: row; flex-wrap: wrap; margin-left: -6px; margin-right: -6px; }
+
+.card {
+    min-width: 260px;
+    flex-grow: 1;
+    margin: 6px;
+    padding: 15px;
+    background-color: rgb(28, 45, 62);
+    border-width: 1px;
+    border-color: rgb(55, 78, 99);
+    border-radius: 5px;
+}
+
+.card-title { font-size: 17px; -unity-font-style: bold; margin-bottom: 6px; }
+.card-detail { font-size: 13px; color: rgb(182, 196, 209); margin-bottom: 6px; }
+.form-card { max-width: 620px; }
+.field { margin-top: 7px; margin-bottom: 7px; }
+
+.field #unity-text-input,
+.field .unity-base-popup-field__input {
+    min-height: 38px;
+    background-color: rgb(232, 239, 245);
+    color: rgb(19, 31, 45);
+    border-width: 1px;
+    border-color: rgb(94, 127, 151);
+    border-radius: 3px;
+}
+
+.field .unity-base-popup-field__text {
+    color: rgb(19, 31, 45);
+}
+
+.field #unity-text-input:focus,
+.field:focus .unity-base-popup-field__input {
+    border-width: 2px;
+    border-color: rgb(255, 214, 104);
+}
+
+.button-row { flex-direction: row; flex-wrap: wrap; margin-top: 10px; }
+
+Button {
+    min-height: 38px;
+    margin: 4px 8px 4px 0;
+    padding-left: 18px;
+    padding-right: 18px;
+    background-color: rgb(32, 132, 164);
+    color: white;
+    border-radius: 4px;
+    border-width: 0;
+    -unity-font-style: bold;
+}
+
+Button:hover { background-color: rgb(44, 156, 189); }
+Button:focus { border-width: 3px; border-color: rgb(255, 214, 104); }
+Button:disabled { opacity: 0.45; }
+.secondary-button { background-color: rgb(54, 73, 91); }
+.danger-note { color: rgb(241, 151, 121); }
+.attribute-grid { flex-direction: row; flex-wrap: wrap; }
+.attribute-item { width: 25%; min-width: 180px; padding: 8px 12px; font-size: 16px; }
+.status-row { flex-direction: row; flex-wrap: wrap; }
+.status-pill { min-width: 150px; margin: 4px 8px 4px 0; padding: 9px 12px; background-color: rgb(36, 55, 72); border-radius: 12px; }
+.score { font-size: 18px; -unity-font-style: bold; padding: 6px 0; }
+.growth-positive { color: rgb(122, 221, 181); }
+
+.modal-layer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(3, 8, 13, 0.86);
+}
+
+.modal-card {
+    width: 620px;
+    max-height: 80%;
+    padding: 24px;
+    background-color: rgb(30, 47, 64);
+    border-width: 2px;
+    border-color: rgb(94, 171, 197);
+    border-radius: 6px;
+}
+
+.hidden { display: none; }
+.diagnostics { margin-top: 24px; padding: 10px; background-color: rgb(11, 18, 27); color: rgb(155, 171, 184); font-size: 11px; }

@@ -6,8 +6,8 @@
 > 取代。V4 双端基础属性、确定性派生和 C 型权衡原则继续有效；新的权威决策是不迁移旧
 > 存档/回放，正式 Career/Match 直接硬切 V4，并继续复用 V3 规则引擎。
 
-**Date:** 2026-07-24  
-**Status:** User-approved design  
+**Date:** 2026-07-24
+**Status:** User-approved design
 **Scope:** Player attribute contracts, runtime consumption, deterministic derivation, replay diagnostics, and benchmark boundaries
 
 ## 1. Decision

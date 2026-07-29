@@ -4,7 +4,11 @@
   "references": [
     "Volleyball.Shared",
     "Volleyball.Match.Presentation",
+    "Volleyball.Career.Domain",
     "Volleyball.Career.Application",
-    "Volleyball.Career.Presentation"
+    "Volleyball.Career.Persistence",
+    "Volleyball.Career.MatchIntegration",
+    "Volleyball.Career.Presentation",
+    "Unity.InputSystem"
   ]
 }

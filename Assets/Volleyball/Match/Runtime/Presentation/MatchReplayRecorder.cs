@@ -19,6 +19,7 @@ namespace Volleyball.Presentation
         private FormalSixVsSixRallyDirector _director;
         private List<PrototypePlayerAgent> _players;
         private List<MatchReplayEventV4> _events;
+        private List<ReplayDefenseAttemptRecordV4> _defenseAttempts;
         private ReplayShadowPlanPendingStore<RallyPlanV3> _pendingShadowPlans;
         private int _sourceSequenceAnchor;
         private bool _capturing;
@@ -67,6 +68,7 @@ namespace Volleyball.Presentation
             }
 
             _events = new List<MatchReplayEventV4>();
+            _defenseAttempts = new List<ReplayDefenseAttemptRecordV4>();
             _pendingShadowPlans = new ReplayShadowPlanPendingStore<RallyPlanV3>(
                 _director.V3RuleTransitions);
             _sourceSequenceAnchor = CheckedInt(
@@ -95,6 +97,7 @@ namespace Volleyball.Presentation
                 ReplayId(_director.MatchContext),
                 _director.MatchContext,
                 _events,
+                _defenseAttempts,
                 _sourceSequenceAnchor);
         }
 
@@ -117,6 +120,7 @@ namespace Volleyball.Presentation
                     left.StableId.Value,
                     right.StableId.Value));
             _director.ReplayContactAccepted += RecordContact;
+            _director.ReplayDefenseAttemptRecorded += RecordDefenseAttempt;
             _director.ReplayShadowPlanRecorded += RecordShadowPlan;
             _director.ReplayRallyResolved += RecordResolution;
         }
@@ -129,6 +133,7 @@ namespace Volleyball.Presentation
             }
 
             _director.ReplayContactAccepted -= RecordContact;
+            _director.ReplayDefenseAttemptRecorded -= RecordDefenseAttempt;
             _director.ReplayShadowPlanRecorded -= RecordShadowPlan;
             _director.ReplayRallyResolved -= RecordResolution;
         }
@@ -200,6 +205,34 @@ namespace Volleyball.Presentation
                 _director.HomeScore,
                 _director.AwayScore,
                 shadow));
+        }
+
+        private void RecordDefenseAttempt(ReplayDefenseAttemptEvent replayEvent)
+        {
+            if (!_capturing || IsComplete || replayEvent == null)
+            {
+                return;
+            }
+
+            _defenseAttempts.Add(new ReplayDefenseAttemptRecordV4(
+                replayEvent.AttemptIdentity,
+                replayEvent.Kind,
+                replayEvent.Receipt.Kind.ToString(),
+                replayEvent.Receipt.Actor.Value,
+                replayEvent.Team.ToString(),
+                CheckedInt(replayEvent.Receipt.PlanRevision, "planRevision"),
+                CheckedInt(replayEvent.Receipt.SourceSequence, "sourceSequence"),
+                replayEvent.Receipt.ExecutionClassification.ExecutableEnvelope.Identity,
+                replayEvent.Receipt.TrajectoryArtifact.ArtifactIdentity,
+                replayEvent.WindowStartSimulationTime,
+                replayEvent.WindowEndSimulationTime,
+                replayEvent.SimulationTimeSeconds,
+                Vector(replayEvent.BallPosition),
+                Vector(replayEvent.BallVelocity),
+                replayEvent.ContinuationState.ToString(),
+                replayEvent.Reason,
+                replayEvent.WinningContactGroupId,
+                replayEvent.WinningActor?.Value));
         }
 
         public static MatchReplayEventV4 CreateContactRecordV4(

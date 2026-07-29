@@ -571,6 +571,35 @@ namespace Volleyball.Shared.Contracts
             return parsed;
         }
 
+        public static int? RequiredNullableInt(
+            StrictJsonObjectV4 value,
+            string name)
+        {
+            var result = Required(value, name);
+            if (result.Kind == StrictJsonKindV4.Null)
+            {
+                return null;
+            }
+
+            if (result.Kind != StrictJsonKindV4.Number)
+            {
+                throw new ContractValidationException(
+                    name + " must be a JSON integer or null.");
+            }
+
+            var text = (string)result.Value;
+            if (text.IndexOf('.') >= 0 || text.IndexOf('e') >= 0 ||
+                text.IndexOf('E') >= 0 || !int.TryParse(text,
+                    NumberStyles.AllowLeadingSign,
+                    CultureInfo.InvariantCulture, out var parsed))
+            {
+                throw new ContractValidationException(
+                    name + " must be a 32-bit JSON integer or null.");
+            }
+
+            return parsed;
+        }
+
         public static long RequiredLong(
             StrictJsonObjectV4 value,
             string name)

@@ -30,14 +30,14 @@ all implementation/review agents must use `gpt-5.6-terra` with medium reasoning.
 
 ### Create
 
-- `Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/Authority/ReceiveOrganizationPlanV3.cs`  
+- `Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/Authority/ReceiveOrganizationPlanV3.cs`
   Immutable task/branch/fallback/reachability values attached to a team plan.
-- `Assets/Volleyball/Match/Runtime/AI/ReceiveOrganizationResponsibilityPlanner.cs`  
+- `Assets/Volleyball/Match/Runtime/AI/ReceiveOrganizationResponsibilityPlanner.cs`
   Pure receive and organization selection using the existing scorer,
   `SetterOrganizationZone`, eligibility, and stable ordering.
-- `Assets/Volleyball/Match/Runtime/AI/ReceiveOrganizationAuthorityCoordinator.cs`  
+- `Assets/Volleyball/Match/Runtime/AI/ReceiveOrganizationAuthorityCoordinator.cs`
   Pure phase/revision/coverage state machine and immutable command batches.
-- `Assets/Volleyball/Match/Runtime/Presentation/ReceiveOrganizationAuthorityController.cs`  
+- `Assets/Volleyball/Match/Runtime/Presentation/ReceiveOrganizationAuthorityController.cs`
   Formal-only adapter that preflights and commits coordinator batches to Gate G
   player facades with exact V4 evidence.
 - `Assets/Volleyball/Match/Tests/EditMode/ReceiveOrganizationPlanV3Tests.cs`
@@ -50,17 +50,17 @@ Unity must generate and commit the `.meta` file for every new `.cs` file.
 
 ### Modify
 
-- `Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/Shadow/TeamRallyPlanV3.cs`  
+- `Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/Shadow/TeamRallyPlanV3.cs`
   Carry optional Gate H responsibilities without adding command dependencies.
-- `Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/Shadow/DeterministicRallyPlanComposerV3.cs`  
+- `Assets/Volleyball/Match/Runtime/Domain/FullRallyV3/Shadow/DeterministicRallyPlanComposerV3.cs`
   Accept an enriched responsibility value when composing an authority revision.
-- `Assets/Volleyball/Match/Runtime/AI/TeamRallyDecisionPlanner.cs`  
+- `Assets/Volleyball/Match/Runtime/AI/TeamRallyDecisionPlanner.cs`
   Expose deterministic candidate ordering/reach margins without owning authority.
-- `Assets/Volleyball/Match/Runtime/Presentation/PhysicalMatchRallyDirector.cs`  
+- `Assets/Volleyball/Match/Runtime/Presentation/PhysicalMatchRallyDirector.cs`
   Delegate the formal Gate H slice and remove its receive/organization writers.
-- `Assets/Volleyball/Match/Runtime/Presentation/MatchReplayRecorder.cs`  
+- `Assets/Volleyball/Match/Runtime/Presentation/MatchReplayRecorder.cs`
   Map exact authority evidence from accepted contacts.
-- `Assets/Volleyball/Shared/Runtime/MatchReplayV4.cs`  
+- `Assets/Volleyball/Shared/Runtime/MatchReplayV4.cs`
   Add strict organization-authority values, validation, parser, canonical writer,
   and hash coverage.
 - `Assets/Volleyball/Match/Tests/EditMode/DeterministicRallyPlanComposerV3Tests.cs`

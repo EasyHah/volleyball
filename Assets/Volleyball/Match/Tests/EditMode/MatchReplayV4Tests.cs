@@ -54,6 +54,67 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CanonicalJson_AlwaysCarriesTheDefenseAttemptTimeline()
+        {
+            var replay = CreateReplay(Event(0, "Attack"));
+
+            Assert.That(
+                ContractJson.SerializeV4(replay),
+                Does.Contain("\"defenseAttempts\":[]"));
+        }
+
+        [Test]
+        public void DefenseAttemptTimeline_RoundTripsAndChangesCanonicalHash()
+        {
+            var baseline = CreateReplay(Event(0, "Attack"));
+            var attempt = new ReplayDefenseAttemptRecordV4(
+                "1:2:FloorDefense:away-defender:7101",
+                "DefenseAttemptOpened", "FloorDefense", "away-defender",
+                "Orange", 1, 2, HashA, HashB, 1f, 1.2f, 1f,
+                new ReplayVector3RecordV4(0f, 1f, 2f),
+                new ReplayVector3RecordV4(0f, -2f, 4f),
+                "DefendingSideFloorDefense", "CommittedWindow");
+            var replay = MatchReplayV4.Create(
+                "formal-replay-7351", MatchV4TestFixture.CreateContext(),
+                new[] { Event(0, "Attack") }, new[] { attempt }, 0);
+            var json = ContractJson.SerializeV4(replay);
+
+            Assert.That(ContractJson.SerializeV4(
+                ContractJson.DeserializeMatchReplayV4(json)), Is.EqualTo(json));
+            Assert.That(replay.DefenseAttempts[0].AttemptIdentity,
+                Is.EqualTo(attempt.AttemptIdentity));
+            Assert.That(replay.ReplayHash, Is.Not.EqualTo(baseline.ReplayHash));
+        }
+
+        [Test]
+        public void HistoricalReplayWithoutDefenseAttempts_RestoresWithItsLegacyHash()
+        {
+            var replay = CreateReplay(Event(0, "Attack"));
+            var current = ContractJson.SerializeV4(replay);
+            var historical = current.Replace(",\"defenseAttempts\":[]", string.Empty);
+            var legacyHash = CanonicalHashWithoutDefenseAttempts(replay);
+            historical = historical.Replace(replay.ReplayHash, legacyHash);
+
+            var restored = ContractJson.DeserializeMatchReplayV4(historical);
+
+            Assert.That(restored.DefenseAttempts, Is.Empty);
+        }
+
+        [Test]
+        public void HistoricalLegacyShadowWithoutDefenseAttempts_Restores()
+        {
+            var replay = CreateReplay(EventWithShadow(Event(0, "Attack"),
+                Shadow(1)));
+            var historical = ContractJson.SerializeV4(replay)
+                .Replace(",\"defenseAttempts\":[]", string.Empty);
+            historical = historical.Replace(replay.ReplayHash,
+                CanonicalHashWithoutDefenseAttempts(replay, true));
+
+            Assert.That(() => ContractJson.DeserializeMatchReplayV4(historical),
+                Throws.Nothing);
+        }
+
+        [Test]
         public void GateJPerception_RoundTripsAndStrictReaderRejectsHiddenRouteField()
         {
             var baseline = Event(0, "Attack");
@@ -1162,6 +1223,18 @@ namespace Volleyball.EditModeTests
                 "formal-replay-7351",
                 MatchV4TestFixture.CreateContext(),
                 events);
+        }
+
+        private static string CanonicalHashWithoutDefenseAttempts(
+            MatchReplayV4 replay, bool legacyShadow = false)
+        {
+            var method = typeof(MatchReplayV4).Assembly.GetType(
+                "Volleyball.Shared.Contracts.CanonicalMatchReplayJsonV4")
+                .GetMethod(legacyShadow
+                        ? "ComputeLegacyShadowAndDefenseAttemptHash"
+                        : "ComputeLegacyDefenseAttemptHash",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            return (string)method.Invoke(null, new object[] { replay });
         }
 
         private static MatchReplayEventV4 Event(int sequence, string kind)

@@ -206,10 +206,7 @@ namespace Volleyball.Presentation
             if (execution.MovementStartSimulationTime > execution.ScheduledSimulationTime)
                 throw new InvalidOperationException("Movement cannot begin after the scheduled command.");
             var action = ActionFor(command.Kind);
-            var physicalToolRecoveryReceive = batch.Evidence.Phase ==
-                AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive &&
-                command.Kind == AttackDefenseCommandKind.FloorDefense;
-            if (IsContact(command.Kind, physicalToolRecoveryReceive))
+            if (IsContact(command.Kind))
                 player.ValidateGateIContact(action, execution.ExecutionClassification,
                     execution.TrajectoryArtifact, execution.AttackApproach,
                     execution.AttackContactPlan);
@@ -217,7 +214,7 @@ namespace Volleyball.Presentation
                 player.ValidateGateISupport(action, execution.ScheduledSimulationTime,
                     ToUnity(execution.MovementTarget));
             ValidateExactPlanEvidence(batch.Evidence.Plan, command, execution);
-            return new PreparedCommand(command, player, physicalToolRecoveryReceive);
+            return new PreparedCommand(command, player);
         }
 
         private static bool IsAllowedInPhase(AttackDefenseAuthorityPhaseV3 phase,
@@ -230,10 +227,17 @@ namespace Volleyball.Presentation
                 kind == AttackDefenseCommandKind.AttackCover || kind == AttackDefenseCommandKind.CancelUncommitted,
             AttackDefenseAuthorityPhaseV3.AttackCommitted =>
                 kind == AttackDefenseCommandKind.AttackContact || kind == AttackDefenseCommandKind.CancelUncommitted,
+            AttackDefenseAuthorityPhaseV3.AwaitingActualContact =>
+                kind == AttackDefenseCommandKind.FloorDefense ||
+                kind == AttackDefenseCommandKind.AttackCover ||
+                kind == AttackDefenseCommandKind.CancelUncommitted,
             AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive =>
-                kind == AttackDefenseCommandKind.FloorDefense || kind == AttackDefenseCommandKind.CancelUncommitted,
+                kind == AttackDefenseCommandKind.AttackCover || kind == AttackDefenseCommandKind.CancelUncommitted,
             AttackDefenseAuthorityPhaseV3.ReorganizationPlanned =>
-                kind == AttackDefenseCommandKind.Reorganization || kind == AttackDefenseCommandKind.CancelUncommitted,
+                kind == AttackDefenseCommandKind.Reorganization ||
+                kind == AttackDefenseCommandKind.FloorDefense ||
+                kind == AttackDefenseCommandKind.AttackCover ||
+                kind == AttackDefenseCommandKind.CancelUncommitted,
             _ => false
         };
 
@@ -252,10 +256,19 @@ namespace Volleyball.Presentation
                     x.Actor.Equals(command.Actor) && x.Branch == command.Branch &&
                     (x.Kind == DefenseResponsibilityKindV3.PrimaryBlock || x.Kind == DefenseResponsibilityKindV3.SupportingBlock)),
                 AttackDefenseCommandKind.FloorDefense or AttackDefenseCommandKind.AttackCover =>
-                    plan.Defense.Responsibilities.Any(x => x.Actor.Equals(command.Actor) && x.Branch == command.Branch) ||
-                    (command.Kind == AttackDefenseCommandKind.FloorDefense &&
-                     plan.SelectedAction?.ToolRecoveryEvidence != null &&
-                     plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor.Equals(command.Actor)),
+                    command.Kind == AttackDefenseCommandKind.FloorDefense
+                        ? plan.Defense.Responsibilities.Any(x =>
+                            x.Actor.Equals(command.Actor) &&
+                            x.Branch == command.Branch)
+                        : plan.AttackCoverageResponsibilities.Any(x =>
+                            x.Actor.Equals(command.Actor) &&
+                            x.Branch == command.Branch) ||
+                          plan.Defense.Responsibilities.Any(x =>
+                              x.Actor.Equals(command.Actor) &&
+                              x.Branch == command.Branch) ||
+                          (plan.SelectedAction?.ToolRecoveryEvidence != null &&
+                           plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor
+                               .Equals(command.Actor)),
                 AttackDefenseCommandKind.Reorganization => plan.ReorganizationExits.Any(x =>
                     x.Actor.Equals(command.Actor) && x.Identity == command.ReorganizationExitIdentity),
                 AttackDefenseCommandKind.CancelUncommitted => true,
@@ -282,11 +295,12 @@ namespace Volleyball.Presentation
                 throw new InvalidOperationException("Execution evidence must retain the plan envelope and trajectory identities.");
         }
 
-        private static bool IsContact(AttackDefenseCommandKind kind,
-            bool physicalToolRecoveryReceive) =>
+        private static bool IsContact(AttackDefenseCommandKind kind) =>
             kind == AttackDefenseCommandKind.AttackPreparation ||
             kind == AttackDefenseCommandKind.AttackContact ||
-            kind == AttackDefenseCommandKind.BlockContact || physicalToolRecoveryReceive;
+            kind == AttackDefenseCommandKind.BlockContact ||
+            kind == AttackDefenseCommandKind.FloorDefense ||
+            kind == AttackDefenseCommandKind.AttackCover;
 
         private static TechniqueAction ActionFor(AttackDefenseCommandKind kind) => kind switch
         {
@@ -325,24 +339,17 @@ namespace Volleyball.Presentation
                         execution.TrajectoryArtifact);
                     break;
                 case AttackDefenseCommandKind.FloorDefense:
-                    if (prepared.PhysicalToolRecoveryReceive)
-                    {
-                        prepared.Player.ScheduleContact(TechniqueAction.Receive,
-                            execution.ScheduledSimulationTime,
-                            execution.ExecutionClassification,
-                            execution.ExecutionError, execution.ContactGroupId,
-                            plannedContactCenter: execution.PhysicalContactCenter,
-                            movementTarget: ToUnity(execution.MovementTarget),
-                            movementStartSimulationTime: execution.MovementStartSimulationTime,
-                            trajectoryArtifact: execution.TrajectoryArtifact,
-                            preservePlannedContactRoot: true);
-                        break;
-                    }
-                    prepared.Player.ScheduleSupportAction(TechniqueAction.Receive,
-                        execution.ScheduledSimulationTime, ToUnity(execution.MovementTarget),
-                        execution.MovementStartSimulationTime);
-                    break;
                 case AttackDefenseCommandKind.AttackCover:
+                    prepared.Player.ScheduleContact(TechniqueAction.Receive,
+                        execution.ScheduledSimulationTime,
+                        execution.ExecutionClassification,
+                        execution.ExecutionError, execution.ContactGroupId,
+                        plannedContactCenter: execution.PhysicalContactCenter,
+                        movementTarget: ToUnity(execution.MovementTarget),
+                        movementStartSimulationTime: execution.MovementStartSimulationTime,
+                        trajectoryArtifact: execution.TrajectoryArtifact,
+                        preservePlannedContactRoot: true);
+                    break;
                 case AttackDefenseCommandKind.Reorganization:
                     prepared.Player.ScheduleSupportAction(TechniqueAction.Receive,
                         execution.ScheduledSimulationTime, ToUnity(execution.MovementTarget),
@@ -373,12 +380,10 @@ namespace Volleyball.Presentation
         private readonly struct PreparedCommand
         {
             public PreparedCommand(AttackDefenseAuthorityCommand command, PrototypePlayerAgent player,
-                bool physicalToolRecoveryReceive = false,
                 GateICommandIdentity? cancellationTarget = null)
-            { Command = command; Player = player; PhysicalToolRecoveryReceive = physicalToolRecoveryReceive; CancellationTarget = cancellationTarget; }
+            { Command = command; Player = player; CancellationTarget = cancellationTarget; }
             public AttackDefenseAuthorityCommand Command { get; }
             public PrototypePlayerAgent Player { get; }
-            public bool PhysicalToolRecoveryReceive { get; }
             public GateICommandIdentity? CancellationTarget { get; }
         }
         private readonly struct CommandActorIdentity : IEquatable<CommandActorIdentity>

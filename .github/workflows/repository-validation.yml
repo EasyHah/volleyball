@@ -1,0 +1,93 @@
+name: Repository Validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONDONTWRITEBYTECODE: "1"
+
+concurrency:
+  group: repository-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository-validation:
+    name: repository-validation (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve comparison base
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            base="$(git rev-parse HEAD)"
+          elif [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base="$PR_BASE_SHA"
+          else
+            base="$PUSH_BASE_SHA"
+          fi
+
+          if [[ -z "$base" || "$base" =~ ^0+$ ]] || ! git cat-file -e "$base^{commit}"; then
+            base="$(git rev-list --max-parents=0 HEAD | tail -n 1)"
+          fi
+
+          echo "VALIDATION_BASE_SHA=$base" >> "$GITHUB_ENV"
+
+      - name: Test repository validator
+        shell: bash
+        run: python -B -m unittest discover -s tools/tests -p "test_*.py" -v
+
+      - name: Validate Unity repository structure
+        shell: bash
+        run: python -B tools/validate_repository.py --base "$VALIDATION_BASE_SHA"
+
+      - name: Enforce frozen Match and legacy Shared V1
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --exit-code "$VALIDATION_BASE_SHA" HEAD -- \
+            Assets/Volleyball/Match \
+            Assets/Volleyball/Match.meta \
+            Assets/Volleyball/Shared/Runtime \
+            Assets/Volleyball/Shared/Runtime.meta
+
+      - name: Check changed-line whitespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check "$VALIDATION_BASE_SHA" HEAD
+
+      - name: Ensure validation is non-mutating
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$(git status --porcelain)" ]]; then
+            git status --short
+            echo "Repository validation modified tracked files." >&2
+            exit 1
+          fi

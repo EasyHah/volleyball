@@ -86,4 +86,3 @@ Gate J contracts、formal coordinator/controller 接线与 Replay 可选 record 
 兼容性单元回滚。不得只移除 receipt 清理或事件绑定而保留 recorder 映射。主要剩余
 风险是不同平台的浮点表现和长时间性能分布；稳定 hash 已使用显式字节序，但 Windows
 x64、真实图形环境与长样本 calibration 仍需 Gate K/发布验证。
-

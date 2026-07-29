@@ -1,0 +1,120 @@
+{
+  "unityEditorVersion": "6000.3.20f1",
+  "requiredCodeowners": [
+    "* @hoshisora1",
+    "/Assets/Volleyball/Match/** @EasyHah",
+    "/Assets/Volleyball/Match.meta @EasyHah",
+    "/Assets/Volleyball/Career/** @hoshisora1",
+    "/Assets/Volleyball/Shared/** @hoshisora1",
+    "/Assets/Volleyball/Bootstrap/** @hoshisora1",
+    "/Packages/** @hoshisora1",
+    "/ProjectSettings/** @hoshisora1",
+    "/.github/** @hoshisora1",
+    "/docs/** @hoshisora1",
+    "/tools/** @hoshisora1"
+  ],
+  "frozenTrees": {
+    "Assets/Volleyball/Match": "fd483948212776e2abb8b0646c77c5b3ad48fae9",
+    "Assets/Volleyball/Match.meta": "23d5e66a3e4158bd421c4d3ee573e0d4e7339627",
+    "Assets/Volleyball/Shared/Runtime": "76d70c3c229a9834471f0eed7874bda22efa7f63",
+    "Assets/Volleyball/Shared/Runtime.meta": "9085d85a3a423a82a6303df4ca3fe3819d8d30ea"
+  },
+  "requiredGitattributes": [
+    "*.cs text eol=lf",
+    "*.py text eol=lf",
+    "*.unity text eol=lf merge=unityyamlmerge",
+    "*.prefab text eol=lf merge=unityyamlmerge",
+    "*.asset text eol=lf merge=unityyamlmerge whitespace=-trailing-space",
+    "*.meta text eol=lf whitespace=-trailing-space",
+    "*.[pP][sS][dD] filter=lfs diff=lfs merge=lfs -text lockable",
+    "*.[fF][bB][xX] filter=lfs diff=lfs merge=lfs -text lockable"
+  ],
+  "assemblies": {
+    "Volleyball.Shared": {
+      "path": "Assets/Volleyball/Shared/Runtime/Volleyball.Shared.asmdef",
+      "references": [],
+      "noEngineReferences": true
+    },
+    "Volleyball.Match.Domain": {
+      "path": "Assets/Volleyball/Match/Runtime/Domain/Volleyball.Match.Domain.asmdef",
+      "references": ["Volleyball.Shared"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Match.AI": {
+      "path": "Assets/Volleyball/Match/Runtime/AI/Volleyball.Match.AI.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Match.Domain"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Match.Presentation": {
+      "path": "Assets/Volleyball/Match/Runtime/Presentation/Volleyball.Match.Presentation.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Match.Domain", "Volleyball.Match.AI"]
+    },
+    "Volleyball.Match.AI.Editor": {
+      "path": "Assets/Volleyball/Match/Editor/AI/Volleyball.Match.AI.Editor.asmdef",
+      "references": ["Volleyball.Match.Domain", "Volleyball.Match.AI", "Unity.Newtonsoft.Json"],
+      "includePlatforms": ["Editor"]
+    },
+    "Volleyball.Match.EditModeTests": {
+      "path": "Assets/Volleyball/Match/Tests/EditMode/Volleyball.Match.EditModeTests.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Match.Domain", "Volleyball.Match.AI", "Volleyball.Match.Presentation", "Volleyball.Match.AI.Editor", "Newtonsoft.Json"],
+      "precompiledReferences": ["Newtonsoft.Json.dll"],
+      "includePlatforms": ["Editor"],
+      "optionalUnityReferences": ["TestAssemblies"]
+    },
+    "Volleyball.Match.PlayModeTests": {
+      "path": "Assets/Volleyball/Match/Tests/PlayMode/Volleyball.Match.PlayModeTests.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Match.Domain", "Volleyball.Match.AI", "Volleyball.Match.Presentation"],
+      "optionalUnityReferences": ["TestAssemblies"]
+    },
+    "Volleyball.Career.Domain": {
+      "path": "Assets/Volleyball/Career/Runtime/Domain/Volleyball.Career.Domain.asmdef",
+      "references": ["Volleyball.Shared"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Career.Application": {
+      "path": "Assets/Volleyball/Career/Runtime/Application/Volleyball.Career.Application.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Career.MatchIntegration": {
+      "path": "Assets/Volleyball/Career/Runtime/MatchIntegration/Volleyball.Career.MatchIntegration.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Career.Persistence": {
+      "path": "Assets/Volleyball/Career/Runtime/Persistence/Volleyball.Career.Persistence.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application"],
+      "noEngineReferences": true
+    },
+    "Volleyball.Career.Presentation": {
+      "path": "Assets/Volleyball/Career/Runtime/Presentation/Volleyball.Career.Presentation.asmdef",
+      "references": ["Volleyball.Career.Domain", "Volleyball.Career.Application"]
+    },
+    "Volleyball.Career.EditModeTests": {
+      "path": "Assets/Volleyball/Career/Tests/EditMode/Volleyball.Career.EditModeTests.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Persistence", "Volleyball.Career.Presentation", "Volleyball.Match.Presentation", "Volleyball.Bootstrap", "Volleyball.Bootstrap.Editor", "Unity.InputSystem"],
+      "includePlatforms": ["Editor"],
+      "optionalUnityReferences": ["TestAssemblies"]
+    },
+    "Volleyball.Bootstrap": {
+      "path": "Assets/Volleyball/Bootstrap/Runtime/Volleyball.Bootstrap.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Match.Presentation", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Presentation", "Unity.InputSystem"]
+    },
+    "Volleyball.Bootstrap.Editor": {
+      "path": "Assets/Volleyball/Bootstrap/Editor/Volleyball.Bootstrap.Editor.asmdef",
+      "references": ["Volleyball.Bootstrap", "Volleyball.Career.Presentation", "Unity.InputSystem"],
+      "includePlatforms": ["Editor"]
+    },
+    "Volleyball.Career.PlayModeTests": {
+      "path": "Assets/Volleyball/Career/Tests/PlayMode/Volleyball.Career.PlayModeTests.asmdef",
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Presentation", "Volleyball.Bootstrap", "Unity.InputSystem"],
+      "optionalUnityReferences": ["TestAssemblies"]
+    },
+    "Volleyball.Shared.EditModeTests": {
+      "path": "Assets/Volleyball/Shared/Tests/EditMode/Volleyball.Shared.EditModeTests.asmdef",
+      "references": ["Volleyball.Shared"],
+      "includePlatforms": ["Editor"],
+      "optionalUnityReferences": ["TestAssemblies"]
+    }
+  }
+}

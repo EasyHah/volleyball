@@ -1,0 +1,12 @@
+{
+  "name": "Volleyball.Career.PlayModeTests",
+  "references": [
+    "Volleyball.Shared",
+    "Volleyball.Career.Domain",
+    "Volleyball.Career.Application",
+    "Volleyball.Career.Presentation",
+    "Volleyball.Bootstrap",
+    "Unity.InputSystem"
+  ],
+  "optionalUnityReferences": ["TestAssemblies"]
+}

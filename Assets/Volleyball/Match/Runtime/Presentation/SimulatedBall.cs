@@ -17,7 +17,8 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
             ContactResponseParameters responseParameters,
-            bool useExactTargetVelocity = false)
+            bool useExactTargetVelocity = false,
+            int stableSurfaceIndex = 0)
             : this(
                 surface,
                 action,
@@ -26,7 +27,8 @@ namespace Volleyball.Presentation
                 targetVelocity,
                 strikeDirection,
                 responseParameters,
-                useExactTargetVelocity)
+                useExactTargetVelocity,
+                stableSurfaceIndex)
         {
         }
 
@@ -38,7 +40,8 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
             ContactResponseParameters responseParameters,
-            bool useExactTargetVelocity = false)
+            bool useExactTargetVelocity = false,
+            int stableSurfaceIndex = 0)
         {
             ValidateExactTargetVelocity(action, useExactTargetVelocity);
             Surface = surface;
@@ -51,6 +54,7 @@ namespace Volleyball.Presentation
             StrikeDirection = strikeDirection;
             ResponseParameters = responseParameters;
             UseExactTargetVelocity = useExactTargetVelocity;
+            StableSurfaceIndex = stableSurfaceIndex;
         }
 
         public BallContactCandidate(
@@ -60,7 +64,8 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
             ContactResponseParameters responseParameters,
-            bool useExactTargetVelocity = false)
+            bool useExactTargetVelocity = false,
+            int stableSurfaceIndex = 0)
             : this(
                 capsule,
                 action,
@@ -69,7 +74,8 @@ namespace Volleyball.Presentation
                 targetVelocity,
                 strikeDirection,
                 responseParameters,
-                useExactTargetVelocity)
+                useExactTargetVelocity,
+                stableSurfaceIndex)
         {
         }
 
@@ -81,7 +87,8 @@ namespace Volleyball.Presentation
             SimVector3 targetVelocity,
             SimVector3 strikeDirection,
             ContactResponseParameters responseParameters,
-            bool useExactTargetVelocity = false)
+            bool useExactTargetVelocity = false,
+            int stableSurfaceIndex = 0)
         {
             ValidateExactTargetVelocity(action, useExactTargetVelocity);
             Surface = default;
@@ -94,6 +101,7 @@ namespace Volleyball.Presentation
             StrikeDirection = strikeDirection;
             ResponseParameters = responseParameters;
             UseExactTargetVelocity = useExactTargetVelocity;
+            StableSurfaceIndex = stableSurfaceIndex;
         }
 
         public ContactSurfaceSnapshot Surface { get; }
@@ -118,6 +126,8 @@ namespace Volleyball.Presentation
         // contact/timing writer; this prevents the generic control blend from
         // silently changing the already-authoritative V4 sample velocity.
         public bool UseExactTargetVelocity { get; }
+
+        public int StableSurfaceIndex { get; }
 
         private static void ValidateExactTargetVelocity(
             TechniqueAction action,
@@ -560,7 +570,7 @@ namespace Volleyball.Presentation
             earliestHit = default;
             earliestResolution = default;
             earliestContactSimulationTime = 0f;
-            var found = false;
+            var eligible = new List<PlayerContactHit>(_contactCandidates.Count);
             foreach (var candidate in _contactCandidates)
             {
                 SweptBallHit hit;
@@ -583,20 +593,154 @@ namespace Volleyball.Presentation
                 var contactSimulationTime = stepStartTime + (deltaSeconds * hit.TimeFraction);
                 var resolution = ContactCandidateResolver?.Invoke(candidate, hit, contactSimulationTime) ??
                                  BallContactResolution.Accept();
-                if (resolution.Disposition == BallContactDisposition.Ignore ||
-                    found && hit.TimeFraction >= earliestHit.TimeFraction)
+                if (resolution.Disposition == BallContactDisposition.Ignore)
                 {
                     continue;
                 }
 
-                found = true;
-                earliestCandidate = candidate;
-                earliestHit = hit;
-                earliestResolution = resolution;
-                earliestContactSimulationTime = contactSimulationTime;
+                eligible.Add(new PlayerContactHit(candidate, hit, resolution,
+                    contactSimulationTime));
             }
 
-            return found;
+            if (eligible.Count == 0)
+            {
+                return false;
+            }
+
+            eligible.Sort(PlayerContactHitComparer.Instance);
+            var winner = eligible[0];
+            earliestCandidate = winner.Candidate;
+            earliestHit = winner.Hit;
+            earliestResolution = winner.Resolution;
+            earliestContactSimulationTime = winner.ContactSimulationTime;
+            return true;
+        }
+
+        private readonly struct PlayerContactHit
+        {
+            public PlayerContactHit(
+                BallContactCandidate candidate,
+                SweptBallHit hit,
+                BallContactResolution resolution,
+                float contactSimulationTime)
+            {
+                Candidate = candidate;
+                Hit = hit;
+                Resolution = resolution;
+                ContactSimulationTime = contactSimulationTime;
+            }
+
+            public BallContactCandidate Candidate { get; }
+            public SweptBallHit Hit { get; }
+            public BallContactResolution Resolution { get; }
+            public float ContactSimulationTime { get; }
+        }
+
+        private sealed class PlayerContactHitComparer : IComparer<PlayerContactHit>
+        {
+            public static readonly PlayerContactHitComparer Instance =
+                new PlayerContactHitComparer();
+
+            public int Compare(PlayerContactHit left, PlayerContactHit right)
+            {
+                var result = left.Hit.TimeFraction.CompareTo(right.Hit.TimeFraction);
+                if (result != 0) return result;
+                result = left.Hit.ContactGroupId.CompareTo(right.Hit.ContactGroupId);
+                if (result != 0) return result;
+                result = ActionPriority(left.Candidate.Action).CompareTo(
+                    ActionPriority(right.Candidate.Action));
+                if (result != 0) return result;
+                result = CompareActor(left.Candidate.Actor, right.Candidate.Actor);
+                if (result != 0) return result;
+                result = left.Candidate.StableSurfaceIndex.CompareTo(
+                    right.Candidate.StableSurfaceIndex);
+                if (result != 0) return result;
+                return ComparePhysicalEvent(left.Candidate, right.Candidate);
+            }
+
+            private static int ActionPriority(TechniqueAction action) => action switch
+            {
+                TechniqueAction.Block => 0,
+                TechniqueAction.Receive => 1,
+                TechniqueAction.Set => 2,
+                TechniqueAction.Attack => 3,
+                _ => 4
+            };
+
+            private static int CompareActor(
+                PlayerId? left,
+                PlayerId? right)
+            {
+                if (!left.HasValue) return right.HasValue ? -1 : 0;
+                if (!right.HasValue) return 1;
+                var result = left.Value.Team.CompareTo(right.Value.Team);
+                if (result != 0) return result;
+                result = left.Value.RosterSlot.CompareTo(right.Value.RosterSlot);
+                return result != 0
+                    ? result
+                    : left.Value.Role.CompareTo(right.Value.Role);
+            }
+
+            // A fully equal scheduling key represents the same physical event.
+            // Canonicalize equivalent snapshots so List.Sort never falls back to
+            // contact-source registration order.  Distinct geometry remains
+            // ordered by its immutable snapshot values.
+            private static int ComparePhysicalEvent(
+                BallContactCandidate left,
+                BallContactCandidate right)
+            {
+                var result = left.IsCapsule.CompareTo(right.IsCapsule);
+                if (result != 0) return result;
+                if (left.IsCapsule)
+                {
+                    result = CompareVector(left.Capsule.Previous.Start,
+                        right.Capsule.Previous.Start);
+                    if (result != 0) return result;
+                    result = CompareVector(left.Capsule.Previous.End,
+                        right.Capsule.Previous.End);
+                    if (result != 0) return result;
+                    return left.Capsule.Previous.Radius.CompareTo(
+                        right.Capsule.Previous.Radius);
+                }
+
+                result = CompareVector(left.Surface.Previous.Origin,
+                    right.Surface.Previous.Origin);
+                if (result != 0) return result;
+                result = CompareVector(left.Surface.Previous.Normal,
+                    right.Surface.Previous.Normal);
+                if (result != 0) return result;
+                result = left.Surface.Previous.Width.CompareTo(
+                    right.Surface.Previous.Width);
+                if (result != 0) return result;
+                result = left.Surface.Previous.Height.CompareTo(
+                    right.Surface.Previous.Height);
+                if (result != 0) return result;
+                result = CompareVector(left.TargetVelocity, right.TargetVelocity);
+                if (result != 0) return result;
+                result = CompareVector(left.StrikeDirection, right.StrikeDirection);
+                if (result != 0) return result;
+                result = left.PlayerTechnique.CompareTo(right.PlayerTechnique);
+                if (result != 0) return result;
+                result = left.ResponseParameters.Restitution.CompareTo(
+                    right.ResponseParameters.Restitution);
+                if (result != 0) return result;
+                result = left.ResponseParameters.VelocityTransfer.CompareTo(
+                    right.ResponseParameters.VelocityTransfer);
+                if (result != 0) return result;
+                result = left.ResponseParameters.TangentialFriction.CompareTo(
+                    right.ResponseParameters.TangentialFriction);
+                if (result != 0) return result;
+                return left.ResponseParameters.CooldownSeconds.CompareTo(
+                    right.ResponseParameters.CooldownSeconds);
+            }
+
+            private static int CompareVector(SimVector3 left, SimVector3 right)
+            {
+                var result = left.X.CompareTo(right.X);
+                if (result != 0) return result;
+                result = left.Y.CompareTo(right.Y);
+                return result != 0 ? result : left.Z.CompareTo(right.Z);
+            }
         }
 
         private void UpdateMaximumSpeed()

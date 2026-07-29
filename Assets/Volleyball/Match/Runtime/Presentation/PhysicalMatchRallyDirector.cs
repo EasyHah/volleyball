@@ -17,6 +17,19 @@ using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation
 {
+    public enum PostAttackContinuationStateV4
+    {
+        None,
+        AwaitingAttackCrossing,
+        AwaitingBlockOutcome,
+        PendingSideResolution,
+        DefendingSideFloorDefense,
+        AttackingSideCoverage,
+        BlockingSideRecovery,
+        ResolvedByContact,
+        ResolvedByGround
+    }
+
     public sealed class ReplayOrganizationDecisionDiagnostic
     {
         public ReplayOrganizationDecisionDiagnostic(
@@ -164,6 +177,48 @@ namespace Volleyball.Presentation
         public AttackDefenseAuthorityReceipt AttackDefenseAuthority { get; }
     }
 
+    public sealed class ReplayDefenseAttemptEvent
+    {
+        public ReplayDefenseAttemptEvent(
+            string kind, string attemptIdentity,
+            AttackDefenseAuthorityReceipt receipt, TeamId team,
+            float windowStartSimulationTime, float windowEndSimulationTime,
+            float simulationTimeSeconds, SimVector3 ballPosition,
+            SimVector3 ballVelocity,
+            PostAttackContinuationStateV4 continuationState, string reason,
+            int? winningContactGroupId = null,
+            StablePlayerId? winningActor = null)
+        {
+            Kind = kind;
+            AttemptIdentity = attemptIdentity;
+            Receipt = receipt ?? throw new ArgumentNullException(nameof(receipt));
+            Team = team;
+            WindowStartSimulationTime = windowStartSimulationTime;
+            WindowEndSimulationTime = windowEndSimulationTime;
+            SimulationTimeSeconds = simulationTimeSeconds;
+            BallPosition = ballPosition;
+            BallVelocity = ballVelocity;
+            ContinuationState = continuationState;
+            Reason = reason ?? string.Empty;
+            WinningContactGroupId = winningContactGroupId;
+            WinningActor = winningActor;
+        }
+
+        public string Kind { get; }
+        public string AttemptIdentity { get; }
+        public AttackDefenseAuthorityReceipt Receipt { get; }
+        public TeamId Team { get; }
+        public float WindowStartSimulationTime { get; }
+        public float WindowEndSimulationTime { get; }
+        public float SimulationTimeSeconds { get; }
+        public SimVector3 BallPosition { get; }
+        public SimVector3 BallVelocity { get; }
+        public PostAttackContinuationStateV4 ContinuationState { get; }
+        public string Reason { get; }
+        public int? WinningContactGroupId { get; }
+        public StablePlayerId? WinningActor { get; }
+    }
+
     public sealed class ReplaySetChainEvent
     {
         public ReplaySetChainEvent(
@@ -240,10 +295,18 @@ namespace Volleyball.Presentation
         private TeamRallyDecision _plannedAttackDecision;
         private PlayerId? _scheduledPrimaryActor;
         private readonly HashSet<PlayerId> _scheduledBlockers = new HashSet<PlayerId>();
+        private readonly List<AttackDefenseAuthorityReceipt> _pendingGateIReceiveWindows =
+            new List<AttackDefenseAuthorityReceipt>();
+        private readonly List<AttackDefenseAuthorityReceipt> _activePostAttackReceives =
+            new List<AttackDefenseAuthorityReceipt>();
         private PlayerId? _scheduledBlockPrimary;
         private float _committedGateIBlockTime = -1f;
         private bool _awaitingPostBlockCrossing;
         private TeamId? _postBlockerTeam;
+        private StablePlayerId? _postBlockerActor;
+        private SimVector3 _postBlockImpactCenter;
+        private SimVector3 _postBlockOutgoing;
+        private PostAttackContinuationStateV4 _postAttackContinuationState;
         private TeamId? _pendingCrossingTeam;
         private float _expectedContactTime;
         private float _scheduledSetFlightSeconds;
@@ -372,6 +435,9 @@ namespace Volleyball.Presentation
         public int PrematurePostBlockEmergencyWindows { get; private set; }
 
         public int PostBlockGroundPoints { get; private set; }
+
+        public PostAttackContinuationStateV4 PostAttackContinuationState =>
+            _postAttackContinuationState;
 
         public int ScheduledMultiBlockUnits { get; private set; }
 
@@ -527,6 +593,8 @@ namespace Volleyball.Presentation
         public event Action<ReplayDecisionEvent> ReplayDecisionPlanned;
 
         public event Action<ReplayContactEvent> ReplayContactAccepted;
+
+        public event Action<ReplayDefenseAttemptEvent> ReplayDefenseAttemptRecorded;
 
         public event Action<RallyPlanV3> ReplayShadowPlanRecorded;
 
@@ -953,12 +1021,21 @@ namespace Volleyball.Presentation
                 var receivingTeam = _pendingCrossingTeam.Value;
                 _pendingCrossingTeam = null;
                 DisablePhysicalBlockWindows();
-                BeginPossession(receivingTeam, ReceiveLeadTime());
+                if (!OpenPendingGateIReceiveWindow(receivingTeam))
+                {
+                    BeginPossession(receivingTeam, ReceiveLeadTime());
+                }
                 return;
             }
 
             if (_contactDeadlineActive && _ball.SimulationTime > _expectedContactTime + 0.35f)
             {
+                foreach (var receipt in _activePostAttackReceives)
+                {
+                    RecordDefenseAttempt("DefenseAttemptExpired", receipt,
+                        PlayerForStableId(receipt.Actor).Id.Team,
+                        "ContactTimeout");
+                }
                 ScheduleRestart("miss (contact timeout)");
             }
 
@@ -1059,9 +1136,15 @@ namespace Volleyball.Presentation
             }
             _scheduledPrimaryActor = null;
             _scheduledBlockers.Clear();
+            _pendingGateIReceiveWindows.Clear();
+            _activePostAttackReceives.Clear();
             _scheduledBlockPrimary = null;
             _awaitingPostBlockCrossing = false;
             _postBlockerTeam = null;
+            _postBlockerActor = null;
+            _postBlockImpactCenter = SimVector3.Zero;
+            _postBlockOutgoing = SimVector3.Zero;
+            _postAttackContinuationState = PostAttackContinuationStateV4.None;
             _pendingCrossingTeam = null;
             _contactDeadlineActive = false;
             _lastTouchWasBackSetAttack = false;
@@ -2122,15 +2205,11 @@ namespace Volleyball.Presentation
                 ? AttackDefenseCommandKind.AttackContact
                 : action == TechniqueAction.Block
                     ? AttackDefenseCommandKind.BlockContact
-                    : action == TechniqueAction.Receive &&
-                      _formalAuthority.AttackCoordinator.State.Phase ==
-                          AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
-                        ? AttackDefenseCommandKind.FloorDefense
-                    : (AttackDefenseCommandKind?)null;
-            // FloorDefense/AttackCover/Reorganization normally commit support
-            // movement only. The ToolRecoveryAwaitingReceive exception is the
-            // published immutable physical Receive command and must be consumed
-            // exactly as scheduled.
+                    : action == TechniqueAction.Receive
+                        ? _activePostAttackReceives.FirstOrDefault(receipt =>
+                            receipt.Actor.Equals(actor))?.Kind ??
+                          AttackDefenseCommandKind.AttackCover
+                        : (AttackDefenseCommandKind?)null;
             return kind.HasValue
                 ? TakeGateIContactReceipt(actor, kind.Value)
                 : null;
@@ -2205,7 +2284,7 @@ namespace Volleyball.Presentation
             var toolRecoveryReceive = batch.Evidence.Phase ==
                 AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive
                 ? batch.Commands.SingleOrDefault(command =>
-                    command.Kind == AttackDefenseCommandKind.FloorDefense)
+                    command.Kind == AttackDefenseCommandKind.AttackCover)
                 : null;
             if (toolRecoveryReceive != null)
             {
@@ -2222,6 +2301,26 @@ namespace Volleyball.Presentation
                     _expectedContactTime + ContactWindowTail,
                     new[] { actor }));
                 _contactDeadlineActive = true;
+            }
+            if (batch.Evidence.Phase == AttackDefenseAuthorityPhaseV3.DefenseCommitted)
+            {
+                _pendingGateIReceiveWindows.Clear();
+                _pendingGateIReceiveWindows.AddRange(batch.Commands
+                    .Where(command =>
+                        command.Kind == AttackDefenseCommandKind.FloorDefense ||
+                        command.Kind == AttackDefenseCommandKind.AttackCover)
+                    .Select(command => new AttackDefenseAuthorityReceipt(
+                        command.PlanRevision,
+                        command.SourceSequence,
+                        batch.Evidence.Phase,
+                        command.Kind,
+                        command.Actor,
+                        command.Branch,
+                        command.Execution.ExecutionClassification,
+                        command.Execution.TrajectoryArtifact,
+                        batch.Evidence,
+                        execution: command.Execution,
+                        perception: batch.Evidence.Perception)));
             }
             var blockCount = batch.Commands.Count(command =>
                 command.Kind == AttackDefenseCommandKind.BlockContact);
@@ -2270,6 +2369,120 @@ namespace Volleyball.Presentation
                 _committedGateIBlockTime + ContactWindowTail,
                 blockers));
             _contactDeadlineActive = false;
+        }
+
+        private bool OpenPendingGateIReceiveWindow(TeamId receivingTeam)
+        {
+            var receives = _pendingGateIReceiveWindows
+                .Where(receipt =>
+                    PlayerForStableId(receipt.Actor).Id.Team == receivingTeam)
+                .OrderBy(receipt => receipt.Execution.ScheduledSimulationTime)
+                .ThenBy(receipt => receipt.Execution.ContactGroupId)
+                .ThenBy(receipt => receipt.Actor.Value, StringComparer.Ordinal)
+                .ToArray();
+            _pendingGateIReceiveWindows.Clear();
+            if (receives.Length == 0)
+            {
+                return false;
+            }
+
+            var execution = receives[0].Execution;
+            if (_ball.SimulationTime >
+                execution.ScheduledSimulationTime + ContactWindowTail)
+            {
+                // A predicted defense window cannot be reopened after the ball
+                // has crossed. Bind a fresh physical receive to the observed
+                // ball state and consume the pre-crossing receipt it replaces.
+                var receipt = receives[0];
+                TakeGateIContactReceipt(receipt.Actor, receipt.Kind);
+                return ActivatePostBlockReceive(
+                    receivingTeam,
+                    receipt.Kind,
+                    receipt.Actor,
+                    _ball.State.Position,
+                    _ball.State.Velocity);
+            }
+
+            var actors = receives.Select(receipt =>
+                PlayerForStableId(receipt.Actor).Id).ToArray();
+            _activePostAttackReceives.Clear();
+            _activePostAttackReceives.AddRange(receives);
+            _scheduledDecision = null;
+            _scheduledPrimaryActor = actors[0];
+            _expectedContactTime = execution.ScheduledSimulationTime;
+            _touchState.OpenWindow(new RallyContactWindow(
+                receivingTeam,
+                TechniqueAction.Receive,
+                _expectedContactTime - ContactWindowLead,
+                _expectedContactTime + ContactWindowTail,
+                actors));
+            _contactDeadlineActive = true;
+            RecordDefenseAttempt("DefenseAttemptOpened", receives[0],
+                receivingTeam, "CommittedWindow");
+            return true;
+        }
+
+        private bool ActivatePostBlockReceive(
+            TeamId receivingTeam,
+            AttackDefenseCommandKind kind,
+            StablePlayerId actor,
+            SimVector3 impactCenter,
+            SimVector3 outgoing)
+        {
+            var execution = CreateActualReboundReceiveExecution(
+                actor, kind, impactCenter, outgoing);
+            if (execution == null)
+                return false;
+
+            var source = _formalAuthority.PeekNextSourceSequence();
+            _formalAuthority.AttackCoordinator.PublishActualContinuation(
+                source, kind, actor, execution);
+            var receipt = TakeGateIContactReceipt(actor, kind);
+            if (receipt == null)
+                throw new InvalidOperationException(
+                    "Actual continuation must publish an event-owned receipt.");
+            _formalAuthority.StoreGateIContact(GateIReceiptKey(actor, kind), receipt);
+
+            _activePostAttackReceives.Clear();
+            _activePostAttackReceives.Add(receipt);
+            var runtimeActor = PlayerForStableId(actor).Id;
+            _scheduledDecision = null;
+            _scheduledPrimaryActor = runtimeActor;
+            _expectedContactTime = execution.ScheduledSimulationTime;
+            _touchState.OpenWindow(new RallyContactWindow(
+                receivingTeam,
+                TechniqueAction.Receive,
+                _expectedContactTime - ContactWindowLead,
+                _expectedContactTime + ContactWindowTail,
+                new[] { runtimeActor }));
+            _contactDeadlineActive = true;
+            RecordDefenseAttempt("DefenseAttemptOpened", receipt,
+                receivingTeam, "ActualContinuation");
+            return true;
+        }
+
+        private void RecordDefenseAttempt(
+            string kind, AttackDefenseAuthorityReceipt receipt, TeamId team,
+            string reason, int? winningContactGroupId = null,
+            StablePlayerId? winningActor = null)
+        {
+            if (receipt == null || _ball == null)
+            {
+                return;
+            }
+
+            var start = _expectedContactTime - ContactWindowLead;
+            var end = _expectedContactTime + ContactWindowTail;
+            var contactGroup = receipt.Execution?.ContactGroupId ??
+                winningContactGroupId ?? -1;
+            var identity = receipt.PlanRevision + ":" +
+                receipt.SourceSequence + ":" + receipt.Kind + ":" +
+                receipt.Actor.Value + ":" + contactGroup;
+            NotifyReplay(ReplayDefenseAttemptRecorded,
+                new ReplayDefenseAttemptEvent(kind, identity, receipt, team,
+                    start, end, _ball.SimulationTime, _ball.State.Position,
+                    _ball.State.Velocity, _postAttackContinuationState, reason,
+                    winningContactGroupId, winningActor));
         }
 
         private static string GateHReceiptKey(
@@ -2580,6 +2793,13 @@ namespace Volleyball.Presentation
 
             IllegalContactFaults++;
             var actor = rejected.Candidate.Actor.Value;
+            var receipt = _activePostAttackReceives.FirstOrDefault(value =>
+                value.Actor.Equals(StableId(actor)));
+            if (receipt != null)
+            {
+                RecordDefenseAttempt("DefenseContactRejected", receipt,
+                    actor.Team, rejected.Reason);
+            }
             var winner = Opponent(ToSide(actor.Team));
             Debug.Log(
                 $"[{_configuration.LogTag}] fault team={actor.Team} actor={actor.Role} " +
@@ -2702,6 +2922,12 @@ namespace Volleyball.Presentation
                 ? TakeGateIContactReceiptForAction(
                     StableId(actorId), contact.Candidate.Action)
                 : null;
+            if (contact.Candidate.Action == TechniqueAction.Receive &&
+                gateIContactReceipt != null)
+            {
+                RecordDefenseAttempt("DefenseCandidateSampled",
+                    gateIContactReceipt, actorId.Team, "SweptGeometryHit");
+            }
             // A Gate I attack command is a one-shot physical ticket.  The
             // contact timeline can outlive its collision after an opposing
             // block, so consume it here before the rebound returns to the same
@@ -2710,6 +2936,8 @@ namespace Volleyball.Presentation
                 contact.Candidate.Action == TechniqueAction.Attack)
             {
                 actor.CancelScheduledContact();
+                _postAttackContinuationState =
+                    PostAttackContinuationStateV4.AwaitingAttackCrossing;
             }
             AttackDefenseCommandExecutionV4 toolRecoveryReceiveExecution = null;
             if (gateIContactReceipt == null && GateIAuthorityEnabled &&
@@ -2757,7 +2985,7 @@ namespace Volleyball.Presentation
             }
             var completedToolRecoveryReceive = GateIAuthorityEnabled &&
                 contact.Candidate.Action == TechniqueAction.Receive &&
-                gateIContactReceipt?.Kind == AttackDefenseCommandKind.FloorDefense &&
+                gateIContactReceipt?.Kind == AttackDefenseCommandKind.AttackCover &&
                 _formalAuthority.AttackCoordinator.State.Phase ==
                     AttackDefenseAuthorityPhaseV3.ReorganizationPlanned &&
                 _formalAuthority.AttackCoordinator.State.Plan?.SelectedAction?.ToolRecoveryEvidence != null;
@@ -2771,8 +2999,14 @@ namespace Volleyball.Presentation
             switch (contact.Candidate.Action)
             {
                 case TechniqueAction.Receive:
+                    if (_activePostAttackReceives.Count > 0)
+                    {
+                        _postAttackContinuationState =
+                            PostAttackContinuationStateV4.ResolvedByContact;
+                        _activePostAttackReceives.Clear();
+                    }
                     var acceptedToolRecoveryReceive = GateIAuthorityEnabled &&
-                        gateIContactReceipt?.Kind == AttackDefenseCommandKind.FloorDefense &&
+                        gateIContactReceipt?.Kind == AttackDefenseCommandKind.AttackCover &&
                         gateIContactReceipt.Evidence.Plan?.SelectedAction?.ToolRecoveryEvidence != null;
                     if (_controlledHandlingActive)
                     {
@@ -2912,6 +3146,13 @@ namespace Volleyball.Presentation
                     gateHAuthorityReceipt,
                     gateISetIntentReceipt,
                     gateIContactReceipt));
+            if (contact.Candidate.Action == TechniqueAction.Receive &&
+                gateIContactReceipt != null)
+            {
+                RecordDefenseAttempt("DefenseContactAccepted",
+                    gateIContactReceipt, actorId.Team, "Accepted",
+                    contact.Hit.ContactGroupId, StableId(actorId));
+            }
         }
 
         private void AdvanceGateHAfterReceive(
@@ -2986,7 +3227,7 @@ namespace Volleyball.Presentation
                 : action == TechniqueAction.Block
                     ? AttackDefenseCommandKind.BlockContact
                     : action == TechniqueAction.Receive
-                        ? AttackDefenseCommandKind.FloorDefense
+                        ? receipt?.Kind
                         : (AttackDefenseCommandKind?)null;
             if (!kind.HasValue)
                 return;
@@ -3032,13 +3273,33 @@ namespace Volleyball.Presentation
             TeamSide attackingSide) => attackingSide == TeamSide.Home
             ? outgoing.Z < 0f : outgoing.Z > 0f;
 
+        private static bool ReturnsToTeam(SimVector3 outgoing, TeamId team) =>
+            team == TeamId.Blue ? outgoing.Z < 0f : outgoing.Z > 0f;
+
         private AttackDefenseCommandExecutionV4 CreateToolRecoveryReceiveExecution(
             SimVector3 actualImpactCenter, SimVector3 actualBlockOutgoing)
         {
             var state = _formalAuthority.AttackCoordinator.State;
             var recovery = state.Plan?.SelectedAction?.ToolRecoveryEvidence
                 ?? throw new InvalidOperationException("Tool recovery execution requires declared evidence.");
-            var receiver = PlayerForStableId(recovery.RecoveryActor);
+            return CreateActualReboundReceiveExecution(
+                recovery.RecoveryActor,
+                AttackDefenseCommandKind.AttackCover,
+                actualImpactCenter,
+                actualBlockOutgoing);
+        }
+
+        private AttackDefenseCommandExecutionV4 CreateActualReboundReceiveExecution(
+            StablePlayerId receiverId,
+            AttackDefenseCommandKind kind,
+            SimVector3 actualImpactCenter,
+            SimVector3 actualBlockOutgoing)
+        {
+            var state = _formalAuthority.AttackCoordinator.State;
+            if (kind != AttackDefenseCommandKind.FloorDefense &&
+                kind != AttackDefenseCommandKind.AttackCover)
+                throw new ArgumentOutOfRangeException(nameof(kind));
+            var receiver = PlayerForStableId(receiverId);
             // This is deliberately sampled from the accepted block's live ball
             // state, before the coordinator publishes the recovery command.
             // It is not a later net-crossing rewrite of an already committed
@@ -3110,8 +3371,9 @@ namespace Volleyball.Presentation
             var target = new SimVector3(setterZone.X, 2.5f, setterZone.Z);
             var outgoing = ReturnVelocitySolver.Solve(contactCenter, target, .60f,
                 SimulatedBall.DefaultFixedStep, SimulationParameters).InitialVelocity;
-            var identity = "gate-i-tool-recovery:" + state.Revision + ":" +
-                recovery.RecoveryActor.Value + ":" + _formalAuthority.CurrentSourceSequence;
+            var identity = "gate-i-rebound:" + state.Revision + ":" +
+                (int)kind + ":" + receiverId.Value + ":" +
+                _formalAuthority.CurrentSourceSequence;
             var envelope = PlanExecutionEnvelopeV4(receiver.Ability.Derived,
                 new ExecutionIntentV4(identity, ExecutionCandidateCategoryV4.Receive,
                     target, outgoing, .5f), identity + ":sample",
@@ -3122,7 +3384,7 @@ namespace Volleyball.Presentation
             var classification = ExecuteExecutionSampleV4(envelope, sample);
             if (classification.Kind is ExecutionSampleClassificationKindV4.UnexpectedExecutionSample or
                 ExecutionSampleClassificationKindV4.EnvelopeExceeded)
-                throw new InvalidOperationException("Actual tool recovery Receive must be executable.");
+                throw new InvalidOperationException("Actual rebound Receive must be executable.");
             var stateVersion = (long)(uint)BitConverter.ToInt32(
                 BitConverter.GetBytes(_ball.SimulationTime), 0);
             var trajectory = PredictSharedGate5TrajectoryV4(
@@ -3139,7 +3401,8 @@ namespace Volleyball.Presentation
             // Scheduling the ball's ground projection makes the player stop a
             // palm-width away because a Receive surface is offset from its root.
             var root = recoveryRootTarget;
-            var group = checked(1000000000 + ((int)state.Revision * 16) + 3);
+            var group = checked(1000000000 + ((int)state.Revision * 16) +
+                (kind == AttackDefenseCommandKind.AttackCover ? 4 : 3));
             return new AttackDefenseCommandExecutionV4(_ball.SimulationTime + recoveryLead,
                 _ball.SimulationTime, default, group, classification, trajectory,
                 ToSimulation(root), physicalContactCenter: contactCenter);
@@ -3156,7 +3419,7 @@ namespace Volleyball.Presentation
                 throw new InvalidOperationException("Tool recovery Receive requires the declared actual saver evidence.");
             var source = _formalAuthority.PeekNextSourceSequence();
             return new AttackDefenseAuthorityReceipt(state.Revision, source, state.Phase,
-                AttackDefenseCommandKind.FloorDefense, actor, RallyPlanBranchV3.Primary,
+                AttackDefenseCommandKind.AttackCover, actor, RallyPlanBranchV3.Primary,
                 classification, trajectory, new AttackDefenseAuthorityEvidenceV3(
                     state.Revision, source, state.Phase, state.Plan,
                     state.CoverageDecision,
@@ -4351,6 +4614,35 @@ namespace Volleyball.Presentation
 
             _awaitingPostBlockCrossing = true;
             _postBlockerTeam = blocker.Team;
+            _postBlockerActor = StableId(blocker);
+            _postBlockImpactCenter = contact.Hit.ImpactCenter;
+            _postBlockOutgoing = contact.TechniqueResponse.FinalOutgoing;
+            _postAttackContinuationState =
+                PostAttackContinuationStateV4.AwaitingBlockOutcome;
+            if (GateIAuthorityEnabled && _postBlockerActor.HasValue &&
+                ReturnsToTeam(_postBlockOutgoing, blocker.Team))
+            {
+                _awaitingPostBlockCrossing = false;
+                _postBlockerTeam = null;
+                if (ActivatePostBlockReceive(
+                    blocker.Team,
+                    AttackDefenseCommandKind.FloorDefense,
+                    _postBlockerActor.Value,
+                    _postBlockImpactCenter,
+                    _postBlockOutgoing))
+                {
+                    _postAttackContinuationState =
+                        PostAttackContinuationStateV4.BlockingSideRecovery;
+                    RecordDefenseAttempt("PostBlockContinuationResolved",
+                        _activePostAttackReceives[0], blocker.Team,
+                        "BlockingSideRecovery");
+                }
+                else
+                {
+                    _postAttackContinuationState =
+                        PostAttackContinuationStateV4.PendingSideResolution;
+                }
+            }
             PostBlockPossessionDeferrals++;
             PostBlockContinuations++;
             Debug.Log(
@@ -4400,6 +4692,15 @@ namespace Volleyball.Presentation
             }
             _awaitingPostBlockCrossing = false;
             _postBlockerTeam = null;
+            _postAttackContinuationState =
+                PostAttackContinuationStateV4.ResolvedByGround;
+            foreach (var receipt in _activePostAttackReceives)
+            {
+                RecordDefenseAttempt("DefenseAttemptExpired", receipt,
+                    PlayerForStableId(receipt.Actor).Id.Team,
+                    "GroundBeforeDefenseContact");
+            }
+            _activePostAttackReceives.Clear();
             AttributeAttackFault(last.Value, outcome);
             ResolveRally(
                 outcome,
@@ -4443,6 +4744,45 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            if (GateIAuthorityEnabled && _awaitingPostBlockCrossing &&
+                _postBlockerTeam.HasValue &&
+                _formalAuthority?.AttackCoordinator != null)
+            {
+                var blockerTeam = _postBlockerTeam.Value;
+                var reboundTeam = receivingTeam;
+                _awaitingPostBlockCrossing = false;
+                _postBlockerTeam = null;
+                var coordinator = _formalAuthority.AttackCoordinator;
+                var plan = coordinator?.State.Plan;
+                var kind = reboundTeam == FromSide(coordinator.State.AttackingSide)
+                    ? AttackDefenseCommandKind.AttackCover
+                    : AttackDefenseCommandKind.FloorDefense;
+                var actor = kind == AttackDefenseCommandKind.AttackCover
+                    ? plan.AttackCoverageResponsibilities
+                        .OrderBy(value => value.Actor.Value, StringComparer.Ordinal)
+                        .Select(value => (StablePlayerId?)value.Actor)
+                        .FirstOrDefault()
+                    : StableId(last);
+                if (actor.HasValue && ActivatePostBlockReceive(
+                    reboundTeam,
+                    kind,
+                    actor.Value,
+                    crossing.Point,
+                    _ball.State.Velocity))
+                {
+                    _postAttackContinuationState =
+                        kind == AttackDefenseCommandKind.AttackCover
+                            ? PostAttackContinuationStateV4.AttackingSideCoverage
+                            : PostAttackContinuationStateV4.BlockingSideRecovery;
+                    RecordDefenseAttempt("PostBlockContinuationResolved",
+                        _activePostAttackReceives[0], reboundTeam,
+                        _postAttackContinuationState.ToString());
+                    return;
+                }
+                _postAttackContinuationState =
+                    PostAttackContinuationStateV4.PendingSideResolution;
+            }
+
             if (_touchState.ContactWindow != null &&
                 _touchState.ContactWindow.Action == TechniqueAction.Block)
             {
@@ -4454,9 +4794,14 @@ namespace Volleyball.Presentation
             {
                 _awaitingPostBlockCrossing = false;
                 _postBlockerTeam = null;
+                _postAttackContinuationState =
+                    PostAttackContinuationStateV4.DefendingSideFloorDefense;
             }
 
-            BeginPossession(receivingTeam, ReceiveLeadTime());
+            if (!OpenPendingGateIReceiveWindow(receivingTeam))
+            {
+                BeginPossession(receivingTeam, ReceiveLeadTime());
+            }
         }
 
         private void AttributeAttackFault(PlayerId lastTouch, RallyOutcome outcome)
