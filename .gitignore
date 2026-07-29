@@ -24,6 +24,8 @@
 .vscode/
 .idea/
 .DS_Store
+__pycache__/
+*.py[cod]
 
 # Local visual brainstorming artifacts
 .superpowers/

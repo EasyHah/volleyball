@@ -1,0 +1,10 @@
+{
+  "name": "Volleyball.Career.MatchIntegration",
+  "rootNamespace": "Volleyball.Career.MatchIntegration",
+  "references": [
+    "Volleyball.Shared",
+    "Volleyball.Career.Domain",
+    "Volleyball.Career.Application"
+  ],
+  "noEngineReferences": true
+}

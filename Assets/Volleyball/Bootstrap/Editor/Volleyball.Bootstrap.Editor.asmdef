@@ -1,0 +1,13 @@
+{
+  "name": "Volleyball.Bootstrap.Editor",
+  "rootNamespace": "Volleyball.Bootstrap.Editor",
+  "references": [
+    "Volleyball.Bootstrap",
+    "Volleyball.Career.Presentation",
+    "Unity.InputSystem"
+  ],
+  "includePlatforms": [
+    "Editor"
+  ],
+  "autoReferenced": false
+}

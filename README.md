@@ -4,30 +4,36 @@ A unified Unity game repository for real-time volleyball matches and the career
 experience around them. Match and career code share one Unity project and build,
 while folders and Assembly Definitions keep their responsibilities isolated.
 
-## First playable target
+## Match prototype status
 
-The first milestone is an indoor 3v3 rally that starts from an AI serve and ends
-only after a point. The created outside hitter remains under player control; the
-other five athletes are AI-controlled. Simplified rotation occurs after a side-out.
+The repository contains automated indoor 3v3 and 6v6 physical-match sandboxes.
+Both currently run all athletes through AI; direct control of the created outside
+hitter is a future integration target, not an implemented feature. Simplified
+rotation occurs after a side-out.
 
-The player moves and aims. In valid positions the game automatically selects the
-volleyball action: receive/dig, spike or block jump. There are no timing-button
-minigames.
+The intended direct-control design lets the player move and aim while valid
+positions automatically select receive/dig, spike or block jump. There are no
+timing-button minigames, but this input loop has not been connected yet.
 
 The repository now also includes the formal physical match target at
 `Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity`: twelve players, six-position
-rotation, 25-point win-by-two scoring, physical blocks and complete match statistics.
-The original 3v3 scene remains an automated compatibility baseline.
+rotation, 25-point win-by-two scoring and physical blocks. The result currently
+contains one coarse V1 statistics record for each of the
+twelve players. The original 3v3 scene remains an automated compatibility baseline.
 
 ## Project setup
 
 Open this repository in Unity Hub with Unity `6000.3.20f1`. Unity will create
 local `Library/` files; they are intentionally ignored.
 
-The committed Unity 6000.3 manifest and package lock include the required physics,
-UI, Test Framework, adaptive performance and vector graphics modules. Add future
-rendering, input or navigation packages through Unity Package Manager and commit
-the resulting manifest and lock changes together.
+The committed manifest and lock file are authoritative. They currently contain
+the Unity 6.3 physics/UI, adaptive-performance and vector-graphics modules, Test
+Framework, the official Input System used by Career menus, and the Newtonsoft
+package used by the Editor-side MenShen benchmark. The MenShen assembly and
+credentials stay Editor-only, although the package's global
+`Newtonsoft.Json.dll` currently remains in Player builds. Add future rendering,
+input or navigation packages through Unity Package Manager and commit manifest
+and lock changes together.
 
 ## Repository layout
 
@@ -66,8 +72,11 @@ hand-edit copied payloads.
 
 ## Verification
 
-After Unity is installed, run EditMode tests before every pull request. The Windows
-CI workflow remains disabled until a Windows x64 machine has generated the complete
-Unity project files and package lock. Then configure Unity activation and enable a
-Windows x64 IL2CPP build with the same EditMode tests. Validate every playable
-candidate manually on a physical Windows x64 PC.
+Run EditMode tests before every pull request. The dedicated
+`Volleyball.Bootstrap.Editor.CareerWindowsDevelopmentBuild.Build` entry point now
+builds only the Career vertical-slice scene as Windows x64 IL2CPP with Development
+and AllowDebugging, checks `BuildReport`, and publishes a local manifest under
+ignored `Builds/Windows/`. The Unity CI workflow remains disabled until a matching
+runner and activation are configured. Enable the same EditMode and Career PlayMode
+tests there, and still validate every playable candidate manually with keyboard and
+an XInput controller on a physical Windows x64 PC.

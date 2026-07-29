@@ -4,9 +4,13 @@
     "Volleyball.Shared",
     "Volleyball.Career.Domain",
     "Volleyball.Career.Application",
+    "Volleyball.Career.MatchIntegration",
+    "Volleyball.Career.Persistence",
     "Volleyball.Career.Presentation",
     "Volleyball.Match.Presentation",
-    "Volleyball.Bootstrap"
+    "Volleyball.Bootstrap",
+    "Volleyball.Bootstrap.Editor",
+    "Unity.InputSystem"
   ],
   "includePlatforms": ["Editor"],
   "optionalUnityReferences": ["TestAssemblies"]

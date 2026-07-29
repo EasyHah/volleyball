@@ -15,7 +15,7 @@ namespace Volleyball.Bootstrap
             typeof(MatchResultV4),
             typeof(MatchReplayV4),
             typeof(ThreeVsThreeRallyBootstrap),
-            typeof(CareerMatchRequest),
+            typeof(OperationReceiptIndex),
             typeof(CareerPresentationModule)
         };
     }
