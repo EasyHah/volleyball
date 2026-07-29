@@ -64,6 +64,45 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ScenarioProvenance_RoundTripsAndChangesCanonicalHash()
+        {
+            var baseline = CreateReplay(Event(0, "Attack"));
+            var scenario = new ReplayScenarioProvenanceV4(
+                "reachable-floor-defense", 1, HashA);
+            var replay = MatchReplayV4.Create(
+                "formal-replay-7351", MatchV4TestFixture.CreateContext(),
+                new[] { Event(0, "Attack") },
+                Array.Empty<ReplayDefenseAttemptRecordV4>(),
+                scenario,
+                0);
+            var json = ContractJson.SerializeV4(replay);
+
+            Assert.That(json, Does.Contain("\"scenarioId\":\"reachable-floor-defense\""));
+            Assert.That(ContractJson.SerializeV4(
+                ContractJson.DeserializeMatchReplayV4(json)), Is.EqualTo(json));
+            Assert.That(replay.Scenario.ContentHash, Is.EqualTo(HashA));
+            Assert.That(replay.ReplayHash, Is.Not.EqualTo(baseline.ReplayHash));
+        }
+
+        [Test]
+        public void HistoricalReplayWithoutScenario_RestoresWithDefaultProvenance()
+        {
+            var replay = CreateReplay(Event(0, "Attack"));
+            var current = ContractJson.SerializeV4(replay);
+            var historical = current.Replace(
+                ",\"scenario\":{\"scenarioId\":\"formal-indoor-6v6-default\",\"formatVersion\":1,\"contentHash\":\"" +
+                ReplayScenarioProvenanceV4.DefaultContentHash + "\"}",
+                string.Empty);
+            historical = historical.Replace(replay.ReplayHash,
+                CanonicalHashWithoutScenario(replay));
+
+            var restored = ContractJson.DeserializeMatchReplayV4(historical);
+
+            Assert.That(restored.Scenario.ScenarioId,
+                Is.EqualTo(ReplayScenarioProvenanceV4.DefaultScenarioId));
+        }
+
+        [Test]
         public void DefenseAttemptTimeline_RoundTripsAndChangesCanonicalHash()
         {
             var baseline = CreateReplay(Event(0, "Attack"));
@@ -1233,6 +1272,16 @@ namespace Volleyball.EditModeTests
                 .GetMethod(legacyShadow
                         ? "ComputeLegacyShadowAndDefenseAttemptHash"
                         : "ComputeLegacyDefenseAttemptHash",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+            return (string)method.Invoke(null, new object[] { replay });
+        }
+
+        private static string CanonicalHashWithoutScenario(MatchReplayV4 replay)
+        {
+            var method = typeof(MatchReplayV4).Assembly.GetType(
+                "Volleyball.Shared.Contracts.CanonicalMatchReplayJsonV4")
+                .GetMethod(
+                    "ComputeLegacyWithoutScenarioHash",
                     BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
             return (string)method.Invoke(null, new object[] { replay });
         }
