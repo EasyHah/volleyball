@@ -180,11 +180,11 @@ Serve:   DirectionControl, SpeedControl, PowerCapacity, Consistency
 
 ## 3. Career 八项属性到 V4 的当前映射
 
-> [!WARNING]
-> 本节映射已由 active 跨模块任务
+> [!NOTE]
+> 当前 active 跨模块任务
 > [`2026-07-29-career-match-integration-redesign`](handoffs/active/2026-07-29-career-match-integration-redesign.md)
-> 暂停。它不得作为新功能的实现依据，也不得通过局部系数调整继续使用。必须先完成并获确认的
-> Career x Match 属性边界重设计。
+> 优先完成 V4 生命周期联调。本节映射在该任务中作为临时基线：必须可追溯、单调，且不得被 Match
+> 位置模板覆盖。全职业基础属性、职业特色属性与可能的副职业属于 V5 后续设计，不阻塞 V4。
 
 Career 权威成长属性为：
 
