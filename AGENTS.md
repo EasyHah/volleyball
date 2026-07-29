@@ -151,6 +151,20 @@ If there is no `.codegraph/` directory, skip CodeGraph entirely -- indexing is t
 
 ## 六、Agent 使用原则
 
+### 跨模块任务交接门禁
+
+跨模块任务包括 Shared、Bootstrap、程序集依赖、公共契约、Match 与 Career 交互、
+Packages、ProjectSettings、场景或公共资源的改动。
+
+- 开始跨模块任务的设计、规划、实现或验证前，必须读取 `docs/handoffs/active/` 中唯一
+  标记为 `Status: active` 的任务单。
+- active 任务单的当前要求、非目标和验收条件优先于历史路线图、规格、实施计划和 change record。
+- 没有 active 任务单、存在多个 active 任务单，或任务单没有明确授权当前工作时，必须停止并请求
+  任务入口；不得从历史文档自行挑选任务开始。
+- 首次进度回复必须说明已读取的任务单、理解的首要目标和已发现的阻塞项。
+- 任务结束时，将任务单移入 `docs/handoffs/completed/` 并改为 `Status: completed` 或
+  `Status: superseded`；不得删除，以保留决策链。
+
 在用户已经授权的范围内，Codex 可以自行判断是否使用 Agent。
 
 - 小改动不使用 Agent。

@@ -180,6 +180,12 @@ Serve:   DirectionControl, SpeedControl, PowerCapacity, Consistency
 
 ## 3. Career 八项属性到 V4 的当前映射
 
+> [!WARNING]
+> 本节映射已由 active 跨模块任务
+> [`2026-07-29-career-match-integration-redesign`](handoffs/active/2026-07-29-career-match-integration-redesign.md)
+> 暂停。它不得作为新功能的实现依据，也不得通过局部系数调整继续使用。必须先完成并获确认的
+> Career x Match 属性边界重设计。
+
 Career 权威成长属性为：
 
 ```text
