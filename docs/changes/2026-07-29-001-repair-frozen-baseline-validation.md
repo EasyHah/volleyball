@@ -28,6 +28,7 @@ Match/Shared Runtime 树哈希，导致 Repository Validation 在所有平台失
 ## 验证
 
 - [x] `python3 -B tools/validate_repository.py --base 5ea4619`。
+- [x] `python3 -B tools/validate_repository.py --base 495df70`。
 - [x] `git diff --check 5ea4619 HEAD`。
 
 ## 回滚与风险
