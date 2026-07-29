@@ -307,13 +307,13 @@ namespace Volleyball.EditModeTests
             Assert.That(sink.Batches, Has.Count.EqualTo(1),
                 "A successful rebound must publish the exact declared recovery contact.");
             var recoveryCommand = sink.Batches.Single().Commands.Single();
-            Assert.That(recoveryCommand.Kind, Is.EqualTo(AttackDefenseCommandKind.FloorDefense));
+            Assert.That(recoveryCommand.Kind, Is.EqualTo(AttackDefenseCommandKind.AttackCover));
             Assert.That(recoveryCommand.Actor,
                 Is.EqualTo(plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor));
             Assert.That(recoveryCommand.Execution, Is.Not.Null);
             coordinator.AcceptContact(Fixture.ToolContact(plan, 8,
                 plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
-                AttackDefenseCommandKind.FloorDefense,
+                AttackDefenseCommandKind.AttackCover,
                 ToolRecoveryReboundObservationV3.NotApplicable, 2,
                 recoveryCommand.Execution));
             Assert.That(coordinator.State.Phase, Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));

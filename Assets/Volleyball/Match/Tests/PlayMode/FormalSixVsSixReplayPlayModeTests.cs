@@ -110,6 +110,7 @@ namespace Volleyball.PlayModeTests
             AssertV4Identity(restored.Context.ContextHash, "formal context");
             AssertV4Identity(restored.ReplayHash, "formal replay");
             Assert.That(restored.Events, Is.Not.Empty);
+            Assert.That(restored.DefenseAttempts, Is.Not.Null);
             foreach (var replayEvent in restored.Events)
             {
                 Assert.That(replayEvent.TestedEnvelope, Is.Not.Null);
@@ -501,6 +502,7 @@ namespace Volleyball.PlayModeTests
         {
             var payloads = new byte[2][];
             var acceptedSequences = new string[2][];
+            var defenseAttemptSequences = new string[2][];
             var v3Transitions = new int[2];
             MatchReplayV4 first = null;
             MatchReplayV4 second = null;
@@ -548,6 +550,11 @@ namespace Volleyball.PlayModeTests
                         replayEvent.EventKind + ":" +
                         replayEvent.RuleDecision.ReasonCode)
                     .ToArray();
+                defenseAttemptSequences[run] = replay.DefenseAttempts
+                    .Select(attempt => attempt.Kind + ":" +
+                        attempt.AttemptIdentity + ":" +
+                        attempt.ContinuationState + ":" + attempt.Reason)
+                    .ToArray();
                 v3Transitions[run] = director.V3RuleTransitions;
                 if (run == 0)
                 {
@@ -561,6 +568,8 @@ namespace Volleyball.PlayModeTests
 
             CollectionAssert.AreEqual(payloads[0], payloads[1]);
             CollectionAssert.AreEqual(acceptedSequences[0], acceptedSequences[1]);
+            CollectionAssert.AreEqual(
+                defenseAttemptSequences[0], defenseAttemptSequences[1]);
             Assert.That(v3Transitions[0], Is.GreaterThan(0));
             Assert.That(v3Transitions[1], Is.EqualTo(v3Transitions[0]));
             Assert.That(second.ReplayHash, Is.EqualTo(first.ReplayHash));

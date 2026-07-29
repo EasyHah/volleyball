@@ -198,8 +198,9 @@ namespace Volleyball.Presentation
                 ? input.TargetVelocity.Normalized
                 : SimVector3.Up;
             var response = ResponseFor(input.ContactAction);
-            foreach (var surface in surfaces)
+            for (var index = 0; index < surfaces.Count; index++)
             {
+                var surface = surfaces[index];
                 contacts.Add(new BallContactCandidate(
                     surface,
                     input.ContactAction,
@@ -208,7 +209,8 @@ namespace Volleyball.Presentation
                     input.TargetVelocity,
                     strikeDirection,
                     response,
-                    input.UseExactTargetVelocity));
+                    input.UseExactTargetVelocity,
+                    index));
             }
         }
 
@@ -237,8 +239,9 @@ namespace Volleyball.Presentation
             var strikeDirection = targetVelocity.SqrMagnitude > 0.000001f
                 ? targetVelocity.Normalized
                 : fallbackStrikeDirection;
-            foreach (var volume in volumes)
+            for (var index = 0; index < volumes.Count; index++)
             {
+                var volume = volumes[index];
                 contacts.Add(new BallContactCandidate(
                     volume,
                     TechniqueAction.Block,
@@ -246,7 +249,8 @@ namespace Volleyball.Presentation
                     playerTechnique,
                     targetVelocity,
                     strikeDirection,
-                    ResponseFor(TechniqueAction.Block)));
+                    ResponseFor(TechniqueAction.Block),
+                    stableSurfaceIndex: index));
             }
         }
 

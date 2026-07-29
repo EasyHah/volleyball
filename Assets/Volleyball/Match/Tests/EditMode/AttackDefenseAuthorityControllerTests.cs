@@ -96,6 +96,27 @@ namespace Volleyball.EditModeTests
                 Does.Not.Contain("SetContact"));
         }
 
+        [Test]
+        public void CommittedFloorDefense_SchedulesPhysicalReceiveContact()
+        {
+            using var fixture = new Fixture();
+            var command = new AttackDefenseAuthorityCommand(
+                7,
+                1,
+                AttackDefenseCommandKind.FloorDefense,
+                fixture.Defender.StableId,
+                true,
+                fixture.ReceiveExecution);
+
+            fixture.Controller.PreflightAndCommit(
+                fixture.DefenseBatch(command));
+
+            Assert.That(fixture.Defender.ScheduledExecutionEnvelopeV4, Is.Not.Null);
+            Assert.That(fixture.Defender.ScheduledExecutionClassificationV4
+                    .ExecutableEnvelope.CandidateCategory,
+                Is.EqualTo(ExecutionCandidateCategoryV4.Receive));
+        }
+
         private sealed class Fixture : IDisposable
         {
             private readonly List<GameObject> _objects = new List<GameObject>();
@@ -111,7 +132,9 @@ namespace Volleyball.EditModeTests
                         new Volleyball.Shared.Contracts.PlayerId("home-" + index), Color.blue, index.ToString());
                     players.Add(player);
                 }
-                Players = players; Attacker = players[0]; Execution = CreateExecution(category);
+                Players = players; Attacker = players[0]; Defender = players[2];
+                Execution = CreateExecution(category);
+                ReceiveExecution = CreateExecution(ExecutionCandidateCategoryV4.Receive);
                 var candidate = new AttackCandidateV3("attack", Attacker.StableId, AttackActionClassV3.Tip,
                     new SimVector3(1f, 3f, -2f), new SimVector3(1f, 1f, 3f), 1f, 1f, false,
                     string.Empty, Execution.ExecutionClassification.ExecutableEnvelope.Identity,
@@ -132,7 +155,9 @@ namespace Volleyball.EditModeTests
             }
             public IReadOnlyList<PrototypePlayerAgent> Players { get; }
             public PrototypePlayerAgent Attacker { get; }
+            public PrototypePlayerAgent Defender { get; }
             public AttackDefenseCommandExecutionV4 Execution { get; }
+            public AttackDefenseCommandExecutionV4 ReceiveExecution { get; }
             public AttackDefensePlanV3 Plan { get; }
             public PerceptionReceiptV3 Perception { get; }
             public AttackDefenseAuthorityController Controller { get; }
@@ -146,6 +171,12 @@ namespace Volleyball.EditModeTests
                     AttackDefenseAuthorityPhaseV3.AttackCommitted, Plan,
                     PlanCoverageDecision.Covered("7", PlanCoverageReason.RallyOpen),
                     Perception));
+            public AttackDefenseCommandBatch DefenseBatch(AttackDefenseAuthorityCommand command) =>
+                new AttackDefenseCommandBatch(new[] { command },
+                    new AttackDefenseAuthorityEvidenceV3(7, 1,
+                        AttackDefenseAuthorityPhaseV3.DefenseCommitted, Plan,
+                        PlanCoverageDecision.Covered("7", PlanCoverageReason.RallyOpen),
+                        Perception));
             public void Dispose() { foreach (var item in _objects) UnityEngine.Object.DestroyImmediate(item); }
             private static AttackDefenseCommandExecutionV4 CreateExecution(ExecutionCandidateCategoryV4 category)
             {
@@ -162,8 +193,19 @@ namespace Volleyball.EditModeTests
                         "trajectory", context.TrajectoryPredictionProviderConfiguration.PredictorVersion,
                         context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
                         envelope.Identity, ExecutionDegradationStepV4.FullSampling));
-                var approach = new AttackApproachPlan(new SimVector3(1f, 0f, -3f), new SimVector3(2f, 0f, -2.45f), 1f, .8f, 0f);
-                var contact = AttackContactPlanner.Plan(new AttackContactInput(3.2f, .8f, 1f, SetQualityGrade.A, approach.Takeoff, .6f, 1f));
+                AttackApproachPlan? approach = null;
+                AttackContactPlan? contact = null;
+                if (category == ExecutionCandidateCategoryV4.Attack ||
+                    category == ExecutionCandidateCategoryV4.SoftAction)
+                {
+                    var attackApproach = new AttackApproachPlan(
+                        new SimVector3(1f, 0f, -3f),
+                        new SimVector3(2f, 0f, -2.45f), 1f, .8f, 0f);
+                    approach = attackApproach;
+                    contact = AttackContactPlanner.Plan(new AttackContactInput(
+                        3.2f, .8f, 1f, SetQualityGrade.A,
+                        attackApproach.Takeoff, .6f, 1f));
+                }
                 return new AttackDefenseCommandExecutionV4(2f, 0f, default, 77, envelope.Classify(sample), artifact,
                     new SimVector3(1f, 0f, -3f), approach, contact);
             }

@@ -156,6 +156,22 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public RallyPlanBranchV3 Branch { get; }
     }
 
+    // Coverage is an attacking-side commitment. Keeping it separate from
+    // Defense prevents a post-block rebound from being "saved" by an actor
+    // that was never declared as eligible for the attacking team.
+    public sealed class AttackCoverageResponsibilityV3
+    {
+        public AttackCoverageResponsibilityV3(PlayerId actor,
+            RallyPlanBranchV3 branch)
+        {
+            Actor = PlayerWorldSnapshotV3.RequirePlayerId(actor, nameof(actor));
+            Branch = PlayerWorldSnapshotV3.RequireDefinedEnum(branch, nameof(branch));
+        }
+
+        public PlayerId Actor { get; }
+        public RallyPlanBranchV3 Branch { get; }
+    }
+
     public sealed class ReorganizationExitV3
     {
         public ReorganizationExitV3(string identity, PlayerId actor, string kind)
@@ -251,7 +267,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public AttackDefensePlanV3(TeamSide attackingSide, long revision, string sourcePlanIdentity,
             GateISetIntentV3 setIntent, IReadOnlyList<AttackCandidateV3> attackCandidates,
             PublicAttackThreatV3 publicThreat, JointDefensePlanV3 defense,
-            AttackCandidateV3 selectedAction, IReadOnlyList<ReorganizationExitV3> reorganizationExits)
+            AttackCandidateV3 selectedAction, IReadOnlyList<ReorganizationExitV3> reorganizationExits,
+            IReadOnlyList<AttackCoverageResponsibilityV3> attackCoverageResponsibilities = null)
         {
             AttackingSide = PlayerWorldSnapshotV3.RequireDefinedEnum(attackingSide, nameof(attackingSide));
             if (revision < 0) throw new ArgumentOutOfRangeException(nameof(revision));
@@ -266,6 +283,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             Defense = defense ?? throw new ArgumentNullException(nameof(defense));
             if (selectedAction != null && !candidates.Any(value => value.CandidateIdentity == selectedAction.CandidateIdentity)) throw new ArgumentException("Selected action must be an attack candidate.", nameof(selectedAction));
             SelectedAction = selectedAction; ReorganizationExits = CopyExits(reorganizationExits);
+            AttackCoverageResponsibilities = CopyCoverage(
+                attackCoverageResponsibilities ?? Array.Empty<AttackCoverageResponsibilityV3>());
             foreach (var candidate in candidates.Where(value => value.ToolRecoveryEvidence != null))
             {
                 var recovery = candidate.ToolRecoveryEvidence;
@@ -287,6 +306,23 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public JointDefensePlanV3 Defense { get; }
         public AttackCandidateV3 SelectedAction { get; }
         public IReadOnlyList<ReorganizationExitV3> ReorganizationExits { get; }
+        public IReadOnlyList<AttackCoverageResponsibilityV3>
+            AttackCoverageResponsibilities { get; }
+
+        private static IReadOnlyList<AttackCoverageResponsibilityV3> CopyCoverage(
+            IReadOnlyList<AttackCoverageResponsibilityV3> coverage)
+        {
+            var copy = (coverage ?? throw new ArgumentNullException(nameof(coverage)))
+                .Select(value => value ?? throw new ArgumentException(
+                    "Attack coverage responsibilities cannot contain null.",
+                    nameof(coverage)))
+                .ToArray();
+            if (copy.Select(value => value.Actor).Distinct().Count() != copy.Length)
+                throw new ArgumentException(
+                    "Attack coverage responsibilities require distinct actors.",
+                    nameof(coverage));
+            return new ReadOnlyCollection<AttackCoverageResponsibilityV3>(copy);
+        }
     }
 
     internal static class AttackDefensePlanValidationV3

@@ -63,6 +63,7 @@ main{max-width:1180px;margin:auto}.top{display:flex;justify-content:space-betwee
 h1{margin:.15rem 0;font-size:2rem}.versions{display:flex;gap:10px;flex-wrap:wrap}.tag{padding:8px 12px;border:1px solid #3f769b;border-radius:999px;background:#102d47}
 .hash{font:12px ui-monospace,monospace;color:#97c5df;overflow-wrap:anywhere}.events{display:grid;gap:16px;margin-top:24px}
 .event{border:1px solid #285270;border-radius:14px;background:#0b2032;padding:18px;box-shadow:0 18px 40px #0005}
+.attempt{border-left:4px solid #d7b45c;padding:10px 12px;background:#102b43;border-radius:8px;margin-top:8px}
 .event h2{margin:0 0 12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 .panel{border-radius:10px;background:#102b43;padding:12px}.panel h3{margin:0 0 8px;color:#7ed9ff;font-size:.95rem}
 .perspectives{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.home{border-left:4px solid #57a9ff}.away{border-left:4px solid #ff9a57}
@@ -154,6 +155,10 @@ document.querySelector('#events').innerHTML=replay.events.map(event=>`
     <section class='panel away'><h3>AWAY PERCEIVED</h3>${perspective('Away',event)}</section>
   </div>
 </article>`).join('');
+const attempts=replay.defenseAttempts||[];
+if(attempts.length){
+  document.querySelector('#events').innerHTML+=`<article class='event'><h2>Defense continuation audit</h2>${attempts.map(item=>`<section class='attempt'><strong>${item.kind}</strong> · ${item.commandKind} · ${item.actorPlayerId}<br><small>${item.attemptIdentity} · ${item.windowStartSimulationTime} → ${item.windowEndSimulationTime} · ${item.continuationState} · ${item.reason||'—'}</small></section>`).join('')}</article>`;
+}
 </script>
 </body>
 </html>";

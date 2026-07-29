@@ -282,7 +282,8 @@ namespace Volleyball.AI
             _defense = defense; _lastSequence = sourceSequence;
             var defensePlan = new AttackDefensePlanV3(_attackingSide, revision,
                 "gate-i-plan-" + revision, _intent, _attack.Candidates,
-                _attack.PublicThreat, defense, null, MergeExits(defense));
+                _attack.PublicThreat, defense, null, MergeExits(defense),
+                AttackCoverageFor(_attack));
             State = new AttackDefenseAuthorityStateV3(
                 AttackDefenseAuthorityPhaseV3.DefenseCommitted, revision,
                 _attackingSide, defensePlan, State.CoverageDecision);
@@ -308,9 +309,57 @@ namespace Volleyball.AI
         {
             Require(AttackDefenseAuthorityPhaseV3.DefenseCommitted, revision, sourceSequence);
             var selected = _planner.ChooseFinal(_attack, _defense).Candidate; _lastSequence = sourceSequence;
-            var plan = new AttackDefensePlanV3(_attackingSide, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, MergeExits(_defense));
+            var plan = new AttackDefensePlanV3(_attackingSide, revision, "gate-i-plan-" + revision, _intent, _attack.Candidates, _attack.PublicThreat, _defense, selected, MergeExits(_defense),
+                AttackCoverageFor(_attack));
             State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, _attackingSide, plan, State.CoverageDecision);
             Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true, ExecutionFor(selected.Actor, AttackDefenseCommandKind.AttackContact), candidateIdentity: selected.CandidateIdentity) });
+            return State;
+        }
+
+        // A post-attack rebound is not allowed to revive a predicted defense
+        // window. It publishes a new execution derived from the accepted live
+        // ball state while retaining the current immutable plan and authority
+        // phase until the physical receive is accepted.
+        public AttackDefenseAuthorityStateV3 PublishActualContinuation(
+            long sourceSequence,
+            AttackDefenseCommandKind kind,
+            PlayerId actor,
+            AttackDefenseCommandExecutionV4 execution,
+            RallyPlanBranchV3 branch = RallyPlanBranchV3.Primary)
+        {
+            if ((State.Phase != AttackDefenseAuthorityPhaseV3.AwaitingActualContact &&
+                 State.Phase != AttackDefenseAuthorityPhaseV3.ReorganizationPlanned) ||
+                sourceSequence <= _lastSequence ||
+                (kind != AttackDefenseCommandKind.FloorDefense &&
+                 kind != AttackDefenseCommandKind.AttackCover) ||
+                execution == null)
+                throw new InvalidOperationException(
+                    "Actual continuation requires a current physical receive opportunity.");
+
+            var isDeclared = kind == AttackDefenseCommandKind.FloorDefense
+                ? State.Plan.Defense.Responsibilities.Any(value =>
+                    value.Actor.Equals(actor) && value.Branch == branch)
+                : State.Plan.AttackCoverageResponsibilities.Any(value =>
+                    value.Actor.Equals(actor) && value.Branch == branch);
+            if (!isDeclared)
+                throw new InvalidOperationException(
+                    "Actual continuation actor is outside the declared opportunity.");
+
+            _lastSequence = sourceSequence;
+            _committedDefenseExecutions[DefenseExecutionKey(actor, kind, branch)] =
+                execution;
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
+                State.Revision,
+                State.AttackingSide,
+                State.Plan,
+                State.CoverageDecision);
+            Publish(sourceSequence, State, new[]
+            {
+                new AttackDefenseAuthorityCommand(
+                    State.Revision, sourceSequence, kind, actor, true,
+                    execution, branch)
+            });
             return State;
         }
 
@@ -319,6 +368,19 @@ namespace Volleyball.AI
                 .GroupBy(value => value.Identity, StringComparer.Ordinal)
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .Select(group => group.First()).ToArray();
+
+        private static IReadOnlyList<AttackCoverageResponsibilityV3> AttackCoverageFor(
+            AttackPlanningResultV3 attack)
+        {
+            if (attack == null) throw new ArgumentNullException(nameof(attack));
+            return attack.ReorganizationExits
+                .OrderBy(exit => exit.Identity, StringComparer.Ordinal)
+                .ThenBy(exit => exit.Actor.Value, StringComparer.Ordinal)
+                .GroupBy(exit => exit.Actor)
+                .Select(group => new AttackCoverageResponsibilityV3(
+                    group.Key, RallyPlanBranchV3.Primary))
+                .ToArray();
+        }
 
         // An actual V3-accepted dig may be made by a player whose committed
         // Gate I responsibility was block/coverage rather than a scheduled
@@ -390,7 +452,7 @@ namespace Volleyball.AI
                 var recovery = State.Plan.SelectedAction.ToolRecoveryEvidence;
                 Publish(contact.SourceSequence, State, new[] {
                     new AttackDefenseAuthorityCommand(State.Revision, contact.SourceSequence,
-                        AttackDefenseCommandKind.FloorDefense, recovery.RecoveryActor, true,
+                        AttackDefenseCommandKind.AttackCover, recovery.RecoveryActor, true,
                         contact.ToolRecoveryReceiveExecution, RallyPlanBranchV3.Primary)
                 });
                 return State;
@@ -398,7 +460,7 @@ namespace Volleyball.AI
 
             if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive)
             {
-                if (contact.ActionKind != AttackDefenseCommandKind.FloorDefense ||
+                if (contact.ActionKind != AttackDefenseCommandKind.AttackCover ||
                     !contact.Actor.Equals(State.Plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor) ||
                     contact.RemainingTouchesAfterContact <= 0)
                     throw new InvalidOperationException("Tool recovery requires the declared non-attacker V3-accepted receive.");
@@ -485,7 +547,7 @@ namespace Volleyball.AI
         {
             if (!contact.V3Accepted) throw new InvalidOperationException("Gate I contacts require a V3-accepted marker.");
             if (State.Phase == AttackDefenseAuthorityPhaseV3.ToolRecoveryAwaitingReceive &&
-                contact.ActionKind == AttackDefenseCommandKind.FloorDefense &&
+                contact.ActionKind == AttackDefenseCommandKind.AttackCover &&
                 State.Plan?.SelectedAction?.ToolRecoveryEvidence != null &&
                 contact.Actor.Equals(State.Plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor) &&
                 MatchesToolRecoveryExecution(contact.ToolRecoveryReceiveExecution))
@@ -510,10 +572,16 @@ namespace Volleyball.AI
             }
             var responsibility = State.Plan.Defense.Responsibilities.SingleOrDefault(x =>
                 x.Actor.Equals(contact.Actor) && x.Branch == contact.Branch);
+            var attackCoverage = State.Plan.AttackCoverageResponsibilities
+                .SingleOrDefault(x => x.Actor.Equals(contact.Actor) &&
+                    x.Branch == contact.Branch);
             var kindMatches = contact.ActionKind == AttackDefenseCommandKind.BlockContact
                 ? responsibility != null && (responsibility.Kind == DefenseResponsibilityKindV3.PrimaryBlock || responsibility.Kind == DefenseResponsibilityKindV3.SupportingBlock)
-                : contact.ActionKind == AttackDefenseCommandKind.FloorDefense || contact.ActionKind == AttackDefenseCommandKind.AttackCover
-                    ? responsibility != null : false;
+                : contact.ActionKind == AttackDefenseCommandKind.FloorDefense
+                    ? responsibility != null
+                    : contact.ActionKind == AttackDefenseCommandKind.AttackCover
+                        ? attackCoverage != null
+                        : false;
             var expectedEnvelope = _committedDefenseExecutions.TryGetValue(
                 DefenseExecutionKey(contact.Actor, contact.ActionKind, contact.Branch),
                 out var committedExecution)

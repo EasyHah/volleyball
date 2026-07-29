@@ -182,6 +182,41 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AdvanceSimulation_EqualTimeCandidatesUseStableContactGroupInsteadOfSourceOrder()
+        {
+            var firstObject = new GameObject("SimulatedBallStableOrderFirst");
+            var secondObject = new GameObject("SimulatedBallStableOrderSecond");
+            try
+            {
+                firstObject.transform.position = secondObject.transform.position =
+                    new Vector3(0f, 1.3f, 0f);
+                var first = firstObject.AddComponent<SimulatedBall>();
+                var second = secondObject.AddComponent<SimulatedBall>();
+                var higherGroup = new EqualTimeReceiveSource(
+                    new PlayerId(TeamId.Orange, PlayerRole.Defender, 4), 92);
+                var lowerGroup = new EqualTimeReceiveSource(
+                    new PlayerId(TeamId.Blue, PlayerRole.Setter, 1), 91);
+                first.RegisterContactSource(higherGroup);
+                first.RegisterContactSource(lowerGroup);
+                second.RegisterContactSource(lowerGroup);
+                second.RegisterContactSource(higherGroup);
+                first.Launch(new Vector3(0f, -40f, 0f));
+                second.Launch(new Vector3(0f, -40f, 0f));
+
+                first.AdvanceSimulation(1d / 120d);
+                second.AdvanceSimulation(1d / 120d);
+
+                Assert.That(first.State.LastContactGroupId, Is.EqualTo(91));
+                Assert.That(second.State.LastContactGroupId, Is.EqualTo(91));
+            }
+            finally
+            {
+                Object.DestroyImmediate(firstObject);
+                Object.DestroyImmediate(secondObject);
+            }
+        }
+
+        [Test]
         public void AdvanceSimulation_FaultsBeforeAnyVelocityResponse()
         {
             var ball = CreateBallWithTwoSweptCandidates(out var gameObject);
@@ -408,6 +443,40 @@ namespace Volleyball.EditModeTests
                     SimVector3.Up,
                     new ContactResponseParameters(0.85f, 1f, 0.1f, 0.08f),
                     _useExactTargetVelocity));
+            }
+        }
+
+        private sealed class EqualTimeReceiveSource : IBallContactSource
+        {
+            private readonly PlayerId _actor;
+            private readonly int _contactGroupId;
+
+            public EqualTimeReceiveSource(PlayerId actor, int contactGroupId)
+            {
+                _actor = actor;
+                _contactGroupId = contactGroupId;
+            }
+
+            public void CollectContacts(
+                float simulationTime,
+                float deltaSeconds,
+                System.Collections.Generic.ICollection<BallContactCandidate> contacts)
+            {
+                var frame = new ContactSurfaceFrame(
+                    new SimVector3(0f, 1f, 0f),
+                    SimVector3.Up,
+                    new SimVector3(1f, 0f, 0f),
+                    new SimVector3(0f, 0f, 1f),
+                    1f,
+                    1f);
+                contacts.Add(new BallContactCandidate(
+                    new ContactSurfaceSnapshot(frame, frame, true, _contactGroupId),
+                    TechniqueAction.Receive,
+                    _actor,
+                    .8f,
+                    new SimVector3(0f, 8f, 2f),
+                    SimVector3.Up,
+                    new ContactResponseParameters(.85f, 1f, .1f, .08f)));
             }
         }
 
