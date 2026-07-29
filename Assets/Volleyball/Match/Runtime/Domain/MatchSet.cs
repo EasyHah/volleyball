@@ -76,13 +76,17 @@ namespace Volleyball.Domain
         public MatchSet(
             MatchContextV4 context,
             TeamSide firstServer,
-            MatchSetRules rules = null)
+            MatchSetRules rules = null,
+            int homeInitialRotationOffset = 0,
+            int awayInitialRotationOffset = 0)
             : this(
                 (context ?? throw new ArgumentNullException(nameof(context))).Home.Players
                     .Select(player => player.PlayerId),
                 context.Away.Players.Select(player => player.PlayerId),
                 firstServer,
-                rules)
+                rules,
+                homeInitialRotationOffset,
+                awayInitialRotationOffset)
         {
             Context = context;
         }
@@ -120,7 +124,9 @@ namespace Volleyball.Domain
             IEnumerable<StablePlayerId> homePlayers,
             IEnumerable<StablePlayerId> awayPlayers,
             TeamSide firstServer,
-            MatchSetRules rules = null)
+            MatchSetRules rules = null,
+            int homeInitialRotationOffset = 0,
+            int awayInitialRotationOffset = 0)
         {
             if (!Enum.IsDefined(typeof(TeamSide), firstServer))
             {
@@ -139,8 +145,10 @@ namespace Volleyball.Domain
             AddTeam(home, TeamSide.Home);
             AddTeam(away, TeamSide.Away);
             _rules = rules ?? MatchSetRules.ForRosterSize(home.Length);
-            _homeRotation = new TeamRotation(home);
-            _awayRotation = new TeamRotation(away);
+            _homeRotation = new TeamRotation(home, homeInitialRotationOffset);
+            _awayRotation = new TeamRotation(away, awayInitialRotationOffset);
+            _homeRotationOffset = _homeRotation.Offset;
+            _awayRotationOffset = _awayRotation.Offset;
             ServingSide = firstServer;
         }
 
@@ -540,7 +548,8 @@ namespace Volleyball.Domain
     {
         private readonly StablePlayerId[] _initialOrder;
 
-        public TeamRotation(IEnumerable<StablePlayerId> players)
+        public TeamRotation(IEnumerable<StablePlayerId> players,
+            int initialOffset = 0)
         {
             _initialOrder = players?.ToArray() ?? throw new ArgumentNullException(nameof(players));
             if (_initialOrder.Length < 1)
@@ -552,6 +561,13 @@ namespace Volleyball.Domain
             {
                 throw new ArgumentException("Rotation players must be unique.", nameof(players));
             }
+
+            if (initialOffset < 0 || initialOffset >= _initialOrder.Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(initialOffset));
+            }
+
+            Offset = initialOffset;
         }
 
         public int PlayerCount => _initialOrder.Length;
