@@ -98,7 +98,19 @@ namespace Volleyball.Presentation
                 _director.MatchContext,
                 _events,
                 _defenseAttempts,
+                Scenario(_director.FormalScenarioProvenance),
                 _sourceSequenceAnchor);
+        }
+
+        private static ReplayScenarioProvenanceV4 Scenario(
+            FormalMatchScenarioProvenanceV4 provenance)
+        {
+            return provenance == null
+                ? ReplayScenarioProvenanceV4.Default
+                : new ReplayScenarioProvenanceV4(
+                    provenance.ScenarioId,
+                    provenance.FormatVersion,
+                    provenance.ContentHash);
         }
 
         private void Initialize(

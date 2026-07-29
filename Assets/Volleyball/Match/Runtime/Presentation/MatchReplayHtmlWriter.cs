@@ -86,6 +86,7 @@ const replay=JSON.parse(document.querySelector('#embedded-replay').textContent);
 if(!replay || replay.formatVersion!==4) throw new Error('Only MatchReplayV4 is supported.');
 if(!replay.context || replay.context.contractVersion!==4 || replay.context.rulesVersion!==3) throw new Error('Native V4 context with V3 rules is required.');
 document.querySelector('#replay-hash').textContent=`Replay SHA-256 ${replay.replayHash}`;
+document.querySelector('#replay-hash').textContent+=` · Scenario ${replay.scenario.scenarioId} v${replay.scenario.formatVersion} ${replay.scenario.contentHash}`;
 const text=value=>value===null||value===undefined?'—':String(value);
 const vector=value=>value?`(${value.x}, ${value.y}, ${value.z})`:'—';
 const items=value=>Array.isArray(value)?value.join(', '):'—';
