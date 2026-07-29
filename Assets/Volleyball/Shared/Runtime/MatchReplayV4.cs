@@ -1475,42 +1475,6 @@ namespace Volleyball.Shared.Contracts
         public string WinningActorPlayerId { get; }
     }
 
-    public sealed class ReplayScenarioProvenanceV4
-    {
-        public const string DefaultScenarioId = "formal-indoor-6v6-default";
-        public const int DefaultFormatVersion = 1;
-        public const string DefaultContentHash =
-            "0000000000000000000000000000000000000000000000000000000000000000";
-
-        public ReplayScenarioProvenanceV4(
-            string scenarioId,
-            int formatVersion,
-            string contentHash)
-        {
-            ScenarioId = ReplayContractGuardV4.Required(scenarioId,
-                nameof(scenarioId));
-            if (formatVersion < 1)
-            {
-                throw new ContractValidationException(
-                    "Scenario format version must be positive.");
-            }
-
-            FormatVersion = formatVersion;
-            ContentHash = ReplayContractGuardV4.Hash(contentHash,
-                nameof(contentHash));
-        }
-
-        public string ScenarioId { get; }
-        public int FormatVersion { get; }
-        public string ContentHash { get; }
-
-        public static ReplayScenarioProvenanceV4 Default { get; } =
-            new ReplayScenarioProvenanceV4(
-                DefaultScenarioId,
-                DefaultFormatVersion,
-                DefaultContentHash);
-    }
-
     public sealed class MatchReplayV4
     {
         private readonly MatchReplayEventV4[] _events;
@@ -1521,7 +1485,6 @@ namespace Volleyball.Shared.Contracts
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events,
             IReadOnlyList<ReplayDefenseAttemptRecordV4> defenseAttempts,
-            ReplayScenarioProvenanceV4 scenario,
             int sourceSequenceAnchor,
             string suppliedReplayHash,
             bool allowLegacyShadowCoverageHash)
@@ -1540,7 +1503,6 @@ namespace Volleyball.Shared.Contracts
 
             _events = CopySortAndValidateEvents(events);
             _defenseAttempts = CopyDefenseAttempts(defenseAttempts);
-            Scenario = scenario ?? ReplayScenarioProvenanceV4.Default;
             SourceSequenceAnchor = ReplayContractGuardV4.NonNegative(
                 sourceSequenceAnchor,
                 nameof(sourceSequenceAnchor));
@@ -1560,18 +1522,6 @@ namespace Volleyball.Shared.Contracts
                      StringComparison.Ordinal) &&
                   !string.Equals(suppliedReplayHash,
                      CanonicalMatchReplayJsonV4.ComputeLegacyShadowAndDefenseAttemptHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeLegacyWithoutScenarioHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeHistoricalLegacyShadowCoverageHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeHistoricalLegacyDefenseAttemptHash(this),
-                     StringComparison.Ordinal) &&
-                  !string.Equals(suppliedReplayHash,
-                     CanonicalMatchReplayJsonV4.ComputeHistoricalLegacyShadowAndDefenseAttemptHash(this),
                      StringComparison.Ordinal))))
             {
                 throw new ContractValidationException(
@@ -1584,7 +1534,6 @@ namespace Volleyball.Shared.Contracts
         public MatchContextV4 Context { get; }
         public string ContextHash => Context.ContextHash;
         public int SourceSequenceAnchor { get; }
-        public ReplayScenarioProvenanceV4 Scenario { get; }
         public IReadOnlyList<MatchReplayEventV4> Events =>
             new ReadOnlyCollection<MatchReplayEventV4>(_events);
         public IReadOnlyList<ReplayDefenseAttemptRecordV4> DefenseAttempts =>
@@ -1598,8 +1547,7 @@ namespace Volleyball.Shared.Contracts
             IReadOnlyList<MatchReplayEventV4> events)
         {
             return new MatchReplayV4(replayId, context, events,
-                Array.Empty<ReplayDefenseAttemptRecordV4>(),
-                ReplayScenarioProvenanceV4.Default, 0, null, false);
+                Array.Empty<ReplayDefenseAttemptRecordV4>(), 0, null, false);
         }
 
         public static MatchReplayV4 Create(
@@ -1611,7 +1559,6 @@ namespace Volleyball.Shared.Contracts
             return new MatchReplayV4(
                 replayId, context, events,
                 Array.Empty<ReplayDefenseAttemptRecordV4>(),
-                ReplayScenarioProvenanceV4.Default,
                 sourceSequenceAnchor, null, false);
         }
 
@@ -1623,20 +1570,7 @@ namespace Volleyball.Shared.Contracts
             int sourceSequenceAnchor)
         {
             return new MatchReplayV4(replayId, context, events,
-                defenseAttempts, ReplayScenarioProvenanceV4.Default,
-                sourceSequenceAnchor, null, false);
-        }
-
-        public static MatchReplayV4 Create(
-            string replayId,
-            MatchContextV4 context,
-            IReadOnlyList<MatchReplayEventV4> events,
-            IReadOnlyList<ReplayDefenseAttemptRecordV4> defenseAttempts,
-            ReplayScenarioProvenanceV4 scenario,
-            int sourceSequenceAnchor)
-        {
-            return new MatchReplayV4(replayId, context, events,
-                defenseAttempts, scenario, sourceSequenceAnchor, null, false);
+                defenseAttempts, sourceSequenceAnchor, null, false);
         }
 
         internal static MatchReplayV4 Restore(
@@ -1644,7 +1578,6 @@ namespace Volleyball.Shared.Contracts
             MatchContextV4 context,
             IReadOnlyList<MatchReplayEventV4> events,
             IReadOnlyList<ReplayDefenseAttemptRecordV4> defenseAttempts,
-            ReplayScenarioProvenanceV4 scenario,
             int sourceSequenceAnchor,
             string replayHash,
             bool allowLegacyShadowCoverageHash)
@@ -1655,7 +1588,7 @@ namespace Volleyball.Shared.Contracts
             }
 
             return new MatchReplayV4(
-                replayId, context, events, defenseAttempts, scenario,
+                replayId, context, events, defenseAttempts,
                 sourceSequenceAnchor,
                 replayHash,
                 allowLegacyShadowCoverageHash);
@@ -1666,8 +1599,6 @@ namespace Volleyball.Shared.Contracts
             Context.Validate();
             CopySortAndValidateEvents(_events);
             CopyDefenseAttempts(_defenseAttempts);
-            _ = Scenario ?? throw new ContractValidationException(
-                "scenario is required.");
             ValidateEventsAgainstContext(Context, _events, SourceSequenceAnchor);
             ReplayContractGuardV4.Hash(ReplayHash, nameof(ReplayHash));
             if (CanonicalMatchReplayJsonV4.ComputeHash(this) != ReplayHash)
@@ -2045,41 +1976,18 @@ namespace Volleyball.Shared.Contracts
 
         public static string ComputeLegacyShadowCoverageHash(MatchReplayV4 replay)
         {
-            return ComputeHash(Payload(replay, true, true, true));
+            return ComputeHash(Payload(replay, true));
         }
 
         public static string ComputeLegacyDefenseAttemptHash(MatchReplayV4 replay)
         {
-            return ComputeHash(Payload(replay, false, false, true));
+            return ComputeHash(Payload(replay, false, false));
         }
 
         public static string ComputeLegacyShadowAndDefenseAttemptHash(
             MatchReplayV4 replay)
         {
-            return ComputeHash(Payload(replay, true, false, true));
-        }
-
-        public static string ComputeLegacyWithoutScenarioHash(MatchReplayV4 replay)
-        {
-            return ComputeHash(Payload(replay, false, true, false));
-        }
-
-        public static string ComputeHistoricalLegacyShadowCoverageHash(
-            MatchReplayV4 replay)
-        {
-            return ComputeHash(Payload(replay, true, true, false));
-        }
-
-        public static string ComputeHistoricalLegacyDefenseAttemptHash(
-            MatchReplayV4 replay)
-        {
-            return ComputeHash(Payload(replay, false, false, false));
-        }
-
-        public static string ComputeHistoricalLegacyShadowAndDefenseAttemptHash(
-            MatchReplayV4 replay)
-        {
-            return ComputeHash(Payload(replay, true, false, false));
+            return ComputeHash(Payload(replay, true, false));
         }
 
         private static string ComputeHash(string payload)
@@ -2102,9 +2010,8 @@ namespace Volleyball.Shared.Contracts
                 root.Properties.ContainsKey("sourceSequenceAnchor");
             var hasDefenseAttempts = root.Properties.ContainsKey(
                 "defenseAttempts");
-            var hasScenario = root.Properties.ContainsKey("scenario");
             var expectedProperties = (hasSourceSequenceAnchor ? 6 : 5) +
-                (hasDefenseAttempts ? 1 : 0) + (hasScenario ? 1 : 0);
+                (hasDefenseAttempts ? 1 : 0);
             if (root.Properties.Count != expectedProperties)
             {
                 throw new ContractValidationException(
@@ -2168,9 +2075,6 @@ namespace Volleyball.Shared.Contracts
                 defenseAttempts[index] = ParseDefenseAttempt(
                     StrictJsonV4.AsObject(attemptValues[index],
                         "defenseAttempts[" + index + "]"));
-            var scenario = hasScenario
-                ? ParseScenario(StrictJsonV4.RequiredObject(root, "scenario"))
-                : ReplayScenarioProvenanceV4.Default;
 
             if (hasLegacyShadowCoverage && hasCurrentShadowCoverage)
             {
@@ -2183,23 +2087,11 @@ namespace Volleyball.Shared.Contracts
                 context,
                 events,
                 defenseAttempts,
-                scenario,
                 hasSourceSequenceAnchor
                     ? StrictJsonV4.RequiredInt(root, "sourceSequenceAnchor")
                     : 0,
                 StrictJsonV4.RequiredString(root, "replayHash"),
-                hasLegacyShadowCoverage || !hasDefenseAttempts || !hasScenario);
-        }
-
-        private static ReplayScenarioProvenanceV4 ParseScenario(
-            StrictJsonObjectV4 value)
-        {
-            StrictJsonV4.RequireExactProperties(value,
-                "scenarioId", "formatVersion", "contentHash");
-            return new ReplayScenarioProvenanceV4(
-                StrictJsonV4.RequiredString(value, "scenarioId"),
-                StrictJsonV4.RequiredInt(value, "formatVersion"),
-                StrictJsonV4.RequiredString(value, "contentHash"));
+                hasLegacyShadowCoverage || !hasDefenseAttempts);
         }
 
         private static ReplayDefenseAttemptRecordV4 ParseDefenseAttempt(
@@ -3006,8 +2898,7 @@ namespace Volleyball.Shared.Contracts
         private static string Payload(
             MatchReplayV4 replay,
             bool legacyShadowCoverage = false,
-            bool includeDefenseAttempts = true,
-            bool includeScenario = true)
+            bool includeDefenseAttempts = true)
         {
             var output = new StringBuilder(32768);
             output.Append("{\"formatVersion\":4,\"replayId\":")
@@ -3035,17 +2926,6 @@ namespace Volleyball.Shared.Contracts
                     AppendDefenseAttempt(output, replay.DefenseAttempts[index]);
                 }
                 output.Append(']');
-            }
-            if (includeScenario)
-            {
-                output.Append(",\"scenario\":{")
-                    .Append("\"scenarioId\":")
-                    .Append(Quote(replay.Scenario.ScenarioId))
-                    .Append(",\"formatVersion\":")
-                    .Append(replay.Scenario.FormatVersion)
-                    .Append(",\"contentHash\":")
-                    .Append(Quote(replay.Scenario.ContentHash))
-                    .Append('}');
             }
             output.Append('}');
             return output.ToString();
