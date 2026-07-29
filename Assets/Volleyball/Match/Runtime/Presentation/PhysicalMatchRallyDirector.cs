@@ -346,8 +346,6 @@ namespace Volleyball.Presentation
         private StablePlayerId? _lastAcceptedV3Actor;
         private RallyContactClassificationV3? _lastAcceptedV3Classification;
         private RallyTacticalWeights _activeTacticalWeights;
-        private PhysicalRallyTactics? _initialScenarioTactics;
-        private RallyTacticalWeights? _initialScenarioAiWeights;
         private PhysicalMatchConfiguration _configuration;
         private readonly FormalRallyAuthorityOrchestrator
             _formalAuthority = new FormalRallyAuthorityOrchestrator();
@@ -382,24 +380,6 @@ namespace Volleyball.Presentation
         public int GroundResolvedRallies { get; private set; }
 
         public int TacticRevision => _tacticRevision;
-
-        public void ConfigureFormalScenario(
-            PhysicalRallyTactics tactics,
-            RallyTacticalWeights aiWeights,
-            FormalMatchScenarioProvenanceV4 provenance)
-        {
-            if (_set != null || _rallyActive || provenance == null)
-            {
-                throw new InvalidOperationException(
-                    "Formal scenario configuration must happen before match initialization.");
-            }
-
-            _initialScenarioTactics = tactics;
-            _initialScenarioAiWeights = aiWeights;
-            FormalScenarioProvenance = provenance;
-        }
-
-        public FormalMatchScenarioProvenanceV4 FormalScenarioProvenance { get; private set; }
 
         public int ExecutionErrorApplications { get; private set; }
 
@@ -741,9 +721,7 @@ namespace Volleyball.Presentation
             ScoreDisplay scoreDisplay,
             IRallyTacticalWeightSource tacticalWeightSource = null,
             PhysicalMatchConfiguration configuration = null,
-            TeamSide firstServingSide = TeamSide.Home,
-            int homeInitialRotationOffset = 0,
-            int awayInitialRotationOffset = 0)
+            TeamSide firstServingSide = TeamSide.Home)
         {
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
             if (matchContext.RulesVersion != RulesVersions.FullRallyV3)
@@ -767,9 +745,7 @@ namespace Volleyball.Presentation
                     _formalSet = new MatchSet(
                         matchContext,
                         firstServingSide,
-                        _configuration.SetRules,
-                        homeInitialRotationOffset,
-                        awayInitialRotationOffset);
+                        _configuration.SetRules);
                     return _formalSet;
                 });
         }
@@ -834,7 +810,7 @@ namespace Volleyball.Presentation
             {
                 _blockImpactFeedback.Initialize(ballTrail);
             }
-            ApplyTactics(InitialTactics(), true);
+            ApplyTactics(_tacticPlanner.Create(), true);
             RenderScore();
 
             _ball.ContactCandidateResolver = ResolveCandidate;
@@ -1117,11 +1093,6 @@ namespace Volleyball.Presentation
             {
                 pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
             }
-        }
-
-        private PhysicalRallyTactics InitialTactics()
-        {
-            return _initialScenarioTactics ?? _tacticPlanner.Create();
         }
 
         private IEnumerator StartInitialLoop(float delay)
@@ -1451,11 +1422,6 @@ namespace Volleyball.Presentation
 
         private RallyTacticalWeights LocalTacticalWeights()
         {
-            if (_initialScenarioAiWeights.HasValue)
-            {
-                return _initialScenarioAiWeights.Value;
-            }
-
             var rolePreference = _tacticRevision % 4 == 3 ? 0.35f : 1f;
             return new RallyTacticalWeights(rolePreference, 1.15f, 1f, 1f);
         }
@@ -4993,7 +4959,7 @@ namespace Volleyball.Presentation
             }
 
             _tacticRevision++;
-            ApplyTactics(InitialTactics(), false);
+            ApplyTactics(_tacticPlanner.Create(), false);
             StartCoroutine(StartInitialLoop(0.55f));
         }
 

@@ -32,100 +32,36 @@ namespace Volleyball.Presentation
 
         private void Awake()
         {
-            var scenario = FormalMatchScenarioStartupV4.ConsumePendingScenario();
-            if (scenario == null)
-            {
-                Initialize(transform, CreateSandboxContext(), TeamSide.Home, 0, 0,
-                    tactics: null, aiWeights: null, provenance: null);
-                return;
-            }
-
-            InitializeScenario(transform, scenario);
-        }
-
-        public static FormalSixVsSixRallyDirector InitializeScenario(
-            Transform host,
-            FormalMatchScenarioDefinitionV4 scenario)
-        {
-            if (scenario == null)
-            {
-                throw new ArgumentNullException(nameof(scenario));
-            }
-
-            return Initialize(
-                host,
-                scenario.Context,
-                scenario.FirstServingSide,
-                scenario.HomeInitialRotationOffset,
-                scenario.AwayInitialRotationOffset,
-                scenario.CreateTactics(),
-                scenario.Ai.ToRuntime(),
-                new FormalMatchScenarioProvenanceV4(
-                    scenario.ScenarioId,
-                    scenario.FormatVersionValue,
-                    scenario.ContentHash));
-        }
-
-        private static FormalSixVsSixRallyDirector Initialize(
-            Transform host,
-            MatchContextV4 context,
-            TeamSide firstServingSide,
-            int homeInitialRotationOffset,
-            int awayInitialRotationOffset,
-            Volleyball.AI.PhysicalRallyTactics? tactics,
-            Volleyball.AI.RallyTacticalWeights? aiWeights,
-            FormalMatchScenarioProvenanceV4 provenance)
-        {
-            if (host == null)
-            {
-                throw new ArgumentNullException(nameof(host));
-            }
-
             Application.targetFrameRate = 60;
-            CourtBuilder.Build(host, Configuration.CourtHalfLength);
-            var ball = CreateBall(host);
-            var agents = CreateRoster(
-                host,
-                context,
-                homeInitialRotationOffset,
-                awayInitialRotationOffset);
-            var scoreDisplay = ScoreDisplay.Create(host);
-            var director = host.gameObject.AddComponent<FormalSixVsSixRallyDirector>();
-            if (tactics.HasValue)
-            {
-                director.ConfigureFormalScenario(
-                    tactics.Value,
-                    aiWeights ?? throw new InvalidOperationException(
-                        "A formal scenario requires complete AI input."),
-                    provenance);
-            }
+            CourtBuilder.Build(transform, Configuration.CourtHalfLength);
+            var ball = CreateBall();
+            var context = CreateSandboxContext();
+            var agents = CreateRoster(context);
+            var scoreDisplay = ScoreDisplay.Create(transform);
+            var director = gameObject.AddComponent<FormalSixVsSixRallyDirector>();
             director.InitializeV4(
                 ball,
                 agents,
                 context,
                 scoreDisplay,
-                configuration: Configuration,
-                firstServingSide: firstServingSide,
-                homeInitialRotationOffset: homeInitialRotationOffset,
-                awayInitialRotationOffset: awayInitialRotationOffset);
+                configuration: Configuration);
             director.ConfigureV3Rules(V3RulesMode.Authority);
-            var rosterDisplay = host.gameObject.AddComponent<MatchRosterDisplay>();
+            var rosterDisplay = gameObject.AddComponent<MatchRosterDisplay>();
             rosterDisplay.Initialize(director, agents);
-            var cameras = host.gameObject.AddComponent<RallyCameraController>();
+            var cameras = gameObject.AddComponent<RallyCameraController>();
             cameras.Initialize(ball);
-            return director;
         }
 
-        private static SimulatedBall CreateBall(Transform host)
+        private SimulatedBall CreateBall()
         {
             var ballObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             ballObject.name = "Formal6v6Ball";
-            ballObject.transform.SetParent(host, false);
+            ballObject.transform.SetParent(transform, false);
             ballObject.transform.localScale = Vector3.one * (SimulatedBall.DefaultRadius * 2f);
             var collider = ballObject.GetComponent<Collider>();
             if (collider != null)
             {
-                UnityEngine.Object.Destroy(collider);
+                Destroy(collider);
             }
 
             var trail = ballObject.AddComponent<TrailRenderer>();
@@ -144,50 +80,27 @@ namespace Volleyball.Presentation
             return ballObject.AddComponent<SimulatedBall>();
         }
 
-        private static List<PrototypePlayerAgent> CreateRoster(
-            Transform host,
-            MatchContextV4 context,
-            int homeInitialRotationOffset,
-            int awayInitialRotationOffset)
+        private List<PrototypePlayerAgent> CreateRoster(MatchContextV4 context)
         {
             var agents = new List<PrototypePlayerAgent>(12);
-            CreateTeamAgents(
-                host,
-                agents,
-                TeamId.Blue,
-                context.Home,
-                BlueColor,
-                homeInitialRotationOffset);
-            CreateTeamAgents(
-                host,
-                agents,
-                TeamId.Orange,
-                context.Away,
-                OrangeColor,
-                awayInitialRotationOffset);
+            CreateTeamAgents(agents, TeamId.Blue, context.Home, BlueColor);
+            CreateTeamAgents(agents, TeamId.Orange, context.Away, OrangeColor);
             return agents;
         }
 
-        private static void CreateTeamAgents(
-            Transform host,
+        private void CreateTeamAgents(
             ICollection<PrototypePlayerAgent> agents,
             TeamId team,
             TeamSnapshotV4 snapshot,
-            Color color,
-            int initialRotationOffset)
+            Color color)
         {
             for (var index = 0; index < snapshot.Players.Count; index++)
             {
                 var player = snapshot.Players[index];
                 var role = RoleFor(player.Position);
                 var playerObject = new GameObject($"{team}_{role}_{index + 1}");
-                playerObject.transform.SetParent(host, false);
-                var rotationPosition =
-                    ((index - initialRotationOffset + snapshot.Players.Count) %
-                     snapshot.Players.Count) + 1;
-                playerObject.transform.localPosition = Configuration.PositionFor(
-                    snapshot.Side,
-                    rotationPosition);
+                playerObject.transform.SetParent(transform, false);
+                playerObject.transform.localPosition = Configuration.PositionFor(snapshot.Side, index + 1);
                 if (team == TeamId.Orange)
                 {
                     playerObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);

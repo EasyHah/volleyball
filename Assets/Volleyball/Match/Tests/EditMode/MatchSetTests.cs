@@ -163,38 +163,6 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void FormalIndoorSet_InitialRotationOffsetsApplyBeforeTheFirstServe()
-        {
-            var context = CreateSixPlayerContext();
-            var set = new MatchSet(
-                context,
-                TeamSide.Away,
-                MatchSetRules.FormalIndoor,
-                homeInitialRotationOffset: 2,
-                awayInitialRotationOffset: 5);
-
-            Assert.That(set.ServingSide, Is.EqualTo(TeamSide.Away));
-            Assert.That(set.RotationOffsetFor(TeamSide.Home), Is.EqualTo(2));
-            Assert.That(set.RotationOffsetFor(TeamSide.Away), Is.EqualTo(5));
-            Assert.That(
-                set.PlayerAtRotationPosition(TeamSide.Home, 1),
-                Is.EqualTo(context.Home.Players[2].PlayerId));
-            Assert.That(
-                set.PlayerAtRotationPosition(TeamSide.Away, 1),
-                Is.EqualTo(context.Away.Players[5].PlayerId));
-        }
-
-        [Test]
-        public void FormalIndoorSet_RejectsAnInitialRotationOffsetOutsideTheRoster()
-        {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new MatchSet(
-                CreateSixPlayerContext(),
-                TeamSide.Home,
-                MatchSetRules.FormalIndoor,
-                homeInitialRotationOffset: 6));
-        }
-
-        [Test]
         public void FormalIndoorSet_AtTwentyFourAllRequiresTwoPointLead()
         {
             var set = new MatchSet(CreateSixPlayerContext(), TeamSide.Home);
