@@ -253,6 +253,41 @@ namespace Volleyball.Shared.Contracts
             }
         }
 
+        public static string SerializePerformanceReportV1(
+            MatchPerformanceReportV1 value)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException(nameof(value));
+            }
+
+            value.Validate();
+            return CanonicalMatchPerformanceReportJsonV1.Serialize(value);
+        }
+
+        public static MatchPerformanceReportV1
+            DeserializeMatchPerformanceReportV1(string json)
+        {
+            try
+            {
+                return PerformanceReportJsonParserV1.Deserialize(
+                    StrictJsonV4.ParseObject(json));
+            }
+            catch (ContractValidationException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (
+                exception is FormatException ||
+                exception is OverflowException ||
+                exception is ArgumentException)
+            {
+                throw new ContractValidationException(
+                    "Performance report V1 JSON is malformed.",
+                    exception);
+            }
+        }
+
         private static TeamSnapshotV4 DeserializeTeamV4(
             StrictJsonObjectV4 value,
             int formulaVersion,

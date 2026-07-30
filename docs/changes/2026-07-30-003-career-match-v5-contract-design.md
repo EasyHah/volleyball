@@ -1,7 +1,7 @@
 # CHG-20260730-003：Career x Match V5 属性与事实报告设计
 
 - 日期：2026-07-30
-- 状态：待确认
+- 状态：已确认
 - 负责人：Career / Match / Shared / Replay
 - 影响模块：Docs；后续实现将影响 Career / Match / Shared / Replay / Bootstrap
 - 交互级别：跨模块（重点）
@@ -39,7 +39,7 @@
 - [x] 对照当前 Career 八项领域模型、V4 Mapper、PlayerSnapshot/Result/Replay 和正式 Match 事实流。
 - [x] 重新抓取全部远端分支；搭档最新 PR #5 已在 `main`，无未同步的新提交。
 - [x] 文档明确字段来源、正式消费者、事实/后果边界、兼容、回滚与测试计划。
-- [ ] 用户或双方负责人确认两层基础属性、力量/球商归属与六维展示基线。
+- [x] 用户确认两层基础属性、力量/球商归属与六维展示基线。
 
 ## 风险与回滚
 

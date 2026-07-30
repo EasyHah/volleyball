@@ -1103,6 +1103,181 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(() => ContractJson.DeserializeMatchResultV4(wrongVersion), Throws.TypeOf<ContractValidationException>());
         }
 
+        [Test]
+        public void MatchPerformanceReportV1_CanonicalJsonRoundTripsAndBindsResult()
+        {
+            var context = CreateContextV4(
+                new Guid("bedbaf43-c8f1-4987-8303-705865d8a027"),
+                7351);
+            var result = MatchResultV4.Create(
+                context,
+                context.Home.TeamId,
+                15,
+                12,
+                27,
+                81,
+                81,
+                Array.Empty<PlayerMatchStatsV4>());
+            var playerReports = CreatePerformanceReportsV1(context);
+            Array.Reverse(playerReports);
+
+            var report = MatchPerformanceReportV1.Create(
+                context,
+                result,
+                playerReports);
+            var json = ContractJson.SerializePerformanceReportV1(report);
+            var restored =
+                ContractJson.DeserializeMatchPerformanceReportV1(json);
+
+            var restoredIds = restored.PlayerReports
+                .Select(value => value.PlayerId.Value)
+                .ToArray();
+            Assert.That(
+                restoredIds,
+                Is.EqualTo(
+                    restoredIds
+                        .OrderBy(value => value, StringComparer.Ordinal)
+                        .ToArray()));
+            Assert.That(
+                ContractJson.SerializePerformanceReportV1(restored),
+                Is.EqualTo(json));
+            Assert.That(restored.ReportHash, Is.EqualTo(report.ReportHash));
+            Assert.That(
+                report.ReportHash,
+                Is.EqualTo(
+                    "81fd72d9271a3979a58efc9048fafaa38565116df56e8c83a0e80acb1d3c92a9"));
+            Assert.DoesNotThrow(() => restored.ValidateAgainst(context, result));
+        }
+
+        [Test]
+        public void MatchPerformanceReportV1_RejectsWrongCoverageAndResultBinding()
+        {
+            var context = CreateContextV4(Guid.NewGuid(), 7351);
+            var result = MatchResultV4.Create(
+                context,
+                context.Home.TeamId,
+                15,
+                12,
+                27,
+                81,
+                81,
+                Array.Empty<PlayerMatchStatsV4>());
+            var reports = CreatePerformanceReportsV1(context);
+            var missingPlayer = reports.Take(reports.Length - 1).ToArray();
+            var report = MatchPerformanceReportV1.Create(
+                context,
+                result,
+                reports);
+            var differentResult = MatchResultV4.Create(
+                context,
+                context.Home.TeamId,
+                15,
+                11,
+                26,
+                78,
+                78,
+                Array.Empty<PlayerMatchStatsV4>());
+
+            Assert.That(
+                () => MatchPerformanceReportV1.Create(
+                    context,
+                    result,
+                    missingPlayer),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => report.ValidateAgainst(context, differentResult),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void MatchPerformanceReportV1_RejectsInvalidFactsAndTamperedJson()
+        {
+            Assert.That(
+                () => new ReceptionPerformanceFactsV1(1, 1, 1, 0, 0, 0),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new MatchLoadFactsV1(1, 10, 20, 1, 2, 0, 0),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(
+                () => new MatchLoadFactsV1(
+                    0,
+                    9007199254740992L,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.DoesNotThrow(
+                () => new MatchLoadFactsV1(
+                    0,
+                    9007199254740991L,
+                    9007199254740991L,
+                    0,
+                    0,
+                    0,
+                    0));
+
+            var context = CreateContextV4(Guid.NewGuid(), 7351);
+            var result = MatchResultV4.Create(
+                context,
+                context.Home.TeamId,
+                15,
+                12,
+                27,
+                81,
+                81,
+                Array.Empty<PlayerMatchStatsV4>());
+            var report = MatchPerformanceReportV1.Create(
+                context,
+                result,
+                CreatePerformanceReportsV1(context));
+            var json = ContractJson.SerializePerformanceReportV1(report);
+            var tampered = json.Replace(
+                "\"ralliesOnCourt\":1",
+                "\"ralliesOnCourt\":2");
+
+            Assert.That(tampered, Is.Not.EqualTo(json));
+            Assert.That(
+                () => ContractJson.DeserializeMatchPerformanceReportV1(
+                    tampered),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        private static PlayerPerformanceReportV1[]
+            CreatePerformanceReportsV1(MatchContextV4 context)
+        {
+            return context.Home.RotationOrder
+                .Concat(context.Away.RotationOrder)
+                .Select(
+                    (player, index) => new PlayerPerformanceReportV1(
+                        player.PlayerId,
+                        new SpikePerformanceFactsV1(
+                            index == 0 ? 3 : 0,
+                            index == 0 ? 2 : 0,
+                            index == 0 ? 1 : 0),
+                        new ServePerformanceFactsV1(0, 0, 0),
+                        new ReceptionPerformanceFactsV1(0, 0, 0, 0, 0, 0),
+                        new DefensePerformanceFactsV1(0, 0),
+                        new BlockPerformanceFactsV1(0, 0, 0),
+                        new SettingPerformanceFactsV1(0, 0, 0),
+                        new MatchLoadFactsV1(
+                            1,
+                            1000,
+                            2500,
+                            1,
+                            0,
+                            200,
+                            300),
+                        new StabilityPerformanceFactsV1(
+                            index == 0 ? 3 : 0,
+                            index == 0 ? 2 : 0,
+                            index == 0 ? 1 : 0,
+                            0,
+                            index == 0 ? 1 : 0)))
+                .ToArray();
+        }
+
         private static void AssertPhysicalBaseAttributeRejected(int field, float value)
         {
             Assert.That(

@@ -87,24 +87,40 @@ namespace Volleyball.Bootstrap
     {
         public CareerFormalMatchRunOutcomeV4(
             MatchResultV4 result,
-            MatchReplayV4 replay)
+            MatchReplayV4 replay,
+            MatchPerformanceReportV1 performanceReport)
         {
             Result = result ?? throw new ArgumentNullException(nameof(result));
             Replay = replay ?? throw new ArgumentNullException(nameof(replay));
+            PerformanceReport = performanceReport ??
+                throw new ArgumentNullException(nameof(performanceReport));
             if (!string.Equals(
                     result.ContextHash,
                     replay.ContextHash,
                     StringComparison.Ordinal) ||
-                result.SessionId != replay.Context.SessionId)
+                result.SessionId != replay.Context.SessionId ||
+                result.SessionId != performanceReport.SessionId ||
+                !string.Equals(
+                    result.ContextHash,
+                    performanceReport.ContextHash,
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    result.ResultHash,
+                    performanceReport.ResultHash,
+                    StringComparison.Ordinal))
             {
                 throw new ArgumentException(
-                    "Formal result and replay must belong to the same V4 context.");
+                    "Formal result, replay and performance report must share one identity.");
             }
+
+            performanceReport.ValidateAgainst(replay.Context, result);
         }
 
         public MatchResultV4 Result { get; }
 
         public MatchReplayV4 Replay { get; }
+
+        public MatchPerformanceReportV1 PerformanceReport { get; }
     }
 
     /// <summary>
@@ -221,6 +237,9 @@ namespace Volleyball.Bootstrap
                 }
 
                 var recorder = MatchReplayRecorder.Attach(director);
+                using var performance =
+                    MatchPerformanceAccumulatorV1.Attach(director);
+                performance.StartCapture();
                 recorder.StartCapture();
                 while (director.Result == null)
                 {
@@ -247,7 +266,11 @@ namespace Volleyball.Bootstrap
                         "Formal V4 replay does not belong to the persisted context.");
                 }
 
-                return new CareerFormalMatchRunOutcomeV4(director.Result, replay);
+                var performanceReport = performance.Complete(director.Result);
+                return new CareerFormalMatchRunOutcomeV4(
+                    director.Result,
+                    replay,
+                    performanceReport);
             }
             finally
             {
