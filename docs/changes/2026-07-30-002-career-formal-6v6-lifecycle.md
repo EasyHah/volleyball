@@ -1,7 +1,7 @@
 # CHG-20260730-002：Career 正式物理 6v6 V4 生命周期
 
 - 日期：2026-07-30
-- 状态：已自动验证，待设备人工验收
+- 状态：已完成
 - 负责人：Career / Match / Bootstrap
 - 影响模块：Career.MatchIntegration / Career.Application / Match.Domain / Match.AI / Match.Presentation / Bootstrap / Tests / Docs
 - 交互级别：跨模块（重点）
@@ -70,10 +70,11 @@ Career 垂直切片的首场比赛从固定 fixture runner 改为正式物理 6v
 - [x] Windows x64 IL2CPP Development Build：Unity `6000.3.20f1`，
   `Builds/Windows/VolleyballCareer.exe`，manifest 总大小 `1,527,420,656` bytes。
 - [x] 最终 Windows Player 无图形启动烟雾：8 秒内无 Bootstrap、场景、输入或崩溃异常。
-- [ ] Windows 可视化设备闭环：键盘、手柄、图形和完整物理比赛性能。
+- [x] Windows 可视化设备闭环：用户于 2026-07-30 确认键盘、手柄、图形和完整物理比赛
+  验收完成。
 
 ## 回滚与风险
 
 回滚可移除 Career bootstrap 中的 formal runner/mapper 配置并恢复 fixture runner；V4 context、存档和
-Shared 合同不受影响。剩余风险是 Windows Player 的实际键鼠/手柄焦点、渲染和长赛性能；无图形启动
-烟雾不能替代可视化设备验收。
+Shared 合同不受影响。Windows Player 的实际键鼠/手柄焦点、渲染和完整物理比赛已经完成人工验收；
+后续性能或交互回归按对应功能改动重新验证。
