@@ -1,6 +1,6 @@
 # Career x Match V5 属性合同设计
 
-- Status: active
+- Status: superseded
 - Owner: Career / Match collaborator
 - Priority: P1
 - Scope: Career / Match / Shared / Replay 的 V5 属性与逐球员报告边界
@@ -53,4 +53,8 @@
 
 ## 结束处理
 
-设计确认后，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继实现任务单链接。
+结束日期：2026-07-30
+
+V5 设计稿已在 `docs/superpowers/specs/2026-07-30-career-match-v5-attribute-contract-design.md`
+确认并提交。当前先完成较低风险的 V4 统一触网续球；
+V5 实现任务待该工作完成后另行激活。
