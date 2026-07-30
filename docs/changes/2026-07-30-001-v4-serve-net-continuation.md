@@ -1,7 +1,7 @@
 # V4 发球触网续球修复
 
 - 状态：已自动验证
-- 分支：`codex/v4-defensive-contact-scenarios`
+- 分支：`codex/v4-serve-net-continuation`
 - 范围：正式 6v6 开局发球、Gate H 接发重规划、物理接触与场景回归
 
 ## 结果
