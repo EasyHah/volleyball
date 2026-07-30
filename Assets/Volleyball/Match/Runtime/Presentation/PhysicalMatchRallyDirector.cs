@@ -331,6 +331,7 @@ namespace Volleyball.Presentation
         private bool _activeSetChain;
         private bool _lastSetWasSetter;
         private bool _forceInSystemReceiveExecution;
+        private bool _serveInFlight;
         private int _tacticRevision;
         private int _aiDecisionRequestVersion;
         private int _aiRequestSequence;
@@ -350,6 +351,14 @@ namespace Volleyball.Presentation
         private RallyTacticalWeights _activeTacticalWeights;
         private PhysicalRallyTactics? _initialScenarioTactics;
         private RallyTacticalWeights? _initialScenarioAiWeights;
+        private float _initialServeFlightSeconds =
+            FormalMatchScenarioDefinitionV4.DefaultInitialServeFlightSeconds;
+        private float _initialServeArrivalVerticalSpeed =
+            FormalMatchScenarioDefinitionV4
+                .DefaultInitialServeArrivalVerticalSpeed;
+        private float _initialServeTargetDepthOffsetMeters =
+            FormalMatchScenarioDefinitionV4
+                .DefaultInitialServeTargetDepthOffsetMeters;
         private PhysicalMatchConfiguration _configuration;
         private readonly FormalRallyAuthorityOrchestrator
             _formalAuthority = new FormalRallyAuthorityOrchestrator();
@@ -388,7 +397,10 @@ namespace Volleyball.Presentation
         public void ConfigureFormalScenario(
             PhysicalRallyTactics tactics,
             RallyTacticalWeights aiWeights,
-            FormalMatchScenarioProvenanceV4 provenance)
+            FormalMatchScenarioProvenanceV4 provenance,
+            float initialServeFlightSeconds,
+            float initialServeArrivalVerticalSpeed,
+            float initialServeTargetDepthOffsetMeters)
         {
             if (_set != null || _rallyActive || provenance == null)
             {
@@ -398,6 +410,33 @@ namespace Volleyball.Presentation
 
             _initialScenarioTactics = tactics;
             _initialScenarioAiWeights = aiWeights;
+            if (float.IsNaN(initialServeFlightSeconds) ||
+                float.IsInfinity(initialServeFlightSeconds) ||
+                initialServeFlightSeconds <= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(initialServeFlightSeconds));
+            }
+            _initialServeFlightSeconds = initialServeFlightSeconds;
+            if (float.IsNaN(initialServeArrivalVerticalSpeed) ||
+                float.IsInfinity(initialServeArrivalVerticalSpeed) ||
+                initialServeArrivalVerticalSpeed >= 0f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(initialServeArrivalVerticalSpeed));
+            }
+            _initialServeArrivalVerticalSpeed =
+                initialServeArrivalVerticalSpeed;
+            if (float.IsNaN(initialServeTargetDepthOffsetMeters) ||
+                float.IsInfinity(initialServeTargetDepthOffsetMeters) ||
+                initialServeTargetDepthOffsetMeters < -5f ||
+                initialServeTargetDepthOffsetMeters > 5f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(initialServeTargetDepthOffsetMeters));
+            }
+            _initialServeTargetDepthOffsetMeters =
+                initialServeTargetDepthOffsetMeters;
             FormalScenarioProvenance = provenance;
         }
 
@@ -418,6 +457,12 @@ namespace Volleyball.Presentation
         public int BackSetAttackFaults { get; private set; }
 
         public int EmergencyReceiveWindowAssignments { get; private set; }
+
+        public int ServeNetContacts { get; private set; }
+
+        public int ServeNetReceiveReplans { get; private set; }
+
+        public float LastServeNetGroundLeadSeconds { get; private set; }
 
         public int EmergencyReceiveContacts { get; private set; }
 
@@ -1189,16 +1234,24 @@ namespace Volleyball.Presentation
             _controlledHandlingActive = false;
             _activeSetChain = false;
 
-            const float initialFlightSeconds = 0.90f;
+            var initialFlightSeconds = _initialServeFlightSeconds;
             var nominalReceiver = FindPlayer(
                 receivingTeam,
                 role => role == PlayerRole.Defender);
             var receiveCenter = ContactCenter(
                 nominalReceiver.PreviewContactFrames(TechniqueAction.Receive),
                 TechniqueAction.Receive);
+            receiveCenter += new SimVector3(
+                0f,
+                0f,
+                receivingTeam == TeamId.Blue
+                    ? -_initialServeTargetDepthOffsetMeters
+                    : _initialServeTargetDepthOffsetMeters);
             var arrivalVelocity = receivingTeam == TeamId.Blue
-                ? new SimVector3(0f, ServeArrivalVerticalSpeed, -9f)
-                : new SimVector3(0f, ServeArrivalVerticalSpeed, 9f);
+                ? new SimVector3(
+                    0f, _initialServeArrivalVerticalSpeed, -9f)
+                : new SimVector3(
+                    0f, _initialServeArrivalVerticalSpeed, 9f);
             var launch = ArrivalLaunchSolver.Solve(
                 receiveCenter,
                 arrivalVelocity,
@@ -1208,12 +1261,18 @@ namespace Volleyball.Presentation
             _ball.ResetBall(ToUnity(launch.StartPosition));
             _ball.Launch(ToUnity(launch.InitialVelocity));
             var stableServer = _set.ServerFor(_set.ServingSide);
+            var runtimeServer = FindPlayer(stableServer).Id;
+            _touchState.SynchronizeAuthoritativeContact(
+                runtimeServer,
+                TechniqueAction.Serve,
+                0);
             if (_configuration.RosterSize == 6)
             {
-                FindPlayer(stableServer).Rig.SetPose(StickFigurePose.Serve, 1f);
+                _players[runtimeServer].Rig.SetPose(StickFigurePose.Serve, 1f);
                 _set.RecordContact(stableServer, 0f);
                 _status = $"{stableServer.Value} SERVE to {receivingTeam}";
             }
+            _serveInFlight = true;
             _rallyActive = true;
             _restartScheduled = false;
 
@@ -3201,6 +3260,7 @@ namespace Volleyball.Presentation
                 }
             }
 
+            _serveInFlight = false;
             var actor = _players[actorId];
             var movementDistance = (_scheduledPrimaryActor.HasValue &&
                                     _scheduledPrimaryActor.Value.Equals(actorId)) ||
@@ -5108,10 +5168,119 @@ namespace Volleyball.Presentation
                 $"effect={BlockImpactEffects}");
         }
 
+        private void HandleServeNetContact()
+        {
+            if (!_serveInFlight || _touchState == null)
+            {
+                return;
+            }
+
+            ServeNetContacts++;
+            var receivingTeam = _touchState.PossessionTeam;
+            _aiDecisionRequestVersion++;
+            _aiDecisionTimeController?.CancelPending();
+            DisableEmergencyReceiveWindows(receivingTeam);
+            foreach (var pair in _players)
+            {
+                if (pair.Key.Team == receivingTeam)
+                {
+                    pair.Value.CancelScheduledContact();
+                }
+            }
+
+            _formalAuthority.ClearGateH();
+            _touchState.CloseWindow();
+            _scheduledDecision = null;
+            _scheduledPrimaryActor = null;
+            _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
+            _contactDeadlineActive = false;
+
+            if (!IsMovingTowardTeam(_ball.State.Velocity, receivingTeam))
+            {
+                _status = $"Serve net rebound; awaiting referee";
+                return;
+            }
+
+            var hasReceiveLead =
+                TryDeflectedServeReceiveLeadTime(out var availableSeconds);
+            Debug.Log(
+                $"[{_configuration.LogTag}] serve-net receiving={receivingTeam} " +
+                $"lead={LastServeNetGroundLeadSeconds:0.000} " +
+                $"replan={hasReceiveLead}");
+            if (!hasReceiveLead)
+            {
+                _status = $"Serve net deflection unreachable; awaiting referee";
+                return;
+            }
+
+            _activeTacticalWeights = LocalTacticalWeights();
+            if (GateHAuthorityEnabled)
+            {
+                ScheduleGateHReceive(receivingTeam, availableSeconds);
+            }
+            else
+            {
+                ScheduleReceiveDecision(receivingTeam, availableSeconds);
+            }
+
+            if (_scheduledPrimaryActor.HasValue)
+            {
+                ServeNetReceiveReplans++;
+                _status =
+                    $"Serve net deflection; {receivingTeam} receive replanned";
+            }
+        }
+
+        private bool TryDeflectedServeReceiveLeadTime(
+            out float availableSeconds)
+        {
+            var prediction = TrajectoryPredictor.Predict(
+                _ball.State,
+                SimulationParameters,
+                SimulatedBall.DefaultFixedStep,
+                1.5f,
+                220,
+                GroundHeight);
+            if (!prediction.GroundLanding.HasValue)
+            {
+                availableSeconds = 0f;
+                return false;
+            }
+
+            var rawLead =
+                prediction.GroundLanding.Value.TimeSeconds - .12f;
+            LastServeNetGroundLeadSeconds = rawLead;
+            if (float.IsNaN(rawLead) || float.IsInfinity(rawLead) ||
+                rawLead < .10f)
+            {
+                availableSeconds = 0f;
+                return false;
+            }
+
+            availableSeconds = Mathf.Min(rawLead, .75f);
+            return true;
+        }
+
+        private static bool IsMovingTowardTeam(
+            SimVector3 velocity,
+            TeamId team)
+        {
+            return team == TeamId.Orange
+                ? velocity.Z > 0f
+                : velocity.Z < 0f;
+        }
+
         private void HandleEnvironmentContact(EnvironmentCollisionHit hit)
         {
-            if (!_rallyActive || _restartScheduled || HasResult || hit.Kind == EnvironmentContactKind.Net)
+            if (!_rallyActive || _restartScheduled || HasResult)
             {
+                return;
+            }
+
+            if (hit.Kind == EnvironmentContactKind.Net)
+            {
+                HandleServeNetContact();
                 return;
             }
 
@@ -5349,6 +5518,14 @@ namespace Volleyball.Presentation
                 {
                     BackSetAttackFaults++;
                 }
+                return;
+            }
+
+            if (_serveInFlight)
+            {
+                // The receiving possession already exists from serve launch.
+                // A legal crossing confirms the side but must not create a
+                // second possession or clear its replanned Gate H window.
                 return;
             }
 

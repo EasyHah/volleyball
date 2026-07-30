@@ -42,6 +42,25 @@ namespace Volleyball.Presentation
                     scenarioId, context, TeamSide.Home,
                     Team(SpikeRoute.DeepSeam, -0.35f, -0.65f, 0f, 5.25f),
                     Team(SpikeRoute.DeepSeam, -0.35f, 0.65f, 0f, -5.25f)),
+                "serve-net-deflection" => Scenario(
+                    scenarioId, context, TeamSide.Home,
+                    Team(SpikeRoute.CrossCourt, -3.15f, -1.2f, 2.45f, 5.25f),
+                    Team(SpikeRoute.Line, -3.15f, 1.2f, -2.45f, -5.25f),
+                    awayRotationOffset: 3,
+                    initialServeArrivalVerticalSpeed: -7.5f),
+                "serve-net-deflection-miss" => Scenario(
+                    scenarioId,
+                    WithLateDefenseTeam(context, TeamSide.Away),
+                    TeamSide.Home,
+                    Team(SpikeRoute.CrossCourt, -3.15f, -1.2f, 2.45f, 5.25f),
+                    Team(SpikeRoute.Line, -3.15f, 1.2f, -2.45f, -5.25f),
+                    initialServeArrivalVerticalSpeed: -10f,
+                    initialServeTargetDepthOffsetMeters: -4f),
+                "serve-net-rebound" => Scenario(
+                    scenarioId, context, TeamSide.Home,
+                    Team(SpikeRoute.CrossCourt, -3.15f, -1.2f, 2.45f, 5.25f),
+                    Team(SpikeRoute.Line, -3.15f, 1.2f, -2.45f, -5.25f),
+                    initialServeArrivalVerticalSpeed: -4.5f),
                 _ => throw new System.ArgumentOutOfRangeException(nameof(scenarioId), scenarioId,
                     "Unknown formal match scenario."),
             };
@@ -102,13 +121,25 @@ namespace Volleyball.Presentation
             FormalMatchTacticInputV4 home,
             FormalMatchTacticInputV4 away,
             int homeRotationOffset = 0,
-            int awayRotationOffset = 0)
+            int awayRotationOffset = 0,
+            float initialServeFlightSeconds =
+                FormalMatchScenarioDefinitionV4
+                    .DefaultInitialServeFlightSeconds,
+            float initialServeArrivalVerticalSpeed =
+                FormalMatchScenarioDefinitionV4
+                    .DefaultInitialServeArrivalVerticalSpeed,
+            float initialServeTargetDepthOffsetMeters =
+                FormalMatchScenarioDefinitionV4
+                    .DefaultInitialServeTargetDepthOffsetMeters)
         {
             return new FormalMatchScenarioDefinitionV4(
                 id, FormalMatchScenarioDefinitionV4.FormatVersion, context,
                 servingSide, homeRotationOffset, awayRotationOffset,
                 FormalMatchScenarioDefinitionV4.FormalIndoorConfigurationIdentity,
-                home, away, new FormalMatchAiInputV4());
+                home, away, new FormalMatchAiInputV4(),
+                initialServeFlightSeconds,
+                initialServeArrivalVerticalSpeed,
+                initialServeTargetDepthOffsetMeters);
         }
 
         private static FormalMatchTacticInputV4 Team(

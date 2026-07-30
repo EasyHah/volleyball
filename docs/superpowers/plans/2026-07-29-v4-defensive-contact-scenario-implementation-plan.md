@@ -261,14 +261,14 @@ rg -n "error CS|Unhandled Exception|AssertionException|UnityException|FAIL|Faile
 
 ### 红测
 
-1. 新增完整启动预设，使初次 Serve 通过真实 `EnvironmentCollision.TryNet` 触网后仍朝接发方运动；预设只控制开局发球飞行参数，不在比赛中途改球。
+1. 新增完整启动预设，使初次 Serve 通过真实 `EnvironmentCollision.TryNet` 触网后仍朝接发方运动；预设只控制开局发球飞行时间、到达速度和相对接发人深度，不在比赛中途改球。
 2. `ServeNetDeflection_ReplansAndReceivesActualBall` 必须观察到 Net environment contact、旧 Gate H revision 失效、新 revision/source sequence、合法 crossing 和新 receipt 对应的真实 Receive。
 3. `ServeNetDeflection_MissStillLetsGroundRefereeScore` 使用不可达接发输入，断言零 accepted Receive、唯一 ground 和唯一 result。
 4. EditMode 固定预设的版本、canonical hash 和非法发球飞行参数拒绝；旧预设必须显式迁移，不能依赖新增字段的隐式 Unity 默认值。
 
 ### 实现
 
-1. 把初次发球 flight seconds 作为完整情景开局输入加入情景 canonical payload；默认正式场景仍使用 `0.90s`。该字段只供完整情景预设选择开局，不修改 `MatchContextV4`。
+1. 把初次发球 flight seconds、arrival vertical speed 和 target depth offset 作为完整情景开局输入加入情景 canonical payload；默认正式场景仍使用 `0.90s`、`-8m/s` 和零偏移。这些字段只供完整情景预设选择开局，不修改 `MatchContextV4`。
 2. `HandleEnvironmentContact(Net)` 仅在最后规则触球为 Serve、当前 possession 为接发方且球仍朝接发方运动时处理：
    - 递增异步请求版本并取消旧 AI 请求；
    - 取消旧 Primary/Emergency Receive 排程并清空旧 Gate H receipt；
@@ -278,6 +278,7 @@ rg -n "error CS|Unhandled Exception|AssertionException|UnityException|FAIL|Faile
 3. 新计划的移动可以立即提交；physical Receive 只有在后续合法 net crossing 后才能成为候选。若现有按时间窗口和接发方几何已经严格保证这一点，测试必须以 Net contact、crossing、contact simulation time 的顺序证明；否则增加显式 pending activation。
 4. 球触网后弹回发球队、剩余时间非法或无可达候选时，不创建新窗口；ground/out-of-bounds/crossing referee 保持唯一权威。
 5. 不新增 Shared replay 字段。用现有 net crossing、Gate H receipt、physical/replay contact、ground/result 和测试探针证明因果链。
+6. 有 accepted contact 的擦网接发继续进入 canonical Replay 双运行校验；完全零球员触球的漏接和弹回场景按双方物理结局双运行校验。现有 Replay V4 不得通过伪造 Serve contact 绕过“至少一个 contact event”的合同。
 
 ### 验证
 

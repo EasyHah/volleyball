@@ -12,9 +12,15 @@ namespace Volleyball.Presentation
     // mid-rally ball state, forced contact, or expected result.
     public sealed class FormalMatchScenarioDefinitionV4
     {
-        public const int FormatVersion = 1;
+        public const int FormatVersion = 2;
         public const string FormalIndoorConfigurationIdentity =
             "formal-indoor-6v6-v1";
+        public const float DefaultInitialServeFlightSeconds = .90f;
+        public const float DefaultInitialServeArrivalVerticalSpeed = -8f;
+        public const float DefaultInitialServeTargetDepthOffsetMeters = 0f;
+        private const float MinimumInitialServeFlightSeconds = .40f;
+        private const float MaximumInitialServeFlightSeconds = 1.40f;
+        private const float FixedStepSeconds = 1f / 120f;
 
         public FormalMatchScenarioDefinitionV4(
             string scenarioId,
@@ -27,6 +33,12 @@ namespace Volleyball.Presentation
             FormalMatchTacticInputV4 homeTactics,
             FormalMatchTacticInputV4 awayTactics,
             FormalMatchAiInputV4 ai,
+            float initialServeFlightSeconds =
+                DefaultInitialServeFlightSeconds,
+            float initialServeArrivalVerticalSpeed =
+                DefaultInitialServeArrivalVerticalSpeed,
+            float initialServeTargetDepthOffsetMeters =
+                DefaultInitialServeTargetDepthOffsetMeters,
             string suppliedContentHash = null)
         {
             ScenarioId = RequireText(scenarioId, nameof(scenarioId));
@@ -65,6 +77,14 @@ namespace Volleyball.Presentation
             HomeTactics.Validate(nameof(homeTactics));
             AwayTactics.Validate(nameof(awayTactics));
             Ai.Validate(nameof(ai));
+            InitialServeFlightSeconds = ValidateInitialServeFlightSeconds(
+                initialServeFlightSeconds);
+            InitialServeArrivalVerticalSpeed =
+                ValidateInitialServeArrivalVerticalSpeed(
+                    initialServeArrivalVerticalSpeed);
+            InitialServeTargetDepthOffsetMeters =
+                ValidateInitialServeTargetDepthOffsetMeters(
+                    initialServeTargetDepthOffsetMeters);
             FormatVersionValue = formatVersion;
             FirstServingSide = firstServingSide;
             HomeInitialRotationOffset = homeInitialRotationOffset;
@@ -90,6 +110,9 @@ namespace Volleyball.Presentation
         public FormalMatchTacticInputV4 HomeTactics { get; }
         public FormalMatchTacticInputV4 AwayTactics { get; }
         public FormalMatchAiInputV4 Ai { get; }
+        public float InitialServeFlightSeconds { get; }
+        public float InitialServeArrivalVerticalSpeed { get; }
+        public float InitialServeTargetDepthOffsetMeters { get; }
         public string ContentHash { get; }
 
         public PhysicalRallyTactics CreateTactics() => new PhysicalRallyTactics(
@@ -106,6 +129,15 @@ namespace Volleyball.Presentation
                 .Append("|homeOffset=").Append(value.HomeInitialRotationOffset)
                 .Append("|awayOffset=").Append(value.AwayInitialRotationOffset)
                 .Append("|configuration=").Append(value.ConfigurationIdentity)
+                .Append("|initialServeFlightSeconds=")
+                .Append(value.InitialServeFlightSeconds.ToString(
+                    "R", CultureInfo.InvariantCulture))
+                .Append("|initialServeArrivalVerticalSpeed=")
+                .Append(value.InitialServeArrivalVerticalSpeed.ToString(
+                    "R", CultureInfo.InvariantCulture))
+                .Append("|initialServeTargetDepthOffsetMeters=")
+                .Append(value.InitialServeTargetDepthOffsetMeters.ToString(
+                    "R", CultureInfo.InvariantCulture))
                 .Append("|homeTactics=").Append(value.HomeTactics.CanonicalPayload())
                 .Append("|awayTactics=").Append(value.AwayTactics.CanonicalPayload())
                 .Append("|ai=").Append(value.Ai.CanonicalPayload());
@@ -136,6 +168,56 @@ namespace Volleyball.Presentation
             {
                 throw new ArgumentOutOfRangeException(name);
             }
+        }
+
+        private static float ValidateInitialServeFlightSeconds(float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) ||
+                value < MinimumInitialServeFlightSeconds ||
+                value > MaximumInitialServeFlightSeconds)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value,
+                    "Initial serve flight must be finite and inside the supported range.");
+            }
+
+            var exactSteps = value / FixedStepSeconds;
+            if (Math.Abs(exactSteps - Math.Round(exactSteps)) > .0001f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value,
+                    "Initial serve flight must contain whole fixed steps.");
+            }
+
+            return value;
+        }
+
+        private static float ValidateInitialServeArrivalVerticalSpeed(
+            float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) ||
+                value >= -1f || value < -12f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value,
+                    "Initial serve arrival vertical speed must be finite, downward, and supported.");
+            }
+
+            return value;
+        }
+
+        private static float ValidateInitialServeTargetDepthOffsetMeters(
+            float value)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value) ||
+                value < -5f || value > 5f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(value), value,
+                    "Initial serve target depth offset must be finite and supported.");
+            }
+
+            return value;
         }
     }
 

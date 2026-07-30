@@ -19,6 +19,14 @@ namespace Volleyball.Presentation
         [SerializeField] private FormalMatchTacticInputV4 homeTactics;
         [SerializeField] private FormalMatchTacticInputV4 awayTactics;
         [SerializeField] private FormalMatchAiInputV4 ai;
+        [SerializeField] private float initialServeFlightSeconds =
+            FormalMatchScenarioDefinitionV4.DefaultInitialServeFlightSeconds;
+        [SerializeField] private float initialServeArrivalVerticalSpeed =
+            FormalMatchScenarioDefinitionV4
+                .DefaultInitialServeArrivalVerticalSpeed;
+        [SerializeField] private float initialServeTargetDepthOffsetMeters =
+            FormalMatchScenarioDefinitionV4
+                .DefaultInitialServeTargetDepthOffsetMeters;
         [SerializeField] private string contentHash;
 
         public FormalMatchScenarioDefinitionV4 ToDefinition()
@@ -46,6 +54,9 @@ namespace Volleyball.Presentation
                 homeTactics,
                 awayTactics,
                 ai,
+                initialServeFlightSeconds,
+                initialServeArrivalVerticalSpeed,
+                initialServeTargetDepthOffsetMeters,
                 contentHash);
         }
 
@@ -72,7 +83,10 @@ namespace Volleyball.Presentation
                     configurationIdentity,
                     homeTactics,
                     awayTactics,
-                    ai);
+                    ai,
+                    initialServeFlightSeconds,
+                    initialServeArrivalVerticalSpeed,
+                    initialServeTargetDepthOffsetMeters);
                 contentHash = definition.ContentHash;
             }
             catch (System.Exception exception)

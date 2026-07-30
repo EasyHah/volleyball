@@ -33,6 +33,58 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CompleteInputs_ChangingInitialServeFlightChangesScenarioHash()
+        {
+            var first = CreateScenario();
+            var changed = CreateScenario(initialServeFlightSeconds: .70f);
+
+            Assert.That(first.InitialServeFlightSeconds, Is.EqualTo(.90f));
+            Assert.That(changed.InitialServeFlightSeconds, Is.EqualTo(.70f));
+            Assert.That(changed.ContentHash, Is.Not.EqualTo(first.ContentHash));
+        }
+
+        [Test]
+        public void CompleteInputs_ChangingInitialServeArrivalSpeedChangesScenarioHash()
+        {
+            var first = CreateScenario();
+            var changed = CreateScenario(
+                initialServeArrivalVerticalSpeed: -5.3f);
+
+            Assert.That(first.InitialServeArrivalVerticalSpeed,
+                Is.EqualTo(-8f));
+            Assert.That(changed.InitialServeArrivalVerticalSpeed,
+                Is.EqualTo(-5.3f));
+            Assert.That(changed.ContentHash, Is.Not.EqualTo(first.ContentHash));
+        }
+
+        [Test]
+        public void CompleteInputs_ChangingInitialServeTargetDepthChangesScenarioHash()
+        {
+            var first = CreateScenario();
+            var changed = CreateScenario(
+                initialServeTargetDepthOffsetMeters: -3.5f);
+
+            Assert.That(first.InitialServeTargetDepthOffsetMeters,
+                Is.EqualTo(0f));
+            Assert.That(changed.InitialServeTargetDepthOffsetMeters,
+                Is.EqualTo(-3.5f));
+            Assert.That(changed.ContentHash, Is.Not.EqualTo(first.ContentHash));
+        }
+
+        [TestCase(0f)]
+        [TestCase(float.NaN)]
+        [TestCase(float.PositiveInfinity)]
+        [TestCase(.715f)]
+        public void CompleteInputs_RejectsInvalidInitialServeFlight(
+            float initialServeFlightSeconds)
+        {
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                CreateScenario(
+                    initialServeFlightSeconds:
+                    initialServeFlightSeconds));
+        }
+
+        [Test]
         public void CompleteInputs_ChangingAPlayerSnapshotChangesScenarioHash()
         {
             var first = CreateScenario();
@@ -85,12 +137,18 @@ namespace Volleyball.EditModeTests
                 scenario.HomeTactics,
                 scenario.AwayTactics,
                 scenario.Ai,
+                scenario.InitialServeFlightSeconds,
+                scenario.InitialServeArrivalVerticalSpeed,
+                scenario.InitialServeTargetDepthOffsetMeters,
                 new string('0', 64)));
         }
 
         private static FormalMatchScenarioDefinitionV4 CreateScenario(
             int homeRotationOffset = 1,
-            MatchContextV4 context = null)
+            MatchContextV4 context = null,
+            float initialServeFlightSeconds = .90f,
+            float initialServeArrivalVerticalSpeed = -8f,
+            float initialServeTargetDepthOffsetMeters = 0f)
         {
             return new FormalMatchScenarioDefinitionV4(
                 "formal-scenario-test",
@@ -103,7 +161,10 @@ namespace Volleyball.EditModeTests
                 FormalMatchScenarioDefinitionV4.FormalIndoorConfigurationIdentity,
                 CreateTactics(),
                 CreateTactics(SpikeRoute.Line),
-                new FormalMatchAiInputV4());
+                new FormalMatchAiInputV4(),
+                initialServeFlightSeconds,
+                initialServeArrivalVerticalSpeed,
+                initialServeTargetDepthOffsetMeters);
         }
 
         private static FormalMatchTacticInputV4 CreateTactics(

@@ -36,7 +36,10 @@ namespace Volleyball.Presentation
             if (scenario == null)
             {
                 Initialize(transform, CreateDefaultFormalContext(), TeamSide.Home, 0, 0,
-                    tactics: null, aiWeights: null, provenance: null);
+                    tactics: null, aiWeights: null, provenance: null,
+                    initialServeFlightSeconds: null,
+                    initialServeArrivalVerticalSpeed: null,
+                    initialServeTargetDepthOffsetMeters: null);
                 return;
             }
 
@@ -63,7 +66,10 @@ namespace Volleyball.Presentation
                 new FormalMatchScenarioProvenanceV4(
                     scenario.ScenarioId,
                     scenario.FormatVersionValue,
-                    scenario.ContentHash));
+                    scenario.ContentHash),
+                scenario.InitialServeFlightSeconds,
+                scenario.InitialServeArrivalVerticalSpeed,
+                scenario.InitialServeTargetDepthOffsetMeters);
         }
 
         private static FormalSixVsSixRallyDirector Initialize(
@@ -74,7 +80,10 @@ namespace Volleyball.Presentation
             int awayInitialRotationOffset,
             Volleyball.AI.PhysicalRallyTactics? tactics,
             Volleyball.AI.RallyTacticalWeights? aiWeights,
-            FormalMatchScenarioProvenanceV4 provenance)
+            FormalMatchScenarioProvenanceV4 provenance,
+            float? initialServeFlightSeconds,
+            float? initialServeArrivalVerticalSpeed,
+            float? initialServeTargetDepthOffsetMeters)
         {
             if (host == null)
             {
@@ -97,7 +106,16 @@ namespace Volleyball.Presentation
                     tactics.Value,
                     aiWeights ?? throw new InvalidOperationException(
                         "A formal scenario requires complete AI input."),
-                    provenance);
+                    provenance,
+                    initialServeFlightSeconds ??
+                    FormalMatchScenarioDefinitionV4
+                        .DefaultInitialServeFlightSeconds,
+                    initialServeArrivalVerticalSpeed ??
+                    FormalMatchScenarioDefinitionV4
+                        .DefaultInitialServeArrivalVerticalSpeed,
+                    initialServeTargetDepthOffsetMeters ??
+                    FormalMatchScenarioDefinitionV4
+                        .DefaultInitialServeTargetDepthOffsetMeters);
             }
             director.InitializeV4(
                 ball,

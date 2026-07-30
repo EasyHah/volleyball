@@ -46,6 +46,148 @@ namespace Volleyball.PlayModeTests
 
         [UnityTest]
         [Timeout(180000)]
+        public IEnumerator ServeNetDeflection_ReplansAndReceivesActualBall()
+        {
+            DefensiveContactProbe probe = null;
+            yield return LoadFormalProbe(
+                "ServeNetDeflection",
+                value => probe = value);
+
+            yield return probe.WaitFor(() =>
+                probe.HasAcceptedPostNetServeReceive ||
+                probe.HasRallyResult);
+
+            Assert.That(probe.NetContactTimes, Is.Not.Empty,
+                probe.Evidence("The opening serve did not physically contact the net."));
+            Assert.That(probe.Director.ServeNetReceiveReplans,
+                Is.EqualTo(1),
+                probe.Evidence("The serve net contact did not create one replacement plan."));
+            Assert.That(probe.PrimaryReceiveReceipts
+                    .Select(receipt => receipt.PlanRevision)
+                    .Distinct()
+                    .Count(),
+                Is.GreaterThanOrEqualTo(2),
+                probe.Evidence("The net deflection did not replace the stale Gate H plan."));
+            Assert.That(probe.PrimaryReceiveReceipts
+                    .Select(receipt => receipt.SourceSequence)
+                    .Distinct()
+                    .Count(),
+                Is.GreaterThanOrEqualTo(2),
+                probe.Evidence("The replacement plan reused the stale source sequence."));
+            Assert.That(probe.NetCrossings.Any(crossing =>
+                    crossing.SimulationTimeSeconds >= probe.NetContactTimes[0]),
+                Is.True,
+                probe.Evidence("The deflected serve never crossed legally."));
+            Assert.That(probe.HasAcceptedPostNetServeReceive, Is.True,
+                probe.Evidence("The replanned ServeReceive did not become a physical contact."));
+            var postNetReceive = probe.PostNetServeReceives[0];
+            Assert.That(probe.NetCrossings.Any(crossing =>
+                    crossing.SimulationTimeSeconds <=
+                    postNetReceive.ContactSimulationTime),
+                Is.True,
+                probe.Evidence("The Receive became physical before legal net crossing."));
+            Assert.That(probe.HasAcceptedPostNetServeReceiveWithV3AndReplay, Is.True,
+                probe.Evidence("The post-net Receive was not accepted by V3 and replay."));
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator ServeNetDeflectionMiss_StillLetsGroundRefereeScore()
+        {
+            DefensiveContactProbe probe = null;
+            yield return LoadFormalProbe(
+                "ServeNetDeflectionMiss",
+                value => probe = value);
+
+            yield return probe.WaitFor(() => probe.HasRallyResult);
+
+            Assert.That(probe.NetContactTimes, Is.Not.Empty,
+                probe.Evidence("The opening serve did not physically contact the net."));
+            Assert.That(probe.NetCrossings.Any(crossing =>
+                    crossing.SimulationTimeSeconds >= probe.NetContactTimes[0]),
+                Is.True,
+                probe.Evidence("The missed deflection never crossed to the receiving side."));
+            Assert.That(probe.Director.ServeNetReceiveReplans,
+                Is.EqualTo(1),
+                probe.Evidence("The receiving team did not react to the legal deflection."));
+            Assert.That(probe.PostNetServeReceives, Is.Empty,
+                probe.Evidence("An unreachable receiver gained a magnetic contact."));
+            Assert.That(probe.GroundEvents, Has.Count.EqualTo(1),
+                probe.Evidence("The missed deflection must reach the ground once."));
+            Assert.That(probe.Results, Has.Count.EqualTo(1),
+                probe.Evidence("The missed deflection must resolve once."));
+            Assert.That(probe.Results[0].Team,
+                Is.EqualTo(Volleyball.Domain.Prototype.TeamId.Blue),
+                probe.Evidence("The legal missed serve awarded the wrong team."));
+            Assert.That(probe.Results[0].Reason,
+                Is.EqualTo("legal opponent-court landing"));
+            Assert.That(probe.Results[0].PlayerId, Is.Not.Null,
+                probe.Evidence("The legal missed serve did not retain scorer attribution."));
+            Assert.That(probe.Results[0].ErrorPlayerId, Is.Null,
+                probe.Evidence("An untouched legal serve charged a receiver error."));
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator ServeNetRebound_DoesNotOpenReceivingCandidate()
+        {
+            DefensiveContactProbe probe = null;
+            yield return LoadFormalProbe(
+                "ServeNetRebound",
+                value => probe = value);
+
+            yield return probe.WaitFor(() => probe.HasRallyResult);
+
+            Assert.That(probe.NetContactTimes, Is.Not.Empty,
+                probe.Evidence("The opening serve did not physically contact the net."));
+            Assert.That(probe.NetCrossings.Where(crossing =>
+                    crossing.SimulationTimeSeconds >= probe.NetContactTimes[0]),
+                Is.Empty,
+                probe.Evidence("A net-face rebound must not be reported as a legal crossing."));
+            Assert.That(probe.PostNetServeReceives, Is.Empty,
+                probe.Evidence("A serve rebounding to the serving side opened a Receive."));
+            Assert.That(probe.Director.ServeNetReceiveReplans, Is.Zero,
+                probe.Evidence("A net-face rebound created a replacement Receive plan."));
+            Assert.That(probe.PrimaryReceiveReceipts
+                    .Select(receipt => receipt.PlanRevision)
+                    .Distinct()
+                    .Count(),
+                Is.EqualTo(1),
+                probe.Evidence("A net-face rebound published a new Gate H revision."));
+            Assert.That(probe.Results, Has.Count.EqualTo(1));
+            Assert.That(probe.Results[0].Team,
+                Is.EqualTo(Volleyball.Domain.Prototype.TeamId.Orange),
+                probe.Evidence("A serve rebounding onto the serving side awarded the wrong team."));
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
+        public IEnumerator ServeNetNoContactOutcomes_AreStableAcrossIndependentRuns()
+        {
+            var scenarios = new[]
+            {
+                "ServeNetDeflectionMiss",
+                "ServeNetRebound"
+            };
+
+            foreach (var scenario in scenarios)
+            {
+                ServeNetOutcomeSnapshot first = null;
+                ServeNetOutcomeSnapshot second = null;
+                yield return CaptureServeNetOutcome(
+                    scenario,
+                    value => first = value);
+                yield return CaptureServeNetOutcome(
+                    scenario,
+                    value => second = value);
+
+                Assert.That(second, Is.EqualTo(first),
+                    scenario + " outcome changed across independent runs.");
+            }
+        }
+
+        [UnityTest]
+        [Timeout(180000)]
         public IEnumerator LateFloorDefense_DoesNotCreateMagicDig()
         {
             DefensiveContactProbe probe = null;
@@ -171,7 +313,9 @@ namespace Volleyball.PlayModeTests
                 new KeyValuePair<string, string>(
                     "PostBlockMiss", "post-block-miss"),
                 new KeyValuePair<string, string>(
-                    "OverlappingDefenders", "overlapping-defenders")
+                    "OverlappingDefenders", "overlapping-defenders"),
+                new KeyValuePair<string, string>(
+                    "ServeNetDeflection", "serve-net-deflection")
             };
 
             foreach (var scenario in scenarios)
@@ -207,6 +351,28 @@ namespace Volleyball.PlayModeTests
                     Is.EqualTo(first.V3Transitions),
                     scenario.Key + " V3 transition count changed.");
             }
+        }
+
+        private static IEnumerator CaptureServeNetOutcome(
+            string scenarioName,
+            Action<ServeNetOutcomeSnapshot> captured)
+        {
+            DefensiveContactProbe probe = null;
+            yield return LoadFormalProbe(
+                scenarioName,
+                value => probe = value);
+            yield return probe.WaitFor(() => probe.HasRallyResult);
+
+            Assert.That(probe.Results, Has.Count.EqualTo(1),
+                probe.Evidence(scenarioName + " did not resolve exactly once."));
+            captured(new ServeNetOutcomeSnapshot(
+                probe.Director.ServeNetContacts,
+                probe.Director.ServeNetReceiveReplans,
+                probe.NetCrossings.Count,
+                probe.PostNetServeReceives.Count,
+                probe.GroundEvents.Count,
+                probe.Results[0].Team,
+                probe.Results[0].Reason));
         }
 
         private static IEnumerator CaptureScenarioReplay(
@@ -250,7 +416,7 @@ namespace Volleyball.PlayModeTests
                  string.IsNullOrEmpty(recorder.CaptureFailureReason);
                  frame++)
             {
-                yield return null;
+                yield return new WaitForFixedUpdate();
             }
 
             Assert.That(recorder.CaptureFailureReason, Is.Null.Or.Empty,
@@ -265,7 +431,12 @@ namespace Volleyball.PlayModeTests
             Assert.That(replay.Scenario.ContentHash,
                 Is.EqualTo(definition.ContentHash));
             Assert.That(replay.Events, Is.Not.Empty);
-            Assert.That(replay.DefenseAttempts, Is.Not.Empty);
+            if (!definition.ScenarioId.StartsWith(
+                    "serve-net-",
+                    StringComparison.Ordinal))
+            {
+                Assert.That(replay.DefenseAttempts, Is.Not.Empty);
+            }
 
             captured(new ScenarioReplaySnapshot(
                 ContractJson.SerializeV4(replay),
@@ -344,6 +515,66 @@ namespace Volleyball.PlayModeTests
             public int V3Transitions { get; }
         }
 
+        private sealed class ServeNetOutcomeSnapshot : IEquatable<ServeNetOutcomeSnapshot>
+        {
+            public ServeNetOutcomeSnapshot(
+                int netContacts,
+                int receiveReplans,
+                int netCrossings,
+                int receives,
+                int groundContacts,
+                Volleyball.Domain.Prototype.TeamId winner,
+                string reason)
+            {
+                NetContacts = netContacts;
+                ReceiveReplans = receiveReplans;
+                NetCrossings = netCrossings;
+                Receives = receives;
+                GroundContacts = groundContacts;
+                Winner = winner;
+                Reason = reason;
+            }
+
+            public int NetContacts { get; }
+            public int ReceiveReplans { get; }
+            public int NetCrossings { get; }
+            public int Receives { get; }
+            public int GroundContacts { get; }
+            public Volleyball.Domain.Prototype.TeamId Winner { get; }
+            public string Reason { get; }
+
+            public bool Equals(ServeNetOutcomeSnapshot other) =>
+                other != null &&
+                NetContacts == other.NetContacts &&
+                ReceiveReplans == other.ReceiveReplans &&
+                NetCrossings == other.NetCrossings &&
+                Receives == other.Receives &&
+                GroundContacts == other.GroundContacts &&
+                Winner == other.Winner &&
+                string.Equals(Reason, other.Reason, StringComparison.Ordinal);
+
+            public override bool Equals(object obj) =>
+                Equals(obj as ServeNetOutcomeSnapshot);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var hash = NetContacts;
+                    hash = (hash * 397) ^ ReceiveReplans;
+                    hash = (hash * 397) ^ NetCrossings;
+                    hash = (hash * 397) ^ Receives;
+                    hash = (hash * 397) ^ GroundContacts;
+                    hash = (hash * 397) ^ (int)Winner;
+                    hash = (hash * 397) ^
+                        (Reason == null
+                            ? 0
+                            : StringComparer.Ordinal.GetHashCode(Reason));
+                    return hash;
+                }
+            }
+        }
+
         private sealed class DefensiveContactProbe
         {
             private readonly Dictionary<RuntimePlayerId, StablePlayerId> _stableIds;
@@ -356,25 +587,62 @@ namespace Volleyball.PlayModeTests
                 Director = director;
                 _stableIds = players.ToDictionary(player => player.Id, player => player.StableId);
                 director.AttackDefenseAuthorityCommitted += receipt => Receipts.Add(receipt);
+                director.ReceiveOrganizationAuthorityCommitted +=
+                    receipt => OrganizationReceipts.Add(receipt);
                 director.ReplayContactAccepted += contact => ReplayContacts.Add(contact);
                 director.ReplayDefenseAttemptRecorded += RecordDefenseAttempt;
                 director.ReplayNetCrossed += crossing => NetCrossings.Add(crossing);
                 director.ReplayGroundContact += RecordGround;
                 director.ReplayRallyResolved += RecordRallyResult;
                 ball.PlayerContact += RecordPhysicalContact;
+                ball.EnvironmentContact += contact =>
+                {
+                    if (contact.Kind == EnvironmentContactKind.Net &&
+                        director.ServeNetContacts > NetContactTimes.Count)
+                    {
+                        NetContactTimes.Add(ball.SimulationTime);
+                    }
+                };
             }
 
             public FormalSixVsSixRallyDirector Director { get; }
             public List<AttackDefenseAuthorityReceipt> Receipts { get; } = new();
+            public List<ReceiveOrganizationAuthorityReceipt>
+                OrganizationReceipts { get; } = new();
             public List<PlayerBallContactEvent> PhysicalContacts { get; } = new();
             public List<ReplayContactEvent> ReplayContacts { get; } = new();
             public List<ReplayDefenseAttemptEvent> DefenseAttempts { get; } = new();
             public List<ReplaySimpleEvent> NetCrossings { get; } = new();
             public List<ReplaySimpleEvent> GroundEvents { get; } = new();
             public List<ReplayRallyResolvedEvent> Results { get; } = new();
+            public List<float> NetContactTimes { get; } = new();
 
             public List<AttackDefenseAuthorityReceipt> FloorDefenses => Receipts.Where(
                 receipt => receipt.Kind == AttackDefenseCommandKind.FloorDefense).ToList();
+            public List<ReceiveOrganizationAuthorityReceipt>
+                PrimaryReceiveReceipts => OrganizationReceipts.Where(receipt =>
+                    receipt.Kind ==
+                    ReceiveOrganizationCommandKind.PrimaryReceive).ToList();
+            public List<PlayerBallContactEvent> PostNetServeReceives =>
+                NetContactTimes.Count == 0
+                    ? new List<PlayerBallContactEvent>()
+                    : PhysicalContacts.Where(contact =>
+                        contact.Candidate.Action == TechniqueAction.Receive &&
+                        contact.ContactSimulationTime >= NetContactTimes[0] &&
+                        (!Blocks.Any() ||
+                         contact.ContactSimulationTime <
+                         Blocks[0].ContactSimulationTime)).ToList();
+            public bool HasAcceptedPostNetServeReceive =>
+                PostNetServeReceives.Count > 0;
+            public bool HasAcceptedPostNetServeReceiveWithV3AndReplay =>
+                PostNetServeReceives.Any(physical =>
+                    ReplayContacts.Any(replay =>
+                        replay.Action == TechniqueAction.Receive &&
+                        replay.RuleTransition != null &&
+                        replay.OrganizationAuthority != null &&
+                        replay.AttackDefenseAuthority == null &&
+                        replay.RuleTransition.After.LastContactGroup ==
+                        physical.Hit.ContactGroupId));
             public List<PlayerBallContactEvent> Blocks => PhysicalContacts.Where(
                 contact => contact.Candidate.Action == TechniqueAction.Block).ToList();
             public List<PlayerBallContactEvent> PostBlockReceives => PhysicalContacts.Where(
@@ -445,12 +713,14 @@ namespace Volleyball.PlayModeTests
             {
                 for (var frame = 0; frame < RallyFrameLimit && !predicate(); frame++)
                 {
-                    yield return null;
+                    yield return new WaitForFixedUpdate();
                 }
             }
 
             public string Evidence(string message) =>
                 $"{message} receipts={Receipts.Count}; physical={PhysicalContacts.Count}; " +
+                $"organization={OrganizationReceipts.Count}; netHits={NetContactTimes.Count}; " +
+                $"serveLead={Director.LastServeNetGroundLeadSeconds:0.000}; " +
                 $"replay={ReplayContacts.Count}; attempts={DefenseAttempts.Count}; " +
                 $"floor={FloorDefenses.Count}; pendingNet={NetCrossings.Count}; " +
                 $"ground={GroundEvents.Count}; results={Results.Count}; " +

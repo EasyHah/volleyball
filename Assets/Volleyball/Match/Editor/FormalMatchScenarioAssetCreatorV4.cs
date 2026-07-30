@@ -19,6 +19,9 @@ namespace Volleyball.Editor
             Create("BlockingSideBlockRebound", "blocking-side-block-rebound");
             Create("PostBlockMiss", "post-block-miss");
             Create("OverlappingDefenders", "overlapping-defenders");
+            Create("ServeNetDeflection", "serve-net-deflection");
+            Create("ServeNetDeflectionMiss", "serve-net-deflection-miss");
+            Create("ServeNetRebound", "serve-net-rebound");
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
         }
@@ -59,6 +62,12 @@ namespace Volleyball.Editor
             CopyTactics(serialized.FindProperty("homeTactics"), definition.HomeTactics);
             CopyTactics(serialized.FindProperty("awayTactics"), definition.AwayTactics);
             CopyAi(serialized.FindProperty("ai"), definition.Ai);
+            serialized.FindProperty("initialServeFlightSeconds").floatValue =
+                definition.InitialServeFlightSeconds;
+            serialized.FindProperty("initialServeArrivalVerticalSpeed").floatValue =
+                definition.InitialServeArrivalVerticalSpeed;
+            serialized.FindProperty("initialServeTargetDepthOffsetMeters").floatValue =
+                definition.InitialServeTargetDepthOffsetMeters;
             serialized.FindProperty("contentHash").stringValue = definition.ContentHash;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(preset);

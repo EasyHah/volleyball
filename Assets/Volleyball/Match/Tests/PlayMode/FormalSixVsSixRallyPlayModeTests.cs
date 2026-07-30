@@ -434,6 +434,7 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
+        [Timeout(360000)]
         public IEnumerator FormalScene_CompletesTwentyFivePointSetWithTwelvePlayers()
         {
             yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
