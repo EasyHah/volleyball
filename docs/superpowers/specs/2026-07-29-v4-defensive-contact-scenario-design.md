@@ -1,10 +1,10 @@
-# V4 防守接触与拦网延续设计
+# V4 防守接触、拦网与发球触网延续设计
 
 ## 目标
 
-修复正式比赛中普通扣球和拦网反弹后的防守接触空窗。`FloorDefense`、`AttackCover` 和 `BlockRecovery` 必须只通过球体与合法球员接触面的真实 swept geometry 产生 `Receive`；不能由预测、计划或测试代码直接制造成功触球。
+修复正式比赛中普通扣球、拦网反弹和发球触网后的防守接触空窗。`FloorDefense`、`AttackCover`、`BlockRecovery` 和 `ServeReceive` 必须只通过球体与合法球员接触面的真实 swept geometry 产生 `Receive`；不能由预测、计划或测试代码直接制造成功触球。
 
-同时提供完整固化、运行时可加载的正式比赛情景预设，用于重放和验证这三类延续路径。预设是正式比赛的开局输入，而不是中途事件脚本。
+同时提供完整固化、运行时可加载的正式比赛情景预设，用于重放和验证这些延续路径。预设是正式比赛的开局输入，而不是中途事件脚本。
 
 ## 范围与非目标
 
@@ -13,6 +13,7 @@
 - 完整固化的运行时情景预设和正式启动适配层。
 - Gate I 已提交防守职责到实际 Receive 接触面的接线。
 - 扣球 crossing、拦网反弹侧和落地之间的单调 continuation 状态机。
+- 发球触网后在同一接发 possession 内按实际反弹轨迹重规划接发移动与接触窗口。
 - 相同 fixed step 内物理接触候选的稳定、显式排序。
 - 防守尝试、continuation 结果和真实接触的 replay 证据。
 - 按完整比赛生命周期运行的固定输入 PlayMode 验证。
@@ -45,6 +46,8 @@
 ```
 
 Gate I 的 receipt 只能证明尝试已被授权，不能证明球已被接起。
+
+Gate H 的接发 receipt 同样只能证明接发责任和窗口已提交。发球触网后，触网前的轨迹与到达时间已经失效；旧 receipt 不得通过扩大窗口或放宽几何条件继续生效。重规划必须产生新的 revision、source sequence 和轨迹证据，并使旧窗口过期。
 
 ## 情景预设
 
@@ -84,6 +87,35 @@ Gate I 的 receipt 只能证明尝试已被授权，不能证明球已被接起�
 - 同一拦网者随后完成首个 counted touch 合法。
 - 同一 physical contact group 绝不能重复提交。
 
+## 发球触网延续
+
+发球与网发生真实环境接触时，Net contact 本身是非终局事件。Director 必须在
+`EnvironmentCollision.ApplyResponse` 已经写入实际反弹位置和速度后处理延续，并根据实际状态执行：
+
+1. 保持原接发方和当前 V3 发球后的规则账本，不新建 possession，不增加触球数。
+2. 立即使触网前的 Gate H 接发窗口和异步决策回调失效。
+3. 使用触网后的实际球位置、实际速度和重新计算的剩余飞行时间，创建同一接发方的新 Gate H planning revision/source sequence。
+4. 新计划只能移动已由新 receipt 授权的接发球员并打开其合法 `Receive` surface。
+5. 若实际反弹轨迹无法提供正数、有限且足够调度的剩余时间，则不得制造接发窗口；球继续由 ground、out-of-bounds 和 net-crossing 权威裁决。
+
+触网后可能出现三种结果：
+
+```text
+Serve net contact
+  -> crosses legally into receiving court
+     -> replanned ServeReceive may create one actual Receive
+     -> miss remains a normal ground point
+  -> rebounds to serving court
+     -> no receiving-side Receive may be opened
+     -> ground/out-of-bounds resolves the serve
+  -> crosses outside the legal antenna/height boundary
+     -> net-crossing referee resolves the fault
+```
+
+重规划不能调用 `BeginPossession`，因为发球开始时接发 possession 已经建立；重复调用会清理或重建不属于新球权的状态。重规划也不能让普通角色 capsule 成为触球面，不能直接改变球速，不能因为球员站在新落点附近而自动接受触球。
+
+为避免对即将弹回发球方的球提前开放错误窗口，只有触网后的实际速度方向仍指向接发方时才允许重规划。新 Gate H 计划可以提交移动，但其物理 Receive window 必须等后续合法 net crossing 才激活。触网后实际速度指向发球队时，不创建接发方新计划或物理候选。
+
 ## Continuation 状态机
 
 Director 维护 presentation 内部、单调推进的 continuation state，并记录触发 contact group、block actor/team、block simulation time、impact center、接触后速度、最近 crossing、已决 side、Gate I revision/source sequence 和已开窗口 identity。它不进入 V3 domain 账本。
@@ -102,6 +134,12 @@ Block accepted
   -> ResolvedByContact
   -> ResolvedByGround
   -> rally reset
+
+Serve accepted
+  -> ReceivingPossessionPlanned
+  -> NetDeflectionObserved
+  -> ServeReceiveReplanned (仍朝接发方)
+  -> ResolvedByContact / ResolvedByGround / ResolvedByCrossingFault
 ```
 
 反弹侧的固定优先级是：
@@ -142,8 +180,12 @@ SweptBallHit.TimeFraction
 - `DefenseContactRejected`
 - `DefenseAttemptExpired`
 - `PostBlockContinuationResolved`
+- `ServeNetDeflectionObserved`
+- `ServeReceiveReplanned`
 
 每项绑定预设 ID/哈希、Gate I command/receipt、actor、revision、source sequence、artifact/envelope identity、窗口起止、simulation time、球位置/速度、continuation side/state、赢家或淘汰原因。
+
+发球触网证据必须额外关联触网环境 contact group、触网前后速度、新旧 Gate H revision/source sequence、旧窗口过期原因和新窗口 identity。优先使用现有非 canonical 诊断及既有 replay 事件；本次不为发球触网单独升级 Shared V4 schema。只有现有 canonical 结构无法证明最终 accepted Receive 与新 receipt 的绑定时，才另行评估 Replay 合同升级。
 
 优先复用现有 `ReplayContactEvent`、fixed-rate samples 和 simple events。仅当 canonical replay 无法承载 continuation side、rejected/expired reason 与 receipt 绑定、或 HTML 无法从 canonical payload 重建时间线时，才升级 Shared V4 schema。升级时必须定义默认值、旧 payload 的读取行为、固定 canonical property order、round-trip 与 hash fixtures。HTML 只渲染 canonical 事实，不能反推或补造比赛事实。
 
@@ -156,6 +198,7 @@ SweptBallHit.TimeFraction
 | `ReachableFloorDefense` | 扣球实际 crossing 后，已提交 FloorDefense 经 Receive surface 起球 |
 | `AttackSideBlockRebound` | 拦网实际回到进攻方后，已提交 AttackCover 完成新的 Receive |
 | `BlockingSideBlockRebound` | 拦网实际留在拦网方后，已提交 BlockRecovery/FloorDefense 完成本方第一个 counted touch |
+| `ServeNetDeflection` | 发球真实触网后仍合法进入接发方，旧窗口过期并由新 Gate H receipt 建立实际 Receive |
 
 预设输入还应覆盖不可达/过晚和漏球结果，而不是由测试在中途改球状态。完整 PlayMode 验收包括：
 
@@ -165,6 +208,10 @@ SweptBallHit.TimeFraction
 - 重叠接触面只产生一个稳定排序的 Receive。
 - 成功同时具有 `PlayerBallContactEvent`、V3 accepted transition、replay accepted event 和正确 counted-touch delta。
 - miss 具有零 accepted Receive、拒绝或过期证据、ground event 与唯一 rally result。
+- 发球触网后合法越网且可达时产生一次真实 Receive；不能复用触网前的窗口。
+- 发球触网后弹回发球队时，接发方不会获得 physical candidate。
+- 发球触网后合法越网但无人接到时，ground/referee 正常产生唯一得分。
+- 发球触网后的重规划不会重复 BeginPossession、规则触球、统计或 replay accepted contact。
 
 EditMode 覆盖预设适配/完整性、V3 block 计数、候选排序不受注册顺序影响和 replay codec/hash 边界。
 
