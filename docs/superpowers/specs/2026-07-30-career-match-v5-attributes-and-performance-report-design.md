@@ -19,7 +19,8 @@
 2. **切片 B：V5 球员输入合同**
    - Career 直接保存并传递身体层与技术层基础属性，不再从少量核心值混合生成；
    - Match 按进攻、拦网、防守、接发、二传、发球六类派生实际比赛属性；
-   - 六维展示合并身高/摸高与防守/接发，并增加力量和球商轴；
+   - 基础六维展示合并身高/摸高与防守/接发，并增加力量和球商轴；
+   - 比赛六维维持进攻、拦网、防守、接发、二传、发球；
    - 展示汇总不得参与模拟；
    - 原始疲劳留在 Career，只向 Match 传一次性 `readiness`；
    - 位置和培养方向不得覆盖玩家传入的能力。
@@ -329,15 +330,15 @@ Match 使用版本化公式从冻结的基础属性派生六类实际比赛字�
 
 ### 5.5 比赛属性六维展示
 
-比赛六维图固定使用进攻、拦网、后场、二传、发球、球商六个轴：
+比赛六维图维持最初的进攻、拦网、防守、接发、二传、发球六个轴：
 
 ```text
 AttackRadar = Mean(normalized Attack fields)
 BlockRadar = Mean(normalized Block fields)
-BackcourtRadar = Mean(normalized Defense and Receive fields)
+DefenseRadar = Mean(normalized Defense fields)
+ReceiveRadar = Mean(normalized Receive fields)
 SetRadar = Mean(normalized Set fields)
 ServeRadar = Mean(normalized Serve fields)
-VolleyballIQRadar = effective VolleyballIQ
 ```
 
 原生 `[0,1]` 字段直接进入平均；击球高度和拦网高度由同一个 `RadarNormalizationV1` 转为 `[0,1]`。
@@ -502,5 +503,6 @@ save 固定。直接字段复制原成长经验、潜力效率和上限；组合
 4. 同意原始疲劳留在 Career，Shared 只接收一次性 readiness；
 5. 同意力量属于身体层，球商属于技术层，并由 Match 正式消费；
 6. 同意 Match 内部保留防守与接发的独立派生字段；
-7. 同意基础与比赛六维图分别合并身高/摸高和防守/接发，不参与模拟、成长或结算；
-8. 同意首个实现切片止于 Match 报告生成和验证，不同时迁移 Career 存档。
+7. 同意基础六维图合并身高/摸高和防守/接发，比赛六维维持进攻、拦网、防守、接发、二传、发球；
+8. 同意所有六维汇总不参与模拟、成长或结算；
+9. 同意首个实现切片止于 Match 报告生成和验证，不同时迁移 Career 存档。
