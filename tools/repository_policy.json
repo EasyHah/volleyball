@@ -14,9 +14,8 @@
     "/tools/** @hoshisora1"
   ],
   "frozenTrees": {
-    "Assets/Volleyball/Match.meta": "23d5e66a3e4158bd421c4d3ee573e0d4e7339627",
-    "Assets/Volleyball/Shared/Runtime": "af87384df4754ce4836382bd4d295e905f5c015c",
-    "Assets/Volleyball/Shared/Runtime.meta": "9085d85a3a423a82a6303df4ca3fe3819d8d30ea"
+    "Assets/Volleyball/Match": "273ce4c86551f02da3225dd800989933a2595c06",
+    "Assets/Volleyball/Match.meta": "23d5e66a3e4158bd421c4d3ee573e0d4e7339627"
   },
   "requiredGitattributes": [
     "*.cs text eol=lf",
@@ -102,7 +101,7 @@
     },
     "Volleyball.Bootstrap": {
       "path": "Assets/Volleyball/Bootstrap/Runtime/Volleyball.Bootstrap.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Match.Presentation", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Presentation", "Unity.InputSystem"]
+      "references": ["Volleyball.Shared", "Volleyball.Match.Domain", "Volleyball.Match.AI", "Volleyball.Match.Presentation", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence", "Volleyball.Career.MatchIntegration", "Volleyball.Career.Presentation", "Unity.InputSystem"]
     },
     "Volleyball.Bootstrap.Editor": {
       "path": "Assets/Volleyball/Bootstrap/Editor/Volleyball.Bootstrap.Editor.asmdef",

@@ -10,17 +10,18 @@ integration baseline. Merge through pull requests only, then delete the branch.
 For the first Career milestone, the project owner has temporarily authorized one
 integrator to own Career and the common surfaces (`Shared`, `Bootstrap`, packages,
 project settings, CI and common documentation). The partner-owned Match implementation
-is frozen at `origin/main@4bf9e4b`:
+remains frozen:
 
-- `Assets/Volleyball/Match` tree: `1f0bbe976355ded867dcefadba61d538f77905b9`;
+- `Assets/Volleyball/Match` tree: `273ce4c86551f02da3225dd800989933a2595c06`;
 - `Assets/Volleyball/Match.meta` blob: `23d5e66a3e4158bd421c4d3ee573e0d4e7339627`;
-- legacy `Assets/Volleyball/Shared/Runtime` V1 tree:
-  `61c7a928f2bf4740defea34c67e5cb108f6dfe76`;
-- `Assets/Volleyball/Shared/Runtime.meta` blob:
-  `9085d85a3a423a82a6303df4ca3fe3819d8d30ea`.
+
+Shared and Bootstrap are integrator-owned common surfaces. They are not frozen,
+but any change to them is high risk, requires a cross-module CHG record, focused
+consumer verification and a Pull Request. The frozen-tree validator protects
+only the partner-owned Match path while that owner is unavailable.
 
 Fetch remote state before each stage, but do not automatically merge a newer Match
-tree. Audit a new partner upload separately before changing either frozen hash.
+tree. Audit a new partner upload separately before changing the frozen Match hash.
 
 Every code, resource, scene, configuration or contract change must add or update
 a record under `docs/changes/` and link it from `docs/changes/README.md`. Start

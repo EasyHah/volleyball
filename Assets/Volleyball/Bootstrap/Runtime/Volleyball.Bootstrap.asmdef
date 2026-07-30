@@ -3,6 +3,8 @@
   "rootNamespace": "Volleyball.Bootstrap",
   "references": [
     "Volleyball.Shared",
+    "Volleyball.Match.Domain",
+    "Volleyball.Match.AI",
     "Volleyball.Match.Presentation",
     "Volleyball.Career.Domain",
     "Volleyball.Career.Application",

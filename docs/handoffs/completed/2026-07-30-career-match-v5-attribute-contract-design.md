@@ -1,6 +1,7 @@
 # Career x Match V5 属性合同设计
 
-- Status: active
+- Status: completed
+- Completed: 2026-07-30
 - Owner: Career / Match collaborator
 - Priority: P1
 - Scope: Career / Match / Shared / Replay 的 V5 属性与逐球员报告边界
@@ -65,4 +66,5 @@ PR #6 已于 2026-07-30 合并为 `028e263`；新设计分支已从该提交建�
 
 ## 结束处理
 
-设计确认后，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继实现任务单链接。
+用户已确认设计并授权进入开发。后继实现任务单：
+`docs/handoffs/active/2026-07-30-match-performance-report-v1-implementation.md`。
