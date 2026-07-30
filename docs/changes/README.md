@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260730-003 | 2026-07-30 | 已实现，验证未完 | Match / Tests / Docs | 模块内部 | [V4 统一首次触网续球](2026-07-30-003-v4-unified-net-continuation.md) |
 | CHG-20260730-002 | 2026-07-30 | 已完成 | Career / Match / Bootstrap / Tests / Docs / Repository | **跨模块（重点）** | [Career 正式物理 6v6 V4 生命周期](2026-07-30-002-career-formal-6v6-lifecycle.md) |
 | CHG-20260730-001 | 2026-07-30 | 已自动验证 | Match / Tests / Docs | 模块内部 | [V4 发球触网续球修复](2026-07-30-001-v4-serve-net-continuation.md) |
 | CHG-20260729-001 | 2026-07-29 | 已自动验证 | Repository / CI / Match / Shared / Docs | **跨模块（重点）** | [恢复冻结基线校验](2026-07-29-001-repair-frozen-baseline-validation.md) |

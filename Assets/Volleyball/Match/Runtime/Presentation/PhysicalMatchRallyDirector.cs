@@ -333,6 +333,9 @@ namespace Volleyball.Presentation
         private bool _lastSetWasSetter;
         private bool _forceInSystemReceiveExecution;
         private bool _serveInFlight;
+        private FlightSegmentOrigin _flightSegmentOrigin;
+        private TeamId? _flightSegmentOriginTeam;
+        private bool _effectiveNetDeflectionHandled;
         private int _tacticRevision;
         private int _aiDecisionRequestVersion;
         private int _aiRequestSequence;
@@ -464,6 +467,10 @@ namespace Volleyball.Presentation
         public int ServeNetReceiveReplans { get; private set; }
 
         public float LastServeNetGroundLeadSeconds { get; private set; }
+
+        public int NetDeflectionDispatches { get; private set; }
+
+        public int SuppressedNetDeflectionDispatches { get; private set; }
 
         public int EmergencyReceiveContacts { get; private set; }
 
@@ -1234,6 +1241,7 @@ namespace Volleyball.Presentation
             _lastTouchWasBackSetAttack = false;
             _controlledHandlingActive = false;
             _activeSetChain = false;
+            ClearFlightSegment();
 
             var initialFlightSeconds = _initialServeFlightSeconds;
             var nominalReceiver = FindPlayer(
@@ -1274,6 +1282,7 @@ namespace Volleyball.Presentation
                 _status = $"{stableServer.Value} SERVE to {receivingTeam}";
             }
             _serveInFlight = true;
+            BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
             _rallyActive = true;
             _restartScheduled = false;
 
@@ -3279,6 +3288,9 @@ namespace Volleyball.Presentation
             }
 
             _serveInFlight = false;
+            BeginFlightSegment(
+                FlightSegmentOrigin.AcceptedPlayerContact,
+                actorId.Team);
             var actor = _players[actorId];
             var movementDistance = (_scheduledPrimaryActor.HasValue &&
                                     _scheduledPrimaryActor.Value.Equals(actorId)) ||
@@ -5221,7 +5233,7 @@ namespace Volleyball.Presentation
             }
 
             var hasReceiveLead =
-                TryDeflectedServeReceiveLeadTime(out var availableSeconds);
+                TryDeflectedReceiveLeadTime(out var availableSeconds);
             Debug.Log(
                 $"[{_configuration.LogTag}] serve-net receiving={receivingTeam} " +
                 $"lead={LastServeNetGroundLeadSeconds:0.000} " +
@@ -5250,7 +5262,7 @@ namespace Volleyball.Presentation
             }
         }
 
-        private bool TryDeflectedServeReceiveLeadTime(
+        private bool TryDeflectedReceiveLeadTime(
             out float availableSeconds)
         {
             var prediction = TrajectoryPredictor.Predict(
@@ -5298,7 +5310,7 @@ namespace Volleyball.Presentation
 
             if (hit.Kind == EnvironmentContactKind.Net)
             {
-                HandleServeNetContact();
+                HandleNetDeflection();
                 return;
             }
 
@@ -5341,6 +5353,7 @@ namespace Volleyball.Presentation
             _awaitingPostBlockCrossing = false;
             _postBlockerTeam = null;
             _postBlockerActor = null;
+            ClearFlightSegment();
             AttributeAttackFault(last.Value, outcome);
             ResolveRally(
                 outcome,
@@ -5352,6 +5365,118 @@ namespace Volleyball.Presentation
                 BackSetAttackFaults++;
             }
             GroundResolvedRallies++;
+        }
+
+        private void HandleNetDeflection()
+        {
+            if (_effectiveNetDeflectionHandled)
+            {
+                SuppressedNetDeflectionDispatches++;
+                return;
+            }
+
+            _effectiveNetDeflectionHandled = true;
+
+            // A block owns its rebound until the existing post-block controller
+            // resolves which side can next receive. Do not create a second
+            // continuation writer for a net contact in that flight.
+            if (_awaitingPostBlockCrossing)
+            {
+                return;
+            }
+
+            NetDeflectionDispatches++;
+
+            if (_flightSegmentOrigin == FlightSegmentOrigin.Serve)
+            {
+                HandleServeNetContact();
+                return;
+            }
+
+            if (_flightSegmentOrigin !=
+                    FlightSegmentOrigin.AcceptedPlayerContact ||
+                !_flightSegmentOriginTeam.HasValue ||
+                _touchState == null)
+            {
+                return;
+            }
+
+            var sourceTeam = _flightSegmentOriginTeam.Value;
+            InvalidatePreNetContinuation();
+            if (!IsMovingTowardTeam(_ball.State.Velocity, sourceTeam))
+            {
+                // A deflection headed across the net is deliberately left to
+                // HandleNetPlaneCrossing so the opponent cannot contact early.
+                return;
+            }
+
+            var remainingTouches = 3 - _touchState.CountedTeamTouches;
+            if (remainingTouches <= 0)
+            {
+                _status = "Net deflection has no remaining touch; awaiting referee";
+                return;
+            }
+
+            if (!TryDeflectedReceiveLeadTime(out var availableSeconds))
+            {
+                _status = "Net deflection unreachable; awaiting referee";
+                return;
+            }
+
+            _activeTacticalWeights = LocalTacticalWeights();
+            ScheduleReceiveDecision(sourceTeam, availableSeconds);
+            if (_scheduledPrimaryActor.HasValue)
+            {
+                _status = $"Net deflection; {sourceTeam} receive replanned";
+            }
+        }
+
+        private void InvalidatePreNetContinuation()
+        {
+            _aiDecisionRequestVersion++;
+            _aiDecisionTimeController?.CancelPending();
+            DisableEmergencyReceiveWindows(TeamId.Blue);
+            DisableEmergencyReceiveWindows(TeamId.Orange);
+            DisablePhysicalBlockWindows();
+            foreach (var player in _players.Values)
+            {
+                player.CancelScheduledContact();
+            }
+            // Gate I receipts describe the already-authorized continuation
+            // actors. Keep them dormant until the real net crossing selects a
+            // side; clearing them here would leave the opponent with no legal
+            // receiver after a deflection crosses the net.
+            ExpireActivePostAttackReceiveWindow("NetDeflection");
+            _formalAuthority.ClearGateH();
+            _touchState.CloseWindow();
+            _scheduledDecision = null;
+            _scheduledPrimaryActor = null;
+            _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
+            _contactDeadlineActive = false;
+        }
+
+        private void BeginFlightSegment(
+            FlightSegmentOrigin origin,
+            TeamId originTeam)
+        {
+            _flightSegmentOrigin = origin;
+            _flightSegmentOriginTeam = originTeam;
+            _effectiveNetDeflectionHandled = false;
+        }
+
+        private void ClearFlightSegment()
+        {
+            _flightSegmentOrigin = FlightSegmentOrigin.None;
+            _flightSegmentOriginTeam = null;
+            _effectiveNetDeflectionHandled = false;
+        }
+
+        private enum FlightSegmentOrigin
+        {
+            None = 0,
+            Serve = 1,
+            AcceptedPlayerContact = 2
         }
 
         private void ExpirePendingGateIReceiveWindows(string reason)
@@ -5695,6 +5820,7 @@ namespace Volleyball.Presentation
 
             _restartScheduled = true;
             _rallyActive = false;
+            ClearFlightSegment();
             _aiDecisionRequestVersion++;
             _aiDecisionTimeController?.CancelPending();
             _contactDeadlineActive = false;
