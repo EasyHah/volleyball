@@ -42,8 +42,11 @@ context 时折算一次，Match 不读取或修改 Career 原始疲劳。
 ## 当前检查点
 
 - macOS 的 complete EditMode、Career formal runner PlayMode 与真实物理整局已通过。
-- Windows x64 IL2CPP Development Build 在当前 host 返回 `BuildResult.Unknown`；需在指定 Windows
-  构建机完成 build 和设备人工闭环后，才可完成此任务单并创建 V5 后继任务。
+- Windows 构建机已完成 Unity `6000.3.20f1` x64 IL2CPP Development Build：
+  `Builds/Windows/VolleyballCareer.exe`，manifest 总大小 `1,527,420,656` bytes。
+- 最终 Player 无图形启动烟雾已通过，8 秒内无 Bootstrap、场景、输入或崩溃异常。
+- 仍需完成 Windows 可视化设备闭环（键盘、手柄、图形与完整物理比赛性能），之后才能把本任务单
+  移入 completed 并创建 V5 后继任务。
 
 ## 依赖资料
 

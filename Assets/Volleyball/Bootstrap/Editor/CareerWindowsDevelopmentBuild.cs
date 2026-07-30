@@ -91,7 +91,11 @@ namespace Volleyball.Bootstrap.Editor
 
             return new BuildPlayerOptions
             {
-                scenes = new[] { CareerVerticalSliceSceneBuilder.ScenePath },
+                scenes = new[]
+                {
+                    CareerVerticalSliceSceneBuilder.ScenePath,
+                    CareerFormalSixVsSixMatchRunnerV4.FormalScenePath
+                },
                 locationPathName = outputPath,
                 target = BuildTarget.StandaloneWindows64,
                 targetGroup = BuildTargetGroup.Standalone,

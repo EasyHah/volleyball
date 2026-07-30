@@ -1,4 +1,4 @@
-# V4 发球触网续球修复
+# CHG-20260730-001：V4 发球触网续球修复
 
 - 状态：已自动验证
 - 分支：`codex/v4-serve-net-continuation`

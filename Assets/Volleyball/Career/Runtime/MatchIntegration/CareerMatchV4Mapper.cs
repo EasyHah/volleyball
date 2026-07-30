@@ -9,7 +9,8 @@ namespace Volleyball.Career.MatchIntegration
     public enum CareerMatchV4FactPolicy
     {
         FixtureEstimated = 0,
-        DirectAggregateOnly = 1
+        DirectAggregateOnly = 1,
+        DirectAggregateWithLegacyFixtureCompatibility = 2
     }
 
     public sealed class CareerMatchV4RuntimeConfiguration
@@ -106,8 +107,19 @@ namespace Volleyball.Career.MatchIntegration
             result.ValidateAgainst(context);
             var statsByPlayer = IndexStats(result.PlayerStats);
             var playerFacts = new List<CareerMatchPlayerFacts>(12);
-            AddPlayerFacts(context.Home, statsByPlayer, result.RalliesPlayed, playerFacts);
-            AddPlayerFacts(context.Away, statsByPlayer, result.RalliesPlayed, playerFacts);
+            var factPolicy = ResolveFactPolicy(context);
+            AddPlayerFacts(
+                context.Home,
+                statsByPlayer,
+                result.RalliesPlayed,
+                factPolicy,
+                playerFacts);
+            AddPlayerFacts(
+                context.Away,
+                statsByPlayer,
+                result.RalliesPlayed,
+                factPolicy,
+                playerFacts);
 
             return new CareerMatchFacts(
                 new CareerMatchVersions(
@@ -214,6 +226,7 @@ namespace Volleyball.Career.MatchIntegration
             TeamSnapshotV4 team,
             IReadOnlyDictionary<PlayerId, PlayerMatchStatsV4> statsByPlayer,
             int rallyCount,
+            CareerMatchV4FactPolicy factPolicy,
             ICollection<CareerMatchPlayerFacts> output)
         {
             foreach (var player in team.RotationOrder)
@@ -224,11 +237,41 @@ namespace Volleyball.Career.MatchIntegration
                         "Career settlement requires V4 stats for every frozen player.");
                 }
 
-                output.Add(_configuration.FactPolicy ==
+                output.Add(factPolicy ==
                            CareerMatchV4FactPolicy.DirectAggregateOnly
                     ? ToDirectAggregateFacts(stats)
                     : ToCareerPlayerFacts(player.Position, stats, rallyCount));
             }
+        }
+
+        private CareerMatchV4FactPolicy ResolveFactPolicy(
+            MatchContextV4 context)
+        {
+            if (_configuration.FactPolicy !=
+                CareerMatchV4FactPolicy
+                    .DirectAggregateWithLegacyFixtureCompatibility)
+            {
+                return _configuration.FactPolicy;
+            }
+
+            var trajectory =
+                context.TrajectoryPredictionProviderConfiguration;
+            var isLegacyFixture = string.Equals(
+                                      context.PhysicsConfigurationHash,
+                                      FixturePhysicsConfigurationHash,
+                                      StringComparison.Ordinal) &&
+                                  trajectory.CacheCapacity == 128 &&
+                                  trajectory.CacheEvictionPolicy ==
+                                  TrajectoryPredictionCacheEvictionPolicyV4
+                                      .FirstInFirstOut &&
+                                  trajectory.PredictorVersion == 1 &&
+                                  string.Equals(
+                                      trajectory.PredictorConfigurationHash,
+                                      FixturePredictorConfigurationHash,
+                                      StringComparison.Ordinal);
+            return isLegacyFixture
+                ? CareerMatchV4FactPolicy.FixtureEstimated
+                : CareerMatchV4FactPolicy.DirectAggregateOnly;
         }
 
         private static CareerMatchPlayerFacts ToDirectAggregateFacts(

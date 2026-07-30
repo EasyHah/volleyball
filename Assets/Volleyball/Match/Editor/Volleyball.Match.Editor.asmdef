@@ -1,0 +1,12 @@
+{
+  "name": "Volleyball.Match.Editor",
+  "rootNamespace": "Volleyball.Editor",
+  "references": [
+    "Volleyball.Shared",
+    "Volleyball.Match.Domain",
+    "Volleyball.Match.AI",
+    "Volleyball.Match.Presentation"
+  ],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": false
+}

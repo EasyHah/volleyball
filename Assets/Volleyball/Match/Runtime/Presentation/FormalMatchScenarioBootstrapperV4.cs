@@ -56,6 +56,13 @@ namespace Volleyball.Presentation
             _pendingScenario = null;
             return scenario;
         }
+
+        [RuntimeInitializeOnLoadMethod(
+            RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetPendingScenarioOnSubsystemRegistration()
+        {
+            _pendingScenario = null;
+        }
     }
 
     /// <summary>
@@ -105,6 +112,13 @@ namespace Volleyball.Presentation
             var context = _pendingContext;
             _pendingContext = null;
             return context;
+        }
+
+        [RuntimeInitializeOnLoadMethod(
+            RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetPendingContextOnSubsystemRegistration()
+        {
+            _pendingContext = null;
         }
     }
 }

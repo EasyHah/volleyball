@@ -12,7 +12,8 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
-| CHG-20260730-002 | 2026-07-30 | 进行中（待 Windows x64 构建与人工验收） | Career / Match / Bootstrap / Tests / Docs | **跨模块（重点）** | [Career 正式物理 6v6 V4 生命周期](2026-07-30-002-career-formal-6v6-lifecycle.md) |
+| CHG-20260730-002 | 2026-07-30 | 已自动验证，待设备人工验收 | Career / Match / Bootstrap / Tests / Docs / Repository | **跨模块（重点）** | [Career 正式物理 6v6 V4 生命周期](2026-07-30-002-career-formal-6v6-lifecycle.md) |
+| CHG-20260730-001 | 2026-07-30 | 已自动验证 | Match / Tests / Docs | 模块内部 | [V4 发球触网续球修复](2026-07-30-001-v4-serve-net-continuation.md) |
 | CHG-20260729-001 | 2026-07-29 | 已自动验证 | Repository / CI / Match / Shared / Docs | **跨模块（重点）** | [恢复冻结基线校验](2026-07-29-001-repair-frozen-baseline-validation.md) |
 | CHG-20260728-004 | 2026-07-28 | 已自动验证 | Repository / Bootstrap / Career / Match / Docs | **跨模块（重点）** | [合并后 Unity 目录元数据与冻结基线修复](2026-07-28-004-repository-meta-baseline-repair.md) |
 | CHG-20260728-003 | 2026-07-28 | 已自动验证，待人工验收 | Shared / Match / Career / Bootstrap / Packages / ProjectSettings / Tests / Docs | **跨模块（重点）** | [Career 合入 Full Rally V4](2026-07-28-003-career-shared-v4-upgrade.md) |

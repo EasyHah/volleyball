@@ -1,12 +1,37 @@
 using NUnit.Framework;
 using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using Volleyball.Bootstrap;
 using Volleyball.Bootstrap.Editor;
 
 namespace Volleyball.Career.EditModeTests
 {
     public sealed class CareerWindowsDevelopmentBuildTests
     {
+        [Test]
+        public void CareerSceneSerializesRuntimeMenuActions()
+        {
+            var scene = EditorSceneManager.OpenScene(
+                CareerVerticalSliceSceneBuilder.ScenePath,
+                OpenSceneMode.Additive);
+            try
+            {
+                var bootstrap = scene.GetRootGameObjects()[0]
+                    .GetComponentInChildren<CareerVerticalSliceBootstrap>(true);
+                Assert.That(bootstrap, Is.Not.Null);
+                var serialized = new SerializedObject(bootstrap);
+                Assert.That(
+                    serialized.FindProperty("menuActions").objectReferenceValue,
+                    Is.Not.Null);
+            }
+            finally
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+
         [Test]
         public void OptionsLockCareerSceneWindows64AndDevelopmentDebugging()
         {
@@ -19,7 +44,8 @@ namespace Volleyball.Career.EditModeTests
                 Is.EqualTo(CareerWindowsDevelopmentBuild.OutputPath));
             Assert.That(options.scenes, Is.EqualTo(new[]
             {
-                CareerVerticalSliceSceneBuilder.ScenePath
+                CareerVerticalSliceSceneBuilder.ScenePath,
+                CareerFormalSixVsSixMatchRunnerV4.FormalScenePath
             }));
             Assert.That(options.options.HasFlag(BuildOptions.Development), Is.True);
             Assert.That(options.options.HasFlag(BuildOptions.AllowDebugging), Is.True);
