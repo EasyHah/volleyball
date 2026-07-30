@@ -6,7 +6,7 @@
 - 影响模块：Docs；后续实现将影响 Career / Match / Shared / Replay / Bootstrap
 - 交互级别：跨模块（重点）
 - 关联分支：`milestone/career-match-v5-contract-design`
-- 关联提交或 PR：待创建
+- 关联提交或 PR：`3830455` / [PR #7](https://github.com/EasyHah/volleyball/pull/7)
 
 > [!IMPORTANT]
 > 本次只冻结候选设计，不修改 Shared DTO、Career 存档或 Match 运行时代码。建议先以独立
