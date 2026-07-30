@@ -194,12 +194,20 @@ namespace Volleyball.AI
         // than a presentation-only apex; this deterministic flight gives the
         // route solver enough net clearance at that real contact height.
         private const float GateIAttackFlightSeconds = .85f;
+        // A player may enter the Gate-I handoff while finishing a block or floor
+        // responsibility.  That live root position is a transition fact, not a
+        // legal Set target: a blocker can be only centimetres from the net.
+        // Re-anchor the chosen attacker in the ordinary front-zone attack
+        // corridor so the Gate-H preparation command moves them out of defense
+        // before the immutable Set arrives.
+        private const float FrontZoneAttackDepthFromNet = .945f;
+
         public GateISetIntentV3 PlanSetIntent(SetIntentPlanningRequestV3 request)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             var attacker = Eligible(request).OrderByDescending(AttackScore).ThenBy(x => x.Player.ToString(), StringComparer.Ordinal).FirstOrDefault();
             if (attacker == null) throw new ArgumentException("Gate I requires an eligible attacking player.", nameof(request));
-            var target = new SimVector3(attacker.WorldPosition.X, Math.Max(2.35f, attacker.Attributes.Attributes.Attack.ContactHeightMeters - .35f), attacker.WorldPosition.Z);
+            var target = AttackTarget(attacker);
             // The handoff state is the predicted Gate H Set contact, never the
             // earlier receive state.  Solve the actual discrete flight before
             // minting its envelope and immutable trajectory evidence.
@@ -220,6 +228,26 @@ namespace Volleyball.AI
                 classification.ExecutableEnvelope.Identity,
                 ExecutionDegradationStepV4.FullSampling));
             return new GateISetIntentV3(request.Revision, request.SourceSequence, request.Organizer, attacker.Player, target, request.ExpectedSetContactTime, classification, trajectory, flight.FlightSeconds);
+        }
+
+        private static SimVector3 AttackTarget(GateITacticalPlayerV3 attacker)
+        {
+            var isOnOwnSide = attacker.Side == TeamSide.Home
+                ? attacker.WorldPosition.Z < 0f
+                : attacker.WorldPosition.Z > 0f;
+            var depth = isOnOwnSide &&
+                        Math.Abs(attacker.WorldPosition.Z) >=
+                        FrontZoneAttackDepthFromNet
+                ? attacker.WorldPosition.Z
+                : attacker.Side == TeamSide.Home
+                    ? -FrontZoneAttackDepthFromNet
+                    : FrontZoneAttackDepthFromNet;
+            return new SimVector3(
+                attacker.WorldPosition.X,
+                Math.Max(2.35f,
+                    attacker.Attributes.Attributes.Attack.ContactHeightMeters -
+                    .35f),
+                depth);
         }
 
         public AttackPlanningResultV3 PlanAttack(AttackPlanningRequestV3 request)

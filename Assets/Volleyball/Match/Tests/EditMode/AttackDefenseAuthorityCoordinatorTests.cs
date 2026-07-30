@@ -178,6 +178,67 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void ActualContinuation_ReplacesPredictedExecutionIdentityBeforeContactAcceptance()
+        {
+            var sink = new Sink();
+            var coordinator = Fixture.CommittedAttack(sink, out var plan);
+            coordinator.AcceptContact(Fixture.Contact(
+                coordinator,
+                plan,
+                6,
+                plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact,
+                string.Empty));
+            var defender = plan.Defense.Responsibilities.First(value =>
+                value.Kind == DefenseResponsibilityKindV3.LineDefense);
+            var predicted = sink.Batches.First().Commands.Single(command =>
+                command.Kind == AttackDefenseCommandKind.FloorDefense &&
+                command.Actor.Equals(defender.Actor));
+            var actual = Fixture.ActualContinuationExecution(
+                "actual-continuation");
+
+            coordinator.PublishActualContinuation(
+                7,
+                AttackDefenseCommandKind.FloorDefense,
+                defender.Actor,
+                actual,
+                defender.Branch);
+
+            Assert.That(sink.Batches.Last().Commands.Single().Execution,
+                Is.SameAs(actual));
+            Assert.That(() => coordinator.AcceptContact(
+                    new GateIContactEvidenceV3(
+                        plan.Revision,
+                        8,
+                        defender.Actor,
+                        PlanCoverageReason.WithinConditionalEnvelope,
+                        AttackDefenseCommandKind.FloorDefense,
+                        defender.Branch,
+                        predicted.Execution.ExecutionClassification
+                            .ExecutableEnvelope.Identity,
+                        predicted.Execution.TrajectoryArtifact
+                            .ArtifactIdentity,
+                        true,
+                        plan.ReorganizationExits[0].Identity)),
+                Throws.InvalidOperationException);
+
+            coordinator.AcceptContact(new GateIContactEvidenceV3(
+                plan.Revision,
+                8,
+                defender.Actor,
+                PlanCoverageReason.WithinConditionalEnvelope,
+                AttackDefenseCommandKind.FloorDefense,
+                defender.Branch,
+                actual.ExecutionClassification.ExecutableEnvelope.Identity,
+                actual.TrajectoryArtifact.ArtifactIdentity,
+                true,
+                plan.ReorganizationExits[0].Identity));
+
+            Assert.That(coordinator.State.Phase,
+                Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
+        }
+
+        [Test]
         public void CommitDefense_BlockCommandsReserveTheirPublicNetCorridor()
         {
             var sink = new Sink();
@@ -318,6 +379,57 @@ namespace Volleyball.EditModeTests
                 recoveryCommand.Execution));
             Assert.That(coordinator.State.Phase, Is.EqualTo(AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
             Assert.That(sink.Batches.Last().Commands.Single().Kind, Is.EqualTo(AttackDefenseCommandKind.Reorganization));
+        }
+
+        [Test]
+        public void ToolRecovery_ActualReboundReplacesPredictedReceiveWithoutLosingPhase()
+        {
+            var coordinator =
+                Fixture.ToolRecoveryAwaitingAttack(out var plan, out var sink);
+            coordinator.AcceptContact(Fixture.ToolContact(
+                plan,
+                6,
+                plan.SelectedAction.Actor,
+                AttackDefenseCommandKind.AttackContact));
+            coordinator.AcceptContact(Fixture.ToolContact(
+                plan,
+                7,
+                plan.SelectedAction.ToolRecoveryEvidence.Blocker,
+                AttackDefenseCommandKind.BlockContact,
+                ToolRecoveryReboundObservationV3.ReturnsToAttackingSide,
+                3,
+                Fixture.ToolRecoveryExecution(coordinator, plan)));
+            var actual = Fixture.ActualContinuationExecution(
+                "actual-tool-recovery");
+
+            coordinator.PublishActualContinuation(
+                8,
+                AttackDefenseCommandKind.AttackCover,
+                plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
+                actual);
+
+            Assert.That(
+                coordinator.State.Phase,
+                Is.EqualTo(
+                    AttackDefenseAuthorityPhaseV3
+                        .ToolRecoveryAwaitingReceive));
+            Assert.That(
+                sink.Batches.Last().Commands.Single().Execution,
+                Is.SameAs(actual));
+            Assert.That(
+                () => coordinator.AcceptContact(Fixture.ToolContact(
+                    plan,
+                    9,
+                    plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
+                    AttackDefenseCommandKind.AttackCover,
+                    ToolRecoveryReboundObservationV3.NotApplicable,
+                    2,
+                    actual)),
+                Throws.Nothing);
+            Assert.That(
+                coordinator.State.Phase,
+                Is.EqualTo(
+                    AttackDefenseAuthorityPhaseV3.ReorganizationPlanned));
         }
 
         [Test]
@@ -568,6 +680,60 @@ namespace Volleyball.EditModeTests
                         plan.SelectedAction.ToolRecoveryEvidence.RecoveryActor,
                         AttackDefenseCommandKind.FloorDefense, null, null, 0
                     });
+
+            public static AttackDefenseCommandExecutionV4
+                ActualContinuationExecution(string identity)
+            {
+                var target = new SimVector3(0f, 2.5f, 2f);
+                var velocity = new SimVector3(0f, 4f, 2f);
+                var envelope = ExecutionEnvelopeFactoryV4.Create(
+                    MatchV4TestFixture.CreateDerived(),
+                    new ExecutionIntentV4(
+                        identity,
+                        ExecutionCandidateCategoryV4.Receive,
+                        target,
+                        velocity,
+                        .5f),
+                    identity + ":sample",
+                    ExecutionEnvelopePolicyV4.GateI);
+                var sample = new ExecutionSampleV4(
+                    envelope.Identity,
+                    envelope.Sampling.SamplingKey,
+                    ExecutionCandidateCategoryV4.Receive,
+                    target,
+                    velocity,
+                    envelope.RequestedEffort);
+                var context = MatchV4TestFixture.CreateContext();
+                var trajectory =
+                    Volleyball.Presentation.PhysicalMatchRallyDirector
+                        .CreateTrajectoryPredictionProviderV4(context)
+                        .Predict(new BallTrajectoryPredictionRequestV4(
+                            Volleyball.Shared.Contracts.TeamSide.Away,
+                            9,
+                            new BallState(
+                                new SimVector3(0f, 1.5f, 1f),
+                                velocity,
+                                .12f),
+                            new BallSimulationParameters(-9.8f, .9995f),
+                            context.PhysicsConfigurationHash,
+                            identity + ":trajectory",
+                            context.TrajectoryPredictionProviderConfiguration
+                                .PredictorVersion,
+                            context.TrajectoryPredictionProviderConfiguration
+                                .PredictorConfigurationHash,
+                            envelope.Identity,
+                            ExecutionDegradationStepV4.FullSampling));
+                return new AttackDefenseCommandExecutionV4(
+                    2f,
+                    1f,
+                    default,
+                    1000000999,
+                    envelope.Classify(sample),
+                    trajectory,
+                    new SimVector3(0f, 0f, 2f),
+                    physicalContactCenter:
+                    new SimVector3(0f, 1.5f, 2f));
+            }
 
             public static GateIContactEvidenceV3 ToolContact(AttackDefensePlanV3 plan, long sequence,
                 Volleyball.Shared.Contracts.PlayerId actor, AttackDefenseCommandKind kind,

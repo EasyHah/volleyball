@@ -35,7 +35,7 @@ namespace Volleyball.Presentation
             var scenario = FormalMatchScenarioStartupV4.ConsumePendingScenario();
             if (scenario == null)
             {
-                Initialize(transform, CreateSandboxContext(), TeamSide.Home, 0, 0,
+                Initialize(transform, CreateDefaultFormalContext(), TeamSide.Home, 0, 0,
                     tactics: null, aiWeights: null, provenance: null);
                 return;
             }
@@ -218,7 +218,9 @@ namespace Volleyball.Presentation
             };
         }
 
-        private static MatchContextV4 CreateSandboxContext()
+        // The default scene input remains explicit so scenario assets can be
+        // authored as complete snapshots rather than as overrides of it.
+        public static MatchContextV4 CreateDefaultFormalContext()
         {
             return MatchContextV4.Create(
                 Guid.Parse("66666666-2222-6666-2222-666666666666"),
@@ -271,6 +273,14 @@ namespace Volleyball.Presentation
                 PhysicalFor(position),
                 TechnicalFor(position),
                 MatchAttributeDerivationConfigV4.Version1);
+        }
+
+        // Kept for existing diagnostics that reflect the original bootstrap
+        // factory by name. New scenario authoring uses the explicit public
+        // default-context entry point above.
+        private static MatchContextV4 CreateSandboxContext()
+        {
+            return CreateDefaultFormalContext();
         }
 
         private static PhysicalBaseAttributesV4 PhysicalFor(

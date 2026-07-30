@@ -377,6 +377,126 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void AttackCoverageResponsibilities_RoundTripAndLegacyAbsenceRestores()
+        {
+            var baseline = Event(0, "Attack");
+            var candidate = new ReplayAttackDefenseCandidateRecordV4(
+                "attack-candidate",
+                baseline.ActorPlayerId,
+                "PowerLine",
+                new ReplayVector3RecordV4(0f, 3f, 0f),
+                .5f,
+                1f,
+                true,
+                string.Empty,
+                baseline.ExecutableEnvelope.Identity,
+                baseline.Trajectory.ArtifactIdentity,
+                string.Empty);
+            var authority = new ReplayAttackDefenseAuthorityRecordV4(
+                7,
+                9,
+                "AttackCommitted",
+                "Primary",
+                new ReplayVector3RecordV4(0f, 3f, -1f),
+                new[] { candidate },
+                new[]
+                {
+                    new ReplayPublicAttackThreatRecordV4(
+                        "PowerLine", "Line", 1f, 1f)
+                },
+                new[]
+                {
+                    new ReplayDefenseResponsibilityRecordV4(
+                        "away-defender", "LineDefense", "Line", "Primary")
+                },
+                "attack-candidate",
+                baseline.TestedEnvelope.Identity,
+                baseline.ExecutableEnvelope.Identity,
+                baseline.Classification.ActualSample.EnvelopeIdentity,
+                baseline.Trajectory.ArtifactIdentity,
+                null,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f),
+                new[]
+                {
+                    new ReplayAttackCoverageResponsibilityRecordV4(
+                        "home-setter", "Primary")
+                });
+            var recorded = new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                baseline.Shadow,
+                null,
+                authority);
+            var replay = CreateReplay(recorded);
+            var current = ContractJson.SerializeV4(replay);
+
+            var restored = ContractJson.DeserializeMatchReplayV4(current);
+
+            Assert.That(ContractJson.SerializeV4(restored), Is.EqualTo(current));
+            Assert.That(restored.Events[0].AttackDefenseAuthority
+                .AttackCoverageResponsibilities.Single().ActorPlayerId,
+                Is.EqualTo("home-setter"));
+
+            var historical = current.Replace(
+                ",\"attackCoverageResponsibilities\":[{\"actorPlayerId\":\"home-setter\",\"branch\":\"Primary\"}]",
+                string.Empty);
+            historical = historical.Replace(
+                replay.ReplayHash,
+                CanonicalHashWithoutAttackCoverage(replay));
+
+            var restoredHistorical =
+                ContractJson.DeserializeMatchReplayV4(historical);
+
+            Assert.That(restoredHistorical.Events[0].AttackDefenseAuthority
+                .AttackCoverageResponsibilities, Is.Empty);
+        }
+
+        [Test]
+        public void AttackCoverageResponsibilities_MixedLegacyAndCurrentEvents_FailClosed()
+        {
+            var first = EventWithAttackCoverage(0, "home-cover-a");
+            var second = EventWithAttackCoverage(1, "home-cover-b");
+            var replay = CreateReplay(first, second);
+            var current = ContractJson.SerializeV4(replay);
+            const string firstCoverage =
+                ",\"attackCoverageResponsibilities\":[{\"actorPlayerId\":\"home-cover-a\",\"branch\":\"Primary\"}]";
+            const string secondCoverage =
+                ",\"attackCoverageResponsibilities\":[{\"actorPlayerId\":\"home-cover-b\",\"branch\":\"Primary\"}]";
+            const string tamperedSecondCoverage =
+                ",\"attackCoverageResponsibilities\":[{\"actorPlayerId\":\"tampered-cover\",\"branch\":\"Primary\"}]";
+            var firstCoverageIndex = current.IndexOf(
+                firstCoverage,
+                StringComparison.Ordinal);
+            Assert.That(firstCoverageIndex, Is.GreaterThanOrEqualTo(0));
+            var mixed = current.Remove(
+                firstCoverageIndex,
+                firstCoverage.Length);
+            mixed = mixed.Replace(
+                secondCoverage,
+                tamperedSecondCoverage);
+            mixed = mixed.Replace(
+                replay.ReplayHash,
+                CanonicalHashWithoutAttackCoverage(replay));
+
+            Assert.That(
+                () => ContractJson.DeserializeMatchReplayV4(mixed),
+                Throws.TypeOf<ContractValidationException>()
+                    .With.Message.Contains(
+                        "Mixed legacy and current attack coverage"));
+        }
+
+        [Test]
         public void CanonicalJson_PersistsCompleteV4DiagnosticEvidence()
         {
             var replay = CreateReplay(Event(0, "Attack"));
@@ -1286,6 +1406,18 @@ namespace Volleyball.EditModeTests
             return (string)method.Invoke(null, new object[] { replay });
         }
 
+        private static string CanonicalHashWithoutAttackCoverage(
+            MatchReplayV4 replay)
+        {
+            var method = typeof(MatchReplayV4).Assembly.GetType(
+                "Volleyball.Shared.Contracts.CanonicalMatchReplayJsonV4")
+                .GetMethod(
+                    "ComputeLegacyAttackCoverageHash",
+                    BindingFlags.Static | BindingFlags.Public |
+                    BindingFlags.NonPublic);
+            return (string)method.Invoke(null, new object[] { replay });
+        }
+
         private static MatchReplayEventV4 Event(int sequence, string kind)
         {
             var attack = string.Equals(kind, "Attack", StringComparison.Ordinal);
@@ -1329,6 +1461,72 @@ namespace Volleyball.EditModeTests
                 Classification(kind),
                 attack ? Geometry() : null,
                 new ReplayRuleDecisionRecordV4(3, true, "None"));
+        }
+
+        private static MatchReplayEventV4 EventWithAttackCoverage(
+            int sequence,
+            string actorPlayerId)
+        {
+            var baseline = Event(sequence, "Attack");
+            var candidate = new ReplayAttackDefenseCandidateRecordV4(
+                "attack-candidate-" + sequence,
+                baseline.ActorPlayerId,
+                "PowerLine",
+                new ReplayVector3RecordV4(0f, 3f, 0f),
+                .5f,
+                1f,
+                true,
+                string.Empty,
+                baseline.ExecutableEnvelope.Identity,
+                baseline.Trajectory.ArtifactIdentity,
+                string.Empty);
+            var authority = new ReplayAttackDefenseAuthorityRecordV4(
+                sequence + 1,
+                sequence + 9,
+                "AttackCommitted",
+                "Primary",
+                new ReplayVector3RecordV4(0f, 3f, -1f),
+                new[] { candidate },
+                new[]
+                {
+                    new ReplayPublicAttackThreatRecordV4(
+                        "PowerLine", "Line", 1f, 1f)
+                },
+                new[]
+                {
+                    new ReplayDefenseResponsibilityRecordV4(
+                        "away-defender", "LineDefense", "Line", "Primary")
+                },
+                candidate.CandidateIdentity,
+                baseline.TestedEnvelope.Identity,
+                baseline.ExecutableEnvelope.Identity,
+                baseline.Classification.ActualSample.EnvelopeIdentity,
+                baseline.Trajectory.ArtifactIdentity,
+                null,
+                new ReplayCoverageDecisionRecordV4("Covered", 0f),
+                new[]
+                {
+                    new ReplayAttackCoverageResponsibilityRecordV4(
+                        actorPlayerId,
+                        "Primary")
+                });
+            return new MatchReplayEventV4(
+                baseline.SequenceNumber,
+                baseline.EventKind,
+                baseline.ActorPlayerId,
+                baseline.SimulationTimeSeconds,
+                baseline.HomeScore,
+                baseline.AwayScore,
+                baseline.TestedEnvelope,
+                baseline.ExecutableEnvelope,
+                baseline.Trajectory,
+                baseline.AbilityConsumptions,
+                baseline.Classification,
+                baseline.ObservedP6Geometry,
+                baseline.RuleDecision,
+                baseline.Shadow,
+                null,
+                authority);
         }
 
         private static MatchReplayEventV4 EventWithShadow(
