@@ -437,11 +437,18 @@ namespace Volleyball.PlayModeTests
         [Timeout(360000)]
         public IEnumerator FormalScene_CompletesTwentyFivePointSetWithTwelvePlayers()
         {
-            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
-            var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
-            var ball = Object.FindFirstObjectByType<SimulatedBall>();
-            var cameras = Object.FindFirstObjectByType<RallyCameraController>();
-            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            var originalLogStackTrace = Application.GetStackTraceLogType(LogType.Log);
+            // This long-running smoke emits diagnostic logs for every contact.
+            // Their stack traces consume its real-time test budget without
+            // contributing to the behavior under test.
+            Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+            try
+            {
+                yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+                var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+                var ball = Object.FindFirstObjectByType<SimulatedBall>();
+                var cameras = Object.FindFirstObjectByType<RallyCameraController>();
+                var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
 
             Assert.That(director, Is.Not.Null);
             Assert.That(ball, Is.Not.Null);
@@ -573,6 +580,11 @@ namespace Volleyball.PlayModeTests
             yield return null;
             Assert.That(Camera.main.orthographic, Is.True);
             Assert.That(Camera.main.orthographicSize, Is.GreaterThanOrEqualTo(12f));
+            }
+            finally
+            {
+                Application.SetStackTraceLogType(LogType.Log, originalLogStackTrace);
+            }
         }
 
         [TestCase(true)]

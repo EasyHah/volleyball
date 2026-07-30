@@ -1,7 +1,7 @@
 # CHG-20260730-003：V4 统一首次触网续球
 
 - 日期：2026-07-30
-- 状态：已实现，验证未完
+- 状态：已实现，验证受限
 - 负责人：Match
 - 影响模块：Match / Tests / Docs
 - 交互级别：模块内部
@@ -42,8 +42,9 @@ Formal 6v6 现在以“发球或已接受球员触球”划分飞行段。每段
 - [ ] 指定中回合触网情景：当前 `FormalMatchScenarioDefinitionV4` 只允许开球输入，明确不接受
   中回合球状态或伪造已接受触球，无法合法表达 `SecondTouchNetOwnSide`、
   `ThirdTouchNetOwnSide`、`ThirdTouchNetCross`、`PostBlockNet` 和多次触网情景。
-- [ ] Formal 6v6 单局 smoke：现有运行在 360 秒时停于 23:22，没有规则断言或异常，不能作为
-  通过证据。
+- [x] Formal 6v6 单局 smoke：关闭该测试中逐条诊断 `Log` 的堆栈追踪、并在 `finally` 恢复
+  原设置后通过；固定种子赛局在 333.19 秒以 21:25、346 次已接受接触完成。此前 360 秒停在
+  23:22 是测试日志堆栈追踪耗尽实时预算，不是规则断言或回合停滞。
 - [x] `git diff --check`。
 
 测试环境：Unity 6000.3.20f1，macOS arm64。
