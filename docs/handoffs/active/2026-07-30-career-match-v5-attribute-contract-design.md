@@ -17,6 +17,11 @@
 逐球员比赛报告需要支持 Career 的成长、教练信任、疲劳与伤病结算，但不能把无法由物理比赛证明的
 技术统计重新估算出来。开始实现前必须确认 PR #6 已合并，并从最新 `origin/main` 建立新的里程碑分支。
 
+当前设计候选见：
+`docs/superpowers/specs/2026-07-30-career-match-v5-attributes-and-performance-report-design.md`。
+PR #6 已于 2026-07-30 合并为 `028e263`；新设计分支已从该提交建立。候选方案建议先实现独立
+`MatchPerformanceReportV1`，再实现 V5 输入合同。
+
 ## 非目标
 
 - 不在设计确认前修改 `MatchContextV4`、`MatchResultV4`、`MatchReplayV4` 或存档 Schema。
@@ -50,6 +55,7 @@
 - `docs/changes/2026-07-30-002-career-formal-6v6-lifecycle.md`
 - `docs/handoffs/completed/2026-07-29-career-match-integration-redesign.md`
 - `docs/superpowers/specs/2026-07-24-full-rally-v4-consolidated-design-and-roadmap.md`
+- `docs/superpowers/specs/2026-07-30-career-match-v5-attributes-and-performance-report-design.md`
 
 ## 结束处理
 
