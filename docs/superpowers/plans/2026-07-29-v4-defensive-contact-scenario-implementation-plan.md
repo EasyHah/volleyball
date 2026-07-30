@@ -247,6 +247,50 @@ rg -n "error CS|Unhandled Exception|AssertionException|UnityException|FAIL|Faile
 4. 若有高优先级问题，集中修复后执行一次针对性复审和受影响测试；不要无限重复审查。
 5. 只有全部自动验证完成、必要的正式 PlayMode 观察完成、临时 Unity 场景文件清理完毕后，状态才能是“完成”。此前仅可称“已实现”或“已自动验证”。
 
+## 8. 补齐发球触网后的接发延续
+
+### 文件
+
+- 修改 `Assets/Volleyball/Match/Runtime/Presentation/FormalMatchScenarioDefinitionV4.cs`
+- 修改 `Assets/Volleyball/Match/Runtime/Presentation/FormalMatchScenarioCatalogV4.cs`
+- 修改 `Assets/Volleyball/Match/Editor/FormalMatchScenarioAssetCreatorV4.cs`
+- 修改 `Assets/Volleyball/Match/Runtime/Presentation/PhysicalMatchRallyDirector.cs`
+- 修改 `Assets/Volleyball/Match/Tests/EditMode/FormalMatchScenarioPresetV4Tests.cs`
+- 修改 `Assets/Volleyball/Match/Tests/PlayMode/DefensiveContactContinuationPlayModeTests.cs`
+- 新增 `Assets/Volleyball/Match/Tests/Resources/FormalMatchScenariosV4/ServeNetDeflection.asset`
+
+### 红测
+
+1. 新增完整启动预设，使初次 Serve 通过真实 `EnvironmentCollision.TryNet` 触网后仍朝接发方运动；预设只控制开局发球飞行参数，不在比赛中途改球。
+2. `ServeNetDeflection_ReplansAndReceivesActualBall` 必须观察到 Net environment contact、旧 Gate H revision 失效、新 revision/source sequence、合法 crossing 和新 receipt 对应的真实 Receive。
+3. `ServeNetDeflection_MissStillLetsGroundRefereeScore` 使用不可达接发输入，断言零 accepted Receive、唯一 ground 和唯一 result。
+4. EditMode 固定预设的版本、canonical hash 和非法发球飞行参数拒绝；旧预设必须显式迁移，不能依赖新增字段的隐式 Unity 默认值。
+
+### 实现
+
+1. 把初次发球 flight seconds 作为完整情景开局输入加入情景 canonical payload；默认正式场景仍使用 `0.90s`。该字段只供完整情景预设选择开局，不修改 `MatchContextV4`。
+2. `HandleEnvironmentContact(Net)` 仅在最后规则触球为 Serve、当前 possession 为接发方且球仍朝接发方运动时处理：
+   - 递增异步请求版本并取消旧 AI 请求；
+   - 取消旧 Primary/Emergency Receive 排程并清空旧 Gate H receipt；
+   - 从触网后的真实 state 重新预测 ground landing 和剩余时间；
+   - 产生新的 Gate H plan revision/source sequence；
+   - 不调用 `BeginPossession`，不更新 V3，不增加统计。
+3. 新计划的移动可以立即提交；physical Receive 只有在后续合法 net crossing 后才能成为候选。若现有按时间窗口和接发方几何已经严格保证这一点，测试必须以 Net contact、crossing、contact simulation time 的顺序证明；否则增加显式 pending activation。
+4. 球触网后弹回发球队、剩余时间非法或无可达候选时，不创建新窗口；ground/out-of-bounds/crossing referee 保持唯一权威。
+5. 不新增 Shared replay 字段。用现有 net crossing、Gate H receipt、physical/replay contact、ground/result 和测试探针证明因果链。
+
+### 验证
+
+先运行新增 EditMode/PlayMode 红绿，再运行：
+
+- `DefensiveContactContinuationPlayModeTests`
+- `FormalSixVsSixRallyPlayModeTests`
+- `FormalSixVsSixReplayPlayModeTests`
+- 完整 EditMode
+- 完整 PlayMode
+
+代码冻结后执行一次独立全面复核；任何影响时序、规则或确定性的发现修复后，重跑受影响 focused 套件和一轮新的完整套件。
+
 ## 验收矩阵
 
 | 场景 | 物理 | V3 | Replay | Referee |
@@ -257,3 +301,6 @@ rg -n "error CS|Unhandled Exception|AssertionException|UnityException|FAIL|Faile
 | 留在拦网方的 block | recovery/FloorDefense hit | blocker 可做 Receive 1 | side resolution + accepted | 无覆盖 |
 | post-block miss | 无 Receive hit | 无 post-block receive | expiration/rejection | 结果唯一 |
 | 重叠表面 | 一个稳定 winner | 一个 transition | 一个 accepted，其余 loser evidence | 不受影响 |
+| 发球触网后可达 | 新 Gate H Receive surface swept hit | Serve 后首个 counted touch 为 1 | 新 receipt 与 accepted contact 可关联 | 触网不提前终局 |
+| 发球触网后漏接 | 无 Receive hit | 无新增 transition | 旧 receipt 失效且无伪造 accepted | ground 仅一次结算 |
+| 发球触网后弹回 | 接发方无 candidate | 无接发 transition | 无接发 accepted | 发球队侧 ground/out-of-bounds 权威结算 |
