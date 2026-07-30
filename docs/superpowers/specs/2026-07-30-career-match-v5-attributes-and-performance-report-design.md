@@ -17,8 +17,9 @@
    - 报告以 `sessionId + contextHash + resultHash` 绑定现有 V4 结果；
    - Career 以报告中的真实事实结算成长，不再从总得分、总触球和位置估算技术表现。
 2. **切片 B：V5 球员输入合同**
-   - 把 Career 明示能力调整为六项动作技术和一项运动能力；
-   - 六项技术直接进入对应比赛动作，运动能力只进入移动、起跳和协调；
+   - Career 直接保存并传递身体层与技术层基础属性，不再从少量核心值混合生成；
+   - Match 按进攻、拦网、防守、接发、二传、发球六类派生实际比赛属性；
+   - 基础属性和比赛属性分别提供版本化六维展示，但展示汇总不得参与模拟；
    - 原始疲劳留在 Career，只向 Match 传一次性 `readiness`；
    - 位置和培养方向不得覆盖玩家传入的能力。
 
@@ -81,9 +82,9 @@ points、contacts、errors、workload
 - [Football Manager 2024 Console](https://www.footballmanager.com/features/football-manager-2024-console-new-features-unveiled)
   即使底层属性很多，训练界面仍只突出该训练单元最相关的五项属性。
 
-因此本项目不照搬这些游戏的具体属性数量，而采用相同的信息分层：Career 只维护玩家需要理解和培养
-的少量长期能力；Match 可以从这些输入生成更细的执行参数，但派生规则必须固定、透明，并能通过
-Replay 证明实际消费。
+因此本项目不照搬这些游戏的具体属性数量，而采用相同的信息分层：Career 可以保存足够细的权威基础
+属性，但默认界面用分层明细和六维图降低阅读负担；Match 从同名基础字段生成执行参数，派生规则必须
+固定、透明，并能通过 Replay 证明实际消费。
 
 ## 4. 切片 A：MatchPerformanceReportV1
 
@@ -215,61 +216,74 @@ resultV4 + replayV4 + performanceReportV1
 Career 只在 result 和 report 都验证通过后进行一次原子结算。Replay 可以由 Bootstrap/Match 保存，
 但不能代替 Career 所需的报告。
 
-## 5. 切片 B：V5 球员输入合同
+## 5. 切片 B：V5 基础属性输入与比赛属性派生
 
-### 5.1 V5 通用核心能力
+### 5.1 两层基础属性
 
-`PlayerSnapshotV5` 保留身份、球衣号和位置，但通用成长能力改为七项 `[0,1]` 输入：
-
-```text
-VolleyballCoreAttributesV5
-  Spike
-  Serve
-  Reception
-  Defense
-  Block
-  Setting
-  Athleticism
-```
-
-其中六项是排球动作技术，`Athleticism` 是唯一的长期运动能力。Career 明示数值仍为 `0–100`；
-跨模块规范值使用 `[0,1]`。独立 `Setting` 是覆盖完整 12 人阵容所必需的：如果继续用接发代填二传，
-不同二传手就无法拥有独立比赛能力。
-
-| Career 明示属性 | V5 核心字段 | Match 权威消费 |
-| --- | --- | --- |
-| 扣球 | `Spike` | 扣球方向、速度和触球控制 |
-| 发球 | `Serve` | 发球方向、速度和稳定性控制 |
-| 接发 | `Reception` | 接发第一触与接发判断 |
-| 防守 | `Defense` | 地面防守触球与防守判断 |
-| 拦网 | `Block` | 拦网时机和手型控制 |
-| 二传 | `Setting` | 二传落点、节奏和触球控制 |
-| 运动能力 | `Athleticism` | 移动、起跳和协调 |
-
-Mapper 对六项技术只做 `/10000` 转换，禁止先混合多个 Career 能力再生成技术输入。运动能力允许
-一对多进入 Match 的物理参数，但不得与技术项平均成新的隐藏“综合能力”。例如扣球执行只读
-`Spike`，助跑速度和起跳上限只读 `Athleticism`；一次扣球的最终效果可以同时受技术执行和物理过程
-影响，但两条因果链在 Match 内保持独立。
-
-### 5.2 玩家显示与培养口径
-
-球员详情页显示七项精确的 `0–100` 数值。总评可以作为角色或培养方向相关的摘要，但不得作为 Match
-输入，也不得反向覆盖七项能力。潜力继续使用模糊评级；培养方向只调整七项能力的成长效率。
-
-### 5.3 球员身体资料
-
-以下字段属于球员身份资料而不是成长能力：
+Career 保存球员的权威基础属性，Shared 原样传输，Match 只负责派生。V5 不再设置需要 Mapper
+二次混合的“通用核心能力”。
 
 ```text
-HeightMeters
-StandingReachMeters
-DominantHand
+PhysicalBaseAttributesV5
+  HeightMeters
+  StandingReachMeters
+  Jump
+  Mobility
+  Reaction
+  Coordination
+
+TechnicalBaseAttributesV5
+  AttackTechnique
+  AttackPower
+  BlockTechnique
+  DefenseTechnique
+  ReceiveTechnique
+  SetTechnique
+  ServeTechnique
+  SoftTouch
+  CourtAwareness
 ```
 
-新生涯必须在创建球员时由 Career 生成并保存。旧档迁移可以明确采用 V4 默认值
-`1.90m / 2.42m / Right`，但迁移决定属于后续存档设计，不能在 Match 内静默补默认值。
+字段范围与 V4 保持连续：
 
-### 5.4 Readiness 与疲劳边界
+- `HeightMeters` 使用 `[1.40,2.30]` 米；
+- `StandingReachMeters` 使用 `[1.70,3.10]` 米，且不得低于身高；
+- 其余基础属性跨模块使用 `[0,1]`，Career 界面显示为精确 `0–100`；
+- `DominantHand` 与球员 ID、姓名、号码和位置一起属于身份资料；
+- 身高、站立摸高和惯用手由 Career 在球员创建时生成并保存，不属于训练成长项；
+- 其他身体与技术字段各自拥有成长经验、潜力效率和上限。
+
+Career→Shared 只做单位转换和范围验证，字段名称与语义保持一对一。禁止在 Mapper 中用接发代填二传、
+用防守代填反应，或用多项平均生成协调、软触球和场地意识。
+
+### 5.2 基础属性六维展示
+
+球员页使用同一个图表区域在“身体”和“技术”两个页签间切换，避免同时堆叠大量数字。
+
+身体页签天然是六维：
+
+```text
+身高、站立摸高、弹跳、移动、反应、协调
+```
+
+身高和站立摸高在文字中显示真实米数；进入雷达图时由版本化 `RadarNormalizationV1` 转为 `0–100`。
+归一化使用联赛固定参考区间，不能按当前阵容动态缩放，否则转会或换队会改变同一名球员的图形。
+
+技术页签将九个明细合并为六个展示轴：
+
+| 技术六维轴 | 仅用于显示的 V1 汇总 |
+| --- | --- |
+| 进攻 | `Mean(AttackTechnique, AttackPower)` |
+| 拦网 | `BlockTechnique` |
+| 防守 | `Mean(DefenseTechnique, CourtAwareness)` |
+| 接发 | `ReceiveTechnique` |
+| 二传 | `Mean(SetTechnique, SoftTouch)` |
+| 发球 | `ServeTechnique` |
+
+所有九项明细仍在图表下方显示；场地意识虽然在技术雷达中并入防守轴，Match 仍可将它用于多个动作。
+雷达汇总没有成长经验、潜力或存档字段，也不得作为比赛输入。
+
+### 5.3 Readiness 与疲劳边界
 
 原始疲劳继续是 Career 的 `0–100` 状态，不进入 Shared。Career 在冻结 context 时产生：
 
@@ -277,77 +291,57 @@ DominantHand
 readiness = 0.75 + 0.25 * (1 - fatigue / 100)
 ```
 
-`PlayerSnapshotV5.Readiness` 使用 `[0,1]`，首版 Career 实际只产生 `[0.75,1]`。Match 在执行时统一
-应用一次：
+`PlayerSnapshotV5.Readiness` 使用 `[0,1]`，首版 Career 实际只产生 `[0.75,1]`。Match 只对 `[0,1]`
+能力字段统一应用一次；身高、站立摸高和身份资料不乘 readiness：
 
 ```text
-effectiveInput = input * readiness
+effectiveAbility = baseAbility * readiness
 ```
 
-Match 不读取原始疲劳，不再次扣减 readiness；比赛中的能量消耗是独立的动态状态，不回写
-`PlayerSnapshotV5`。伤病若只影响赛前可用能力，由 Career 在未来版本化规则中折算；伤病类型和原始
-严重度不会因预留而进入 V5。
+Match 不读取原始疲劳，不再次扣减 readiness；比赛中的动态能量状态不得回写基础属性。伤病若只影响
+赛前可用能力，由 Career 在未来版本化规则中折算；伤病类型和原始严重度不因预留进入 V5。
 
-### 5.5 V4 base 字段在 V5 的归属
+### 5.4 六类比赛属性
 
-切片 B 不是把七项重新摊平为 15 个 V4 base 字段。V5 的 Match 接口直接读取七项，再在各动作内部
-生成执行参数；V4 adapter 只服务旧 context 和旧 Pending，不作为 V5 的实现模板。
+Match 使用版本化公式从冻结的基础属性派生六类实际比赛字段：
 
-| V4 字段 | V5 处理 |
+| 比赛六维轴 | 派生明细 |
 | --- | --- |
-| `HeightMeters` / `StandingReachMeters` | 保留，改由 Career 身份资料提供 |
-| `Jump` / `Mobility` / `Coordination` | 由 `Athleticism` 直接派生，不混入技术值 |
-| `Reaction` | 不再作为 Career base；由当前动作技术直接承担该动作的判断和控制 |
-| `AttackTechnique` | 由 `Spike` 直接派生 |
-| `AttackPower` | 由 `Spike` 直接派生 |
-| `BlockTechnique` | 由 `Block` 直接派生 |
-| `DefenseTechnique` | 由 `Defense` 直接派生 |
-| `ReceiveTechnique` | 由 `Reception` 直接派生 |
-| `SetTechnique` / `SoftTouch` | 由 `Setting` 直接派生 |
-| `ServeTechnique` | 由 `Serve` 直接派生 |
-| `CourtAwareness` | 不再作为通用 Career base；接发读取 `Reception`，防守读取 `Defense` |
-| 新增 `Readiness` | 单独保存并进入派生解释 |
-| 新增 `Athleticism` 正式消费 | 进入移动、起跳和协调 |
+| 进攻 `Attack` | 线路控制、速度控制、力量上限、击球高度、助跑移动 |
+| 拦网 `Block` | 时机、手型控制、拦网高度、横向移动 |
+| 防守 `Defense` | 反应、垫球控制、覆盖移动、场上判断 |
+| 接发 `Receive` | 第一触控制、反应、移动、场上判断 |
+| 二传 `Set` | 落点控制、节奏控制、软触球、移动、场上判断 |
+| 发球 `Serve` | 线路控制、速度控制、力量上限、稳定性 |
 
-如果七项 Career Schema 先于完整 V5 Match 上线，临时 V4 adapter 只能使用以下单一来源复制：
+字段继续使用 V4 已有语义，V5 通过新的 formula/coefficient version 和 input/result fingerprint 固定
+派生规则。Career 不保存、不覆盖这些派生值；位置、培养方向和 NPC 模板也不能替换玩家传入的基础属性。
+
+### 5.5 比赛属性六维展示
+
+比赛六维图固定使用进攻、拦网、防守、接发、二传、发球六个轴。每个轴对该类派生明细做等权平均：
 
 ```text
-Spike       -> AttackTechnique, AttackPower
-Serve       -> ServeTechnique
-Reception   -> ReceiveTechnique
-Defense     -> DefenseTechnique, Reaction, CourtAwareness
-Block       -> BlockTechnique
-Setting     -> SetTechnique, SoftTouch
-Athleticism -> Jump, Mobility, Coordination
+radarAxis = Round(100 * Mean(normalizedDerivedFields))
 ```
 
-adapter 先做基点到 `[0,1]` 的转换，最后统一应用一次 `Readiness`，不得添加加权平均。该表只是让旧 V4
-可运行的兼容层：其中全局 `Reaction` 暂由防守提供；正式 V5 必须按动作分别读取 `Reception` 或
-`Defense`。当前 V4 的 `Serve.PowerCapacity` 仍会间接读取 `AttackPower`，因此也不能宣称它已经
-直连；V5 公式必须让 `Serve` 成为发球力量的唯一技术来源。
+原生 `[0,1]` 字段直接进入平均；击球高度和拦网高度由同一个 `RadarNormalizationV1` 转为 `[0,1]`。
+该六维值只用于 UI、赛前对比和赛后说明，不进入 AI、物理、快速模拟、成长或结算。若以后调整展示
+权重，只升级 radar summary version，不升级比赛公式版本。
 
-Match 侧最简接线如下；表内“直接”表示值只来自一个 V5 字段，不使用加权平均：
+### 5.6 数据流与直接接线原则
 
-| Match 动作组 | 技术输入 | 物理输入 |
-| --- | --- | --- |
-| `Attack` | `Spike` 直接控制方向、速度、力量和触球控制 | `Athleticism` 控制助跑、起跳和触球高度上限 |
-| `Serve` | `Serve` 直接控制方向、速度、力量和稳定性 | 无 |
-| `Receive` | `Reception` 直接控制第一触、反应和判断 | `Athleticism` 控制覆盖移动 |
-| `Defense` | `Defense` 直接控制触球、反应和判断 | `Athleticism` 控制覆盖移动 |
-| `Block` | `Block` 直接控制时机和手型 | `Athleticism` 控制横移、起跳和触球高度上限 |
-| `Set` | `Setting` 直接控制落点、节奏、触球和判断 | `Athleticism` 控制覆盖移动 |
+```text
+Career authoritative physical/technical base
+  -> Shared PlayerSnapshotV5 + Readiness
+  -> Match versioned derivation
+  -> six groups of derived match attributes
+  -> gameplay + replay evidence
+```
 
-V5 使用新的 formula/coefficient version 和 input/result fingerprint。具体平衡系数属于版本化配置，
-不是规范 DTO 字段；实现前必须固定配置、golden vector 和单变量单调测试。
-
-### 5.6 Athleticism 的正式消费门禁
-
-`Athleticism` 必须在 Match 中影响可验证的移动、起跳和协调结果，并由 Replay 记录对应消费路径。
-它不能替代任一技术能力：运动能力更高的球员可以更快到位或获得更高触球点，但不能单独提高扣球
-落点控制、接发质量、二传落点或拦网手型。
-
-首版 V5 不新增长期 `Endurance`。Career 疲劳通过一次性 `Readiness` 影响赛前状态；比赛内能量预算
-等 Match 拥有正式消费者后再单独版本化，不能让 `Athleticism` 在没有证据的情况下同时代表耐力。
+这条链路只有 Match derivation 一处允许组合公式。Career Mapper、UI 六维图和培养方向都不能再创建
+第二套派生规则。搭档可以直接读取 Shared 的基础字段，也可以直接消费 Match 已派生的六类动作属性，
+无需解释 Career 专属的八项或七项中间模型。
 
 ## 6. 培养方向、类型和 Career-only 状态
 
@@ -375,7 +369,7 @@ Match facts:
   实际动作、质量、得失分、负荷、关键阶段事件
 
 Career consequences:
-  七项成长经验、能力提升、教练信任、疲劳、伤病风险、事件与叙事
+  可训练身体/技术基础属性的成长经验与提升、教练信任、疲劳、伤病风险、事件与叙事
 ```
 
 Career 结算必须同时保存：
@@ -405,25 +399,34 @@ Career 结算必须同时保存：
 - V4 Replay 永久按 V4 reader 读取，不升级字节或重写哈希；
 - V5 context/result/replay 使用独立类型和版本，不修改 V4 后继续称为 V4。
 
-### 8.3 八项旧档到七项的迁移候选
+### 8.3 八项旧档到两层基础属性的迁移候选
 
 切片 B 实现时必须升级 Career Schema，并以整数运算迁移现有字段：
 
 ```text
-Spike      = old.Spike
-Serve      = old.Serve
-Reception  = old.Reception
-Defense    = old.Defense
-Block      = old.Block
-Setting    = old.Reception
-Athleticism = (old.Movement + old.Jump + old.Stamina + 1) / 3
+HeightMeters        = 1.90
+StandingReachMeters = 2.42
+DominantHand        = Right
+Jump                = old.Jump
+Mobility            = old.Movement
+Reaction            = Mean2(old.Reception, old.Defense)
+Coordination        = Mean3(old.Movement, old.Reception, old.Defense)
+
+AttackTechnique = old.Spike
+AttackPower     = Weighted4(old.Spike, old.Spike, old.Spike, old.Jump)
+BlockTechnique  = old.Block
+DefenseTechnique = old.Defense
+ReceiveTechnique = old.Reception
+SetTechnique    = Mean2(old.Reception, old.Defense)
+ServeTechnique  = old.Serve
+SoftTouch       = Mean2(old.Reception, old.Defense)
+CourtAwareness  = Mean2(old.Defense, old.Stamina)
 ```
 
-`Setting = old.Reception` 只用于未发布开发存档的一次迁移，不是正式比赛映射；迁移后两项独立成长。
-上式使用非负整数除法，等价于取最接近的整数。`Athleticism` 的成长经验同样取旧移动、弹跳和体能
-经验的整数平均值，不求和，避免迁移后立即跨越多个升级阈值。
-旧三项潜力上限和成长效率的合并规则需要在 Career Schema 迁移任务中用 golden save 固定。迁移只
-发生一次；旧字段保留在旧版本 reader 中，不让 Match 读取或猜测旧档。
+`Mean2/Mean3/Weighted4` 都使用非负整数和固定的就近舍入，具体分子偏移由迁移规则版本和 golden
+save 固定。直接字段复制原成长经验、潜力效率和上限；组合字段对相同来源值应用同一组合函数。该
+混合只允许出现在未发布开发存档的一次迁移中，迁移后每项基础属性独立成长，运行时 Mapper 不再
+重复计算。旧字段保留在旧版本 reader 中，不让 Match 读取或猜测旧档。
 
 ### 8.4 回滚
 
@@ -447,14 +450,17 @@ Athleticism = (old.Movement + old.Jump + old.Stamina + 1) / 3
 
 ### 9.2 V5 输入
 
-- 六项技术一对一映射的端点和单变量单调测试；
-- `Athleticism` 到移动、起跳与协调的单变量单调测试；
-- 单独提高技术能力不得改变无关动作，单独提高 `Athleticism` 不得提高技术控制；
-- readiness 在 Career→context 边界只应用一次；
+- 两层全部基础字段的端点、严格 round-trip、单位和范围测试；
+- 身高/站立摸高约束，以及 readiness 不修改身体尺寸的测试；
+- Career→Shared 同名字段逐项相等，不允许 Mapper 加权或位置覆盖；
+- 每个基础能力至少一个正式 Match 消费与单变量单调测试；
+- readiness 在 Match 派生前只应用一次；
 - 位置和培养方向不能改变冻结 base；
 - derived formula/coefficient fingerprint golden vector；
-- 八项旧档迁移为七项的 golden save 与幂等迁移；
-- 每个新字段至少一个正式 Match 消费和 Replay 解释证据；
+- 基础/比赛六维图的 normalization、平均、舍入和 golden vector；
+- 修改 radar summary version 不得改变 context/result fingerprint 或比赛结果；
+- 八项旧档迁移为两层基础属性的 golden save 与幂等迁移；
+- 每个派生比赛字段至少一个正式消费和 Replay 解释证据；
 - V4/V5 reader、Pending 路由和拒绝错误版本测试。
 
 ## 10. 实施顺序
@@ -464,8 +470,8 @@ Athleticism = (old.Movement + old.Jump + old.Stamina + 1) / 3
 3. 接入负荷与稳定性事实，生成 report 并与 result/replay 绑定。
 4. 扩展 Bootstrap runner 产物，Career 校验并原子保存 report。
 5. Career 使用真实报告结算成长、信任、疲劳和伤病。
-6. 完成球员身体资料和八项到七项的存档迁移设计。
-7. 冻结 V5 七项 core/readiness/derived 合同及 Match 消费者。
+6. 完成 Career 两层基础属性和旧八项存档迁移设计。
+7. 冻结 V5 physical/technical base、readiness、六类 derived 与 radar summary 规则。
 8. 新建 V5 实现任务，分阶段接入 Shared、Match、Replay、Career 和 Bootstrap。
 
 首个代码里程碑只执行步骤 1–3，输出一个可验证的 Match-owned 报告，不同时修改 Career 存档 Schema。
@@ -475,8 +481,9 @@ Athleticism = (old.Movement + old.Jump + old.Stamina + 1) / 3
 本设计建议确认以下基线：
 
 1. 同意先做独立报告 V1，再做 V5 输入合同；
-2. 同意把八项明示能力调整为扣球、发球、接发、防守、拦网、二传、运动能力七项；
+2. 同意 Career 直接保存身体六项与技术九项基础属性，Shared 同名直传；
 3. 同意培养方向只影响 Career 成长，不直接覆盖 Match 能力；
 4. 同意原始疲劳留在 Career，Shared 只接收一次性 readiness；
-5. 同意六项技术直接控制对应动作，运动能力只控制移动、起跳和协调；
-6. 同意首个实现切片止于 Match 报告生成和验证，不同时迁移 Career 存档。
+5. 同意 Match 只在一处按进攻、拦网、防守、接发、二传、发球派生比赛属性；
+6. 同意基础与比赛六维值只用于展示，不参与模拟、成长或结算；
+7. 同意首个实现切片止于 Match 报告生成和验证，不同时迁移 Career 存档。
