@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -42,9 +43,23 @@ namespace Volleyball.Bootstrap.Editor
             document.visualTreeAsset = shell;
             root.AddComponent<CareerUiShell>();
             var bootstrap = root.AddComponent<CareerVerticalSliceBootstrap>();
-            var serialized = new SerializedObject(bootstrap);
-            serialized.FindProperty("menuActions").objectReferenceValue = actions;
-            serialized.ApplyModifiedPropertiesWithoutUndo();
+            var menuActions = typeof(CareerVerticalSliceBootstrap).GetField(
+                "menuActions",
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            if (menuActions == null)
+            {
+                throw new InvalidOperationException(
+                    "Career bootstrap menuActions field is not serializable.");
+            }
+
+            menuActions.SetValue(bootstrap, actions);
+            EditorUtility.SetDirty(bootstrap);
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (menuActions.GetValue(bootstrap) == null)
+            {
+                throw new InvalidOperationException(
+                    "Career bootstrap input asset assignment did not persist in memory.");
+            }
 
             if (!EditorSceneManager.SaveScene(scene, ScenePath))
             {

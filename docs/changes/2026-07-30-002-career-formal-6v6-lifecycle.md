@@ -1,12 +1,12 @@
 # CHG-20260730-002：Career 正式物理 6v6 V4 生命周期
 
 - 日期：2026-07-30
-- 状态：进行中（待 Windows x64 构建与人工验收）
+- 状态：已完成
 - 负责人：Career / Match / Bootstrap
 - 影响模块：Career.MatchIntegration / Career.Application / Match.Domain / Match.AI / Match.Presentation / Bootstrap / Tests / Docs
 - 交互级别：跨模块（重点）
-- 关联分支：`codex/career-formal-6v6-lifecycle`
-- 关联提交或 PR：待创建
+- 关联分支：`milestone/career-v4-lifecycle-closeout`
+- 关联提交或 PR：`9141410` / [PR #6](https://github.com/EasyHah/volleyball/pull/6)
 
 > [!IMPORTANT]
 > Bootstrap 新增 Career 持有的 V4 context 到 `FormalIndoor6v6` 的一次性启动桥；Match 只消费原
@@ -25,14 +25,22 @@ Career 垂直切片的首场比赛从固定 fixture runner 改为正式物理 6v
 
 - Bootstrap：`CareerFormalSixVsSixMatchRunnerV4` 加载 `FormalIndoor6v6`，注入同一 V4 context，
   捕获 context-bound replay，完成/取消后卸载 additive 场景并恢复 Career UI。
+- Bootstrap：`CareerOfflineMatchRouterV4` 按完整 physics/predictor 配置分派；旧存档中的 fixture
+  Pending 继续走确定性 runner，新 Direct 才进入正式物理场景，未知配置明确失败。
+- Windows：构建清单显式包含 Career 与 `FormalIndoor6v6` 两个场景；Career 场景固化
+  `CareerMenuRuntime` 输入引用，避免 Player 启动时禁用 Bootstrap。
 - Match Presentation：一次性 `FormalMatchContextStartupV4` 让正式 bootstrap 消费外部冻结 context；
-  场景默认入口仍保留原有默认 context/scenario 行为。
+  场景默认入口仍保留原有默认 context/scenario 行为；Subsystem Registration 会清理中断 Play
+  遗留的一次性启动状态。
 - Match：正式执行随机采样使用 `MatchContextV4.Seed`；移除纯确定性 planner 的无效 seed 参数；
   set 输出将实际累积 workload 归一化至 V4 所需的 `[0,1]`。
 - Career：正式 direct launch 不携带 fixture identity；mapper 使用正式物理配置，并采用
   `DirectAggregateOnly` 事实策略。
 - Tests：覆盖 direct 映射不产生估算技术统计、direct launch、物理上下文注入、取消清理与真实 25 分
-  物理整局的 Result/Replay 回传。
+  物理整局的 Result/Replay 回传，以及八项映射单调、疲劳单次折算、旧 fixture 精确兼容路由和
+  Windows 场景/输入打包。
+- Repository：为 Formal scenario Editor 工具建立独立 asmdef，并对齐合并后的程序集清单、
+  active 任务期 Match 授权范围、Shared 冻结基线与 GitHub 验证门禁。
 
 ## 跨模块交互重点
 
@@ -56,11 +64,17 @@ Career 垂直切片的首场比赛从固定 fixture runner 改为正式物理 6v
   不产生中止 result 且保留原 canonical Pending bytes。
 - [x] 独立代码复核：无 P0；两项 P1（Windows gate 状态、canonical context/scene failure 覆盖）已修复，
   并完成相应 PlayMode 复测。
-- [ ] Windows x64 IL2CPP Development Build：在当前 macOS host 尝试运行
-  `CareerWindowsDevelopmentBuild.Build` 返回 `BuildResult.Unknown`，未生成可验证 Windows 产物；需在
-  指定 Windows x64 构建机重跑并完成键盘、手柄、图形与性能人工闭环。
+- [x] Windows 收尾 focused EditMode：17/17；Pending/恢复：18/18；runner 取消/失败
+  focused PlayMode：5/5。
+- [x] Windows 完整 EditMode：1480/1480，22.62 秒。
+- [x] Windows x64 IL2CPP Development Build：Unity `6000.3.20f1`，
+  `Builds/Windows/VolleyballCareer.exe`，manifest 总大小 `1,527,420,656` bytes。
+- [x] 最终 Windows Player 无图形启动烟雾：8 秒内无 Bootstrap、场景、输入或崩溃异常。
+- [x] Windows 可视化设备闭环：用户于 2026-07-30 确认键盘、手柄、图形和完整物理比赛
+  验收完成。
 
 ## 回滚与风险
 
 回滚可移除 Career bootstrap 中的 formal runner/mapper 配置并恢复 fixture runner；V4 context、存档和
-Shared 合同不受影响。剩余风险是 Windows Player 的平台差异与长赛性能，不能由 macOS batchmode 代替。
+Shared 合同不受影响。Windows Player 的实际键鼠/手柄焦点、渲染和完整物理比赛已经完成人工验收；
+后续性能或交互回归按对应功能改动重新验证。

@@ -150,7 +150,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 552251a9c7ced224e8ff7bd14ec53979, type: 3}
   m_Name:
   m_EditorClassIdentifier: Volleyball.Bootstrap::Volleyball.Bootstrap.CareerVerticalSliceBootstrap
-  menuActions: {fileID: 0}
+  menuActions: {fileID: 11400000, guid: da9fece025c9a6147953ec3780709fda, type: 2}
 --- !u!114 &684014893
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -13,6 +13,76 @@ using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Bootstrap
 {
+    public sealed class CareerOfflineMatchRouterV4 : ICareerMatchRunnerV4
+    {
+        private static readonly TrajectoryPredictionProviderConfigurationV4
+            FixtureTrajectoryConfiguration =
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    1,
+                    CareerMatchV4Mapper.FixturePredictorConfigurationHash);
+
+        private static readonly TrajectoryPredictionProviderConfigurationV4
+            FormalTrajectoryConfiguration =
+                FormalSixVsSixRallyBootstrap
+                    .CreateFormalTrajectoryPredictionProviderConfiguration();
+
+        private readonly DeterministicFixtureMatchRunnerV4 _fixtureRunner =
+            new DeterministicFixtureMatchRunnerV4();
+        private readonly CareerFormalSixVsSixMatchRunnerV4 _formalRunner;
+
+        public CareerOfflineMatchRouterV4(
+            CareerFormalSixVsSixMatchRunnerV4 formalRunner)
+        {
+            _formalRunner = formalRunner ??
+                throw new ArgumentNullException(nameof(formalRunner));
+        }
+
+        public Task<MatchResultV4> ExecuteAsync(
+            MatchContextV4 context,
+            CancellationToken cancellationToken)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            if (MatchesConfiguration(
+                    context,
+                    CareerMatchV4Mapper.FixturePhysicsConfigurationHash,
+                    FixtureTrajectoryConfiguration))
+            {
+                return _fixtureRunner.ExecuteAsync(context, cancellationToken);
+            }
+
+            if (MatchesConfiguration(
+                    context,
+                    FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
+                    FormalTrajectoryConfiguration))
+            {
+                return _formalRunner.ExecuteAsync(context, cancellationToken);
+            }
+
+            throw new InvalidOperationException(
+                "The persisted Match V4 context uses an unsupported offline runtime configuration.");
+        }
+
+        private static bool MatchesConfiguration(
+            MatchContextV4 context,
+            string physicsConfigurationHash,
+            TrajectoryPredictionProviderConfigurationV4
+                trajectoryConfiguration)
+        {
+            return string.Equals(
+                       context.PhysicsConfigurationHash,
+                       physicsConfigurationHash,
+                       StringComparison.Ordinal) &&
+                   context.TrajectoryPredictionProviderConfiguration.Equals(
+                       trajectoryConfiguration);
+        }
+    }
+
     public sealed class CareerFormalMatchRunOutcomeV4
     {
         public CareerFormalMatchRunOutcomeV4(
@@ -47,6 +117,8 @@ namespace Volleyball.Bootstrap
         ICareerMatchRunnerV4
     {
         public const string FormalSceneName = "FormalIndoor6v6";
+        public const string FormalScenePath =
+            "Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity";
 
         private UIDocument _careerDocument;
         private CareerMenuInputRouter _menuInputRouter;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
 using UnityEngine;
@@ -18,6 +19,72 @@ namespace Volleyball.Career.PlayModeTests
 {
     public sealed class CareerFormalSixVsSixMatchRunnerPlayModeTests
     {
+        [Test]
+        public void OfflineRouter_ExecutesOnlyTheExactLegacyFixtureConfiguration()
+        {
+            var template = FormalSixVsSixRallyBootstrap
+                .CreateDefaultFormalContext();
+            var fixtureContext = MatchContextV4.Create(
+                Guid.Parse("eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
+                template.Seed,
+                template.Home,
+                template.Away,
+                CareerMatchV4Mapper.FixturePhysicsConfigurationHash,
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    1,
+                    CareerMatchV4Mapper.FixturePredictorConfigurationHash),
+                template.RulesVersion);
+            var unsupported = MatchContextV4.Create(
+                Guid.Parse("ffffffff-ffff-4fff-8fff-ffffffffffff"),
+                template.Seed,
+                template.Home,
+                template.Away,
+                CareerMatchV4Mapper.FixturePhysicsConfigurationHash,
+                new TrajectoryPredictionProviderConfigurationV4(
+                    64,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    1,
+                    CareerMatchV4Mapper.FixturePredictorConfigurationHash),
+                template.RulesVersion);
+            var host = new GameObject("CareerOfflineRouterTestHost");
+            var formalRunner =
+                host.AddComponent<CareerFormalSixVsSixMatchRunnerV4>();
+            var router = new CareerOfflineMatchRouterV4(formalRunner);
+
+            var execution = router.ExecuteAsync(
+                fixtureContext,
+                CancellationToken.None);
+
+            Assert.That(execution.IsCompletedSuccessfully, Is.True);
+            Assert.DoesNotThrow(() =>
+                execution.Result.ValidateAgainst(fixtureContext));
+            Assert.Throws<InvalidOperationException>(() =>
+                router.ExecuteAsync(unsupported, CancellationToken.None));
+            Object.DestroyImmediate(host);
+        }
+
+        [Test]
+        public void ContextStartup_SubsystemRegistrationClearsAbandonedContext()
+        {
+            var context = FormalSixVsSixRallyBootstrap
+                .CreateDefaultFormalContext();
+            var reset = typeof(FormalMatchContextStartupV4).GetMethod(
+                "ResetPendingContextOnSubsystemRegistration",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(reset, Is.Not.Null);
+
+            reset.Invoke(null, null);
+            FormalMatchContextStartupV4.PrepareNextFormalStart(context);
+            reset.Invoke(null, null);
+
+            Assert.That(
+                FormalMatchContextStartupV4.CancelPendingFormalStart(
+                    context.SessionId),
+                Is.False);
+        }
+
         [UnityTest]
         [Timeout(30000)]
         public IEnumerator Runner_InjectsTheExactCareerContextAndCleansUpOnCancellation()

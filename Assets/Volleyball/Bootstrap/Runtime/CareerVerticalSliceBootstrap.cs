@@ -31,16 +31,19 @@ namespace Volleyball.Bootstrap
                 var profileRepository = new LocalPlayerProfileRepository(paths, fileSystem);
                 var catalogRepository = new LocalProfileCatalogRepository(paths, fileSystem);
                 var random = new CareerDeterministicRandom();
-                var formalRunner = gameObject.AddComponent<
+                var formalSceneRunner = gameObject.AddComponent<
                     CareerFormalSixVsSixMatchRunnerV4>();
+                var matchRunner = new CareerOfflineMatchRouterV4(
+                    formalSceneRunner);
                 var mapper = new CareerMatchV4Mapper(
                     new CareerMatchV4RuntimeConfiguration(
                         FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
                         FormalSixVsSixRallyBootstrap
                             .CreateFormalTrajectoryPredictionProviderConfiguration(),
-                        CareerMatchV4FactPolicy.DirectAggregateOnly));
+                        CareerMatchV4FactPolicy
+                            .DirectAggregateWithLegacyFixtureCompatibility));
                 var executor = new CareerMatchExecutorV4(
-                    formalRunner,
+                    matchRunner,
                     mapper);
                 var adapter = new CareerUiUseCasesAdapter(
                     new CareerLocalUiWorkflow(
@@ -70,7 +73,7 @@ namespace Volleyball.Bootstrap
                 var document = GetComponent<UIDocument>();
                 GetComponent<CareerUiShell>().Bind(Controller);
                 ConfigureInput(document);
-                formalRunner.Initialize(
+                formalSceneRunner.Initialize(
                     document,
                     GetComponent<CareerMenuInputRouter>());
                 Controller.Initialize();

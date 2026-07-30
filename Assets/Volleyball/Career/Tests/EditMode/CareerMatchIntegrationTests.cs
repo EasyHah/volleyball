@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -104,6 +105,106 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public async Task CompatibilityPolicy_PreservesLegacyFixtureFactsOnlyForExactFixtureConfiguration()
+        {
+            var fixtureMapper = new CareerMatchV4Mapper();
+            var fixtureContext = fixtureMapper.ToContext(CareerMatchTestData.Launch());
+            var fixtureResult = await new DeterministicFixtureMatchRunnerV4()
+                .ExecuteAsync(fixtureContext, CancellationToken.None);
+            var compatibilityMapper = new CareerMatchV4Mapper(
+                new CareerMatchV4RuntimeConfiguration(
+                    new string('c', 64),
+                    new TrajectoryPredictionProviderConfigurationV4(
+                        128,
+                        TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                        2,
+                        new string('d', 64)),
+                    CareerMatchV4FactPolicy
+                        .DirectAggregateWithLegacyFixtureCompatibility));
+
+            var fixtureFacts = compatibilityMapper.ToCareerFacts(
+                fixtureContext,
+                fixtureResult);
+            Assert.That(
+                fixtureFacts.PlayerFacts.Any(fact =>
+                    fact.Spike.Attempts > 0 ||
+                    fact.Reception.Attempts > 0 ||
+                    fact.Defense.Attempts > 0 ||
+                    fact.Block.Attempts > 0),
+                Is.True);
+
+            var directLaunch = CareerMatchTestData.Launch(
+                executionMode: CareerMatchExecutionMode.Direct,
+                fixtureId: null,
+                fixtureVersion: null);
+            var directContext = compatibilityMapper.ToContext(directLaunch);
+            var directResult = await new DeterministicFixtureMatchRunnerV4()
+                .ExecuteAsync(directContext, CancellationToken.None);
+            var directFacts = compatibilityMapper.ToCareerFacts(
+                directContext,
+                directResult);
+
+            Assert.That(directFacts.PlayerFacts.All(fact =>
+                fact.Spike.Attempts == 0 &&
+                fact.Serve.Attempts == 0 &&
+                fact.Reception.Attempts == 0 &&
+                fact.Defense.Attempts == 0 &&
+                fact.Block.Attempts == 0 &&
+                fact.Stability.CriticalActions == 0), Is.True);
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        [TestCase(4)]
+        [TestCase(5)]
+        [TestCase(6)]
+        [TestCase(7)]
+        public void CareerAttributeMapping_IsMonotonicForEveryCareerAxis(
+            int raisedAxis)
+        {
+            var baseline = Enumerable.Repeat(5000, 8).ToArray();
+            var raised = baseline.ToArray();
+            raised[raisedAxis] = 6000;
+
+            var baselineInputs = V4Inputs(ContextForAttributes(
+                baseline,
+                fatigue: 40));
+            var raisedInputs = V4Inputs(ContextForAttributes(
+                raised,
+                fatigue: 40));
+
+            Assert.That(
+                raisedInputs.Zip(
+                    baselineInputs,
+                    (higher, lower) => higher + 0.000001f >= lower),
+                Has.All.True);
+            Assert.That(
+                raisedInputs.Zip(
+                    baselineInputs,
+                    (higher, lower) => higher > lower + 0.000001f),
+                Has.Some.True);
+        }
+
+        [Test]
+        public void CareerFatigue_IsAppliedExactlyOnceWhenCreatingV4Inputs()
+        {
+            var attributes = Enumerable.Repeat(8000, 8).ToArray();
+            var fresh = V4Inputs(ContextForAttributes(attributes, fatigue: 0));
+            var fatigued = V4Inputs(ContextForAttributes(
+                attributes,
+                fatigue: 100));
+
+            Assert.That(
+                fatigued.Zip(
+                    fresh,
+                    (actual, baseline) =>
+                        Math.Abs(actual - (baseline * 0.75f)) < 0.000001f),
+                Has.All.True);
+        }
+
+        [Test]
         public void Executor_RejectsNonCanonicalPersistedContext()
         {
             var executor = new CareerMatchExecutorV4(new DeterministicFixtureMatchRunnerV4());
@@ -119,6 +220,64 @@ namespace Volleyball.Career.EditModeTests
 
             Assert.ThrowsAsync<ContractValidationException>(
                 async () => await executor.ExecuteAsync(envelope, CancellationToken.None));
+        }
+
+        private static MatchContextV4 ContextForAttributes(
+            int[] values,
+            int fatigue)
+        {
+            var teams = CareerMatchTestData.Teams();
+            var homePlayers = teams[0].Players.ToArray();
+            var protagonist = homePlayers.Single(player =>
+                player.PlayerId.Value == "player.career.protagonist");
+            var index = Array.IndexOf(homePlayers, protagonist);
+            homePlayers[index] = new CareerMatchPlayerLaunch(
+                protagonist.PlayerId,
+                protagonist.JerseyNumber,
+                protagonist.Position,
+                protagonist.RotationSlot,
+                fatigue,
+                CareerMatchTestData.Attributes(
+                    values[0],
+                    values[1],
+                    values[2],
+                    values[3],
+                    values[4],
+                    values[5],
+                    values[6],
+                    values[7]));
+            var customTeams = new[]
+            {
+                new CareerMatchTeamLaunch(
+                    teams[0].TeamId,
+                    teams[0].Side,
+                    homePlayers),
+                teams[1]
+            };
+            return new CareerMatchV4Mapper().ToContext(
+                CareerMatchTestData.Launch(teams: customTeams));
+        }
+
+        private static float[] V4Inputs(MatchContextV4 context)
+        {
+            var player = context.Home.RotationOrder.Single(value =>
+                value.PlayerId.Value == "player.career.protagonist");
+            return new[]
+            {
+                player.Physical.Jump,
+                player.Physical.Mobility,
+                player.Physical.Reaction,
+                player.Physical.Coordination,
+                player.Technical.AttackTechnique,
+                player.Technical.AttackPower,
+                player.Technical.BlockTechnique,
+                player.Technical.DefenseTechnique,
+                player.Technical.ReceiveTechnique,
+                player.Technical.SetTechnique,
+                player.Technical.ServeTechnique,
+                player.Technical.SoftTouch,
+                player.Technical.CourtAwareness
+            };
         }
     }
 }
