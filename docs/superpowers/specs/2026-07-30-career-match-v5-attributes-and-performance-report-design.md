@@ -19,7 +19,8 @@
 2. **切片 B：V5 球员输入合同**
    - Career 直接保存并传递身体层与技术层基础属性，不再从少量核心值混合生成；
    - Match 按进攻、拦网、防守、接发、二传、发球六类派生实际比赛属性；
-   - 基础属性和比赛属性分别提供版本化六维展示，但展示汇总不得参与模拟；
+   - 六维展示合并身高/摸高与防守/接发，并增加力量和球商轴；
+   - 展示汇总不得参与模拟；
    - 原始疲劳留在 Career，只向 Match 传一次性 `readiness`；
    - 位置和培养方向不得覆盖玩家传入的能力。
 
@@ -227,6 +228,7 @@ Career 保存球员的权威基础属性，Shared 原样传输，Match 只负责
 PhysicalBaseAttributesV5
   HeightMeters
   StandingReachMeters
+  Strength
   Jump
   Mobility
   Reaction
@@ -234,17 +236,17 @@ PhysicalBaseAttributesV5
 
 TechnicalBaseAttributesV5
   AttackTechnique
-  AttackPower
   BlockTechnique
   DefenseTechnique
   ReceiveTechnique
   SetTechnique
   ServeTechnique
   SoftTouch
-  CourtAwareness
+  VolleyballIQ
 ```
 
-字段范围与 V4 保持连续：
+V5 相对 V4 有两项明确调整：`AttackPower` 不再作为技术基础，改为身体层的通用 `Strength`；
+`CourtAwareness` 改名为语义更清晰的 `VolleyballIQ`。其余字段范围与 V4 保持连续：
 
 - `HeightMeters` 使用 `[1.40,2.30]` 米；
 - `StandingReachMeters` 使用 `[1.70,3.10]` 米，且不得低于身高；
@@ -254,34 +256,40 @@ TechnicalBaseAttributesV5
 - 其他身体与技术字段各自拥有成长经验、潜力效率和上限。
 
 Career→Shared 只做单位转换和范围验证，字段名称与语义保持一对一。禁止在 Mapper 中用接发代填二传、
-用防守代填反应，或用多项平均生成协调、软触球和场地意识。
+用防守代填反应，或用多项平均生成协调、软触球和球商。
 
 ### 5.2 基础属性六维展示
 
 球员页使用同一个图表区域在“身体”和“技术”两个页签间切换，避免同时堆叠大量数字。
 
-身体页签天然是六维：
+身体层保留七个权威明细，但六维图将身高和站立摸高合并为“身体尺寸”：
 
 ```text
-身高、站立摸高、弹跳、移动、反应、协调
+身体尺寸、力量、弹跳、移动、反应、协调
 ```
 
-身高和站立摸高在文字中显示真实米数；进入雷达图时由版本化 `RadarNormalizationV1` 转为 `0–100`。
-归一化使用联赛固定参考区间，不能按当前阵容动态缩放，否则转会或换队会改变同一名球员的图形。
+```text
+BodySize = Mean(
+  Normalize(HeightMeters),
+  Normalize(StandingReachMeters))
+```
 
-技术页签将九个明细合并为六个展示轴：
+身高和站立摸高在文字中仍分别显示真实米数。雷达归一化使用版本化 `RadarNormalizationV1` 和联赛
+固定参考区间，不能按当前阵容动态缩放，否则转会或换队会改变同一名球员的图形。
+
+技术页签将八个明细合并为六个展示轴：
 
 | 技术六维轴 | 仅用于显示的 V1 汇总 |
 | --- | --- |
-| 进攻 | `Mean(AttackTechnique, AttackPower)` |
+| 进攻 | `AttackTechnique` |
 | 拦网 | `BlockTechnique` |
-| 防守 | `Mean(DefenseTechnique, CourtAwareness)` |
-| 接发 | `ReceiveTechnique` |
+| 后场 | `Mean(DefenseTechnique, ReceiveTechnique)` |
 | 二传 | `Mean(SetTechnique, SoftTouch)` |
 | 发球 | `ServeTechnique` |
+| 球商 | `VolleyballIQ` |
 
-所有九项明细仍在图表下方显示；场地意识虽然在技术雷达中并入防守轴，Match 仍可将它用于多个动作。
-雷达汇总没有成长经验、潜力或存档字段，也不得作为比赛输入。
+所有八项技术明细仍在图表下方显示。防守和接发只在六维展示中合并为“后场”，Match 的动作输入、
+比赛统计和成长事实仍保持分开。雷达汇总没有成长经验、潜力或存档字段，也不得作为比赛输入。
 
 ### 5.3 Readiness 与疲劳边界
 
@@ -305,7 +313,7 @@ Match 不读取原始疲劳，不再次扣减 readiness；比赛中的动态能�
 
 Match 使用版本化公式从冻结的基础属性派生六类实际比赛字段：
 
-| 比赛六维轴 | 派生明细 |
+| Match 派生动作组 | 派生明细 |
 | --- | --- |
 | 进攻 `Attack` | 线路控制、速度控制、力量上限、击球高度、助跑移动 |
 | 拦网 `Block` | 时机、手型控制、拦网高度、横向移动 |
@@ -315,19 +323,27 @@ Match 使用版本化公式从冻结的基础属性派生六类实际比赛字�
 | 发球 `Serve` | 线路控制、速度控制、力量上限、稳定性 |
 
 字段继续使用 V4 已有语义，V5 通过新的 formula/coefficient version 和 input/result fingerprint 固定
-派生规则。Career 不保存、不覆盖这些派生值；位置、培养方向和 NPC 模板也不能替换玩家传入的基础属性。
+派生规则。进攻和发球的力量上限读取身体层 `Strength`；各动作的判断、选择和 awareness 消费
+`VolleyballIQ`。Career 不保存、不覆盖这些派生值；位置、培养方向和 NPC 模板也不能替换玩家传入的
+基础属性。
 
 ### 5.5 比赛属性六维展示
 
-比赛六维图固定使用进攻、拦网、防守、接发、二传、发球六个轴。每个轴对该类派生明细做等权平均：
+比赛六维图固定使用进攻、拦网、后场、二传、发球、球商六个轴：
 
 ```text
-radarAxis = Round(100 * Mean(normalizedDerivedFields))
+AttackRadar = Mean(normalized Attack fields)
+BlockRadar = Mean(normalized Block fields)
+BackcourtRadar = Mean(normalized Defense and Receive fields)
+SetRadar = Mean(normalized Set fields)
+ServeRadar = Mean(normalized Serve fields)
+VolleyballIQRadar = effective VolleyballIQ
 ```
 
 原生 `[0,1]` 字段直接进入平均；击球高度和拦网高度由同一个 `RadarNormalizationV1` 转为 `[0,1]`。
-该六维值只用于 UI、赛前对比和赛后说明，不进入 AI、物理、快速模拟、成长或结算。若以后调整展示
-权重，只升级 radar summary version，不升级比赛公式版本。
+六个结果最终统一做 `Round(100 * value)`。该六维值只用于 UI、赛前对比和赛后说明，不进入 AI、
+物理、快速模拟、成长或结算。若以后调整展示权重，只升级 radar summary version，不升级比赛公式
+版本。
 
 ### 5.6 数据流与直接接线原则
 
@@ -412,15 +428,15 @@ Mobility            = old.Movement
 Reaction            = Mean2(old.Reception, old.Defense)
 Coordination        = Mean3(old.Movement, old.Reception, old.Defense)
 
+Strength        = Weighted4(old.Spike, old.Spike, old.Spike, old.Jump)
 AttackTechnique = old.Spike
-AttackPower     = Weighted4(old.Spike, old.Spike, old.Spike, old.Jump)
 BlockTechnique  = old.Block
 DefenseTechnique = old.Defense
 ReceiveTechnique = old.Reception
 SetTechnique    = Mean2(old.Reception, old.Defense)
 ServeTechnique  = old.Serve
 SoftTouch       = Mean2(old.Reception, old.Defense)
-CourtAwareness  = Mean2(old.Defense, old.Stamina)
+VolleyballIQ    = Mean2(old.Defense, old.Stamina)
 ```
 
 `Mean2/Mean3/Weighted4` 都使用非负整数和固定的就近舍入，具体分子偏移由迁移规则版本和 golden
@@ -481,9 +497,10 @@ save 固定。直接字段复制原成长经验、潜力效率和上限；组合
 本设计建议确认以下基线：
 
 1. 同意先做独立报告 V1，再做 V5 输入合同；
-2. 同意 Career 直接保存身体六项与技术九项基础属性，Shared 同名直传；
+2. 同意 Career 直接保存身体七项与技术八项明细，Shared 同名直传；
 3. 同意培养方向只影响 Career 成长，不直接覆盖 Match 能力；
 4. 同意原始疲劳留在 Career，Shared 只接收一次性 readiness；
-5. 同意 Match 只在一处按进攻、拦网、防守、接发、二传、发球派生比赛属性；
-6. 同意基础与比赛六维值只用于展示，不参与模拟、成长或结算；
-7. 同意首个实现切片止于 Match 报告生成和验证，不同时迁移 Career 存档。
+5. 同意力量属于身体层，球商属于技术层，并由 Match 正式消费；
+6. 同意 Match 内部保留防守与接发的独立派生字段；
+7. 同意基础与比赛六维图分别合并身高/摸高和防守/接发，不参与模拟、成长或结算；
+8. 同意首个实现切片止于 Match 报告生成和验证，不同时迁移 Career 存档。
