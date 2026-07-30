@@ -28,6 +28,19 @@ namespace Volleyball.Presentation
         public string CaptureFailureReason { get; private set; }
 
         public static MatchReplayRecorder Attach(
+            FormalSixVsSixRallyDirector director)
+        {
+            if (director == null)
+            {
+                throw new ArgumentNullException(nameof(director));
+            }
+
+            var ball = director.GetComponentInChildren<SimulatedBall>();
+            var players = director.GetComponentsInChildren<PrototypePlayerAgent>();
+            return Attach(director, ball, players);
+        }
+
+        public static MatchReplayRecorder Attach(
             FormalSixVsSixRallyDirector director,
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> players)

@@ -278,13 +278,14 @@ namespace Volleyball.Presentation
 
         private static readonly BallSimulationParameters SimulationParameters =
             new BallSimulationParameters(-9.8f, 0.9995f);
+        private const int PrototypeExecutionSeed = 7351;
 
         private readonly Dictionary<PlayerId, PrototypePlayerAgent> _players =
             new Dictionary<PlayerId, PrototypePlayerAgent>();
         private readonly PhysicalRallyTacticPlanner _tacticPlanner =
             new PhysicalRallyTacticPlanner();
         private readonly RallyDecisionCoordinatorV3 _decisionCoordinator =
-            new RallyDecisionCoordinatorV3(7351);
+            new RallyDecisionCoordinatorV3();
 
         private SimulatedBall _ball;
         private ScoreDisplay _scoreDisplay;
@@ -1942,7 +1943,7 @@ namespace Volleyball.Presentation
                     StablePlayerNumber(decision.Actor),
                     _tacticRevision,
                     SuccessfulContacts,
-                    7351,
+                    ExecutionSeed,
                     0.72f);
             ExecutionErrorApplications++;
             var executionSample = new ExecutionSampleV4(
@@ -2637,6 +2638,16 @@ namespace Volleyball.Presentation
                     receipt.Actor,
                     receipt.Branch,
                     execution);
+                if (openedReceipt == null)
+                {
+                    PlayerForStableId(receipt.Actor).CancelScheduledContact();
+                    RecordDefenseAttempt(
+                        "DefenseAttemptExpired",
+                        receipt,
+                        receivingTeam,
+                        "ActualContinuationHasNoGateHPlan");
+                    continue;
+                }
                 for (var remaining = index + 1;
                      remaining < receives.Length;
                      remaining++)
@@ -2722,13 +2733,17 @@ namespace Volleyball.Presentation
                         "ReboundBoundToActualBall");
                 }
 
-                openedReceipt = ActivatePostAttackReceive(
+                var receipt = ActivatePostAttackReceive(
                     receivingTeam,
                     AttackDefenseCommandKind.AttackCover,
                     opportunity.Actor,
                     opportunity.Branch,
                     execution);
-                return true;
+                if (receipt != null)
+                {
+                    openedReceipt = receipt;
+                    return true;
+                }
             }
 
             return coverage.Length > 0;
@@ -2741,10 +2756,13 @@ namespace Volleyball.Presentation
             RallyPlanBranchV3 branch,
             AttackDefenseCommandExecutionV4 execution)
         {
-            PreparePostAttackPossession(
+            if (!PreparePostAttackPossession(
                 receivingTeam,
                 actor,
-                execution.ScheduledSimulationTime - _ball.SimulationTime);
+                execution.ScheduledSimulationTime - _ball.SimulationTime))
+            {
+                return null;
+            }
             CommitActualGateHReceive(
                 receivingTeam,
                 actor,
@@ -2834,7 +2852,7 @@ namespace Volleyball.Presentation
                         evidence));
         }
 
-        private void PreparePostAttackPossession(
+        private bool PreparePostAttackPossession(
             TeamId receivingTeam,
             StablePlayerId receivingActor,
             float availableSeconds)
@@ -2857,8 +2875,7 @@ namespace Volleyball.Presentation
                 receivingActor);
             if (planning == null)
             {
-                throw new InvalidOperationException(
-                    "A reachable Gate I continuation requires a Gate H possession plan.");
+                return false;
             }
 
             var declaredByGateH =
@@ -2866,9 +2883,10 @@ namespace Volleyball.Presentation
                 planning.Plan.EmergencyReceivers.Contains(receivingActor);
             if (!declaredByGateH)
             {
-                throw new InvalidOperationException(
-                    "The Gate I continuation actor must be declared by the new Gate H possession.");
+                return false;
             }
+
+            return true;
         }
 
         private void RecordDefenseAttempt(
@@ -3732,7 +3750,7 @@ namespace Volleyball.Presentation
                     StablePlayerNumber(receiver.Id),
                     _tacticRevision,
                     SuccessfulContacts,
-                    7351,
+                    ExecutionSeed,
                     0.72f);
             // Bind an already-declared receive opportunity to the live ball.
             // This works for both a block rebound and an ordinary attack
@@ -4801,7 +4819,7 @@ namespace Volleyball.Presentation
                 StablePlayerNumber(decision.Actor),
                 _tacticRevision,
                 SuccessfulContacts,
-                7351,
+                ExecutionSeed,
                 0.72f);
             ExecutionErrorApplications++;
             var executionCandidateCategory = ExecutionCandidateCategoryV4.Receive;
@@ -6373,6 +6391,8 @@ namespace Volleyball.Presentation
         {
             return _contactGroupSequence++;
         }
+
+        private int ExecutionSeed => _matchContext?.Seed ?? PrototypeExecutionSeed;
 
         private static void NotifyReplay<T>(Action<T> handler, T payload)
         {

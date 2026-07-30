@@ -39,6 +39,12 @@ context 时折算一次，Match 不读取或修改 Career 原始疲劳。
 - 取消、场景加载失败或崩溃只回到赛前并复用原 context；不伪造中止结果。
 - V4 完成后，另建 V5 任务单再讨论“全职业基础属性 + 职业特色属性”与可能的副职业。
 
+## 当前检查点
+
+- macOS 的 complete EditMode、Career formal runner PlayMode 与真实物理整局已通过。
+- Windows x64 IL2CPP Development Build 在当前 host 返回 `BuildResult.Unknown`；需在指定 Windows
+  构建机完成 build 和设备人工闭环后，才可完成此任务单并创建 V5 后继任务。
+
 ## 依赖资料
 
 - `AGENTS.md`
@@ -46,7 +52,3 @@ context 时折算一次，Match 不读取或修改 Career 原始疲劳。
 - `docs/career-match-v4-integration-contract.md`
 - `docs/career-domain-rules.md`
 - `docs/superpowers/specs/2026-07-24-full-rally-v4-consolidated-design-and-roadmap.md`
-
-## 结束处理
-
-完成或被替代时，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继任务单链接。

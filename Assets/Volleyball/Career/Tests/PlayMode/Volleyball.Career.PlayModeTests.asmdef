@@ -4,8 +4,10 @@
     "Volleyball.Shared",
     "Volleyball.Career.Domain",
     "Volleyball.Career.Application",
+    "Volleyball.Career.MatchIntegration",
     "Volleyball.Career.Presentation",
     "Volleyball.Bootstrap",
+    "Volleyball.Match.Presentation",
     "Unity.InputSystem"
   ],
   "optionalUnityReferences": ["TestAssemblies"]

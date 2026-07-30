@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Volleyball.Domain;
 using Volleyball.Shared.Contracts;
@@ -119,7 +120,10 @@ namespace Volleyball.EditModeTests
             Assert.That(result.PlayerStats, Has.Count.EqualTo(12));
             Assert.That(Stat(result, homeSetter).Points, Is.EqualTo(1));
             Assert.That(Stat(result, homeSetter).Contacts, Is.EqualTo(1));
-            Assert.That(Stat(result, homeSetter).Workload, Is.EqualTo(4.5f));
+            Assert.That(Stat(result, homeSetter).Workload, Is.EqualTo(1f));
+            Assert.That(
+                result.PlayerStats.All(item => item.Workload >= 0f && item.Workload <= 1f),
+                Is.True);
             Assert.That(Stat(result, awayDefender).Errors, Is.EqualTo(1));
             Assert.DoesNotThrow(() => result.ValidateAgainst(set.Context));
         }

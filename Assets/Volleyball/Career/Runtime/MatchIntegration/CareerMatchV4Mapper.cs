@@ -6,6 +6,48 @@ using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.MatchIntegration
 {
+    public enum CareerMatchV4FactPolicy
+    {
+        FixtureEstimated = 0,
+        DirectAggregateOnly = 1
+    }
+
+    public sealed class CareerMatchV4RuntimeConfiguration
+    {
+        public CareerMatchV4RuntimeConfiguration(
+            string physicsConfigurationHash,
+            TrajectoryPredictionProviderConfigurationV4
+                trajectoryPredictionProviderConfiguration,
+            CareerMatchV4FactPolicy factPolicy)
+        {
+            if (string.IsNullOrWhiteSpace(physicsConfigurationHash))
+            {
+                throw new ArgumentException(
+                    "A formal physics configuration hash is required.",
+                    nameof(physicsConfigurationHash));
+            }
+
+            PhysicsConfigurationHash = physicsConfigurationHash;
+            TrajectoryPredictionProviderConfiguration =
+                trajectoryPredictionProviderConfiguration ??
+                throw new ArgumentNullException(
+                    nameof(trajectoryPredictionProviderConfiguration));
+            if (!Enum.IsDefined(typeof(CareerMatchV4FactPolicy), factPolicy))
+            {
+                throw new ArgumentOutOfRangeException(nameof(factPolicy));
+            }
+
+            FactPolicy = factPolicy;
+        }
+
+        public string PhysicsConfigurationHash { get; }
+
+        public TrajectoryPredictionProviderConfigurationV4
+            TrajectoryPredictionProviderConfiguration { get; }
+
+        public CareerMatchV4FactPolicy FactPolicy { get; }
+    }
+
     public sealed class CareerMatchV4Mapper
     {
         public const int ContentVersion = 1;
@@ -19,6 +61,27 @@ namespace Volleyball.Career.MatchIntegration
         public const string FixturePredictorConfigurationHash =
             "1e5242f326637e85416d8f493344c7d52fbb53a35ce2d21be96b799e70d62e20";
 
+        private readonly CareerMatchV4RuntimeConfiguration _configuration;
+
+        public CareerMatchV4Mapper()
+            : this(new CareerMatchV4RuntimeConfiguration(
+                FixturePhysicsConfigurationHash,
+                new TrajectoryPredictionProviderConfigurationV4(
+                    128,
+                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    1,
+                    FixturePredictorConfigurationHash),
+                CareerMatchV4FactPolicy.FixtureEstimated))
+        {
+        }
+
+        public CareerMatchV4Mapper(
+            CareerMatchV4RuntimeConfiguration configuration)
+        {
+            _configuration = configuration ??
+                throw new ArgumentNullException(nameof(configuration));
+        }
+
         public MatchContextV4 ToContext(CareerMatchLaunch launch)
         {
             if (launch == null) throw new ArgumentNullException(nameof(launch));
@@ -28,12 +91,8 @@ namespace Volleyball.Career.MatchIntegration
                 unchecked((int)launch.MatchSeed),
                 ToTeam(launch.Teams[0]),
                 ToTeam(launch.Teams[1]),
-                FixturePhysicsConfigurationHash,
-                new TrajectoryPredictionProviderConfigurationV4(
-                    128,
-                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
-                    1,
-                    FixturePredictorConfigurationHash),
+                _configuration.PhysicsConfigurationHash,
+                _configuration.TrajectoryPredictionProviderConfiguration,
                 RulesVersions.FullRallyV3);
         }
 
@@ -151,7 +210,7 @@ namespace Volleyball.Career.MatchIntegration
             return result;
         }
 
-        private static void AddPlayerFacts(
+        private void AddPlayerFacts(
             TeamSnapshotV4 team,
             IReadOnlyDictionary<PlayerId, PlayerMatchStatsV4> statsByPlayer,
             int rallyCount,
@@ -165,8 +224,29 @@ namespace Volleyball.Career.MatchIntegration
                         "Career settlement requires V4 stats for every frozen player.");
                 }
 
-                output.Add(ToCareerPlayerFacts(player.Position, stats, rallyCount));
+                output.Add(_configuration.FactPolicy ==
+                           CareerMatchV4FactPolicy.DirectAggregateOnly
+                    ? ToDirectAggregateFacts(stats)
+                    : ToCareerPlayerFacts(player.Position, stats, rallyCount));
             }
+        }
+
+        private static CareerMatchPlayerFacts ToDirectAggregateFacts(
+            PlayerMatchStatsV4 stats)
+        {
+            var workloadBasisPoints = WorkloadBasisPoints(stats.Workload);
+            return new CareerMatchPlayerFacts(
+                stats.PlayerId,
+                new CareerSpikeFacts(0, 0, 0),
+                new CareerServeFacts(0, 0, 0),
+                new CareerReceptionFacts(0, 0, 0, 0, 0, 0),
+                new CareerDefenseFacts(0, 0),
+                new CareerBlockFacts(0, 0, 0),
+                new CareerMatchLoadFacts(
+                    0, 0, 0, 0, 0,
+                    workloadBasisPoints,
+                    workloadBasisPoints),
+                new CareerStabilityFacts(0, 0, 0, 0, 0));
         }
 
         private static CareerMatchPlayerFacts ToCareerPlayerFacts(

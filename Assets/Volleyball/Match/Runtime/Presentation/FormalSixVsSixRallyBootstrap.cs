@@ -30,8 +30,33 @@ namespace Volleyball.Presentation
         private static readonly PhysicalMatchConfiguration Configuration =
             PhysicalMatchConfiguration.FormalIndoorSixVsSix;
 
+        public static string FormalPhysicsConfigurationHash =>
+            BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
+                new BallSimulationParameters(-9.8f, 0.9995f));
+
+        public static TrajectoryPredictionProviderConfigurationV4
+            CreateFormalTrajectoryPredictionProviderConfiguration()
+        {
+            return new TrajectoryPredictionProviderConfigurationV4(
+                128,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash);
+        }
+
         private void Awake()
         {
+            var pendingContext = FormalMatchContextStartupV4.ConsumePendingContext();
+            if (pendingContext != null)
+            {
+                Initialize(transform, pendingContext, TeamSide.Home, 0, 0,
+                    tactics: null, aiWeights: null, provenance: null,
+                    initialServeFlightSeconds: null,
+                    initialServeArrivalVerticalSpeed: null,
+                    initialServeTargetDepthOffsetMeters: null);
+                return;
+            }
+
             var scenario = FormalMatchScenarioStartupV4.ConsumePendingScenario();
             if (scenario == null)
             {
@@ -245,13 +270,8 @@ namespace Volleyball.Presentation
                 7351,
                 CreateTeam("formal-home", "Blue", TeamSide.Home, "home"),
                 CreateTeam("formal-away", "Orange", TeamSide.Away, "away"),
-                BallTrajectoryPredictionProviderV4.BuildPhysicsConfigurationHash(
-                    new BallSimulationParameters(-9.8f, 0.9995f)),
-                new TrajectoryPredictionProviderConfigurationV4(
-                    128,
-                    TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
-                    BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
-                    BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash),
+                FormalPhysicsConfigurationHash,
+                CreateFormalTrajectoryPredictionProviderConfiguration(),
                 rulesVersion: RulesVersions.FullRallyV3);
         }
 

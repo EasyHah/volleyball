@@ -7,6 +7,7 @@ using Volleyball.Career.Domain;
 using Volleyball.Career.MatchIntegration;
 using Volleyball.Career.Persistence;
 using Volleyball.Career.Presentation;
+using Volleyball.Presentation;
 
 namespace Volleyball.Bootstrap
 {
@@ -30,8 +31,17 @@ namespace Volleyball.Bootstrap
                 var profileRepository = new LocalPlayerProfileRepository(paths, fileSystem);
                 var catalogRepository = new LocalProfileCatalogRepository(paths, fileSystem);
                 var random = new CareerDeterministicRandom();
+                var formalRunner = gameObject.AddComponent<
+                    CareerFormalSixVsSixMatchRunnerV4>();
+                var mapper = new CareerMatchV4Mapper(
+                    new CareerMatchV4RuntimeConfiguration(
+                        FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
+                        FormalSixVsSixRallyBootstrap
+                            .CreateFormalTrajectoryPredictionProviderConfiguration(),
+                        CareerMatchV4FactPolicy.DirectAggregateOnly));
                 var executor = new CareerMatchExecutorV4(
-                    new DeterministicFixtureMatchRunnerV4());
+                    formalRunner,
+                    mapper);
                 var adapter = new CareerUiUseCasesAdapter(
                     new CareerLocalUiWorkflow(
                         profileRepository,
@@ -46,7 +56,8 @@ namespace Volleyball.Bootstrap
                     new CareerPendingMatchService(
                         careerRepository,
                         random,
-                        new CareerFirstMatchLaunchFactoryV1(),
+                        new CareerFirstMatchLaunchFactoryV1(
+                            CareerMatchExecutionMode.Direct),
                         executor),
                     new CareerMatchSettlementService(
                         careerRepository,
@@ -59,6 +70,9 @@ namespace Volleyball.Bootstrap
                 var document = GetComponent<UIDocument>();
                 GetComponent<CareerUiShell>().Bind(Controller);
                 ConfigureInput(document);
+                formalRunner.Initialize(
+                    document,
+                    GetComponent<CareerMenuInputRouter>());
                 Controller.Initialize();
             }
             catch (Exception exception)

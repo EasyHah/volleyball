@@ -15,9 +15,9 @@ namespace Volleyball.AI
         private readonly TeamRallyDecisionPlanner _planner;
         private int _decisionIndex;
 
-        public RallyDecisionCoordinatorV3(int seed)
+        public RallyDecisionCoordinatorV3()
         {
-            _planner = new TeamRallyDecisionPlanner(seed);
+            _planner = new TeamRallyDecisionPlanner();
         }
 
         public TeamRallyDecision Plan(TeamRallyDecisionInput input)

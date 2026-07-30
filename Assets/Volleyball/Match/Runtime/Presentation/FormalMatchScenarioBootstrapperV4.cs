@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Presentation
 {
@@ -24,12 +25,20 @@ namespace Volleyball.Presentation
     {
         private static FormalMatchScenarioDefinitionV4 _pendingScenario;
 
+        internal static bool HasPendingScenario => _pendingScenario != null;
+
         public static void PrepareNextFormalStart(
             FormalMatchScenarioDefinitionV4 scenario)
         {
             if (scenario == null)
             {
                 throw new ArgumentNullException(nameof(scenario));
+            }
+
+            if (FormalMatchContextStartupV4.HasPendingContext)
+            {
+                throw new InvalidOperationException(
+                    "A formal MatchContextV4 is already pending scene startup.");
             }
 
             if (_pendingScenario != null)
@@ -46,6 +55,56 @@ namespace Volleyball.Presentation
             var scenario = _pendingScenario;
             _pendingScenario = null;
             return scenario;
+        }
+    }
+
+    /// <summary>
+    /// One-shot public handoff for a caller that already owns a canonical V4
+    /// context. The formal scene consumes the exact instance during Awake.
+    /// </summary>
+    public static class FormalMatchContextStartupV4
+    {
+        private static MatchContextV4 _pendingContext;
+
+        internal static bool HasPendingContext => _pendingContext != null;
+
+        public static void PrepareNextFormalStart(MatchContextV4 context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            if (FormalMatchScenarioStartupV4.HasPendingScenario)
+            {
+                throw new InvalidOperationException(
+                    "A formal scenario is already pending scene startup.");
+            }
+            if (_pendingContext != null)
+            {
+                throw new InvalidOperationException(
+                    "A formal MatchContextV4 is already pending scene startup.");
+            }
+
+            _pendingContext = context;
+        }
+
+        public static bool CancelPendingFormalStart(Guid sessionId)
+        {
+            if (_pendingContext == null || _pendingContext.SessionId != sessionId)
+            {
+                return false;
+            }
+
+            _pendingContext = null;
+            return true;
+        }
+
+        internal static MatchContextV4 ConsumePendingContext()
+        {
+            var context = _pendingContext;
+            _pendingContext = null;
+            return context;
         }
     }
 }

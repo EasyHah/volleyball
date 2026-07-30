@@ -296,9 +296,13 @@ namespace Volleyball.Domain
             }
 
             var winner = WinnerSide == TeamSide.Home ? Context.Home.TeamId : Context.Away.TeamId;
+            var maximumWorkload = _statsByPlayer.Values
+                .Select(entry => entry.Workload)
+                .DefaultIfEmpty(0f)
+                .Max();
             var stats = _statsByPlayer
                 .OrderBy(entry => entry.Key.Value, StringComparer.Ordinal)
-                .Select(entry => entry.Value.ToContractV4(entry.Key))
+                .Select(entry => entry.Value.ToContractV4(entry.Key, maximumWorkload))
                 .ToArray();
             return MatchResultV4.Create(
                 Context,
@@ -492,9 +496,19 @@ namespace Volleyball.Domain
                     Workload);
             }
 
-            public PlayerMatchStatsV4 ToContractV4(StablePlayerId playerId)
+            public PlayerMatchStatsV4 ToContractV4(
+                StablePlayerId playerId,
+                float maximumWorkload)
             {
-                return new PlayerMatchStatsV4(playerId, Points, Contacts, Errors, Workload);
+                var normalizedWorkload = maximumWorkload <= 0f
+                    ? 0f
+                    : Math.Min(1f, Workload / maximumWorkload);
+                return new PlayerMatchStatsV4(
+                    playerId,
+                    Points,
+                    Contacts,
+                    Errors,
+                    normalizedWorkload);
             }
         }
     }

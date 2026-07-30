@@ -38,7 +38,7 @@ namespace Volleyball.EditModeTests
                 fixture.Eligibility,
                 fixture.Bindings,
                 revision: 9);
-            var ordered = new TeamRallyDecisionPlanner(17).OrderedCandidates(input);
+            var ordered = new TeamRallyDecisionPlanner().OrderedCandidates(input);
             var setterCandidate = FindCandidate(
                 ordered,
                 registeredSetter.RuntimePlayerId);
@@ -78,7 +78,7 @@ namespace Volleyball.EditModeTests
                 registeredSetterPosition: OrganizationBall(RuntimeTeamId.Blue),
                 availableSeconds: 1f,
                 previousActor: setter);
-            var ordered = new TeamRallyDecisionPlanner(17).OrderedCandidates(input);
+            var ordered = new TeamRallyDecisionPlanner().OrderedCandidates(input);
             var expected = ordered.First(candidate => candidate.IsFeasible).Actor;
 
             var result = CreatePlanner().PlanOrganization(
@@ -155,7 +155,7 @@ namespace Volleyball.EditModeTests
                 fixture.Bindings[3].RuntimePlayerId,
                 new SimVector3(4f, 0f, -4f),
                 1f);
-            var expected = new TeamRallyDecisionPlanner(17)
+            var expected = new TeamRallyDecisionPlanner()
                 .OrderedCandidates(input)
                 .Where(candidate => candidate.IsFeasible)
                 .Take(3)
@@ -186,7 +186,7 @@ namespace Volleyball.EditModeTests
                 fixture.Bindings[3].RuntimePlayerId,
                 new SimVector3(0f, 2f, -2f),
                 1f);
-            var feasible = new TeamRallyDecisionPlanner(17)
+            var feasible = new TeamRallyDecisionPlanner()
                 .OrderedCandidates(input)
                 .Where(candidate => candidate.IsFeasible)
                 .ToArray();
@@ -236,7 +236,7 @@ namespace Volleyball.EditModeTests
         private static ReceiveOrganizationResponsibilityPlanner CreatePlanner()
         {
             return new ReceiveOrganizationResponsibilityPlanner(
-                new TeamRallyDecisionPlanner(17));
+                new TeamRallyDecisionPlanner());
         }
 
         private static PlannerFixture CreateFixture(RuntimeTeamId runtimeTeam, TeamSide side)

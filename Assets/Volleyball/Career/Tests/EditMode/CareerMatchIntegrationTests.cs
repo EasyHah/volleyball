@@ -3,6 +3,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
+using Volleyball.Career.Application;
 using Volleyball.Career.MatchIntegration;
 using Volleyball.Shared.Contracts;
 
@@ -63,6 +64,43 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(decoded.Facts.Versions.ContractVersion, Is.EqualTo(4));
             Assert.That(decoded.Facts.PlayerFacts.Count, Is.EqualTo(12));
             Assert.That(decoded.Facts.Sets.Single().HomePoints, Is.EqualTo(25));
+        }
+
+        [Test]
+        public async Task DirectMapper_OnlyMapsMeasuredAggregateWorkloadIntoCareerFacts()
+        {
+            var mapper = new CareerMatchV4Mapper(
+                new CareerMatchV4RuntimeConfiguration(
+                    CareerMatchV4Mapper.FixturePhysicsConfigurationHash,
+                    new TrajectoryPredictionProviderConfigurationV4(
+                        128,
+                        TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                        1,
+                        CareerMatchV4Mapper.FixturePredictorConfigurationHash),
+                    CareerMatchV4FactPolicy.DirectAggregateOnly));
+            var launch = CareerMatchTestData.Launch(
+                executionMode: CareerMatchExecutionMode.Direct,
+                fixtureId: null,
+                fixtureVersion: null);
+            var context = mapper.ToContext(launch);
+            var result = await new DeterministicFixtureMatchRunnerV4()
+                .ExecuteAsync(context, CancellationToken.None);
+
+            var facts = mapper.ToCareerFacts(context, result);
+
+            Assert.That(facts.PlayerFacts.All(fact =>
+                fact.Spike.Attempts == 0 &&
+                fact.Serve.Attempts == 0 &&
+                fact.Reception.Attempts == 0 &&
+                fact.Defense.Attempts == 0 &&
+                fact.Block.Attempts == 0 &&
+                fact.Stability.CriticalActions == 0), Is.True);
+            Assert.That(facts.PlayerFacts
+                    .Select(fact => fact.Load.TotalWorkloadBasisPoints),
+                Has.All.InRange(0, 10000));
+            Assert.That(facts.PlayerFacts
+                    .Select(fact => fact.Load.TotalWorkloadBasisPoints),
+                Has.Some.GreaterThan(0));
         }
 
         [Test]
