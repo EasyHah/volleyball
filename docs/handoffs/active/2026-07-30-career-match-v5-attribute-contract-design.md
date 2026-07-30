@@ -9,13 +9,23 @@
 
 ## 当前要求
 
-先完成 V5 的设计决策和消费证据计划，再决定是否修改 Shared 合同。设计必须从 Career 已确认的
-八项明示属性出发，区分全职业基础属性、位置或培养方向带来的特色属性，以及只属于 Career 的状态；
+先完成 V5 的设计决策和消费证据计划，再决定是否修改 Shared 合同。根据用户与搭档对转换复杂度的
+反馈，候选设计改为由 Career 直接保存身体层七项与技术层八项基础明细，Shared 同名传输，Match
+统一派生动作属性。力量属于身体层，球商属于技术层；六维展示合并身高/摸高为身体尺寸、合并防守/
+接发为后场。上述合并只用于基础属性图；比赛六维维持进攻、拦网、防守、接发、二传、发球。底层
+仍分别保存身高与站立摸高，并分别派生防守与接发，避免丢失物理和统计语义。
+不得继续从 Career 八项或七项中间模型混合生成 Match 输入；六维雷达值只用于展示，不能参与模拟
+或结算。
 每个进入 V5 的权威字段都必须有确定的 Career 来源、确定性映射、Match 正式消费路径、Replay 解释
 和固定种子验证方案。
 
 逐球员比赛报告需要支持 Career 的成长、教练信任、疲劳与伤病结算，但不能把无法由物理比赛证明的
 技术统计重新估算出来。开始实现前必须确认 PR #6 已合并，并从最新 `origin/main` 建立新的里程碑分支。
+
+当前设计候选见：
+`docs/superpowers/specs/2026-07-30-career-match-v5-attributes-and-performance-report-design.md`。
+PR #6 已于 2026-07-30 合并为 `028e263`；新设计分支已从该提交建立。候选方案建议先实现独立
+`MatchPerformanceReportV1`，再实现两层基础属性直传和六类比赛属性派生。
 
 ## 非目标
 
@@ -28,7 +38,8 @@
 ## 交付物
 
 - V4 → V5 字段差异表及每个新字段的权威来源、单位、范围和版本规则。
-- Career 八项属性到 V5 base/derived 属性的单调映射与疲劳边界。
+- Career 八项旧数据到两层 V5 base 的迁移，以及 base 到 Match 属性的版本化派生与疲劳边界。
+- 基础属性与比赛属性六维展示的 normalization、汇总和非权威边界。
 - Match 对每个新增字段的正式消费路径和 Replay 解释方案。
 - 逐球员 Result/Replay 报告最小字段集，以及 Career 结算的事实/后果边界。
 - 兼容、迁移、回滚、fixture/golden vector 和固定种子验证方案。
@@ -50,6 +61,7 @@
 - `docs/changes/2026-07-30-002-career-formal-6v6-lifecycle.md`
 - `docs/handoffs/completed/2026-07-29-career-match-integration-redesign.md`
 - `docs/superpowers/specs/2026-07-24-full-rally-v4-consolidated-design-and-roadmap.md`
+- `docs/superpowers/specs/2026-07-30-career-match-v5-attributes-and-performance-report-design.md`
 
 ## 结束处理
 
