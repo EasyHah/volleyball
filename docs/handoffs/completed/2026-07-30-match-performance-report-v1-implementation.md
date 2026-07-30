@@ -67,6 +67,8 @@
 
 实现与验证已完成：
 
+- 实现提交：`e8cfa1c`；
+- Draft PR：[PR #8](https://github.com/EasyHah/volleyball/pull/8)，当前以设计 PR #7 的分支为 base；
 - focused EditMode：7/7；
 - 受影响 EditMode 回归：53/53；
 - 正式 6v6 Runner PlayMode：1/1；

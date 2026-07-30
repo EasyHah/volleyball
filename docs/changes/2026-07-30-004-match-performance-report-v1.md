@@ -6,7 +6,7 @@
 - 影响模块：Shared / Bootstrap / Career Tests / Repository / Docs
 - 交互级别：跨模块（重点）
 - 关联分支：`milestone/match-performance-report-v1`
-- 关联提交或 PR：尚未创建
+- 关联提交或 PR：`e8cfa1c` / [PR #8](https://github.com/EasyHah/volleyball/pull/8)
 
 > [!IMPORTANT]
 > Shared 新增独立 `MatchPerformanceReportV1`，Bootstrap 从搭档冻结 Match 模块的现有公开事件生成报告。
