@@ -87,19 +87,30 @@ Net contact
 
 ## 6. 验收与测试
 
-新增或扩展 Formal 6v6 PlayMode 场景，至少证明：
+验收 SHOULD 以新的指定回合 `FormalMatchScenarioV4` 为主，而不是依赖长整局随机产生触网。
+每个 scenario MUST 冻结发球方、已接受触球数、球员初始位置、初始球状态和随机 key；测试仍让
+真实 `SimulatedBall`、crossing、球员几何接触和裁判链路自然执行，MUST NOT 手工提交接球或比分。
 
-1. 发球触网过网后，旧接发计划失效并以实际球重新接发；留本方时按发球失误判分。
-2. 第二次触球（含二传）触网留本方时，仍有额度的本方球员可以实际救球；越网时由对方防守。
-3. 第三次触球的扣球触网留本方时，不产生非法第四触球；越网时对方可正常防守。
-4. 拦网后触网只走 post-block continuation，且 Block 不计入三次触球的规则不变。
-5. 不可达情景零 accepted Receive，且 ground/out referee 产生唯一结果。
-6. 同一 flight segment 多次 Net physical contact 最多产生一次 continuation replan/window publication。
-7. 相同 seed 的 DirectPhysical 运行在同平台保持相同规则结果、accepted-contact 序列和内部
-   continuation evidence；canonical Replay 只在现有 schema 能合法表示时比较字节。
+首版只需要以下紧凑情景：
 
-EditMode 还必须覆盖 flight-segment guard 的 reset、第三触球剩余额度、Block 路径排他性和
-stale window 失效。实现冻结后，运行受影响的 PlayMode、完整 Match PlayMode 和完整 EditMode。
+| 指定回合 | 必须证明 |
+| --- | --- |
+| `ServeNetCross` / `ServeNetOwnSide` | 发球擦网后分别重组接发或按发球失误结束。 |
+| `SecondTouchNetOwnSide` | 二传/第二触球触网留本方时，第三触球只能由实际几何接触救起。 |
+| `ThirdTouchNetOwnSide` / `ThirdTouchNetCross` | 第三触球留本方不得产生第四触球；越网时对方有防守机会。 |
+| `PostBlockNet` | 拦网后触网只走既有 post-block continuation，Block 规则计数不变。 |
+| `NetDeflectionSingleDispatch` | 同一飞行段的后续物理 Net contact 不会再次发布 replan/window。 |
+
+每个情景还必须至少覆盖一个不可达变体：零 accepted Receive、唯一 ground/out referee result，
+且不产生自动救球。
+
+EditMode 仅覆盖 flight-segment guard 的 reset、第三触球剩余额度、Block 路径排他性和 stale
+window 失效。PlayMode 使用上述指定情景，并对每个关键情景做两次同平台固定 key 运行，比较规则
+结果、accepted-contact 序列和 continuation evidence；canonical Replay 只在现有 schema 能合法表示时
+比较字节。
+
+实现冻结后，额外运行一条既有 Formal 6v6 整局 smoke 测试和完整 EditMode。无需为每个实现切片
+反复运行完整 PlayMode；只有指定情景或整局 smoke 发现跨场景回归时，才扩大 PlayMode 范围。
 
 ## 7. 非目标
 
