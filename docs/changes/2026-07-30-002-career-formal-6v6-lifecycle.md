@@ -6,7 +6,7 @@
 - 影响模块：Career.MatchIntegration / Career.Application / Match.Domain / Match.AI / Match.Presentation / Bootstrap / Tests / Docs
 - 交互级别：跨模块（重点）
 - 关联分支：`milestone/career-v4-lifecycle-closeout`
-- 关联提交或 PR：待创建
+- 关联提交或 PR：`9141410` / [PR #6](https://github.com/EasyHah/volleyball/pull/6)
 
 > [!IMPORTANT]
 > Bootstrap 新增 Career 持有的 V4 context 到 `FormalIndoor6v6` 的一次性启动桥；Match 只消费原
