@@ -513,10 +513,15 @@ namespace Volleyball.Presentation.TrainingLab
         private void UpdatePreview()
         {
             var draft = _controller.Draft;
-            if (_markers.TryGetValue("ball", out var ball))
+            if (draft.BallPosition.IsFinite &&
+                _markers.TryGetValue("ball", out var ball))
                 ball.transform.localPosition = ToUnity(draft.BallPosition);
             foreach (var pose in draft.Players)
             {
+                if (pose == null ||
+                    !pose.Position.IsFinite ||
+                    !pose.Forward.IsFinite)
+                    continue;
                 if (!_markers.TryGetValue(
                         pose.PlayerId.Value,
                         out var marker))
