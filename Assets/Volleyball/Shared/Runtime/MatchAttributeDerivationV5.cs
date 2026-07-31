@@ -1,6 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Text;
+using System.Collections.Generic;
 
 namespace Volleyball.Shared.Contracts
 {
@@ -43,7 +44,24 @@ namespace Volleyball.Shared.Contracts
             return new DerivedMatchAttributesV5(attackControl, attackPower, attackReach, blockControl,
                 blockReach, defenseControl, receiveControl, setControl, serveControl, bases.Jump, bases.Movement,
                 bases.Reaction, bases.CourtIq, dominantHand, formulaVersion, coefficientVersion,
-                inputFingerprint, Hash(payload));
+                inputFingerprint, Hash(payload), Explanations());
+        }
+
+        private static IReadOnlyList<MatchAttributeExplanationV5> Explanations()
+        {
+            return new[]
+            {
+                new MatchAttributeExplanationV5("AttackControl", "Attack", "Coordination", "CourtIq"),
+                new MatchAttributeExplanationV5("AttackPower", "Attack", "Strength", "Jump", "Coordination"),
+                new MatchAttributeExplanationV5("AttackReachMillimeters", "HeightMillimeters", "Jump"),
+                new MatchAttributeExplanationV5("BlockControl", "Block", "Reaction", "Strength", "Coordination", "CourtIq"),
+                new MatchAttributeExplanationV5("BlockReachMillimeters", "HeightMillimeters", "Jump"),
+                new MatchAttributeExplanationV5("DefenseControl", "Defense", "Movement", "Reaction", "Coordination", "CourtIq"),
+                new MatchAttributeExplanationV5("ReceiveControl", "Defense", "Movement", "Reaction", "Coordination", "CourtIq"),
+                new MatchAttributeExplanationV5("SetControl", "Set", "CourtIq", "Coordination", "Reaction", "Movement"),
+                new MatchAttributeExplanationV5("ServeControl", "Serve", "Strength", "Coordination", "CourtIq"),
+                new MatchAttributeExplanationV5("RuntimeIdentity", "DominantHand", "FormulaVersion", "CoefficientVersion")
+            };
         }
 
         private static int Average(params int[] values)

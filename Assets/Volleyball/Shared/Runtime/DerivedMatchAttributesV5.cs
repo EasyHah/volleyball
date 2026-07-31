@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 
 namespace Volleyball.Shared.Contracts
 {
@@ -22,7 +24,8 @@ namespace Volleyball.Shared.Contracts
             int formulaVersion,
             int coefficientVersion,
             string inputFingerprint,
-            string resultFingerprint)
+            string resultFingerprint,
+            IReadOnlyList<MatchAttributeExplanationV5> explanations)
         {
             AttackControl = CareerBaseAttributesV5.BasisPoints(attackControl, nameof(attackControl));
             AttackPower = CareerBaseAttributesV5.BasisPoints(attackPower, nameof(attackPower));
@@ -45,11 +48,18 @@ namespace Volleyball.Shared.Contracts
 
             ContractGuard.Hash(inputFingerprint, nameof(inputFingerprint));
             ContractGuard.Hash(resultFingerprint, nameof(resultFingerprint));
+            if (explanations == null || explanations.Count != 10)
+            {
+                throw new ContractValidationException(
+                    "V5 derived attributes require ten formal consumption explanations.");
+            }
             DominantHand = dominantHand;
             FormulaVersion = formulaVersion;
             CoefficientVersion = coefficientVersion;
             InputFingerprint = inputFingerprint;
             ResultFingerprint = resultFingerprint;
+            Explanations = new ReadOnlyCollection<MatchAttributeExplanationV5>(
+                new List<MatchAttributeExplanationV5>(explanations));
         }
 
         public int AttackControl { get; }
@@ -70,6 +80,7 @@ namespace Volleyball.Shared.Contracts
         public int CoefficientVersion { get; }
         public string InputFingerprint { get; }
         public string ResultFingerprint { get; }
+        public IReadOnlyList<MatchAttributeExplanationV5> Explanations { get; }
 
         public bool Equals(DerivedMatchAttributesV5 other)
         {

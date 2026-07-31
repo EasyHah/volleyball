@@ -59,6 +59,8 @@ namespace Volleyball.Shared.EditModeTests
 
             Assert.That(repeated.ResultFingerprint, Is.EqualTo(derived.ResultFingerprint));
             Assert.That(repeated.InputFingerprint, Is.EqualTo(derived.InputFingerprint));
+            Assert.That(derived.Explanations.Select(value => value.OutputField),
+                Does.Contain("AttackControl").And.Contain("SetControl"));
             Assert.That(MatchAttributeDerivationV5.Derive(
                 new CareerBaseAttributesV5(5001, 1850, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000),
                 DominantHandV5.Right).AttackPower, Is.GreaterThan(derived.AttackPower));
