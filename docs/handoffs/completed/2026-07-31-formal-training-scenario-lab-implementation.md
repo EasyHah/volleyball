@@ -1,6 +1,6 @@
 # 正式训练情景实验室实现
 
-- Status: active
+- Status: superseded
 - Owner: Match collaborator
 - Priority: P1
 - Scope: Match / Formal 6v6 / 独立训练场景 / 开发者 UI / 诊断
@@ -54,6 +54,12 @@
 ## 结束处理
 
 完成或替代时，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继任务单链接。
+
+## 结束状态（2026-07-31）
+
+训练实验室实现与 macOS Editor 验收已完成。Windows x64 IL2CPP Development Build 和 Windows Player
+实机验收由独立 Windows 环境继续执行，不阻塞第二里程碑的 Editor-only 设计。后继任务单为
+`docs/handoffs/active/2026-07-31-setter-teacher-review-implementation.md`。
 
 ## 当前验证状态（2026-07-31）
 
