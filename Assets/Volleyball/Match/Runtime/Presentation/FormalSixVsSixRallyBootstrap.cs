@@ -5,6 +5,7 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Presentation.TrainingLab;
 using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
 using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
@@ -46,6 +47,14 @@ namespace Volleyball.Presentation
 
         private void Awake()
         {
+            var trainingScenario =
+                TrainingScenarioStartupV1.ConsumePendingScenario();
+            if (trainingScenario != null)
+            {
+                InitializeTrainingScenario(transform, trainingScenario);
+                return;
+            }
+
             var pendingContext = FormalMatchContextStartupV4.ConsumePendingContext();
             if (pendingContext != null)
             {
@@ -53,7 +62,8 @@ namespace Volleyball.Presentation
                     tactics: null, aiWeights: null, provenance: null,
                     initialServeFlightSeconds: null,
                     initialServeArrivalVerticalSpeed: null,
-                    initialServeTargetDepthOffsetMeters: null);
+                    initialServeTargetDepthOffsetMeters: null,
+                    trainingScenario: null);
                 return;
             }
 
@@ -64,7 +74,8 @@ namespace Volleyball.Presentation
                     tactics: null, aiWeights: null, provenance: null,
                     initialServeFlightSeconds: null,
                     initialServeArrivalVerticalSpeed: null,
-                    initialServeTargetDepthOffsetMeters: null);
+                    initialServeTargetDepthOffsetMeters: null,
+                    trainingScenario: null);
                 return;
             }
 
@@ -94,7 +105,32 @@ namespace Volleyball.Presentation
                     scenario.ContentHash),
                 scenario.InitialServeFlightSeconds,
                 scenario.InitialServeArrivalVerticalSpeed,
-                scenario.InitialServeTargetDepthOffsetMeters);
+                scenario.InitialServeTargetDepthOffsetMeters,
+                trainingScenario: null);
+        }
+
+        public static FormalSixVsSixRallyDirector InitializeTrainingScenario(
+            Transform host,
+            TrainingScenarioV1 scenario)
+        {
+            if (scenario == null)
+            {
+                throw new ArgumentNullException(nameof(scenario));
+            }
+
+            return Initialize(
+                host,
+                scenario.Context,
+                scenario.FirstServingSide,
+                scenario.HomeInitialRotationOffset,
+                scenario.AwayInitialRotationOffset,
+                scenario.CreateTactics(),
+                scenario.Ai.ToRuntime(),
+                provenance: null,
+                initialServeFlightSeconds: null,
+                initialServeArrivalVerticalSpeed: null,
+                initialServeTargetDepthOffsetMeters: null,
+                trainingScenario: scenario);
         }
 
         private static FormalSixVsSixRallyDirector Initialize(
@@ -108,7 +144,8 @@ namespace Volleyball.Presentation
             FormalMatchScenarioProvenanceV4 provenance,
             float? initialServeFlightSeconds,
             float? initialServeArrivalVerticalSpeed,
-            float? initialServeTargetDepthOffsetMeters)
+            float? initialServeTargetDepthOffsetMeters,
+            TrainingScenarioV1 trainingScenario)
         {
             if (host == null)
             {
@@ -125,7 +162,11 @@ namespace Volleyball.Presentation
                 awayInitialRotationOffset);
             var scoreDisplay = ScoreDisplay.Create(host);
             var director = host.gameObject.AddComponent<FormalSixVsSixRallyDirector>();
-            if (tactics.HasValue)
+            if (trainingScenario != null)
+            {
+                director.ConfigureTrainingStart(trainingScenario);
+            }
+            else if (tactics.HasValue)
             {
                 director.ConfigureFormalScenario(
                     tactics.Value,

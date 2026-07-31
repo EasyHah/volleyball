@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using Volleyball.Presentation.TrainingLab;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Presentation
@@ -39,6 +40,12 @@ namespace Volleyball.Presentation
             {
                 throw new InvalidOperationException(
                     "A formal MatchContextV4 is already pending scene startup.");
+            }
+
+            if (TrainingScenarioStartupV1.HasPendingScenario)
+            {
+                throw new InvalidOperationException(
+                    "A formal training scenario is already pending scene startup.");
             }
 
             if (_pendingScenario != null)
@@ -86,6 +93,11 @@ namespace Volleyball.Presentation
             {
                 throw new InvalidOperationException(
                     "A formal scenario is already pending scene startup.");
+            }
+            if (TrainingScenarioStartupV1.HasPendingScenario)
+            {
+                throw new InvalidOperationException(
+                    "A formal training scenario is already pending scene startup.");
             }
             if (_pendingContext != null)
             {

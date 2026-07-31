@@ -341,10 +341,19 @@ namespace Volleyball.Presentation.TrainingLab
             ICollection<TrainingScenarioIssueV1> issues)
         {
             var expected = new HashSet<StablePlayerId>();
+            var expectedSides = new Dictionary<StablePlayerId, TeamSide>();
             if (draft.Context != null)
             {
                 AddExpected(draft.Context.Home, expected);
                 AddExpected(draft.Context.Away, expected);
+                AddExpectedSides(
+                    draft.Context.Home,
+                    TeamSide.Home,
+                    expectedSides);
+                AddExpectedSides(
+                    draft.Context.Away,
+                    TeamSide.Away,
+                    expectedSides);
             }
 
             var seen = new HashSet<StablePlayerId>();
@@ -408,6 +417,21 @@ namespace Volleyball.Presentation.TrainingLab
                         "Player root must be on the formal playing surface.");
                 }
 
+                if (expectedSides.TryGetValue(
+                        pose.PlayerId,
+                        out var expectedSide) &&
+                    (expectedSide == TeamSide.Home
+                        ? pose.Position.Z > -PrototypePlayerAgent.NetClearance
+                        : pose.Position.Z < PrototypePlayerAgent.NetClearance))
+                {
+                    Add(
+                        issues,
+                        TrainingScenarioIssueCodesV1.PlayerOutOfBounds,
+                        pose.PlayerId.Value,
+                        path + ".position",
+                        "Player root must remain on the player's formal court side.");
+                }
+
                 if (pose.Forward.SqrMagnitude < .25f ||
                     !Enum.IsDefined(typeof(StickFigurePose), pose.Pose))
                 {
@@ -447,6 +471,22 @@ namespace Volleyball.Presentation.TrainingLab
             for (var index = 0; index < team.Players.Count; index++)
             {
                 expected.Add(team.Players[index].PlayerId);
+            }
+        }
+
+        private static void AddExpectedSides(
+            TeamSnapshotV4 team,
+            TeamSide side,
+            IDictionary<StablePlayerId, TeamSide> expected)
+        {
+            if (team?.Players == null)
+            {
+                return;
+            }
+
+            for (var index = 0; index < team.Players.Count; index++)
+            {
+                expected[team.Players[index].PlayerId] = side;
             }
         }
 

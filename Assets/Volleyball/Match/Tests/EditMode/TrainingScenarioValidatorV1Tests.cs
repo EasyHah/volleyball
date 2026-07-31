@@ -64,6 +64,25 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Validate_RejectsPlayerSnapshotOnOpponentCourt()
+        {
+            var draft = TrainingScenarioV1Tests.CreateValidDraft();
+            draft.Players[0].Position =
+                new SimVector3(0f, 0f, 2f);
+
+            var result = TrainingScenarioValidatorV1.Validate(draft);
+
+            Assert.That(result.IsValid, Is.False);
+            Assert.That(
+                result.Issues.Any(issue =>
+                    issue.Code ==
+                    TrainingScenarioIssueCodesV1.PlayerOutOfBounds &&
+                    issue.ObjectId ==
+                    draft.Players[0].PlayerId.Value),
+                Is.True);
+        }
+
+        [Test]
         public void Validate_RejectsActorSideMismatchAndIneligiblePostBlockActor()
         {
             var sideMismatch = TrainingScenarioV1Tests.CreateValidDraft();

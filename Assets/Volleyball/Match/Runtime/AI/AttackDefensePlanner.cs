@@ -92,6 +92,77 @@ namespace Volleyball.AI
         private static string Require(string value, string name) => !string.IsNullOrWhiteSpace(value) ? value : throw new ArgumentException("Value is required.", name);
     }
 
+    // A training start may begin after the Set has already been accepted.  This
+    // request captures the live, post-Set ball and frozen roster facts so Gate I
+    // can reconstruct its next-action authority without replaying a contact.
+    public sealed class AcceptedSetIntentPlanningRequestV3
+    {
+        public AcceptedSetIntentPlanningRequestV3(
+            long revision,
+            long sourceSequence,
+            TeamSide attackingSide,
+            PlayerId organizer,
+            float acceptedSetSimulationTime,
+            BallState acceptedSetBall,
+            IReadOnlyList<GateITacticalPlayerV3> players,
+            DerivedMatchAttributesV4 organizerAttributes,
+            BallTrajectoryPredictionProviderV4 trajectoryProvider,
+            BallSimulationParameters simulationParameters,
+            string physicsConfigurationHash,
+            long acceptedSetStateVersion)
+        {
+            if (revision < 0 || sourceSequence < 0)
+                throw new ArgumentOutOfRangeException(
+                    revision < 0 ? nameof(revision) : nameof(sourceSequence));
+            if (!Enum.IsDefined(typeof(TeamSide), attackingSide) ||
+                float.IsNaN(acceptedSetSimulationTime) ||
+                float.IsInfinity(acceptedSetSimulationTime) ||
+                acceptedSetSimulationTime < 0f)
+                throw new ArgumentOutOfRangeException(nameof(attackingSide));
+            Revision = revision;
+            SourceSequence = sourceSequence;
+            AttackingSide = attackingSide;
+            Organizer = organizer;
+            AcceptedSetSimulationTime = acceptedSetSimulationTime;
+            AcceptedSetBall = acceptedSetBall ??
+                              throw new ArgumentNullException(nameof(acceptedSetBall));
+            if (!acceptedSetBall.Position.IsFinite ||
+                !acceptedSetBall.Velocity.IsFinite)
+                throw new ArgumentOutOfRangeException(nameof(acceptedSetBall));
+            Players = SetIntentPlanningRequestV3.Copy(players, nameof(players));
+            OrganizerAttributes = organizerAttributes ??
+                                  throw new ArgumentNullException(
+                                      nameof(organizerAttributes));
+            TrajectoryProvider = trajectoryProvider ??
+                                 throw new ArgumentNullException(
+                                     nameof(trajectoryProvider));
+            SimulationParameters = simulationParameters;
+            PhysicsConfigurationHash =
+                string.IsNullOrWhiteSpace(physicsConfigurationHash)
+                    ? throw new ArgumentException(
+                        "Value is required.",
+                        nameof(physicsConfigurationHash))
+                    : physicsConfigurationHash;
+            if (acceptedSetStateVersion < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(acceptedSetStateVersion));
+            AcceptedSetStateVersion = acceptedSetStateVersion;
+        }
+
+        public long Revision { get; }
+        public long SourceSequence { get; }
+        public TeamSide AttackingSide { get; }
+        public PlayerId Organizer { get; }
+        public float AcceptedSetSimulationTime { get; }
+        public BallState AcceptedSetBall { get; }
+        public IReadOnlyList<GateITacticalPlayerV3> Players { get; }
+        public DerivedMatchAttributesV4 OrganizerAttributes { get; }
+        public BallTrajectoryPredictionProviderV4 TrajectoryProvider { get; }
+        public BallSimulationParameters SimulationParameters { get; }
+        public string PhysicsConfigurationHash { get; }
+        public long AcceptedSetStateVersion { get; }
+    }
+
     public sealed class AttackPlanningRequestV3
     {
         public AttackPlanningRequestV3(long revision, GateISetIntentV3 setIntent, AcceptedSetEvidenceV3 actualSet,
@@ -228,6 +299,77 @@ namespace Volleyball.AI
                 classification.ExecutableEnvelope.Identity,
                 ExecutionDegradationStepV4.FullSampling));
             return new GateISetIntentV3(request.Revision, request.SourceSequence, request.Organizer, attacker.Player, target, request.ExpectedSetContactTime, classification, trajectory, flight.FlightSeconds);
+        }
+
+        public GateISetIntentV3 PlanAcceptedSetIntent(
+            AcceptedSetIntentPlanningRequestV3 request)
+        {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            var attacker = request.Players
+                .Where(player =>
+                    player.Side == request.AttackingSide && player.CanAttack)
+                .OrderByDescending(AttackScore)
+                .ThenBy(player => player.Player.ToString(),
+                    StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (attacker == null)
+                throw new ArgumentException(
+                    "Gate I requires an eligible attacking player.",
+                    nameof(request));
+
+            var identity = "gate-i-seeded-set-" + request.Revision + "-" +
+                           request.SourceSequence;
+            var envelope = ExecutionEnvelopeFactoryV4.Create(
+                request.OrganizerAttributes,
+                new ExecutionIntentV4(
+                    identity,
+                    ExecutionCandidateCategoryV4.Set,
+                    request.AcceptedSetBall.Position,
+                    request.AcceptedSetBall.Velocity,
+                    .5f),
+                identity,
+                ExecutionEnvelopePolicyV4.GateI);
+            var sample = new ExecutionSampleV4(
+                envelope.Identity,
+                envelope.Sampling.SamplingKey,
+                ExecutionCandidateCategoryV4.Set,
+                request.AcceptedSetBall.Position,
+                request.AcceptedSetBall.Velocity,
+                .5f);
+            var classification = envelope.Classify(sample);
+            var trajectory = request.TrajectoryProvider.Predict(
+                new BallTrajectoryPredictionRequestV4(
+                    request.AttackingSide,
+                    request.AcceptedSetStateVersion,
+                    request.AcceptedSetBall,
+                    request.SimulationParameters,
+                    request.PhysicsConfigurationHash,
+                    identity + ":trajectory",
+                    request.TrajectoryProvider.PredictorVersion,
+                    request.TrajectoryProvider.PredictorConfigurationHash,
+                    classification.ExecutableEnvelope.Identity,
+                    ExecutionDegradationStepV4.FullSampling));
+            var contact = trajectory.PredictionSnapshot.Samples
+                .Where(value =>
+                    value.TimeSeconds >= .25f &&
+                    value.Position.Y > request.AcceptedSetBall.Radius)
+                .OrderBy(value => Math.Abs(value.TimeSeconds - .55f))
+                .ThenBy(value => value.TimeSeconds)
+                .FirstOrDefault();
+            if (contact.TimeSeconds <= 0f)
+                throw new InvalidOperationException(
+                    "The accepted Set has no future airborne attack contact.");
+
+            return new GateISetIntentV3(
+                request.Revision,
+                request.SourceSequence,
+                request.Organizer,
+                attacker.Player,
+                contact.Position,
+                request.AcceptedSetSimulationTime,
+                classification,
+                trajectory,
+                contact.TimeSeconds);
         }
 
         private static SimVector3 AttackTarget(GateITacticalPlayerV3 attacker)

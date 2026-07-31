@@ -242,6 +242,36 @@ namespace Volleyball.AI
             return new GateISetIntentPlanningResultV3(intent, new GateISetIntentReceiptV3(intent.PlanRevision, intent.SourceSequence, intent));
         }
 
+        public GateISetIntentPlanningResultV3 SeedAcceptedSetIntent(
+            AcceptedSetIntentPlanningRequestV3 request)
+        {
+            if (State.Phase != AttackDefenseAuthorityPhaseV3.Idle)
+                throw new InvalidOperationException(
+                    "Accepted Set authority is already initialized.");
+            var intent = _planner.PlanAcceptedSetIntent(
+                request ?? throw new ArgumentNullException(nameof(request)));
+            if (intent.SourceSequence <= _lastSequence)
+                throw new InvalidOperationException(
+                    "Source sequence must increase.");
+            _intent = intent;
+            _lastSequence = intent.SourceSequence;
+            _attackingSide = request.AttackingSide;
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.SetIntentPlanned,
+                intent.PlanRevision,
+                _attackingSide,
+                null,
+                PlanCoverageDecision.Covered(
+                    intent.PlanRevision.ToString(),
+                    PlanCoverageReason.RallyOpen));
+            return new GateISetIntentPlanningResultV3(
+                intent,
+                new GateISetIntentReceiptV3(
+                    intent.PlanRevision,
+                    intent.SourceSequence,
+                    intent));
+        }
+
         public AttackDefenseAuthorityStateV3 AcceptSet(GateIAcceptedSetV3 accepted, AttackPlanningRequestV3 request)
         {
             if (accepted == null || request == null) throw new ArgumentNullException(accepted == null ? nameof(accepted) : nameof(request));
@@ -313,6 +343,46 @@ namespace Volleyball.AI
                 AttackCoverageFor(_attack));
             State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, _attackingSide, plan, State.CoverageDecision);
             Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true, ExecutionFor(selected.Actor, AttackDefenseCommandKind.AttackContact), candidateIdentity: selected.CandidateIdentity) });
+            return State;
+        }
+
+        // A semantic post-block start reconstructs the immutable plan that
+        // authorizes the two possible rebound sides, but it must not schedule
+        // or publish the historical attack and block contacts.
+        public AttackDefenseAuthorityStateV3 SeedAfterAcceptedBlock(
+            long revision,
+            long sourceSequence,
+            JointDefensePlanV3 defense)
+        {
+            Require(
+                AttackDefenseAuthorityPhaseV3.ThreatPublished,
+                revision,
+                sourceSequence);
+            if (defense == null ||
+                defense.SourceThreatIdentity != _attack.PublicThreat.ThreatIdentity)
+                throw new InvalidOperationException(
+                    "Post-block authority requires defense from the published threat.");
+
+            _defense = defense;
+            _lastSequence = sourceSequence;
+            var selected = _planner.ChooseFinal(_attack, _defense).Candidate;
+            var plan = new AttackDefensePlanV3(
+                _attackingSide,
+                revision,
+                "gate-i-plan-" + revision,
+                _intent,
+                _attack.Candidates,
+                _attack.PublicThreat,
+                _defense,
+                selected,
+                MergeExits(_defense),
+                AttackCoverageFor(_attack));
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
+                revision,
+                _attackingSide,
+                plan,
+                State.CoverageDecision);
             return State;
         }
 
