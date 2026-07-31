@@ -117,9 +117,9 @@ namespace Volleyball.Shared.EditModeTests
             var home = CreateV5Team("home", TeamSide.Home, 5000);
             var away = CreateV5Team("away", TeamSide.Away, 6000);
             var context = MatchContextV5.Create(Guid.Parse("12345678-1234-1234-1234-123456789abc"),
-                99, home, away, new string('a', 64));
+                99, home, away, new string('a', 64), CreateV5TrajectoryConfiguration());
             var repeated = MatchContextV5.Create(Guid.Parse("12345678-1234-1234-1234-123456789abc"),
-                99, home, away, new string('a', 64));
+                99, home, away, new string('a', 64), CreateV5TrajectoryConfiguration());
 
             Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV5));
             Assert.That(context.ContextHash, Is.EqualTo(repeated.ContextHash));
@@ -142,7 +142,7 @@ namespace Volleyball.Shared.EditModeTests
         {
             var context = MatchContextV5.Create(Guid.NewGuid(), 99,
                 CreateV5Team("home", TeamSide.Home, 5000),
-                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64));
+                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64), CreateV5TrajectoryConfiguration());
             var result = MatchResultV5.Create(context, context.Home.TeamId, 25, 20, 45);
             var replay = MatchReplayV5.Create("formal-v5", context);
 
@@ -1658,6 +1658,12 @@ namespace Volleyball.Shared.EditModeTests
             }
 
             return new TeamSnapshotV5(new TeamId(prefix + "-team"), prefix + " Team", side, players);
+        }
+
+        private static TrajectoryPredictionProviderConfigurationV5 CreateV5TrajectoryConfiguration()
+        {
+            return new TrajectoryPredictionProviderConfigurationV5(
+                128, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut, 1, new string('c', 64));
         }
 
     }

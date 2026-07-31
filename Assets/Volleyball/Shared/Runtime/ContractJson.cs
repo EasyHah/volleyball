@@ -20,7 +20,7 @@ namespace Volleyball.Shared.Contracts
             {
                 var root = StrictJsonV4.ParseObject(json);
                 StrictJsonV4.RequireExactProperties(root, "contractVersion", "rulesVersion", "sessionId",
-                    "seed", "physicsConfigurationHash", "home", "away", "contextHash");
+                    "seed", "physicsConfigurationHash", "trajectoryPredictionProviderConfiguration", "home", "away", "contextHash");
                 if (StrictJsonV4.RequiredInt(root, "contractVersion") != ContractVersions.MatchV5)
                 {
                     throw new ContractValidationException("Unsupported V5 context contract version.");
@@ -32,6 +32,8 @@ namespace Volleyball.Shared.Contracts
                     DeserializeTeamV5(StrictJsonV4.RequiredObject(root, "home")),
                     DeserializeTeamV5(StrictJsonV4.RequiredObject(root, "away")),
                     StrictJsonV4.RequiredString(root, "physicsConfigurationHash"),
+                    DeserializeTrajectoryConfigurationV5(StrictJsonV4.RequiredObject(root,
+                        "trajectoryPredictionProviderConfiguration")),
                     StrictJsonV4.RequiredInt(root, "rulesVersion"));
                 if (!string.Equals(context.ContextHash, StrictJsonV4.RequiredString(root, "contextHash"),
                     StringComparison.Ordinal))
@@ -347,6 +349,18 @@ namespace Volleyball.Shared.Contracts
             return new TeamSnapshotV5(new TeamId(StrictJsonV4.RequiredString(value, "teamId")),
                 StrictJsonV4.RequiredString(value, "displayName"),
                 (TeamSide)StrictJsonV4.RequiredInt(value, "side"), players);
+        }
+
+        private static TrajectoryPredictionProviderConfigurationV5
+            DeserializeTrajectoryConfigurationV5(StrictJsonObjectV4 value)
+        {
+            StrictJsonV4.RequireExactProperties(value, "cacheCapacity", "cacheEvictionPolicy",
+                "predictorVersion", "predictorConfigurationHash");
+            return new TrajectoryPredictionProviderConfigurationV5(
+                StrictJsonV4.RequiredInt(value, "cacheCapacity"),
+                (TrajectoryPredictionCacheEvictionPolicyV4)StrictJsonV4.RequiredInt(value, "cacheEvictionPolicy"),
+                StrictJsonV4.RequiredInt(value, "predictorVersion"),
+                StrictJsonV4.RequiredString(value, "predictorConfigurationHash"));
         }
 
         private static PlayerSnapshotV5 DeserializePlayerV5(StrictJsonObjectV4 value)

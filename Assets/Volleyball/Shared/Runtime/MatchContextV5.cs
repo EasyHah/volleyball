@@ -7,7 +7,8 @@ namespace Volleyball.Shared.Contracts
     public sealed class MatchContextV5
     {
         private MatchContextV5(Guid sessionId, int seed, TeamSnapshotV5 home, TeamSnapshotV5 away,
-            string physicsConfigurationHash, int rulesVersion)
+            string physicsConfigurationHash, TrajectoryPredictionProviderConfigurationV5 trajectoryConfiguration,
+            int rulesVersion)
         {
             if (sessionId == Guid.Empty)
             {
@@ -15,6 +16,8 @@ namespace Volleyball.Shared.Contracts
             }
 
             ContractGuard.Hash(physicsConfigurationHash, nameof(physicsConfigurationHash));
+            TrajectoryPredictionProviderConfiguration = trajectoryConfiguration ??
+                throw new ContractValidationException("trajectoryConfiguration is required.");
             if (rulesVersion != RulesVersions.FullRallyV3)
             {
                 throw new ContractValidationException("V5 must use the independently versioned V3 rules.");
@@ -41,14 +44,17 @@ namespace Volleyball.Shared.Contracts
         public Guid SessionId { get; }
         public int Seed { get; }
         public string PhysicsConfigurationHash { get; }
+        public TrajectoryPredictionProviderConfigurationV5 TrajectoryPredictionProviderConfiguration { get; }
         public TeamSnapshotV5 Home { get; }
         public TeamSnapshotV5 Away { get; }
         public string ContextHash { get; }
 
         public static MatchContextV5 Create(Guid sessionId, int seed, TeamSnapshotV5 home, TeamSnapshotV5 away,
-            string physicsConfigurationHash, int rulesVersion = RulesVersions.FullRallyV3)
+            string physicsConfigurationHash, TrajectoryPredictionProviderConfigurationV5 trajectoryConfiguration,
+            int rulesVersion = RulesVersions.FullRallyV3)
         {
-            return new MatchContextV5(sessionId, seed, home, away, physicsConfigurationHash, rulesVersion);
+            return new MatchContextV5(sessionId, seed, home, away, physicsConfigurationHash,
+                trajectoryConfiguration, rulesVersion);
         }
 
         internal void Validate()
@@ -109,6 +115,12 @@ namespace Volleyball.Shared.Contracts
             output.Append(",\"sessionId\":").Append(Quote(context.SessionId.ToString("D")));
             output.Append(",\"seed\":").Append(context.Seed);
             output.Append(",\"physicsConfigurationHash\":").Append(Quote(context.PhysicsConfigurationHash));
+            output.Append(",\"trajectoryPredictionProviderConfiguration\":{");
+            output.Append("\"cacheCapacity\":").Append(context.TrajectoryPredictionProviderConfiguration.CacheCapacity);
+            output.Append(",\"cacheEvictionPolicy\":").Append((int)context.TrajectoryPredictionProviderConfiguration.CacheEvictionPolicy);
+            output.Append(",\"predictorVersion\":").Append(context.TrajectoryPredictionProviderConfiguration.PredictorVersion);
+            output.Append(",\"predictorConfigurationHash\":").Append(Quote(context.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash));
+            output.Append('}');
             output.Append(",\"home\":");
             AppendTeam(output, context.Home);
             output.Append(",\"away\":");
