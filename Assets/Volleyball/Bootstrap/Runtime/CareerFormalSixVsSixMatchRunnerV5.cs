@@ -83,6 +83,7 @@ namespace Volleyball.Bootstrap
                     !string.Equals(director.MatchContextV5.ContextHash, context.ContextHash, StringComparison.Ordinal))
                     throw new ContractValidationException(_formalSceneName + " did not consume the persisted MatchContextV5.");
 
+                var recorder = MatchReplayRecorderV5.Attach(director);
                 while (director.ResultV5 == null)
                 {
                     ThrowIfCancelledByPlayer(linkedCancellation);
@@ -91,7 +92,7 @@ namespace Volleyball.Bootstrap
                 }
 
                 director.ResultV5.ValidateAgainst(context);
-                var replay = MatchReplayV5.Create("formal-v5-" + context.SessionId.ToString("D"), context);
+                var replay = recorder.Complete();
                 return new CareerFormalMatchRunOutcomeV5(director.ResultV5, replay);
             }
             finally

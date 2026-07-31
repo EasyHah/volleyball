@@ -150,6 +150,17 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(ContractJson.SerializeV5(result), Does.Contain(result.ResultHash));
             Assert.That(replay.ContextHash, Is.EqualTo(context.ContextHash));
             Assert.That(replay.DerivedAttributeFingerprints, Has.Count.EqualTo(12));
+            var evidence = new MatchReplayAttributeEvidenceV5(
+                0, context.Home.RotationOrder[0].PlayerId, "Attack", 1234,
+                context.Home.RotationOrder[0].Derived.ResultFingerprint);
+            var replayWithEvidence = MatchReplayV5.Create("formal-v5-evidence", context,
+                new[] { evidence });
+            Assert.That(replayWithEvidence.AttributeEvidence, Has.Count.EqualTo(1));
+            Assert.That(() => MatchReplayV5.Create("formal-v5-invalid", context,
+                new[] { new MatchReplayAttributeEvidenceV5(0,
+                    context.Home.RotationOrder[0].PlayerId, "Attack", 1234,
+                    context.Away.RotationOrder[0].Derived.ResultFingerprint) }),
+                Throws.TypeOf<ContractValidationException>());
             Assert.That(() => MatchResultV5.Create(context, context.Home.TeamId, 20, 25, 45),
                 Throws.TypeOf<ContractValidationException>());
         }
