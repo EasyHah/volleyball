@@ -87,6 +87,40 @@ namespace Volleyball.Career.PlayModeTests
 
         [UnityTest]
         [Timeout(30000)]
+        public IEnumerator V5Runner_InjectsNativeContextAndCleansUpOnCancellation()
+        {
+            var careerScene = SceneManager.GetActiveScene();
+            var host = new GameObject("CareerFormalV5RunnerTestHost");
+            var runner = host.AddComponent<CareerFormalSixVsSixMatchRunnerV5>();
+            var context = CreateV5Context();
+            using var cancellation = new CancellationTokenSource();
+            var execution = runner.ExecuteAsync(context, cancellation.Token);
+
+            var frames = 0;
+            while (!SceneManager.GetSceneByName(CareerFormalSixVsSixMatchRunnerV4.FormalSceneName).isLoaded &&
+                   !execution.IsCompleted && frames++ < 600)
+                yield return null;
+            var formalScene = SceneManager.GetSceneByName(CareerFormalSixVsSixMatchRunnerV4.FormalSceneName);
+            Assert.That(formalScene.isLoaded, Is.True);
+            while (SceneManager.GetActiveScene().handle != formalScene.handle &&
+                   !execution.IsCompleted && frames++ < 600)
+                yield return null;
+            var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+            Assert.That(director, Is.Not.Null);
+            Assert.That(director.MatchContext, Is.Null);
+            Assert.That(director.MatchContextV5, Is.SameAs(context));
+
+            cancellation.Cancel();
+            while (!execution.IsCompleted && frames++ < 1200) yield return null;
+            Assert.That(execution.IsCanceled, Is.True);
+            Assert.That(SceneManager.GetSceneByName(CareerFormalSixVsSixMatchRunnerV4.FormalSceneName).isLoaded, Is.False);
+            Assert.That(SceneManager.GetActiveScene().handle, Is.EqualTo(careerScene.handle));
+            Assert.That(FormalMatchContextStartupV5.CancelPendingFormalStart(context.SessionId), Is.False);
+            Object.Destroy(host);
+        }
+
+        [UnityTest]
+        [Timeout(30000)]
         public IEnumerator Runner_InjectsTheExactCareerContextAndCleansUpOnCancellation()
         {
             var careerScene = SceneManager.GetActiveScene();
@@ -269,6 +303,23 @@ namespace Volleyball.Career.PlayModeTests
                 Progress(7100, 101), Progress(6200, 202), Progress(7300, 303),
                 Progress(6400, 404), Progress(7500, 505), Progress(6600, 606),
                 Progress(7700, 707), Progress(6800, 808));
+        }
+
+        private static MatchContextV5 CreateV5Context()
+        {
+            var profile = new CareerPlayerProfileV5(new PlayerId("player.career.v5.runner"),
+                "V5 Runner", 8, DominantHandV5.Right, new CareerBaseAttributesV5(
+                    7100, 1950, 7200, 7300, 7400, 7500,
+                    7600, 7700, 7800, 7900, 8000, 8100));
+            var launch = new CareerFirstMatchLaunchFactoryV5().Create(profile,
+                new TeamId("team.career.v5.runner"), 0,
+                Guid.Parse("b8fe2f4a-5a04-4bea-8668-c0f54aec93cb"), 192837u);
+            return new CareerMatchV5Mapper(
+                FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
+                new TrajectoryPredictionProviderConfigurationV5(
+                    128, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                    1, new string('a', 64)))
+                .ToContext(launch);
         }
 
         private static CareerAttributeProgress Progress(int ability, long growth)

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using NUnit.Framework;
 using Volleyball.Career.Application;
 using Volleyball.Career.MatchIntegration;
+using Volleyball.Career.Persistence;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Career.EditModeTests
@@ -246,6 +247,82 @@ namespace Volleyball.Career.EditModeTests
             }
         }
 
+        [Test]
+        public void V5Pending_RejectsLegacyPendingWithRecoverableDiscardAction()
+        {
+            var context = new CareerMatchV5Mapper(new string('a', 64),
+                V5TrajectoryConfiguration()).ToContext(V5Launch(V5Bases(new[] { 5000, 1900, 5000, 5000, 5000, 5000,
+                    5000, 5000, 5000, 5000, 5000, 5000 }), 0));
+            var pending = CareerPendingMatchV5.Create(context);
+
+            Assert.That(CareerV5PendingRecovery.Read(pending).Kind,
+                Is.EqualTo(CareerV5PendingRecoveryKind.Ready));
+            Assert.That(CareerV5PendingRecovery.RejectLegacy(CreateLegacyPending()).Kind,
+                Is.EqualTo(CareerV5PendingRecoveryKind.DiscardLegacyPendingAndCreateV5));
+        }
+
+        [Test]
+        public void V5Profile_RoundTripsAllCareerOwnedBasesWithoutDefaults()
+        {
+            var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                new PlayerId("v5.profile.player"), "V5 Player", 8,
+                DominantHandV5.Left, new CareerBaseAttributesV5(
+                    6100, 1975, 6200, 6300, 6400, 6500,
+                    6600, 6700, 6800, 6900, 7000, 7100));
+
+            var bytes = CareerPlayerProfileV5JsonCodec.Serialize(profile);
+            var restored = CareerPlayerProfileV5JsonCodec.Deserialize(bytes);
+
+            CollectionAssert.AreEqual(bytes, CareerPlayerProfileV5JsonCodec.Serialize(restored));
+            Assert.That(restored.DominantHand, Is.EqualTo(DominantHandV5.Left));
+            Assert.That(restored.Bases.HeightMillimeters, Is.EqualTo(1975));
+            Assert.That(restored.Bases.Set, Is.EqualTo(7100));
+        }
+
+        [Test]
+        public void V5FirstMatchFactory_UsesThePersistedProfileWithoutPositionOverrides()
+        {
+            var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                new PlayerId("v5.factory.player"), "Factory Player", 9,
+                DominantHandV5.Left, new CareerBaseAttributesV5(
+                    6100, 2010, 6200, 6300, 6400, 6500,
+                    6600, 6700, 6800, 6900, 7000, 7100));
+            var launch = new CareerFirstMatchLaunchFactoryV5().Create(profile,
+                new TeamId("team.factory.home"), 20,
+                new Guid("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"), 99);
+            var context = new CareerMatchV5Mapper(new string('a', 64),
+                V5TrajectoryConfiguration()).ToContext(launch);
+            var player = context.Home.RotationOrder.Single(value =>
+                value.PlayerId.Equals(profile.PlayerId));
+
+            Assert.That(player.DominantHand, Is.EqualTo(DominantHandV5.Left));
+            Assert.That(player.Bases.HeightMillimeters, Is.EqualTo(2010));
+            Assert.That(player.Bases.Attack, Is.EqualTo(6270));
+            Assert.That(player.Bases.Set, Is.EqualTo(6745));
+        }
+
+        [Test]
+        public async Task V5Lifecycle_ExecutesTheFrozenPendingContextWithoutApplyingFatigueTwice()
+        {
+            var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                new PlayerId("v5.lifecycle.player"), "Lifecycle Player", 10,
+                DominantHandV5.Right, new CareerBaseAttributesV5(
+                    8000, 1900, 8000, 8000, 8000, 8000,
+                    8000, 8000, 8000, 8000, 8000, 8000));
+            var mapper = new CareerMatchV5Mapper(new string('a', 64), V5TrajectoryConfiguration());
+            var service = new CareerV5MatchLifecycleService(
+                new CareerFirstMatchLaunchFactoryV5(), mapper,
+                new CareerMatchExecutorV5(mapper, new TestV5Runner()));
+            var pending = service.CreatePending(profile, new TeamId("team.lifecycle.home"),
+                100, new Guid("cccccccc-dddd-eeee-ffff-000000000000"), 7);
+
+            var result = await service.ExecuteAsync(pending, CancellationToken.None);
+
+            Assert.That(pending.Context.Home.RotationOrder.Single(player =>
+                player.PlayerId.Equals(profile.PlayerId)).Bases.Attack, Is.EqualTo(6000));
+            Assert.That(result.Result.ContextHash, Is.EqualTo(pending.ContextHash));
+        }
+
         private static TrajectoryPredictionProviderConfigurationV5 V5TrajectoryConfiguration()
         {
             return new TrajectoryPredictionProviderConfigurationV5(
@@ -290,6 +367,39 @@ namespace Volleyball.Career.EditModeTests
                         5000, 5000, 5000, 5000, 5000, 5000 }));
             }
             return players;
+        }
+
+        private static Volleyball.Career.Domain.PendingCareerMatch CreateLegacyPending()
+        {
+            var launch = CareerMatchTestData.Launch();
+            var context = new CareerMatchV4Mapper().ToContext(launch);
+            return new Volleyball.Career.Domain.PendingCareerMatch(context.SessionId,
+                new Volleyball.Career.Domain.OperationId(Guid.NewGuid()),
+                new Volleyball.Career.Domain.LineageId(Guid.NewGuid()), 1,
+                new Volleyball.Career.Domain.CareerMatchLifecycleVersions(4, 1, 1, 1, null, null),
+                Volleyball.Career.Domain.CareerMatchLifecycleExecutionMode.Direct, null, null,
+                launch.MatchSeed, launch.CompetitionId, launch.ScheduleItemId,
+                new Volleyball.Career.Domain.WeekPlanId(Guid.NewGuid()),
+                new Volleyball.Career.Domain.SlotActionId(Guid.NewGuid()),
+                new Volleyball.Career.Domain.OccurrenceId(Guid.NewGuid()),
+                Volleyball.Career.Domain.CareerMatchPriority.AttackFirst,
+                new Volleyball.Career.Domain.Sha256Digest(context.ContextHash),
+                Encoding.UTF8.GetBytes(ContractJson.SerializeV4(context)),
+                context.Home.TeamId, context.Away.TeamId,
+                context.Home.RotationOrder.Concat(context.Away.RotationOrder).Select(player => player.PlayerId),
+                context.Home.RotationOrder[0].PlayerId,
+                Array.Empty<Volleyball.Career.Domain.FrozenCareerTrainingEmphasis>());
+        }
+
+        private sealed class TestV5Runner : ICareerMatchRunnerV5
+        {
+            public Task<CareerMatchRunOutcomeV5> ExecuteAsync(MatchContextV5 context,
+                CancellationToken cancellationToken)
+            {
+                var result = MatchResultV5.Create(context, context.Home.TeamId, 25, 20, 45);
+                return Task.FromResult(new CareerMatchRunOutcomeV5(result,
+                    MatchReplayV5.Create("test-v5-" + context.SessionId.ToString("D"), context)));
+            }
         }
 
         [Test]

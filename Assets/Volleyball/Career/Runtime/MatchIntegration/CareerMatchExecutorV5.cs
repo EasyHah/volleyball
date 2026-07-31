@@ -47,7 +47,13 @@ namespace Volleyball.Career.MatchIntegration
             CancellationToken cancellationToken)
         {
             if (launch == null) throw new ArgumentNullException(nameof(launch));
-            var context = _mapper.ToContext(launch);
+            return await ExecuteContextAsync(_mapper.ToContext(launch), cancellationToken);
+        }
+
+        public async Task<CareerMatchRunOutcomeV5> ExecuteContextAsync(MatchContextV5 context,
+            CancellationToken cancellationToken)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
             var bytes = StrictUtf8.GetBytes(ContractJson.SerializeV5(context));
             var decoded = ContractJson.DeserializeMatchContextV5(StrictUtf8.GetString(bytes));
             RequireExact(bytes, StrictUtf8.GetBytes(ContractJson.SerializeV5(decoded)), "context");
