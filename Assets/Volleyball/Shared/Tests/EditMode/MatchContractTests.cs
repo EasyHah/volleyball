@@ -9,7 +9,7 @@ namespace Volleyball.Shared.EditModeTests
     public sealed class MatchContractTests
     {
         [Test]
-        public void ProductionContractSurface_RequiresConcreteV4Only()
+        public void ProductionContractSurface_RequiresConcreteV4AndV5Only()
         {
             var assembly = typeof(MatchContextV4).Assembly;
             var legacyNames = new[]
@@ -23,10 +23,111 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchContextV4"), Is.Not.Null);
             Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchResultV4"), Is.Not.Null);
             Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchReplayV4"), Is.Not.Null);
+            Assert.That(assembly.GetType("Volleyball.Shared.Contracts.CareerBaseAttributesV5"), Is.Not.Null);
+            Assert.That(assembly.GetType("Volleyball.Shared.Contracts.DerivedMatchAttributesV5"), Is.Not.Null);
+            Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchContextV5"), Is.Not.Null);
             foreach (var legacyName in legacyNames)
             {
                 Assert.That(assembly.GetType("Volleyball.Shared.Contracts." + legacyName), Is.Null, legacyName);
             }
+        }
+
+        [Test]
+        public void CareerBaseAttributesV5_PreservesBoundariesAndRejectsEveryOutOfRangeValue()
+        {
+            var minimum = CreateV5Bases(0, 1400);
+            var maximum = CreateV5Bases(10000, 2300);
+
+            Assert.That(minimum.Strength, Is.Zero);
+            Assert.That(minimum.HeightMillimeters, Is.EqualTo(1400));
+            Assert.That(maximum.Set, Is.EqualTo(10000));
+            Assert.That(maximum.HeightMillimeters, Is.EqualTo(2300));
+            Assert.That(() => CreateV5Bases(-1, 1400), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => CreateV5Bases(10001, 1400), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => CreateV5Bases(0, 1399), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => CreateV5Bases(0, 2301), Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV5_IsStableAndEveryBaseChangesItsDeclaredDerivedSurface()
+        {
+            var baseline = CreateV5Bases(5000, 1850);
+            var derived = MatchAttributeDerivationV5.Derive(baseline, DominantHandV5.Right);
+            var repeated = MatchAttributeDerivationV5.Derive(baseline, DominantHandV5.Right);
+
+            Assert.That(repeated.ResultFingerprint, Is.EqualTo(derived.ResultFingerprint));
+            Assert.That(repeated.InputFingerprint, Is.EqualTo(derived.InputFingerprint));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5001, 1850, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).AttackPower, Is.GreaterThan(derived.AttackPower));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1851, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).AttackReachMillimeters, Is.GreaterThan(derived.AttackReachMillimeters));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5001, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).Jump, Is.GreaterThan(derived.Jump));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5001, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).Movement, Is.GreaterThan(derived.Movement));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5001, 5000, 5000, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).Reaction, Is.GreaterThan(derived.Reaction));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5001, 5000, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).AttackControl, Is.GreaterThan(derived.AttackControl));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5000, 5001, 5000, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).AttackControl, Is.GreaterThan(derived.AttackControl));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5000, 5000, 5001, 5000, 5000, 5000, 5000),
+                DominantHandV5.Right).DefenseControl, Is.GreaterThan(derived.DefenseControl));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5000, 5000, 5000, 5001, 5000, 5000, 5000),
+                DominantHandV5.Right).CourtIq, Is.GreaterThan(derived.CourtIq));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5001, 5000, 5000),
+                DominantHandV5.Right).BlockControl, Is.GreaterThan(derived.BlockControl));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5001, 5000),
+                DominantHandV5.Right).ServeControl, Is.GreaterThan(derived.ServeControl));
+            Assert.That(MatchAttributeDerivationV5.Derive(
+                new CareerBaseAttributesV5(5000, 1850, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5001),
+                DominantHandV5.Right).SetControl, Is.GreaterThan(derived.SetControl));
+        }
+
+        [Test]
+        public void MatchAttributeDerivationV5_RejectsUnknownVersionsAndChangesIdentityForHandedness()
+        {
+            var bases = CreateV5Bases(5000, 1850);
+            var left = MatchAttributeDerivationV5.Derive(bases, DominantHandV5.Left);
+            var right = MatchAttributeDerivationV5.Derive(bases, DominantHandV5.Right);
+
+            Assert.That(left.ResultFingerprint, Is.Not.EqualTo(right.ResultFingerprint));
+            Assert.That(() => MatchAttributeDerivationV5.Derive(bases, DominantHandV5.Right, 2),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void MatchContextV5_BindsBothOrderedTeamsAndRejectsSuppliedDerivedMismatch()
+        {
+            var home = CreateV5Team("home", TeamSide.Home, 5000);
+            var away = CreateV5Team("away", TeamSide.Away, 6000);
+            var context = MatchContextV5.Create(Guid.Parse("12345678-1234-1234-1234-123456789abc"),
+                99, home, away, new string('a', 64));
+            var repeated = MatchContextV5.Create(Guid.Parse("12345678-1234-1234-1234-123456789abc"),
+                99, home, away, new string('a', 64));
+
+            Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV5));
+            Assert.That(context.ContextHash, Is.EqualTo(repeated.ContextHash));
+            Assert.That(context.Home.RotationOrder, Has.Count.EqualTo(6));
+            var correct = MatchAttributeDerivationV5.Derive(CreateV5Bases(5000, 1800), DominantHandV5.Right);
+            var different = MatchAttributeDerivationV5.Derive(CreateV5Bases(5001, 1800), DominantHandV5.Right);
+            Assert.That(() => new PlayerSnapshotV5(new PlayerId("player"), "Player", 1,
+                PlayerPosition.Setter, DominantHandV5.Right, CreateV5Bases(5000, 1800), different),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => new PlayerSnapshotV5(new PlayerId("player"), "Player", 1,
+                PlayerPosition.Setter, DominantHandV5.Right, CreateV5Bases(5000, 1800), correct),
+                Throws.Nothing);
         }
 
         [Test]
@@ -1494,6 +1595,45 @@ namespace Volleyball.Shared.EditModeTests
             }
 
             return players;
+        }
+
+        private static CareerBaseAttributesV5 CreateV5Bases(
+            int basisPoints,
+            int heightMillimeters)
+        {
+            return new CareerBaseAttributesV5(
+                basisPoints,
+                heightMillimeters,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints,
+                basisPoints);
+        }
+
+        private static TeamSnapshotV5 CreateV5Team(
+            string prefix,
+            TeamSide side,
+            int basisPoints)
+        {
+            var players = new PlayerSnapshotV5[6];
+            for (var index = 0; index < players.Length; index++)
+            {
+                players[index] = new PlayerSnapshotV5(
+                    new PlayerId(prefix + "-player-" + index),
+                    prefix + " Player " + index,
+                    index + 1,
+                    PlayerPosition.Setter,
+                    DominantHandV5.Right,
+                    CreateV5Bases(basisPoints, 1800));
+            }
+
+            return new TeamSnapshotV5(new TeamId(prefix + "-team"), prefix + " Team", side, players);
         }
 
     }

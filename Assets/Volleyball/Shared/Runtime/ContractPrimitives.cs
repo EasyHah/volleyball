@@ -6,6 +6,8 @@ namespace Volleyball.Shared.Contracts
     {
         public const int MatchV4 = 4;
         public const int ReplayV4 = 4;
+        public const int MatchV5 = 5;
+        public const int ReplayV5 = 5;
     }
 
     public static class RulesVersions
