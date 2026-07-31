@@ -7,6 +7,13 @@ namespace Volleyball.Shared.Contracts
 {
     public static class ContractJson
     {
+        public static string SerializeV5(MatchContextV5 value)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            value.Validate();
+            return CanonicalMatchJsonV5.SerializeContext(value);
+        }
+
         public static string SerializeV4(MatchContextV4 value)
         {
             if (value == null)

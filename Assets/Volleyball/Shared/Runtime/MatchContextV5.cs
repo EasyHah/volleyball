@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 
 namespace Volleyball.Shared.Contracts
@@ -35,7 +33,7 @@ namespace Volleyball.Shared.Contracts
             Seed = seed;
             PhysicsConfigurationHash = physicsConfigurationHash;
             ValidateTeams();
-            ContextHash = Hash(Payload(this));
+            ContextHash = CanonicalMatchContextHashV5.Compute(this);
         }
 
         public int ContractVersion { get; }
@@ -56,7 +54,7 @@ namespace Volleyball.Shared.Contracts
         internal void Validate()
         {
             if (ContractVersion != ContractVersions.MatchV5 ||
-                !string.Equals(ContextHash, Hash(Payload(this)), StringComparison.Ordinal))
+                !string.Equals(ContextHash, CanonicalMatchContextHashV5.Compute(this), StringComparison.Ordinal))
             {
                 throw new ContractValidationException("The V5 context identity does not match its payload.");
             }
@@ -82,37 +80,95 @@ namespace Volleyball.Shared.Contracts
             }
         }
 
-        private static string Payload(MatchContextV5 context)
+    }
+
+    public static class CanonicalMatchContextHashV5
+    {
+        public static string Compute(MatchContextV5 context)
         {
-            var builder = new StringBuilder();
-            builder.Append("v5|").Append(context.RulesVersion.ToString(CultureInfo.InvariantCulture))
-                .Append('|').Append(context.SessionId.ToString("D"))
-                .Append('|').Append(context.Seed.ToString(CultureInfo.InvariantCulture))
-                .Append('|').Append(context.PhysicsConfigurationHash);
-            AppendTeam(builder, context.Home);
-            AppendTeam(builder, context.Away);
-            return builder.ToString();
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            return CanonicalJsonHashV4.Sha256(
+                "volleyball.match-context.v5\n" + CanonicalMatchJsonV5.ContextPayload(context));
+        }
+    }
+
+    internal static class CanonicalMatchJsonV5
+    {
+        public static string SerializeContext(MatchContextV5 context)
+        {
+            var payload = ContextPayload(context);
+            return payload.Substring(0, payload.Length - 1) +
+                ",\"contextHash\":" + Quote(context.ContextHash) + "}";
         }
 
-        private static void AppendTeam(StringBuilder builder, TeamSnapshotV5 team)
+        public static string ContextPayload(MatchContextV5 context)
         {
-            builder.Append('|').Append(team.TeamId.Value).Append('|').Append((int)team.Side);
-            foreach (var player in team.RotationOrder)
-            {
-                builder.Append('|').Append(player.PlayerId.Value).Append('|')
-                    .Append(player.Derived.ResultFingerprint);
-            }
+            var output = new StringBuilder(8192);
+            output.Append("{\"contractVersion\":").Append(context.ContractVersion);
+            output.Append(",\"rulesVersion\":").Append(context.RulesVersion);
+            output.Append(",\"sessionId\":").Append(Quote(context.SessionId.ToString("D")));
+            output.Append(",\"seed\":").Append(context.Seed);
+            output.Append(",\"physicsConfigurationHash\":").Append(Quote(context.PhysicsConfigurationHash));
+            output.Append(",\"home\":");
+            AppendTeam(output, context.Home);
+            output.Append(",\"away\":");
+            AppendTeam(output, context.Away);
+            output.Append('}');
+            return output.ToString();
         }
 
-        private static string Hash(string payload)
+        private static void AppendTeam(StringBuilder output, TeamSnapshotV5 team)
         {
-            using (var sha256 = SHA256.Create())
+            output.Append("{\"teamId\":").Append(Quote(team.TeamId.Value));
+            output.Append(",\"displayName\":").Append(Quote(team.DisplayName));
+            output.Append(",\"side\":").Append((int)team.Side);
+            output.Append(",\"rotationOrder\":[");
+            for (var index = 0; index < team.RotationOrder.Count; index++)
             {
-                var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(payload));
-                var builder = new StringBuilder(bytes.Length * 2);
-                foreach (var value in bytes) builder.Append(value.ToString("x2"));
-                return builder.ToString();
+                if (index > 0) output.Append(',');
+                AppendPlayer(output, team.RotationOrder[index]);
             }
+            output.Append("]}");
+        }
+
+        private static void AppendPlayer(StringBuilder output, PlayerSnapshotV5 player)
+        {
+            output.Append("{\"playerId\":").Append(Quote(player.PlayerId.Value));
+            output.Append(",\"displayName\":").Append(Quote(player.DisplayName));
+            output.Append(",\"jerseyNumber\":").Append(player.JerseyNumber);
+            output.Append(",\"position\":").Append((int)player.Position);
+            output.Append(",\"dominantHand\":").Append((int)player.DominantHand);
+            output.Append(",\"bases\":{");
+            AppendBases(output, player.Bases);
+            output.Append("},\"derived\":{");
+            output.Append("\"formulaVersion\":").Append(player.Derived.FormulaVersion);
+            output.Append(",\"coefficientVersion\":").Append(player.Derived.CoefficientVersion);
+            output.Append(",\"inputFingerprint\":").Append(Quote(player.Derived.InputFingerprint));
+            output.Append(",\"resultFingerprint\":").Append(Quote(player.Derived.ResultFingerprint));
+            output.Append("}}");
+        }
+
+        private static void AppendBases(StringBuilder output, CareerBaseAttributesV5 value)
+        {
+            output.Append("\"strength\":").Append(value.Strength);
+            output.Append(",\"heightMillimeters\":").Append(value.HeightMillimeters);
+            output.Append(",\"jump\":").Append(value.Jump);
+            output.Append(",\"movement\":").Append(value.Movement);
+            output.Append(",\"reaction\":").Append(value.Reaction);
+            output.Append(",\"coordination\":").Append(value.Coordination);
+            output.Append(",\"attack\":").Append(value.Attack);
+            output.Append(",\"defense\":").Append(value.Defense);
+            output.Append(",\"courtIq\":").Append(value.CourtIq);
+            output.Append(",\"block\":").Append(value.Block);
+            output.Append(",\"serve\":").Append(value.Serve);
+            output.Append(",\"set\":").Append(value.Set);
+        }
+
+        private static string Quote(string value)
+        {
+            var output = new StringBuilder(value.Length + 2);
+            CanonicalJsonHashV4.AppendString(output, value);
+            return output.ToString();
         }
     }
 }
