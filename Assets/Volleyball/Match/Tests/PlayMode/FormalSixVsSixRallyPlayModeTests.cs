@@ -434,7 +434,7 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
-        [Timeout(360000)]
+        [Timeout(480000)]
         public IEnumerator FormalScene_CompletesTwentyFivePointSetWithTwelvePlayers()
         {
             var originalLogStackTrace = Application.GetStackTraceLogType(LogType.Log);
@@ -486,7 +486,7 @@ namespace Volleyball.PlayModeTests
             // Gate I deliberately permits longer multi-contact rallies than the
             // Gate H baseline. Keep this real-time lifecycle test unaccelerated,
             // but leave enough headroom for a legal 25-point fixed-seed set.
-            var timeout = Time.realtimeSinceStartup + 360f;
+            var timeout = Time.realtimeSinceStartup + 480f;
             var sawOutsideOwnCourt = false;
             var minimumSameTeamSeparation = float.PositiveInfinity;
             var awaitingFirstPostRotationRally = false;
