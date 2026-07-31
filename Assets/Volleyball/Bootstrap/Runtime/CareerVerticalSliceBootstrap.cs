@@ -8,6 +8,7 @@ using Volleyball.Career.MatchIntegration;
 using Volleyball.Career.Persistence;
 using Volleyball.Career.Presentation;
 using Volleyball.Presentation;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Bootstrap
 {
@@ -84,6 +85,7 @@ namespace Volleyball.Bootstrap
                 Controller = new CareerUiSessionController(adapter);
                 var document = GetComponent<UIDocument>();
                 GetComponent<CareerUiShell>().Bind(Controller);
+                GetComponent<CareerUiShell>().ConfigureV5MatchEntry(StartOrResumeV5MatchAsync);
                 ConfigureInput(document);
                 formalSceneRunner.Initialize(
                     document,
@@ -107,6 +109,26 @@ namespace Volleyball.Bootstrap
                 throw new InvalidOperationException(
                     "Career UI requires its input asset.");
             }
+        }
+
+        private async System.Threading.Tasks.Task StartOrResumeV5MatchAsync(
+            ProfileId localProfileId, CareerV5ProfileInput input,
+            System.Threading.CancellationToken cancellationToken)
+        {
+            if (input == null) throw new ArgumentNullException(nameof(input));
+            var profile = new CareerPlayerProfileV5(
+                new PlayerId("career.v5." + localProfileId.Value.ToString("N")),
+                input.DisplayName, input.JerseyNumber,
+                input.LeftHanded ? DominantHandV5.Left : DominantHandV5.Right,
+                new CareerBaseAttributesV5(input.Strength, input.HeightMillimeters,
+                    input.Jump, input.Movement, input.Reaction, input.Coordination,
+                    input.Attack, input.Defense, input.CourtIq, input.Block, input.Serve, input.Set));
+            var recovery = V5MatchLifecycle.LoadPending(profile);
+            var pending = recovery.Pending ?? V5MatchLifecycle.CreateAndPersistPending(
+                profile, new TeamId("team.university.player.v5"), 0,
+                Guid.NewGuid(), unchecked((uint)Guid.NewGuid().GetHashCode()));
+            await V5MatchLifecycle.ExecuteAsync(pending, cancellationToken);
+            V5MatchLifecycle.DiscardPending(profile);
         }
 
         private void ConfigureInput(UIDocument document)

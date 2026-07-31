@@ -25,6 +25,37 @@ namespace Volleyball.Career.Presentation
         public bool IsProtagonist { get; }
     }
 
+    /// <summary>Presentation-only V5 profile input; Bootstrap owns its Shared mapping.</summary>
+    public sealed class CareerV5ProfileInput
+    {
+        public CareerV5ProfileInput(string displayName, int jerseyNumber, bool leftHanded,
+            int strength, int heightMillimeters, int jump, int movement, int reaction,
+            int coordination, int attack, int defense, int courtIq, int block, int serve, int set)
+        {
+            DisplayName = displayName;
+            JerseyNumber = jerseyNumber;
+            LeftHanded = leftHanded;
+            Strength = strength;
+            HeightMillimeters = heightMillimeters;
+            Jump = jump;
+            Movement = movement;
+            Reaction = reaction;
+            Coordination = coordination;
+            Attack = attack;
+            Defense = defense;
+            CourtIq = courtIq;
+            Block = block;
+            Serve = serve;
+            Set = set;
+        }
+
+        public string DisplayName { get; } public int JerseyNumber { get; } public bool LeftHanded { get; }
+        public int Strength { get; } public int HeightMillimeters { get; } public int Jump { get; }
+        public int Movement { get; } public int Reaction { get; } public int Coordination { get; }
+        public int Attack { get; } public int Defense { get; } public int CourtIq { get; }
+        public int Block { get; } public int Serve { get; } public int Set { get; }
+    }
+
     public sealed class CareerUiPreMatchPreview
     {
         private readonly ReadOnlyCollection<CareerUiPreMatchPlayer> _homePlayers;

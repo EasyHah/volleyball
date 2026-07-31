@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Volleyball.Career.Application;
@@ -32,8 +33,15 @@ namespace Volleyball.Career.Presentation
         private bool _modalOpen;
         private int _buttonOrdinal;
         private Font _runtimeFont;
+        private Func<ProfileId, CareerV5ProfileInput, CancellationToken, Task> _startV5Match;
 
         public CareerUiSessionController Controller => _controller;
+
+        public void ConfigureV5MatchEntry(
+            Func<ProfileId, CareerV5ProfileInput, CancellationToken, Task> startV5Match)
+        {
+            _startV5Match = startV5Match;
+        }
 
         public void Bind(CareerUiSessionController controller)
         {
@@ -261,6 +269,7 @@ namespace Volleyball.Career.Presentation
                 CareerTextTable.Get("action.create"),
                 () => _controller.CreateProfile(name.value)));
             _routeContent.Add(form);
+
         }
 
         private void RenderCareers()
@@ -344,6 +353,49 @@ namespace Volleyball.Career.Presentation
                     playerName.value,
                     jersey.value)));
             _routeContent.Add(form);
+
+            if (_startV5Match != null) RenderV5MatchEntry(profile);
+        }
+
+        private void RenderV5MatchEntry(LocalPlayerProfile profile)
+        {
+            _routeContent.Add(SectionTitle("V5 正式比赛"));
+            _routeContent.Add(Hint("V5 使用独立的十二项属性档案；不会转换历史八项存档。"));
+            var form = FormCard();
+            var name = Field(CareerTextTable.Get("field.player_name"));
+            var jersey = new IntegerField(CareerTextTable.Get("field.jersey_number")) { value = 10 };
+            var leftHanded = new Toggle("左手惯用") { value = false };
+            jersey.AddToClassList("field");
+            leftHanded.AddToClassList("field");
+            form.Add(name);
+            form.Add(jersey);
+            form.Add(leftHanded);
+            var labels = new[] { "力量", "身高(mm)", "弹跳", "移动", "反应", "协调", "进攻", "防守", "球商", "拦网", "发球", "二传" };
+            var values = new IntegerField[labels.Length];
+            for (var index = 0; index < values.Length; index++)
+            {
+                values[index] = new IntegerField(labels[index]) { value = index == 1 ? 1900 : 5000 };
+                values[index].AddToClassList("field");
+                form.Add(values[index]);
+            }
+            form.Add(ActionButton("创建或恢复 V5 正式赛", () => StartV5Match(profile.ProfileId,
+                new CareerV5ProfileInput(name.value, jersey.value, leftHanded.value,
+                    values[0].value, values[1].value, values[2].value, values[3].value,
+                    values[4].value, values[5].value, values[6].value, values[7].value,
+                    values[8].value, values[9].value, values[10].value, values[11].value))));
+            _routeContent.Add(form);
+        }
+
+        private async void StartV5Match(ProfileId profileId, CareerV5ProfileInput input)
+        {
+            try
+            {
+                await _startV5Match(profileId, input, _lifetime.Token);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogException(exception, this);
+            }
         }
 
         private void RenderOnboarding()
