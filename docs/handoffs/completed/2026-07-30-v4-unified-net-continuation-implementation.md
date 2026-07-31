@@ -1,6 +1,9 @@
 # V4 统一触网续球实现
 
-- Status: active
+- Status: superseded
+- Superseded: 2026-07-31
+- Successor:
+  `docs/handoffs/active/2026-07-31-formal-training-scenario-lab-implementation.md`
 - Owner: Match collaborator
 - Priority: P1
 - Scope: Match / Replay / Formal 6v6 的首次有效触网续球
@@ -40,4 +43,5 @@ Block 后触网；保持既有 V4 合同和 Career 生命周期不变。
 
 ## 结束处理
 
-完成或替代时，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继任务单链接。
+首次有效触网续球代码已实现并完成现有基础设施允许的验证。由于现有正式情景只能表达开球输入，
+中回合指定验证改由后继“正式训练情景实验室实现”任务提供；本任务保留为被替代的决策记录。
