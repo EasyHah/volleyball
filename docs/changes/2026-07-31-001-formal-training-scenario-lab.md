@@ -1,7 +1,7 @@
 # CHG-20260731-001：正式训练情景实验室
 
 - 日期：2026-07-31
-- 状态：已自动验证，待人工验收
+- 状态：已自动验证，待 Windows 环境验收
 - 负责人：Match
 - 影响模块：Match / ProjectSettings / Tests / Docs / Build
 - 交互级别：跨模块（重点）
@@ -58,15 +58,15 @@
   13 个预览标记、编辑锁定、键盘暂停、精确 `1/120s` 单步、双跑一致和 reset。
 - [x] 正式 6v6 整局 smoke：1/1，387.47 秒，25:23。
 - [x] Repository validator、Match/Career 依赖扫描和 `git diff --check`。
-- [ ] Windows x64 IL2CPP Development Build：入口已执行，但当前 macOS Unity 只安装
-  `MacStandaloneSupport`，明确失败为 `build target was unsupported`；未生成 manifest，
-  不能记为通过。
-- [ ] 1920×1080 键鼠画面验收：自动化 UI 操作被 macOS 锁屏阻止，待解锁后执行。
-- [ ] 独立全面复核：当前线程规则要求用户明确授权 subagent，尚未执行。
+- [x] 独立全面复核：发现并修复 P1 语义起点运动学漏洞；训练契约与起点 focused
+  EditMode 26/26 通过，覆盖非首发队发球、反向飞行及从对方半场启动。
+- [x] macOS Editor 1920×1080 键鼠画面验收：确认场景加载、情景选择、属性面板、
+  预览、运行锁定、正式 6v6 单回合、结果时间线和 reset 返回编辑器。
+- [ ] Windows x64 IL2CPP Development Build 与 Windows Player 键鼠/日志/图形验收：
+  按授权移交 Windows 环境执行；不在 macOS 验证或安装目标模块。
 
 ## 回滚与风险
 
 按提交倒序回滚可分别移除场景/构建入口、UI、observer、情景资源、运行器与契约。旧正式场景、
-Replay 和 Shared 合同没有迁移或回滚数据。当前剩余发布风险仅是 Windows 目标模块缺失导致的
-Player 构建/实机验收空缺、锁屏导致的视觉验收空缺，以及尚未获授权的独立复核；在三项完成前
-状态保持“待人工验收”，active handoff 不移入 completed。
+Replay 和 Shared 合同没有迁移或回滚数据。当前剩余发布风险仅是 Windows 环境尚未完成 Player
+构建与实机验收；在该项完成前状态保持“待 Windows 环境验收”，active handoff 不移入 completed。

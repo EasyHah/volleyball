@@ -69,12 +69,12 @@
 - 实验室场景 EditMode 10/10、PlayMode 2/2；
 - 正式 6v6 25 分整局 smoke 1/1，25:23；
 - Repository validator、依赖扫描和 diff 检查。
+- 独立全面复核发现的 P1 语义起点运动学漏洞已修复；相关 EditMode 26/26。
+- macOS Editor 1920×1080 键鼠验收：场景/预览/属性/运行锁定/单回合/时间线/reset 通过。
 
 仍未满足完成条件：
 
-- 当前 Unity 安装没有 Windows Build Support (IL2CPP)，BuildReport 立即返回 unsupported；
-- macOS 处于锁屏状态，无法完成 1920×1080 实际画面和键鼠人工验收；
-- 独立全面复核需用户明确授权 subagent，当前尚未执行；
-- Windows Player 实机键鼠、日志和图形验收需成功构建后执行。
+- Windows x64 IL2CPP Development Build 与 Windows Player 实机键鼠、日志和图形验收，
+  由 Windows 环境执行；用户明确要求不在 macOS 上验证或安装目标模块。
 
 因此任务保持 `Status: active`，不得移动到 completed 或声称“完成”。
