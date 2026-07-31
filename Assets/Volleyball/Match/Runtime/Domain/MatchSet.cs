@@ -120,7 +120,7 @@ namespace Volleyball.Domain
             Context = activeRoster.Context;
         }
 
-        internal MatchSet(
+        public MatchSet(
             IEnumerable<StablePlayerId> homePlayers,
             IEnumerable<StablePlayerId> awayPlayers,
             TeamSide firstServer,

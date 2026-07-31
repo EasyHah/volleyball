@@ -121,4 +121,35 @@ namespace Volleyball.Presentation
             _pendingContext = null;
         }
     }
+
+    /// <summary>One-shot native V5 handoff; it never converts to a V4 context.</summary>
+    public static class FormalMatchContextStartupV5
+    {
+        private static MatchContextV5 _pendingContext;
+
+        public static void PrepareNextFormalStart(MatchContextV5 context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            if (_pendingContext != null || FormalMatchContextStartupV4.HasPendingContext)
+                throw new InvalidOperationException("A formal match context is already pending scene startup.");
+            _pendingContext = context;
+        }
+
+        public static bool CancelPendingFormalStart(Guid sessionId)
+        {
+            if (_pendingContext == null || _pendingContext.SessionId != sessionId) return false;
+            _pendingContext = null;
+            return true;
+        }
+
+        internal static MatchContextV5 ConsumePendingContext()
+        {
+            var context = _pendingContext;
+            _pendingContext = null;
+            return context;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetPendingContextOnSubsystemRegistration() => _pendingContext = null;
+    }
 }

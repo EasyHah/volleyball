@@ -8,6 +8,7 @@ using Volleyball.Match.Domain.FullRallyV3;
 using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
 using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using MatchContextV5 = Volleyball.Shared.Contracts.MatchContextV5;
 using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
 using PlayerPosition = Volleyball.Shared.Contracts.PlayerPosition;
 using PlayerSnapshotV4 = Volleyball.Shared.Contracts.PlayerSnapshotV4;
@@ -46,6 +47,13 @@ namespace Volleyball.Presentation
 
         private void Awake()
         {
+            var pendingV5Context = FormalMatchContextStartupV5.ConsumePendingContext();
+            if (pendingV5Context != null)
+            {
+                InitializeV5(transform, pendingV5Context, TeamSide.Home, 0, 0);
+                return;
+            }
+
             var pendingContext = FormalMatchContextStartupV4.ConsumePendingContext();
             if (pendingContext != null)
             {
@@ -159,6 +167,29 @@ namespace Volleyball.Presentation
             return director;
         }
 
+        private static FormalSixVsSixRallyDirector InitializeV5(
+            Transform host,
+            MatchContextV5 context,
+            TeamSide firstServingSide,
+            int homeInitialRotationOffset,
+            int awayInitialRotationOffset)
+        {
+            Application.targetFrameRate = 60;
+            CourtBuilder.Build(host, Configuration.CourtHalfLength);
+            var ball = CreateBall(host);
+            var agents = CreateRosterV5(host, context, homeInitialRotationOffset, awayInitialRotationOffset);
+            var director = host.gameObject.AddComponent<FormalSixVsSixRallyDirector>();
+            director.InitializeV5(ball, agents, context, ScoreDisplay.Create(host), configuration: Configuration,
+                firstServingSide: firstServingSide, homeInitialRotationOffset: homeInitialRotationOffset,
+                awayInitialRotationOffset: awayInitialRotationOffset);
+            director.ConfigureV3Rules(V3RulesMode.Authority);
+            var rosterDisplay = host.gameObject.AddComponent<MatchRosterDisplay>();
+            rosterDisplay.Initialize(director, agents);
+            RallyCameraController camera = host.gameObject.AddComponent<RallyCameraController>();
+            camera.Initialize(ball);
+            return director;
+        }
+
         private static SimulatedBall CreateBall(Transform host)
         {
             var ballObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -211,6 +242,18 @@ namespace Volleyball.Presentation
             return agents;
         }
 
+        private static List<PrototypePlayerAgent> CreateRosterV5(
+            Transform host,
+            MatchContextV5 context,
+            int homeInitialRotationOffset,
+            int awayInitialRotationOffset)
+        {
+            var agents = new List<PrototypePlayerAgent>(12);
+            CreateTeamAgentsV5(host, agents, TeamId.Blue, context.Home, BlueColor, homeInitialRotationOffset);
+            CreateTeamAgentsV5(host, agents, TeamId.Orange, context.Away, OrangeColor, awayInitialRotationOffset);
+            return agents;
+        }
+
         private static void CreateTeamAgents(
             Transform host,
             ICollection<PrototypePlayerAgent> agents,
@@ -243,6 +286,32 @@ namespace Volleyball.Presentation
                     color,
                     player.JerseyNumber.ToString());
                 agent.SetAbility(new PlayerAbilityProfile(player.Derived));
+                agent.SetCourtHalfLength(Configuration.CourtHalfLength);
+                agents.Add(agent);
+            }
+        }
+
+        private static void CreateTeamAgentsV5(
+            Transform host,
+            ICollection<PrototypePlayerAgent> agents,
+            TeamId team,
+            Volleyball.Shared.Contracts.TeamSnapshotV5 snapshot,
+            Color color,
+            int initialRotationOffset)
+        {
+            for (var index = 0; index < snapshot.RotationOrder.Count; index++)
+            {
+                var player = snapshot.RotationOrder[index];
+                var role = RoleFor(player.Position);
+                var playerObject = new GameObject($"{team}_{role}_{index + 1}");
+                playerObject.transform.SetParent(host, false);
+                var rotationPosition = ((index - initialRotationOffset + snapshot.RotationOrder.Count) %
+                    snapshot.RotationOrder.Count) + 1;
+                playerObject.transform.localPosition = Configuration.PositionFor(snapshot.Side, rotationPosition);
+                if (team == TeamId.Orange) playerObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+                var agent = playerObject.AddComponent<PrototypePlayerAgent>();
+                agent.Initialize(new PlayerId(team, role, index), player.PlayerId, color, player.JerseyNumber.ToString());
+                agent.SetAbility(PlayerAbilityProfile.FromV5(player.Derived));
                 agent.SetCourtHalfLength(Configuration.CourtHalfLength);
                 agents.Add(agent);
             }

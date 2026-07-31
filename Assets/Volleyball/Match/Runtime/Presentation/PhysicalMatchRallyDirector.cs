@@ -10,7 +10,9 @@ using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
+using MatchContextV5 = Volleyball.Shared.Contracts.MatchContextV5;
 using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
+using MatchResultV5 = Volleyball.Shared.Contracts.MatchResultV5;
 using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
@@ -339,6 +341,7 @@ namespace Volleyball.Presentation
         private int _contactGroupSequence = 3000;
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
         private MatchContextV4 _matchContext;
+        private MatchContextV5 _matchContextV5;
         private MatchSet _formalSet;
         private ExecutionEnvelopeV4 _lastPlannedExecutionEnvelopeV4;
         private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
@@ -686,6 +689,8 @@ namespace Volleyball.Presentation
         public int AwayRotationOffset => _set == null ? 0 : _set.RotationOffsetFor(TeamSide.Away);
 
         public MatchContextV4 MatchContext => _matchContext;
+        public MatchContextV5 MatchContextV5 => _matchContextV5;
+        public MatchResultV5 ResultV5 { get; private set; }
 
         public ExecutionEnvelopeV4 LastPlannedExecutionEnvelopeV4 =>
             _lastPlannedExecutionEnvelopeV4;
@@ -832,6 +837,32 @@ namespace Volleyball.Presentation
                 });
         }
 
+        public void InitializeV5(
+            SimulatedBall ball,
+            IEnumerable<PrototypePlayerAgent> agents,
+            MatchContextV5 context,
+            ScoreDisplay scoreDisplay,
+            IRallyTacticalWeightSource tacticalWeightSource = null,
+            PhysicalMatchConfiguration configuration = null,
+            TeamSide firstServingSide = TeamSide.Home,
+            int homeInitialRotationOffset = 0,
+            int awayInitialRotationOffset = 0)
+        {
+            var matchContext = context ?? throw new ArgumentNullException(nameof(context));
+            if (matchContext.RulesVersion != RulesVersions.FullRallyV3)
+                throw new ArgumentException("Formal match runtime requires V3 rules.", nameof(context));
+            _matchContext = null;
+            _matchContextV5 = matchContext;
+            _formalSet = new MatchSet(matchContext.Home.RotationOrder.Select(player => player.PlayerId),
+                matchContext.Away.RotationOrder.Select(player => player.PlayerId), firstServingSide,
+                (configuration ?? PhysicalMatchConfiguration.FormalIndoorSixVsSix).SetRules,
+                homeInitialRotationOffset, awayInitialRotationOffset);
+            InitializeCore(ball, agents, scoreDisplay, tacticalWeightSource,
+                configuration ?? PhysicalMatchConfiguration.FormalIndoorSixVsSix,
+                matchContext.Home.RotationOrder.Count, matchContext.Away.RotationOrder.Count,
+                () => _formalSet);
+        }
+
         protected void InitializeCore(
             SimulatedBall ball,
             IEnumerable<PrototypePlayerAgent> agents,
@@ -962,21 +993,24 @@ namespace Volleyball.Presentation
                 return;
             }
 
-            if (_configuration.RosterSize != 6 || _matchContext == null)
+            if (_configuration.RosterSize != 6 || (_matchContext == null && _matchContextV5 == null))
             {
                 throw new InvalidOperationException(
-                    "V3 rules can only be configured for a V4 formal six-player match.");
+                    "V3 rules can only be configured for a formal six-player match.");
             }
 
-            if (_matchContext.RulesVersion != RulesVersions.FullRallyV3)
+            if ((_matchContext?.RulesVersion ?? _matchContextV5?.RulesVersion) != RulesVersions.FullRallyV3)
             {
                 throw new InvalidOperationException(
-                    "The formal V4 context must select V3 rules.");
+                    "The formal context must select V3 rules.");
             }
 
-            var eligibility = CreateV3Eligibility(_matchContext);
+            var eligibility = _matchContext != null
+                ? CreateV3Eligibility(_matchContext)
+                : OnCourtLineupRulesV5.Create(_matchContextV5, RotationOrder(TeamSide.Home),
+                    RotationOrder(TeamSide.Away), _set.ServerFor(TeamSide.Home), _set.ServerFor(TeamSide.Away));
             var adapter = new FullRallyV3RulesRuntimeAdapter(
-                _matchContext.RulesVersion,
+                _matchContext?.RulesVersion ?? _matchContextV5.RulesVersion,
                 eligibility,
                 _set.ServingSide,
                 mode);
@@ -992,7 +1026,7 @@ namespace Volleyball.Presentation
             GateHAuthorityEnabled =
                 mode == V3RulesMode.Authority &&
                 _configuration.RosterSize == 6 &&
-                _matchContext != null &&
+                (_matchContext != null || _matchContextV5 != null) &&
                 _v3RulesAdapter != null &&
                 _players.Count == 12;
             if (GateHAuthorityEnabled)
@@ -1198,6 +1232,16 @@ namespace Volleyball.Presentation
             {
                 _trajectoryPredictionProviderV4 =
                     CreateTrajectoryPredictionProviderV4(_matchContext);
+                _lastTrajectoryPredictionArtifactV4 = null;
+            }
+            else if (_matchContextV5 != null)
+            {
+                _trajectoryPredictionProviderV4 = new BallTrajectoryPredictionProviderV4(
+                    new Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV4(
+                        _matchContextV5.TrajectoryPredictionProviderConfiguration.CacheCapacity,
+                        _matchContextV5.TrajectoryPredictionProviderConfiguration.CacheEvictionPolicy,
+                        _matchContextV5.TrajectoryPredictionProviderConfiguration.PredictorVersion,
+                        _matchContextV5.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash));
                 _lastTrajectoryPredictionArtifactV4 = null;
             }
 
@@ -5745,9 +5789,21 @@ namespace Volleyball.Presentation
             {
                 if (_formalSet != null)
                 {
-                    Result = _formalSet.CreateResult(
-                        SuccessfulContacts,
-                        V3RuleTransitions);
+                    if (_matchContext != null)
+                    {
+                        Result = _formalSet.CreateResult(
+                            SuccessfulContacts,
+                            V3RuleTransitions);
+                    }
+                    else if (_matchContextV5 != null)
+                    {
+                        var winner = _set.HomeScore > _set.AwayScore
+                            ? _matchContextV5.Home.TeamId
+                            : _matchContextV5.Away.TeamId;
+                        ResultV5 = MatchResultV5.Create(_matchContextV5, winner,
+                            _set.HomeScore, _set.AwayScore,
+                            _set.HomeScore + _set.AwayScore);
+                    }
                 }
                 else
                 {
