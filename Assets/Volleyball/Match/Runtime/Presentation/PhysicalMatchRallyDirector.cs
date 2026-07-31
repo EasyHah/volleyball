@@ -475,6 +475,9 @@ namespace Volleyball.Presentation
         public StablePlayerId? V3LastCountedActor =>
             _v3RulesAdapter?.State.LastCountedActor;
 
+        public long CurrentAuthoritySourceSequence =>
+            _formalAuthority.CurrentSourceSequence;
+
         public void ConfigureTrainingStart(TrainingScenarioV1 scenario)
         {
             if (_set != null || _rallyActive || _trainingRuntime != null)
@@ -1808,6 +1811,21 @@ namespace Volleyball.Presentation
                 request,
                 committedContinuationReceiver);
             var planning = _formalAuthority.ReceiveCoordinator.CurrentPlanning;
+            if (_trainingRuntime != null &&
+                planning?.Decision != null &&
+                planning.Decision.HasDecision)
+            {
+                NotifyReplay(
+                    ReplayDecisionPlanned,
+                    ReplayDecisionEvent.Create(
+                        _ball.SimulationTime,
+                        RallyDecisionStage.Receive,
+                        team,
+                        receiveSeconds,
+                        receiveInput.PredictedBallCenter,
+                        _activeTacticalWeights,
+                        planning.Decision));
+            }
             if (GateJEnabled && _lastTrajectoryPredictionArtifactV4 != null)
             {
                 _formalAuthority.ReceiveCoordinator.ApplyPerception(
