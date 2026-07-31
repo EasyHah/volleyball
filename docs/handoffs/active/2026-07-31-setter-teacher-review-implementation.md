@@ -10,10 +10,11 @@
 ## 当前要求
 
 按 `docs/superpowers/specs/2026-07-31-setter-teacher-review-design.md` 实现 Editor-only 的二传
-教师审核流水线。它将训练实验室的冻结 `DecisionSnapshotV1` 中“二传组织”决策提交给现有 MenShen
-接口，由开发者逐条接受或从既有合法候选中纠正，并记录人工确认标签。
+教师审核流水线。它将训练实验室在 Gate I 攻手选择点冻结的 `SetterTargetSnapshotV1` 提交给现有
+MenShen 接口，由开发者逐条接受或从既有合法候选中纠正，并记录人工确认标签。
 
-教师输入必须和本地二传判断器在同一时刻可见的信息集一致。教师只给候选排序与理由，永不成为
+教师输入必须和本地攻手目标判断器在同一时刻可见的信息集一致。`DecisionSnapshotV1` 的 Organize
+候选是组织者（谁来二传），不得将其误作攻手目标。教师只给候选排序与理由，永不成为
 比赛权威、永不发送命令，也不得进入 Player、Shared、Replay、Career 或正式运行时程序集。
 
 ## 非目标

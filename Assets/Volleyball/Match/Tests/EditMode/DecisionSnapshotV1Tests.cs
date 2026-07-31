@@ -125,6 +125,7 @@ namespace Volleyball.EditModeTests
                 71,
                 new List<TrainingTimelineEventV1>(),
                 new[] { Create(DefaultCandidates()) },
+                new List<SetterTargetSnapshotV1>(),
                 false,
                 null,
                 string.Empty);

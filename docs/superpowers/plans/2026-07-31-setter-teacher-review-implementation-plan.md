@@ -6,8 +6,8 @@
 
 ## 1. 范围与完成定义
 
-本计划仅交付训练实验室中 `RallyDecisionStage.Organization` 的二传攻手候选教师审核。复用
-`DecisionSnapshotV1` 与 `MenShenChatClient`，在 Editor 内逐条请求、审核和写入本地 JSONL。
+本计划仅交付训练实验室中 Gate I 的二传攻手目标教师审核。新增只读
+`SetterTargetSnapshotV1`，由 `AttackPreparationDecision` 冻结攻手候选；复用 `MenShenChatClient`，在 Editor 内逐条请求、审核和写入本地 JSONL。不得把 `DecisionSnapshotV1 (Organize)` 的组织者候选误用为攻手候选。
 
 完成时必须满足：
 
@@ -44,15 +44,16 @@ UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 
 实现：
 
-- 工厂只接受 `Organization` 快照；从快照复制所有本地可见字段与可行候选的评分分量。
+- 工厂只接受 Gate I `SetterTargetSnapshotV1`；从快照复制所有本地可见字段与可行攻手候选的评分分量。
 - 候选集 hash 基于按稳定 `PlayerId` 排序的可行候选及评分字段；请求 hash 包含快照 hash、候选集
   hash、规则/特征版本和提示词版本。
 - 提示词要求一个严格 JSON 对象：schema 版本、完整 candidate ID ranking 和审核理由。它明确禁止模型
   选择未知 ID、建议动作或引用不可见信息。
 - 解析器拒绝额外字段、错误 schema、未知/重复/遗漏 ID、非可行候选和空理由；不得尝试猜测或修复。
-- `DecisionSnapshotV1` 不增加教师字段、不改变既有 hash 或 Player 代码。
+- `DecisionSnapshotV1` 不增加教师字段、不改变既有 hash 或 Player 代码；新快照由 Gate I 的
+  `AttackPreparationDecision` 建立，保留其候选与本地选择的攻手语义。
 
-测试：稳定 hash、仅 Organization 可请求、信息字段白名单、候选排序规范化，以及正常/未知/重复/遗漏/
+测试：稳定 hash、仅 Gate I 攻手快照可请求、信息字段白名单、候选排序规范化，以及正常/未知/重复/遗漏/
 额外字段/畸形 JSON 的拒绝。
 
 阶段提交：`feat: add setter teacher review contracts`
@@ -107,7 +108,7 @@ UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
 
 修改训练实验室 Editor-only UI，新增审核窗或侧栏：
 
-- 从只读 Organization 决策快照打开审核；其他阶段入口禁用。
+- 从只读 Gate I 攻手目标快照打开审核；组织者和其他阶段入口禁用。
 - 显示本地选择、候选评分、教师排序、理由、模型/提示词版本、调用状态和历史尝试。
 - 请求期间禁用重复请求；成功后只能接受教师首选或选择可行候选；确认后刷新为只读历史。
 - 网络/解析失败显示可重试错误，不改变训练运行、时间线或当前选择。

@@ -6,13 +6,14 @@
 
 ## 目标
 
-在 Unity Editor 中为训练实验室的二传组织决策建立受限的“教师建议 -> 人工确认”闭环。现有
-MenShen 接口只离线分析一条冻结的 `DecisionSnapshotV1`，为本地二传逻辑已经生成的合法攻手候选
+在 Unity Editor 中为训练实验室的二传目标决策建立受限的“教师建议 -> 人工确认”闭环。现有
+MenShen 接口只离线分析一条在 Gate I 攻手选择点冻结的 `SetterTargetSnapshotV1`，为本地逻辑已经生成的合法攻手候选
 排序并给出理由。开发者接受建议或选择另一合法候选后，系统写入可用于后续学生模型的数据记录。
 
 ## 权威与信息边界
 
-- 仅消费 `RallyDecisionStage.Organization` 的冻结快照；其他阶段不进入该流水线。
+- 仅消费 Gate I 的冻结 `SetterTargetSnapshotV1`；它来自 `AttackPreparationDecision`，候选语义是攻手。
+  `DecisionSnapshotV1 (Organize)` 的候选语义是组织者，保持不变且不进入本流水线。
 - 教师请求使用本地二传判断时可见的字段：球位置/速度、预测目标、可用时间、已计数触球、最后合法
   触球者、队伍、规则与特征版本、以及本地已排序的可行候选及其评分分量。
 - 请求不得包含完整 Replay、未来物理采样、隐藏最终路线、对方内部状态、裁判结果或回合结束后数据。
@@ -23,7 +24,7 @@ MenShen 接口只离线分析一条冻结的 `DecisionSnapshotV1`，为本地二
 
 ## 数据流
 
-`DecisionSnapshotV1 (Organization) -> SetterTeacherRequestV1 -> MenShen -> SetterTeacherResponseV1
+`SetterTargetSnapshotV1 (Gate I) -> SetterTeacherRequestV1 -> MenShen -> SetterTeacherResponseV1
  -> HumanReview -> SetterLabelRecordV1 -> local JSONL dataset`
 
 请求和记录都包含 snapshot hash、候选集 hash、规则/特征版本。教师响应额外冻结模型 ID、提示词

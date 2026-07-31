@@ -734,6 +734,8 @@ namespace Volleyball.Presentation
 
         public event Action<GateISetIntentReceiptV3> GateISetIntentCommitted;
 
+        public event Action<SetterTargetSnapshotV1> SetterTargetPlanned;
+
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
 
         public event Action<ReplaySimpleEvent> ReplayNetCrossed;
@@ -1958,6 +1960,40 @@ namespace Volleyball.Presentation
             }
 
             return players;
+        }
+
+        private SetterTargetSnapshotV1 CreateSetterTargetSnapshot(
+            TeamId team,
+            AttackDefensePlanV3 plan)
+        {
+            var candidates = plan.AttackCandidates
+                .Select(candidate => new DecisionCandidateSnapshotV1(
+                    candidate.Actor,
+                    string.IsNullOrEmpty(candidate.EliminationReason),
+                    new RallyDecisionScore(
+                        candidate.LegalSampleRatio,
+                        candidate.IsQualifiedPowerRoute ? 1f : 0f,
+                        candidate.ExpectedRallyValue,
+                        0f,
+                        candidate.ExpectedRallyValue)))
+                .ToArray();
+            return new SetterTargetSnapshotV1(
+                _trainingRuntime.Scenario.ScenarioId,
+                _trainingRuntime.Scenario.ContentHash,
+                _matchContext.RulesVersion,
+                _formalAuthority.CurrentSourceSequence,
+                _ball.SimulationTime,
+                team,
+                _tacticRevision,
+                (int)plan.Revision,
+                plan.SetIntent.SetFlightSeconds,
+                _ball.State.Position,
+                _ball.State.Velocity,
+                plan.SetIntent.Target,
+                _v3RulesAdapter.State.CountedHits,
+                _v3RulesAdapter.State.LastCountedActor,
+                plan.SelectedAction.Actor,
+                candidates);
         }
 
         private ReplayOrganizationDecisionDiagnostic CreateOrganizationDiagnostic(
@@ -4567,11 +4603,32 @@ namespace Volleyball.Presentation
                     intent.PlanRevision,
                     _formalAuthority.NextSourceSequence(),
                     defense);
+                PublishSetterTargetSnapshot(attackingTeam);
                 return;
             }
 
             _formalAuthority.AttackCoordinator.CommitDefense(intent.PlanRevision, _formalAuthority.NextSourceSequence(), defense);
             _formalAuthority.AttackCoordinator.CommitFinalAttack(intent.PlanRevision, _formalAuthority.NextSourceSequence());
+            PublishSetterTargetSnapshot(attackingTeam);
+        }
+
+        private void PublishSetterTargetSnapshot(TeamId attackingTeam)
+        {
+            if (_trainingRuntime == null)
+            {
+                return;
+            }
+
+            var plan = _formalAuthority.AttackCoordinator.State.Plan;
+            if (plan?.SelectedAction == null)
+            {
+                throw new InvalidOperationException(
+                    "Committed Gate I plan requires a selected attacker.");
+            }
+
+            SetterTargetPlanned?.Invoke(CreateSetterTargetSnapshot(
+                attackingTeam,
+                plan));
         }
 
         private void RecordGateISetCalibration(

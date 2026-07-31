@@ -75,6 +75,7 @@ namespace Volleyball.Presentation.TrainingLab
     {
         private readonly IReadOnlyList<TrainingTimelineEventV1> _timeline;
         private readonly IReadOnlyList<DecisionSnapshotV1> _decisions;
+        private readonly IReadOnlyList<SetterTargetSnapshotV1> _setterTargets;
 
         public TrainingRunEvidenceV1(
             string scenarioId,
@@ -82,6 +83,7 @@ namespace Volleyball.Presentation.TrainingLab
             int matchSeed,
             IReadOnlyList<TrainingTimelineEventV1> timeline,
             IReadOnlyList<DecisionSnapshotV1> decisions,
+            IReadOnlyList<SetterTargetSnapshotV1> setterTargets,
             bool isResolved,
             TeamId? winningTeam,
             string resolutionReason)
@@ -111,6 +113,15 @@ namespace Volleyball.Presentation.TrainingLab
                             "Decision values cannot be null.",
                             nameof(decisions)))
                     .ToArray());
+            _setterTargets =
+                new ReadOnlyCollection<SetterTargetSnapshotV1>(
+                    (setterTargets ??
+                     throw new ArgumentNullException(nameof(setterTargets)))
+                    .Select(value => value ??
+                        throw new ArgumentException(
+                            "Setter target values cannot be null.",
+                            nameof(setterTargets)))
+                    .ToArray());
             IsResolved = isResolved;
             WinningTeam = winningTeam;
             ResolutionReason = resolutionReason ?? string.Empty;
@@ -124,6 +135,7 @@ namespace Volleyball.Presentation.TrainingLab
         public int MatchSeed { get; }
         public IReadOnlyList<TrainingTimelineEventV1> Timeline => _timeline;
         public IReadOnlyList<DecisionSnapshotV1> Decisions => _decisions;
+        public IReadOnlyList<SetterTargetSnapshotV1> SetterTargets => _setterTargets;
         public bool IsResolved { get; }
         public TeamId? WinningTeam { get; }
         public string ResolutionReason { get; }

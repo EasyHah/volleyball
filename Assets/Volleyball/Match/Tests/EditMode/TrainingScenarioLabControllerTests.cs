@@ -148,6 +148,7 @@ namespace Volleyball.EditModeTests
                 scenario.Context.Seed,
                 Array.Empty<TrainingTimelineEventV1>(),
                 Array.Empty<DecisionSnapshotV1>(),
+                Array.Empty<SetterTargetSnapshotV1>(),
                 true,
                 TeamId.Blue,
                 "test-resolution");

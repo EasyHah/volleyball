@@ -29,6 +29,8 @@ namespace Volleyball.Presentation.TrainingLab
     [RequireComponent(typeof(UIDocument))]
     public sealed class TrainingScenarioLabView : MonoBehaviour
     {
+        public TrainingRunEvidenceV1 VisibleEvidence =>
+            _controller?.VisibleEvidence;
         private readonly Dictionary<string, TrainingLabPreviewMarkerV1>
             _markers =
                 new Dictionary<string, TrainingLabPreviewMarkerV1>(

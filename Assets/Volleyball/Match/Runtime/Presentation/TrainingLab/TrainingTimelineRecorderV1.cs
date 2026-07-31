@@ -19,6 +19,8 @@ namespace Volleyball.Presentation.TrainingLab
             new List<TrainingTimelineEventV1>();
         private readonly List<DecisionSnapshotV1> _decisions =
             new List<DecisionSnapshotV1>();
+        private readonly List<SetterTargetSnapshotV1> _setterTargets =
+            new List<SetterTargetSnapshotV1>();
         private bool _disposed;
         private bool _resolved;
         private TeamId? _winner;
@@ -51,6 +53,7 @@ namespace Volleyball.Presentation.TrainingLab
             _director.ReplayContactAccepted += OnContact;
             _director.ReceiveOrganizationAuthorityCommitted += OnGateH;
             _director.GateISetIntentCommitted += OnGateISetIntent;
+            _director.SetterTargetPlanned += OnSetterTarget;
             _director.AttackDefenseAuthorityCommitted += OnGateIContact;
             _director.ReplayNetCrossed += OnNetCrossing;
             _director.ReplayDefenseAttemptRecorded += OnDefenseAttempt;
@@ -60,6 +63,7 @@ namespace Volleyball.Presentation.TrainingLab
 
         public IReadOnlyList<TrainingTimelineEventV1> Timeline => _timeline;
         public IReadOnlyList<DecisionSnapshotV1> Decisions => _decisions;
+        public IReadOnlyList<SetterTargetSnapshotV1> SetterTargets => _setterTargets;
 
         public TrainingRunEvidenceV1 Capture()
         {
@@ -71,6 +75,7 @@ namespace Volleyball.Presentation.TrainingLab
                 scenario.Context.Seed,
                 _timeline,
                 _decisions,
+                _setterTargets,
                 _resolved,
                 _winner,
                 _resolutionReason);
@@ -84,6 +89,7 @@ namespace Volleyball.Presentation.TrainingLab
             _director.ReplayContactAccepted -= OnContact;
             _director.ReceiveOrganizationAuthorityCommitted -= OnGateH;
             _director.GateISetIntentCommitted -= OnGateISetIntent;
+            _director.SetterTargetPlanned -= OnSetterTarget;
             _director.AttackDefenseAuthorityCommitted -= OnGateIContact;
             _director.ReplayNetCrossed -= OnNetCrossing;
             _director.ReplayDefenseAttemptRecorded -= OnDefenseAttempt;
@@ -161,6 +167,11 @@ namespace Volleyball.Presentation.TrainingLab
                 value.Intent.Organizer,
                 "SetIntentPlanned",
                 value.SourceSequence);
+        }
+
+        private void OnSetterTarget(SetterTargetSnapshotV1 value)
+        {
+            _setterTargets.Add(value ?? throw new ArgumentNullException(nameof(value)));
         }
 
         private void OnGateIContact(AttackDefenseAuthorityReceipt value)
