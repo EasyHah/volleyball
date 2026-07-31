@@ -205,6 +205,94 @@ namespace Volleyball.Career.EditModeTests
         }
 
         [Test]
+        public void V5Mapper_FreezesAllTwelveBasesAfterApplyingFatigueOnce()
+        {
+            var source = new CareerBaseAttributesV5(
+                8000, 1900, 7900, 7800, 7700, 7600,
+                7500, 7400, 7300, 7200, 7100, 7000);
+            var launch = V5Launch(source, fatigue: 100);
+            var mapper = new CareerMatchV5Mapper(
+                new string('a', 64), V5TrajectoryConfiguration());
+
+            var context = mapper.ToContext(launch);
+            var player = context.Home.RotationOrder[0];
+
+            Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV5));
+            Assert.That(player.Bases.Strength, Is.EqualTo(6000));
+            Assert.That(player.Bases.Jump, Is.EqualTo(5925));
+            Assert.That(player.Bases.Set, Is.EqualTo(5250));
+            Assert.That(player.Bases.HeightMillimeters, Is.EqualTo(1900));
+            Assert.That(player.Derived.AttackPower,
+                Is.EqualTo((5625 + 6000 + 5925 + 5700 + 3) / 4));
+        }
+
+        [Test]
+        public void V5Mapper_ChangingEachCareerBaseChangesADeclaredDerivedConsumer()
+        {
+            var mapper = new CareerMatchV5Mapper(
+                new string('a', 64), V5TrajectoryConfiguration());
+            var baseline = new[] { 5000, 1900, 5000, 5000, 5000, 5000,
+                5000, 5000, 5000, 5000, 5000, 5000 };
+            for (var index = 0; index < baseline.Length; index++)
+            {
+                var raised = baseline.ToArray();
+                raised[index] = index == 1 ? 2000 : 6000;
+                var low = mapper.ToContext(V5Launch(V5Bases(baseline), 0))
+                    .Home.RotationOrder[0].Derived;
+                var high = mapper.ToContext(V5Launch(V5Bases(raised), 0))
+                    .Home.RotationOrder[0].Derived;
+                Assert.That(high.ResultFingerprint, Is.Not.EqualTo(low.ResultFingerprint),
+                    "V5 base index " + index + " must affect the frozen consumer inputs.");
+            }
+        }
+
+        private static TrajectoryPredictionProviderConfigurationV5 V5TrajectoryConfiguration()
+        {
+            return new TrajectoryPredictionProviderConfigurationV5(
+                128, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                1, new string('b', 64));
+        }
+
+        private static CareerBaseAttributesV5 V5Bases(int[] values)
+        {
+            return new CareerBaseAttributesV5(values[0], values[1], values[2], values[3],
+                values[4], values[5], values[6], values[7], values[8], values[9],
+                values[10], values[11]);
+        }
+
+        private static CareerMatchLaunchV5 V5Launch(CareerBaseAttributesV5 protagonist, int fatigue)
+        {
+            var home = new CareerMatchTeamLaunchV5(new TeamId("v5.home"), "Home",
+                CareerMatchTeamSide.Home, V5Team("v5.home", protagonist, fatigue));
+            var away = new CareerMatchTeamLaunchV5(new TeamId("v5.away"), "Away",
+                CareerMatchTeamSide.Away, V5Team("v5.away", V5Bases(new[] { 5000, 1900, 5000, 5000, 5000, 5000,
+                    5000, 5000, 5000, 5000, 5000, 5000 }), 0));
+            return new CareerMatchLaunchV5(new Guid("11111111-2222-3333-4444-555555555555"),
+                1234, new[] { home, away });
+        }
+
+        private static CareerMatchPlayerLaunchV5[] V5Team(string prefix,
+            CareerBaseAttributesV5 first, int firstFatigue)
+        {
+            var positions = new[]
+            {
+                CareerMatchPlayerPosition.OutsideHitter, CareerMatchPlayerPosition.Opposite,
+                CareerMatchPlayerPosition.MiddleBlocker, CareerMatchPlayerPosition.Setter,
+                CareerMatchPlayerPosition.OutsideHitter, CareerMatchPlayerPosition.Libero
+            };
+            var players = new CareerMatchPlayerLaunchV5[6];
+            for (var index = 0; index < players.Length; index++)
+            {
+                players[index] = new CareerMatchPlayerLaunchV5(new PlayerId(prefix + ".p" + index),
+                    "P" + index, index + 1, positions[index], index + 1,
+                    index == 0 ? firstFatigue : 0, DominantHandV5.Right,
+                    index == 0 ? first : V5Bases(new[] { 5000, 1900, 5000, 5000, 5000, 5000,
+                        5000, 5000, 5000, 5000, 5000, 5000 }));
+            }
+            return players;
+        }
+
+        [Test]
         public void Executor_RejectsNonCanonicalPersistedContext()
         {
             var executor = new CareerMatchExecutorV4(new DeterministicFixtureMatchRunnerV4());
