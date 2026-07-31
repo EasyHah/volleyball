@@ -90,6 +90,7 @@ namespace Volleyball.Presentation.TrainingLab
         private const float MaximumBallX = CourtBuilder.HalfWidth + 1f;
         private const float MaximumBallZ = CourtBuilder.FormalHalfLength + 1f;
         private const float MaximumBallY = 12f;
+        private const float MinimumTowardOpponentVelocityZ = .01f;
 
         public static TrainingScenarioValidationResultV1 Validate(
             TrainingScenarioDraftV1 draft)
@@ -599,6 +600,7 @@ namespace Volleyball.Presentation.TrainingLab
 
             try
             {
+                ValidateRallyStartKinematics(draft, issues);
                 var eligibility = CreateEligibility(draft);
                 RallyStartStateV3Factory.Create(
                     new RallyStartRequestV3(
@@ -616,6 +618,58 @@ namespace Volleyball.Presentation.TrainingLab
                     "rallyStart",
                     exception.Message);
             }
+        }
+
+        private static void ValidateRallyStartKinematics(
+            TrainingScenarioDraftV1 draft,
+            ICollection<TrainingScenarioIssueV1> issues)
+        {
+            if (!Enum.IsDefined(typeof(TeamSide), draft.SourceTeam) ||
+                !draft.BallPosition.IsFinite || !draft.BallVelocity.IsFinite)
+            {
+                return;
+            }
+
+            if (draft.StartRecipe == RallyStartRecipeV3.ServeFlight &&
+                draft.SourceTeam != draft.FirstServingSide)
+            {
+                AddInvalidRallyStart(
+                    draft,
+                    issues,
+                    "A serve-flight source team must be the first serving side.");
+            }
+
+            var sourceSign = draft.SourceTeam == TeamSide.Home ? 1f : -1f;
+            if (draft.BallPosition.Z * sourceSign >
+                PrototypePlayerAgent.NetClearance)
+            {
+                AddInvalidRallyStart(
+                    draft,
+                    issues,
+                    "Ball must begin on the source team's side of the net.");
+            }
+
+            if (draft.BallVelocity.Z * sourceSign <=
+                MinimumTowardOpponentVelocityZ)
+            {
+                AddInvalidRallyStart(
+                    draft,
+                    issues,
+                    "Ball must travel from the source team toward the opponent.");
+            }
+        }
+
+        private static void AddInvalidRallyStart(
+            TrainingScenarioDraftV1 draft,
+            ICollection<TrainingScenarioIssueV1> issues,
+            string message)
+        {
+            Add(
+                issues,
+                TrainingScenarioIssueCodesV1.InvalidRallyStart,
+                draft.ScenarioId,
+                "rallyStart",
+                message);
         }
 
         private static void Add(

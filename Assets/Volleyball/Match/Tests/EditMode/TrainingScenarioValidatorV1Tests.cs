@@ -104,6 +104,49 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Validate_RejectsServeFlightFromNonServingTeam()
+        {
+            var draft = TrainingScenarioV1Tests.CreateValidDraft();
+            draft.StartRecipe = RallyStartRecipeV3.ServeFlight;
+            draft.SourceTeam = TeamSide.Home;
+            draft.LastLegalActor = null;
+            draft.BallPosition = new SimVector3(0f, 2.1f, -1.2f);
+            draft.BallVelocity = new SimVector3(0f, .5f, 6.5f);
+
+            var result = TrainingScenarioValidatorV1.Validate(draft);
+
+            Assert.That(
+                result.Issues.Select(issue => issue.Code),
+                Does.Contain(TrainingScenarioIssueCodesV1.InvalidRallyStart));
+        }
+
+        [Test]
+        public void Validate_RejectsBallTravellingBackTowardSourceTeam()
+        {
+            var draft = TrainingScenarioV1Tests.CreateValidDraft();
+            draft.BallVelocity = new SimVector3(.1f, -.3f, -6.5f);
+
+            var result = TrainingScenarioValidatorV1.Validate(draft);
+
+            Assert.That(
+                result.Issues.Select(issue => issue.Code),
+                Does.Contain(TrainingScenarioIssueCodesV1.InvalidRallyStart));
+        }
+
+        [Test]
+        public void Validate_RejectsBallStartingOnOpponentCourt()
+        {
+            var draft = TrainingScenarioV1Tests.CreateValidDraft();
+            draft.BallPosition = new SimVector3(0f, 2.1f, 1.2f);
+
+            var result = TrainingScenarioValidatorV1.Validate(draft);
+
+            Assert.That(
+                result.Issues.Select(issue => issue.Code),
+                Does.Contain(TrainingScenarioIssueCodesV1.InvalidRallyStart));
+        }
+
+        [Test]
         public void Build_DerivesThirdTouchAndPostBlockExclusivelyWithoutRawDraftFields()
         {
             var attackDraft = TrainingScenarioV1Tests.CreateValidDraft();
