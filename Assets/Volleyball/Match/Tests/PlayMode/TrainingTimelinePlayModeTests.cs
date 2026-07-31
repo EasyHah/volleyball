@@ -40,6 +40,12 @@ namespace Volleyball.PlayModeTests
             Assert.That(evidence.ResolutionReason, Is.EqualTo(withRecorder.Reason));
             Assert.That(evidence.Timeline, Is.Not.Empty);
             Assert.That(evidence.Decisions, Is.Not.Empty);
+            Assert.That(evidence.SetterTargets, Is.Not.Empty);
+            Assert.That(evidence.SetterTargets.All(snapshot =>
+                snapshot.Candidates.Any(candidate =>
+                    candidate.IsFeasible &&
+                    candidate.PlayerId.Equals(snapshot.SelectedAttacker))),
+                Is.True);
             Assert.That(
                 evidence.Timeline.Select(value => value.Sequence),
                 Is.EqualTo(Enumerable.Range(0, evidence.Timeline.Count)));
@@ -78,15 +84,12 @@ namespace Volleyball.PlayModeTests
             draft.DisplayName = "Timeline Observer";
             draft.StartRecipe = RallyStartRecipeV3.ServeFlight;
             draft.SourceTeam = Volleyball.Shared.Contracts.TeamSide.Away;
+            draft.FirstServingSide = Volleyball.Shared.Contracts.TeamSide.Away;
             draft.LastLegalActor = null;
             draft.BallPosition = new Volleyball.Domain.Simulation.SimVector3(
-                0f,
-                2.1f,
-                -5f);
+                0f, 2.1f, 5f);
             draft.BallVelocity = new Volleyball.Domain.Simulation.SimVector3(
-                0f,
-                2f,
-                12f);
+                0f, 2f, -12f);
             var scenario = TrainingScenarioValidatorV1.Build(draft);
             var host = new GameObject(
                 recordEvidence
