@@ -14,6 +14,12 @@ namespace Volleyball.Shared.Contracts
             return CanonicalMatchJsonV5.SerializeContext(value);
         }
 
+        public static string SerializeV5(MatchResultV5 value)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            return CanonicalMatchResultJsonV5.Serialize(value);
+        }
+
         public static string SerializeV4(MatchContextV4 value)
         {
             if (value == null)

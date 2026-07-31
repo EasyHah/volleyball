@@ -26,6 +26,8 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(assembly.GetType("Volleyball.Shared.Contracts.CareerBaseAttributesV5"), Is.Not.Null);
             Assert.That(assembly.GetType("Volleyball.Shared.Contracts.DerivedMatchAttributesV5"), Is.Not.Null);
             Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchContextV5"), Is.Not.Null);
+            Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchResultV5"), Is.Not.Null);
+            Assert.That(assembly.GetType("Volleyball.Shared.Contracts.MatchReplayV5"), Is.Not.Null);
             foreach (var legacyName in legacyNames)
             {
                 Assert.That(assembly.GetType("Volleyball.Shared.Contracts." + legacyName), Is.Null, legacyName);
@@ -129,6 +131,23 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(() => new PlayerSnapshotV5(new PlayerId("player"), "Player", 1,
                 PlayerPosition.Setter, DominantHandV5.Right, CreateV5Bases(5000, 1800), correct),
                 Throws.Nothing);
+        }
+
+        [Test]
+        public void MatchResultAndReplayV5_BindToTheirFrozenContext()
+        {
+            var context = MatchContextV5.Create(Guid.NewGuid(), 99,
+                CreateV5Team("home", TeamSide.Home, 5000),
+                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64));
+            var result = MatchResultV5.Create(context, context.Home.TeamId, 25, 20, 45);
+            var replay = MatchReplayV5.Create("formal-v5", context);
+
+            result.ValidateAgainst(context);
+            Assert.That(ContractJson.SerializeV5(result), Does.Contain(result.ResultHash));
+            Assert.That(replay.ContextHash, Is.EqualTo(context.ContextHash));
+            Assert.That(replay.DerivedAttributeFingerprints, Has.Count.EqualTo(12));
+            Assert.That(() => MatchResultV5.Create(context, context.Home.TeamId, 20, 25, 45),
+                Throws.TypeOf<ContractValidationException>());
         }
 
         [Test]
