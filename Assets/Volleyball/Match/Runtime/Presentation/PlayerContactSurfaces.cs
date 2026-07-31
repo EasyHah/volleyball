@@ -90,7 +90,7 @@ namespace Volleyball.Presentation
                 TechniqueAction.Attack => new[]
                 {
                     Snapshot("AttackPalm", BuildPalm(
-                        "RightPalm",
+                        StrikingPalm(setContactHand),
                         localPositionError,
                         localNormalErrorDegrees,
                         true), active, contactGroupId, true, recordHistory)
@@ -102,11 +102,14 @@ namespace Volleyball.Presentation
                 },
                 TechniqueAction.Serve => new[]
                 {
-                    Snapshot("ServePalm", BuildPalm("RightPalm", localPositionError, localNormalErrorDegrees, true), active, contactGroupId, false, recordHistory)
+                    Snapshot("ServePalm", BuildPalm(StrikingPalm(setContactHand), localPositionError, localNormalErrorDegrees, true), active, contactGroupId, false, recordHistory)
                 },
                 _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
             };
         }
+
+        private static string StrikingPalm(SetContactHand hand) =>
+            hand == SetContactHand.Left ? "LeftPalm" : "RightPalm";
 
         public void Clear()
         {

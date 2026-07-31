@@ -1326,6 +1326,15 @@ namespace Volleyball.Presentation
 
         private SetContactHand CurrentSetContactHand()
         {
+            if (_techniqueExecutor.ScheduledAction == TechniqueAction.Attack ||
+                _techniqueExecutor.ScheduledAction == TechniqueAction.Serve)
+            {
+                return Ability.Snapshot.DominantHand ==
+                    Volleyball.Shared.Contracts.DominantHandV5.Left
+                    ? SetContactHand.Left
+                    : SetContactHand.Right;
+            }
+
             if (_techniqueExecutor.ScheduledAction != TechniqueAction.Set)
             {
                 return SetContactHand.Both;

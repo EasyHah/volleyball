@@ -12,7 +12,7 @@ namespace Volleyball.Career.EditModeTests
     public sealed class CareerMatchBoundaryTests
     {
         [Test]
-        public void RuntimeAssemblies_KeepSharedV4InsidePureMatchIntegration()
+        public void RuntimeAssemblies_KeepSharedContractsInsideExplicitV5Boundaries()
         {
             var domain = References(typeof(CareerPlayerAttributes).Assembly);
             var application = References(typeof(CareerMatchLaunch).Assembly);
@@ -27,7 +27,8 @@ namespace Volleyball.Career.EditModeTests
                 {
                     "Volleyball.Shared",
                     "Volleyball.Career.Domain",
-                    "Volleyball.Career.Application"
+                    "Volleyball.Career.Application",
+                    "Volleyball.Career.Persistence"
                 }));
             Assert.That(integration, Does.Not.Contain("UnityEngine.CoreModule"));
             Assert.That(integration.Any(name =>

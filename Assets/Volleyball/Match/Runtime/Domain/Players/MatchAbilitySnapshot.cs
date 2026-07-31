@@ -16,7 +16,8 @@ namespace Volleyball.Domain.Players
             float blockLateralMobility, float defensePlatformControl, float defenseAwareness,
             float receiveControl, float receiveAwareness, float setPlacementControl,
             float setTempoControl, float setSoftTouch, float serveDirectionControl,
-            float serveSpeedControl, float servePowerCapacity, string fingerprint)
+            float serveSpeedControl, float servePowerCapacity, string fingerprint,
+            DominantHandV5? dominantHand = null)
         {
             AttackDirectionControl = Unit(attackDirectionControl, nameof(attackDirectionControl));
             AttackSpeedControl = Unit(attackSpeedControl, nameof(attackSpeedControl));
@@ -39,7 +40,11 @@ namespace Volleyball.Domain.Players
             ServePowerCapacity = Unit(servePowerCapacity, nameof(servePowerCapacity));
             if (string.IsNullOrEmpty(fingerprint) || fingerprint.Length != 64)
                 throw new ArgumentException("A SHA-256 fingerprint is required.", nameof(fingerprint));
+            if (dominantHand.HasValue &&
+                !Enum.IsDefined(typeof(DominantHandV5), dominantHand.Value))
+                throw new ArgumentOutOfRangeException(nameof(dominantHand));
             Fingerprint = fingerprint;
+            DominantHand = dominantHand;
         }
 
         public float AttackDirectionControl { get; }
@@ -62,6 +67,7 @@ namespace Volleyball.Domain.Players
         public float ServeSpeedControl { get; }
         public float ServePowerCapacity { get; }
         public string Fingerprint { get; }
+        public DominantHandV5? DominantHand { get; }
 
         public static MatchAbilitySnapshot FromV4(DerivedMatchAttributesV4 value)
         {
@@ -86,7 +92,7 @@ namespace Volleyball.Domain.Players
                 value.DefenseControl * scale, value.CourtIq * scale, value.ReceiveControl * scale,
                 value.CourtIq * scale, value.SetControl * scale, value.SetControl * scale,
                 value.SetControl * scale, value.ServeControl * scale, value.ServeControl * scale,
-                value.ServeControl * scale, value.ResultFingerprint);
+                value.ServeControl * scale, value.ResultFingerprint, value.DominantHand);
         }
 
         private static float Unit(float value, string name)

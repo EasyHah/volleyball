@@ -4,7 +4,8 @@
   "references": [
     "Volleyball.Shared",
     "Volleyball.Career.Domain",
-    "Volleyball.Career.Application"
+    "Volleyball.Career.Application",
+    "Volleyball.Career.Persistence"
   ],
   "noEngineReferences": true
 }

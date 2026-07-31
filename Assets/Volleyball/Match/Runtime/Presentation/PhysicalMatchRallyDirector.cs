@@ -726,6 +726,27 @@ namespace Volleyball.Presentation
                 context.TrajectoryPredictionProviderConfiguration);
         }
 
+        private static BallTrajectoryPredictionProviderV4
+            CreateTrajectoryPredictionProviderV5(MatchContextV5 context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            var runtimePhysicsHash = BallTrajectoryPredictionProviderV4
+                .BuildPhysicsConfigurationHash(SimulationParameters);
+            if (!string.Equals(context.PhysicsConfigurationHash, runtimePhysicsHash,
+                    StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "MatchContextV5 PhysicsConfigurationHash does not match the formal runtime physics.",
+                    nameof(context));
+            }
+
+            var configuration = context.TrajectoryPredictionProviderConfiguration;
+            return new BallTrajectoryPredictionProviderV4(
+                new Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV4(
+                    configuration.CacheCapacity, configuration.CacheEvictionPolicy,
+                    configuration.PredictorVersion, configuration.PredictorConfigurationHash));
+        }
+
         public static BallTrajectoryPredictionArtifactV4
             PredictSharedGate5TrajectoryV4(
                 BallTrajectoryPredictionProviderV4 provider,
@@ -851,6 +872,9 @@ namespace Volleyball.Presentation
             var matchContext = context ?? throw new ArgumentNullException(nameof(context));
             if (matchContext.RulesVersion != RulesVersions.FullRallyV3)
                 throw new ArgumentException("Formal match runtime requires V3 rules.", nameof(context));
+            // Reject a frozen context before any scene state is initialized when
+            // its physics cannot reproduce this Formal runtime.
+            CreateTrajectoryPredictionProviderV5(matchContext);
             _matchContext = null;
             _matchContextV5 = matchContext;
             _formalSet = new MatchSet(matchContext.Home.RotationOrder.Select(player => player.PlayerId),
@@ -1236,12 +1260,8 @@ namespace Volleyball.Presentation
             }
             else if (_matchContextV5 != null)
             {
-                _trajectoryPredictionProviderV4 = new BallTrajectoryPredictionProviderV4(
-                    new Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV4(
-                        _matchContextV5.TrajectoryPredictionProviderConfiguration.CacheCapacity,
-                        _matchContextV5.TrajectoryPredictionProviderConfiguration.CacheEvictionPolicy,
-                        _matchContextV5.TrajectoryPredictionProviderConfiguration.PredictorVersion,
-                        _matchContextV5.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash));
+                _trajectoryPredictionProviderV4 =
+                    CreateTrajectoryPredictionProviderV5(_matchContextV5);
                 _lastTrajectoryPredictionArtifactV4 = null;
             }
 

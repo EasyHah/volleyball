@@ -349,15 +349,10 @@ namespace Volleyball.Career.PlayModeTests
             var launch = new CareerFirstMatchLaunchFactoryV5().Create(profile,
                 new TeamId("team.career.v5.runner"), 0,
                 Guid.Parse("b8fe2f4a-5a04-4bea-8668-c0f54aec93cb"), 192837u);
-            var formalConfiguration = FormalSixVsSixRallyBootstrap
-                .CreateFormalTrajectoryPredictionProviderConfiguration();
             return new CareerMatchV5Mapper(
                 FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
-                new TrajectoryPredictionProviderConfigurationV5(
-                    formalConfiguration.CacheCapacity,
-                    formalConfiguration.CacheEvictionPolicy,
-                    formalConfiguration.PredictorVersion,
-                    formalConfiguration.PredictorConfigurationHash))
+                FormalSixVsSixRallyBootstrap
+                    .CreateFormalTrajectoryPredictionProviderConfigurationV5())
                 .ToContext(launch);
         }
 

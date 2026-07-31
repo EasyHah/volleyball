@@ -19,6 +19,7 @@ namespace Volleyball.Bootstrap
         [SerializeField] private InputActionAsset menuActions;
 
         public CareerUiSessionController Controller { get; private set; }
+        public CareerV5MatchLifecycleService V5MatchLifecycle { get; private set; }
 
         private void Awake()
         {
@@ -33,6 +34,8 @@ namespace Volleyball.Bootstrap
                 var random = new CareerDeterministicRandom();
                 var formalSceneRunner = gameObject.AddComponent<
                     CareerFormalSixVsSixMatchRunnerV4>();
+                var formalSceneRunnerV5 = gameObject.AddComponent<
+                    CareerFormalSixVsSixMatchRunnerV5>();
                 var matchRunner = new CareerOfflineMatchRouterV4(
                     formalSceneRunner);
                 var mapper = new CareerMatchV4Mapper(
@@ -45,6 +48,15 @@ namespace Volleyball.Bootstrap
                 var executor = new CareerMatchExecutorV4(
                     matchRunner,
                     mapper);
+                var mapperV5 = new CareerMatchV5Mapper(
+                    FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
+                    FormalSixVsSixRallyBootstrap
+                        .CreateFormalTrajectoryPredictionProviderConfigurationV5());
+                V5MatchLifecycle = new CareerV5MatchLifecycleService(
+                    new CareerFirstMatchLaunchFactoryV5(),
+                    mapperV5,
+                    new CareerMatchExecutorV5(mapperV5, formalSceneRunnerV5),
+                    new CareerV5PendingStore(paths, fileSystem));
                 var adapter = new CareerUiUseCasesAdapter(
                     new CareerLocalUiWorkflow(
                         profileRepository,
@@ -74,6 +86,9 @@ namespace Volleyball.Bootstrap
                 GetComponent<CareerUiShell>().Bind(Controller);
                 ConfigureInput(document);
                 formalSceneRunner.Initialize(
+                    document,
+                    GetComponent<CareerMenuInputRouter>());
+                formalSceneRunnerV5.Initialize(
                     document,
                     GetComponent<CareerMenuInputRouter>());
                 Controller.Initialize();

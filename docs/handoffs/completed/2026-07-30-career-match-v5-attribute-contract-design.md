@@ -1,6 +1,6 @@
 # Career x Match V5 属性合同设计
 
-- Status: active
+- Status: completed
 - Owner: Career / Match collaborator
 - Priority: P1
 - Scope: Career / Match / Shared / Replay 的 V5 属性与逐球员报告边界
@@ -54,3 +54,16 @@
 ## 结束处理
 
 设计确认后，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继实现任务单链接。
+
+## 完成记录（2026-07-31）
+
+V5-A 已在 `codex/career-match-v5-a` 实现：Career 使用独立 V5 profile 与
+canonical pending context store，Bootstrap 创建原生 V5 lifecycle；Formal 6v6
+在场景启动前校验冻结的 physics hash，并将 V5 dominant hand 消费到扣球与发球
+掌面。V4 存档仍是历史恢复边界，未被填充或迁移为 V5 数据。
+
+验证：Shared 44/44、Career 715/715、Match 733/733、完整 EditMode 1492/1492，
+Career PlayMode 9/9；`git diff --check` 通过。Windows Development IL2CPP 无法在
+当前仅安装 MacStandaloneSupport 的编辑器上执行，保留为 PR 后的 Windows 人工
+验证。V5-B 的 `CareerMatchReportV1`、成长/疲劳/信任结算与快速模拟仍明确不在本
+任务范围。

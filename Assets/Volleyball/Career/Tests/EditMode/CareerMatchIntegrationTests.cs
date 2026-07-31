@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -277,6 +278,37 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(restored.DominantHand, Is.EqualTo(DominantHandV5.Left));
             Assert.That(restored.Bases.HeightMillimeters, Is.EqualTo(1975));
             Assert.That(restored.Bases.Set, Is.EqualTo(7100));
+        }
+
+        [Test]
+        public void V5PendingStore_RoundTripsOnlyCanonicalV5Artifacts()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "volleyball-v5-store-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                    new PlayerId("v5.store.player"), "Stored Player", 12,
+                    DominantHandV5.Left, V5Bases(new[] { 6100, 1975, 6200, 6300, 6400, 6500,
+                        6600, 6700, 6800, 6900, 7000, 7100 }));
+                var store = new CareerV5PendingStore(new CareerStoragePaths(root),
+                    new SystemAtomicFileSystem());
+                var context = new CareerMatchV5Mapper(new string('a', 64),
+                    V5TrajectoryConfiguration()).ToContext(V5Launch(profile.Bases, 0));
+                var pending = CareerPendingMatchV5.Create(context);
+
+                store.SaveProfile(profile);
+                store.SavePending(profile.PlayerId, pending.CanonicalContextUtf8);
+
+                Assert.That(store.LoadProfile(profile.PlayerId).Bases.Set, Is.EqualTo(7100));
+                var restored = CareerPendingMatchV5.FromCanonicalContext(store.LoadPending(profile.PlayerId));
+                Assert.That(restored.ContextHash, Is.EqualTo(pending.ContextHash));
+                Assert.That(store.DiscardPending(profile.PlayerId), Is.True);
+                Assert.That(store.LoadPending(profile.PlayerId), Is.Null);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
         }
 
         [Test]

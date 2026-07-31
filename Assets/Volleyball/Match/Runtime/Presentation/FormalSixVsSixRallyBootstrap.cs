@@ -21,6 +21,8 @@ using TrajectoryPredictionCacheEvictionPolicyV4 =
     Volleyball.Shared.Contracts.TrajectoryPredictionCacheEvictionPolicyV4;
 using TrajectoryPredictionProviderConfigurationV4 =
     Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV4;
+using TrajectoryPredictionProviderConfigurationV5 =
+    Volleyball.Shared.Contracts.TrajectoryPredictionProviderConfigurationV5;
 
 namespace Volleyball.Presentation
 {
@@ -39,6 +41,16 @@ namespace Volleyball.Presentation
             CreateFormalTrajectoryPredictionProviderConfiguration()
         {
             return new TrajectoryPredictionProviderConfigurationV4(
+                128,
+                TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
+                BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
+                BallTrajectoryPredictionProviderV4.DefaultPredictorConfigurationHash);
+        }
+
+        public static TrajectoryPredictionProviderConfigurationV5
+            CreateFormalTrajectoryPredictionProviderConfigurationV5()
+        {
+            return new TrajectoryPredictionProviderConfigurationV5(
                 128,
                 TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
                 BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
