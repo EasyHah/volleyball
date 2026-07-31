@@ -1,21 +1,44 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
+using Volleyball.Domain.Players;
 using Volleyball.Domain.Simulation;
-using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Match.Domain.FullRallyV3
 {
     public static class ExecutionEnvelopeFactoryV4
     {
+        // V4 callers project at the legacy Shared boundary; runtime logic only
+        // receives the version-neutral snapshot overload below.
         public static ExecutionEnvelopeV4 Create(
-            DerivedMatchAttributesV4 derivedAttributes,
+            Volleyball.Shared.Contracts.DerivedMatchAttributesV4 derivedAttributes,
             ExecutionIntentV4 intent,
             string samplingKey,
             ExecutionEnvelopePolicyV4 policy)
         {
-            if (derivedAttributes == null)
+            return Create(MatchAbilitySnapshot.FromV4(derivedAttributes), intent,
+                samplingKey, policy);
+        }
+
+        public static ExecutionEnvelopeV4 Create(
+            Volleyball.Shared.Contracts.DerivedMatchAttributesV5 derivedAttributes,
+            ExecutionIntentV4 intent,
+            string samplingKey,
+            ExecutionEnvelopePolicyV4 policy)
+        {
+            return Create(MatchAbilitySnapshot.FromV5(derivedAttributes), intent,
+                samplingKey, policy);
+        }
+
+        public static ExecutionEnvelopeV4 Create(
+            MatchAbilitySnapshot attributes,
+            ExecutionIntentV4 intent,
+            string samplingKey,
+            ExecutionEnvelopePolicyV4 policy)
+        {
+            if (attributes == null)
             {
-                throw new ArgumentNullException(nameof(derivedAttributes));
+                throw new ArgumentNullException(nameof(attributes));
             }
 
             if (intent == null)
@@ -41,7 +64,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
             }
 
             ResolveAuthority(
-                derivedAttributes.Attributes,
+                attributes,
                 intent.CandidateCategory,
                 out var directionControl,
                 out var speedControl,
@@ -86,8 +109,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
 
             return new ExecutionEnvelopeV4(
                 policy.EnvelopeVersion,
-                derivedAttributes.ResultFingerprint,
-                derivedAttributes.ToCanonicalBytes(),
+                attributes.Fingerprint,
+                Encoding.UTF8.GetBytes(attributes.Fingerprint),
                 intent.Identity,
                 intent.CandidateCategory,
                 intent.BaselineTarget,
@@ -150,7 +173,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
         }
 
         private static void ResolveAuthority(
-            MatchAttributesV4 attributes,
+            MatchAbilitySnapshot attributes,
             ExecutionCandidateCategoryV4 category,
             out float directionControl,
             out float speedControl,
@@ -163,8 +186,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
             {
                 case ExecutionCandidateCategoryV4.Receive:
                     var firstTouchControl =
-                        attributes.Receive.FirstTouchControl;
-                    var receiveMovement = attributes.Receive.Movement;
+                        attributes.ReceiveControl;
+                    var receiveMovement = attributes.AttackApproachMobility;
                     directionControl = firstTouchControl;
                     speedControl = firstTouchControl;
                     powerCapacity = receiveMovement;
@@ -174,9 +197,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Receive.Movement", receiveMovement));
                     return;
                 case ExecutionCandidateCategoryV4.Set:
-                    var placementControl = attributes.Set.PlacementControl;
-                    var tempoControl = attributes.Set.TempoControl;
-                    var setMovement = attributes.Set.Movement;
+                    var placementControl = attributes.SetPlacementControl;
+                    var tempoControl = attributes.SetTempoControl;
+                    var setMovement = attributes.AttackApproachMobility;
                     directionControl = placementControl;
                     speedControl = tempoControl;
                     powerCapacity = setMovement;
@@ -187,9 +210,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Set.Movement", setMovement));
                     return;
                 case ExecutionCandidateCategoryV4.Attack:
-                    var attackDirection = attributes.Attack.DirectionControl;
-                    var attackSpeed = attributes.Attack.SpeedControl;
-                    var attackPower = attributes.Attack.PowerCapacity;
+                    var attackDirection = attributes.AttackDirectionControl;
+                    var attackSpeed = attributes.AttackSpeedControl;
+                    var attackPower = attributes.AttackPowerCapacity;
                     directionControl = attackDirection;
                     speedControl = attackSpeed;
                     powerCapacity = attackPower;
@@ -200,9 +223,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Attack.PowerCapacity", attackPower));
                     return;
                 case ExecutionCandidateCategoryV4.Block:
-                    var handControl = attributes.Block.HandControl;
-                    var blockTiming = attributes.Block.Timing;
-                    var lateralMobility = attributes.Block.LateralMobility;
+                    var handControl = attributes.BlockHandControl;
+                    var blockTiming = attributes.BlockTiming;
+                    var lateralMobility = attributes.BlockLateralMobility;
                     directionControl = handControl;
                     speedControl = blockTiming;
                     powerCapacity = lateralMobility;
@@ -213,9 +236,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Block.LateralMobility", lateralMobility));
                     return;
                 case ExecutionCandidateCategoryV4.Serve:
-                    var serveDirection = attributes.Serve.DirectionControl;
-                    var serveSpeed = attributes.Serve.SpeedControl;
-                    var servePower = attributes.Serve.PowerCapacity;
+                    var serveDirection = attributes.ServeDirectionControl;
+                    var serveSpeed = attributes.ServeSpeedControl;
+                    var servePower = attributes.ServePowerCapacity;
                     directionControl = serveDirection;
                     speedControl = serveSpeed;
                     powerCapacity = servePower;
@@ -226,7 +249,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Serve.PowerCapacity", servePower));
                     return;
                 case ExecutionCandidateCategoryV4.SoftAction:
-                    var softTouch = attributes.Set.SoftTouch;
+                    var softTouch = attributes.SetSoftTouch;
                     directionControl = softTouch;
                     speedControl = softTouch;
                     powerCapacity = softTouch;
@@ -235,8 +258,8 @@ namespace Volleyball.Match.Domain.FullRallyV3
                         ("Set.SoftTouch", softTouch));
                     return;
                 case ExecutionCandidateCategoryV4.Defense:
-                    var platformControl = attributes.Defense.PlatformControl;
-                    var coverageMobility = attributes.Defense.CoverageMobility;
+                    var platformControl = attributes.DefensePlatformControl;
+                    var coverageMobility = attributes.AttackApproachMobility;
                     directionControl = platformControl;
                     speedControl = platformControl;
                     powerCapacity = coverageMobility;

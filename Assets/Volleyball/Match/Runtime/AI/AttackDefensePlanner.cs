@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Volleyball.Domain.Simulation;
+using Volleyball.Domain.Players;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Shared.Contracts;
 using ContactCapsuleFrame = Volleyball.Domain.Simulation.ContactCapsuleFrame;
@@ -18,18 +19,25 @@ namespace Volleyball.AI
         public GateITacticalPlayerV3(PlayerId player, TeamSide side, SimVector3 worldPosition,
             bool canAttack, DerivedMatchAttributesV4 attributes)
             : this(player, side, worldPosition, canAttack, false, attributes) { }
+        public GateITacticalPlayerV3(PlayerId player, TeamSide side, SimVector3 worldPosition,
+            bool canAttack, MatchAbilitySnapshot attributes)
+            : this(player, side, worldPosition, canAttack, false, attributes) { }
         // Block eligibility is a captured V3 rule fact (for example front-row
         // status), not a geometry inference.  Compatibility callers stay safe
         // by defaulting it to false until presentation supplies the fact.
         public GateITacticalPlayerV3(PlayerId player, TeamSide side, SimVector3 worldPosition,
             bool canAttack, bool canBlock, DerivedMatchAttributesV4 attributes)
+            : this(player, side, worldPosition, canAttack, canBlock,
+                MatchAbilitySnapshot.FromV4(attributes)) { }
+        public GateITacticalPlayerV3(PlayerId player, TeamSide side, SimVector3 worldPosition,
+            bool canAttack, bool canBlock, MatchAbilitySnapshot attributes)
         {
             Player = player; Side = side; WorldPosition = worldPosition;
             CanAttack = canAttack; CanBlock = canBlock; Attributes = attributes ?? throw new ArgumentNullException(nameof(attributes));
             if (!worldPosition.IsFinite || !Enum.IsDefined(typeof(TeamSide), side)) throw new ArgumentOutOfRangeException(!worldPosition.IsFinite ? nameof(worldPosition) : nameof(side));
         }
         public PlayerId Player { get; } public TeamSide Side { get; } public SimVector3 WorldPosition { get; }
-        public bool CanAttack { get; } public bool CanBlock { get; } public DerivedMatchAttributesV4 Attributes { get; }
+        public bool CanAttack { get; } public bool CanBlock { get; } public MatchAbilitySnapshot Attributes { get; }
     }
 
     public sealed class SetIntentPlanningRequestV3
@@ -41,7 +49,7 @@ namespace Volleyball.AI
             float expectedSetContactTime, BallState acceptedPass, IReadOnlyList<GateITacticalPlayerV3> players,
             DerivedMatchAttributesV4 organizerAttributes, BallTrajectoryPredictionArtifactV4 passPrediction)
             : this(revision, sourceSequence, attackingSide, organizer, expectedSetContactTime,
-                acceptedPass, players, organizerAttributes, passPrediction,
+                acceptedPass, players, MatchAbilitySnapshot.FromV4(organizerAttributes), passPrediction,
                 new BallTrajectoryPredictionProviderV4(new TrajectoryPredictionProviderConfigurationV4(
                     32, TrajectoryPredictionCacheEvictionPolicyV4.FirstInFirstOut,
                     passPrediction?.PredictorVersion ?? BallTrajectoryPredictionProviderV4.CurrentPredictorVersion,
@@ -55,6 +63,16 @@ namespace Volleyball.AI
         public SetIntentPlanningRequestV3(long revision, long sourceSequence, TeamSide attackingSide, PlayerId organizer,
             float expectedSetContactTime, BallState acceptedPass, IReadOnlyList<GateITacticalPlayerV3> players,
             DerivedMatchAttributesV4 organizerAttributes, BallTrajectoryPredictionArtifactV4 passPrediction,
+            BallTrajectoryPredictionProviderV4 trajectoryProvider,
+            BallSimulationParameters simulationParameters, string physicsConfigurationHash,
+            long acceptedPassStateVersion)
+            : this(revision, sourceSequence, attackingSide, organizer, expectedSetContactTime, acceptedPass,
+                players, MatchAbilitySnapshot.FromV4(organizerAttributes), passPrediction, trajectoryProvider,
+                simulationParameters, physicsConfigurationHash, acceptedPassStateVersion) { }
+
+        public SetIntentPlanningRequestV3(long revision, long sourceSequence, TeamSide attackingSide, PlayerId organizer,
+            float expectedSetContactTime, BallState acceptedPass, IReadOnlyList<GateITacticalPlayerV3> players,
+            MatchAbilitySnapshot organizerAttributes, BallTrajectoryPredictionArtifactV4 passPrediction,
             BallTrajectoryPredictionProviderV4 trajectoryProvider,
             BallSimulationParameters simulationParameters, string physicsConfigurationHash,
             long acceptedPassStateVersion)
@@ -73,7 +91,7 @@ namespace Volleyball.AI
         }
         public long Revision { get; } public long SourceSequence { get; } public TeamSide AttackingSide { get; } public PlayerId Organizer { get; }
         public float ExpectedSetContactTime { get; } public BallState AcceptedPass { get; } public IReadOnlyList<GateITacticalPlayerV3> Players { get; }
-        public DerivedMatchAttributesV4 OrganizerAttributes { get; } public BallTrajectoryPredictionArtifactV4 PassPrediction { get; }
+        public MatchAbilitySnapshot OrganizerAttributes { get; } public BallTrajectoryPredictionArtifactV4 PassPrediction { get; }
         // The planner predicts a fresh Set artifact from the accepted pass state.
         // The pass artifact remains evidence of the preceding contact only.
         public BallTrajectoryPredictionProviderV4 TrajectoryProvider { get; }
@@ -245,7 +263,7 @@ namespace Volleyball.AI
             return new SimVector3(
                 attacker.WorldPosition.X,
                 Math.Max(2.35f,
-                    attacker.Attributes.Attributes.Attack.ContactHeightMeters -
+                    attacker.Attributes.AttackContactHeightMeters -
                     .35f),
                 depth);
         }
@@ -314,9 +332,9 @@ namespace Volleyball.AI
                     var teammates = request.Players.Where(value => value.Side == attacker.Side)
                         .Select(value => new ToolRecoveryTeammateV3(value.Player, true,
                             value.Player.Equals(attacker.Player) ? 0f : ReachProbability(value, reboundEvidence),
-                            value.Player.Equals(attacker.Player) ? 0f : value.Attributes.Attributes.Defense.PlatformControl)).ToArray();
+                            value.Player.Equals(attacker.Player) ? 0f : value.Attributes.DefensePlatformControl)).ToArray();
                     var exits = ResolveToolRecoveryExits(request, attacker);
-                    var blockProbability = blocker.Attributes.Attributes.Block.Timing * blocker.Attributes.Attributes.Block.HandControl;
+                    var blockProbability = blocker.Attributes.BlockTiming * blocker.Attributes.BlockHandControl;
                     var homeProbability = reboundHome ? 1f : 0f;
                     var recoveryActor = teammates.Where(value => value.ReachProbability > 0f && value.ControlMargin > 0f)
                         .OrderByDescending(value => value.ReachProbability * value.ControlMargin).ThenBy(value => value.Actor.ToString(), StringComparer.Ordinal).FirstOrDefault();
@@ -368,7 +386,7 @@ namespace Volleyball.AI
         {
             var contact = trajectory.PredictionSnapshot.Samples.Where(sample => Math.Abs(sample.Position.Z) <= .35f)
                 .OrderBy(sample => HorizontalDistance(sample.Position, blocker.WorldPosition)).FirstOrDefault();
-            return contact.Position.IsFinite && contact.Position.Y <= blocker.Attributes.Attributes.Block.ReachHeightMeters &&
+            return contact.Position.IsFinite && contact.Position.Y <= blocker.Attributes.BlockReachHeightMeters &&
                 HorizontalDistance(contact.Position, blocker.WorldPosition) <= 3f;
         }
         private static float HorizontalDistance(SimVector3 first, SimVector3 second)
@@ -466,11 +484,12 @@ namespace Volleyball.AI
         }
 
         private static IEnumerable<GateITacticalPlayerV3> Eligible(SetIntentPlanningRequestV3 request) => request.Players.Where(x => x.Side == request.AttackingSide && x.CanAttack);
-        private static float AttackScore(GateITacticalPlayerV3 x) { var a = x.Attributes.Attributes.Attack; return a.PowerCapacity + a.DirectionControl + a.SpeedControl + a.ApproachMobility; }
+        private static float AttackScore(GateITacticalPlayerV3 x) => x.Attributes.AttackPowerCapacity +
+            x.Attributes.AttackDirectionControl + x.Attributes.AttackSpeedControl + x.Attributes.AttackApproachMobility;
         private static IEnumerable<GateIAttackExecutionEvidenceV3> Generate(GateITacticalPlayerV3 actor, AttackPlanningRequestV3 request)
         {
             var set = request.SetIntent;
-            var a = actor.Attributes.Attributes.Attack;
+            var a = actor.Attributes;
             foreach (var action in new[] { AttackActionClassV3.PowerLine, AttackActionClassV3.PowerCross, AttackActionClassV3.PowerEdge, AttackActionClassV3.PowerOverHand, AttackActionClassV3.Tip, AttackActionClassV3.Roll, AttackActionClassV3.Push, AttackActionClassV3.HighSurvival, AttackActionClassV3.BlockOut, AttackActionClassV3.BlockToolRecovery })
             {
                 var power = IsPower(action); var tool = action == AttackActionClassV3.BlockToolRecovery;
@@ -532,7 +551,7 @@ namespace Volleyball.AI
                     identity);
                 var arrivalFeasible = (actor.WorldPosition - set.Target).Magnitude <= 8f;
                 var contactGeometryFeasible = set.Target.Y >= 2.60f;
-                var qualified = power && !powerCapacityInsufficient && arrivalFeasible && contactGeometryFeasible && a.PowerCapacity >= .45f && ratio >= .6f;
+                var qualified = power && !powerCapacityInsufficient && arrivalFeasible && contactGeometryFeasible && a.AttackPowerCapacity >= .45f && ratio >= .6f;
                 // Fallback choices share one expected-continuation probability
                 // scale.  A tool's final value is its separately qualified
                 // block/rebound/recovery product; its source placeholder must
@@ -540,13 +559,13 @@ namespace Volleyball.AI
                 // sample ratio generated by their SoftAction envelope and the
                 // attacker's direction-control continuation probability.
                 var value = power
-                    ? .65f + a.PowerCapacity + (ratio * .2f) - ((int)action * .001f)
+                    ? .65f + a.AttackPowerCapacity + (ratio * .2f) - ((int)action * .001f)
                     : tool
                         ? 0f
                         : Math.Max(0f, Math.Min(1f,
-                            (a.DirectionControl * ratio) - ((int)action * .001f)));
+                            (a.AttackDirectionControl * ratio) - ((int)action * .001f)));
                 var elimination = power && !qualified
-                    ? powerCapacityInsufficient || a.PowerCapacity < .45f
+                    ? powerCapacityInsufficient || a.AttackPowerCapacity < .45f
                         ? "PowerCapacityInsufficient" : !arrivalFeasible ? "ArrivalInfeasible" : !contactGeometryFeasible
                         ? "ContactGeometryInfeasible" : "InsufficientLegalCrossRatio"
                     : (tool ? "Tool recovery requires qualification." : string.Empty);

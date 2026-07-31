@@ -748,7 +748,7 @@ namespace Volleyball.Presentation
         }
 
         public static ExecutionEnvelopeV4 PlanExecutionEnvelopeV4(
-            Volleyball.Shared.Contracts.DerivedMatchAttributesV4 derivedAttributes,
+            MatchAbilitySnapshot derivedAttributes,
             ExecutionIntentV4 selectedIntent,
             string samplingKey,
             ExecutionEnvelopePolicyV4 policy)
@@ -758,6 +758,16 @@ namespace Volleyball.Presentation
                 selectedIntent,
                 samplingKey,
                 policy);
+        }
+
+        public static ExecutionEnvelopeV4 PlanExecutionEnvelopeV4(
+            Volleyball.Shared.Contracts.DerivedMatchAttributesV4 derivedAttributes,
+            ExecutionIntentV4 selectedIntent,
+            string samplingKey,
+            ExecutionEnvelopePolicyV4 policy)
+        {
+            return PlanExecutionEnvelopeV4(MatchAbilitySnapshot.FromV4(derivedAttributes),
+                selectedIntent, samplingKey, policy);
         }
 
         public static ExecutionSampleClassificationV4 ExecuteExecutionSampleV4(
@@ -1924,7 +1934,7 @@ namespace Volleyball.Presentation
                 $"{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}:{(int)decision.Action}";
             var executionSamplingKey = executionIntentIdentity + ":sample";
             var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
-                actor.Ability.Derived,
+                actor.Ability.Snapshot,
                 new ExecutionIntentV4(
                     executionIntentIdentity,
                     executionCandidateCategory,
@@ -2247,10 +2257,10 @@ namespace Volleyball.Presentation
                     _v3RulesAdapter.Eligibility.For(pair.Value.StableId)
                         .CanAttackAboveNetFromFrontZone,
                     _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
-                    pair.Value.Ability.Derived)).ToArray();
+                    pair.Value.Ability.Snapshot)).ToArray();
             var result = _formalAuthority.AttackCoordinator.PlanSetIntent(new SetIntentPlanningRequestV3(
                 _formalAuthority.CurrentPlanRevision, _formalAuthority.NextSourceSequence(), side, organizer.StableId,
-                _ball.SimulationTime + flightSeconds, PredictBallState(flightSeconds), players, organizer.Ability.Derived,
+                _ball.SimulationTime + flightSeconds, PredictBallState(flightSeconds), players, organizer.Ability.Snapshot,
                 passPrediction ?? _lastTrajectoryPredictionArtifactV4 ?? throw new InvalidOperationException("Accepted pass trajectory is required."),
                 _trajectoryPredictionProviderV4, SimulationParameters, _matchContext.PhysicsConfigurationHash,
                 _formalAuthority.CurrentSourceSequence));
@@ -3829,7 +3839,7 @@ namespace Volleyball.Presentation
             var target = new SimVector3(setterZone.X, 2.5f, setterZone.Z);
             var outgoing = ReturnVelocitySolver.Solve(contactCenter, target, .60f,
                 SimulatedBall.DefaultFixedStep, SimulationParameters).InitialVelocity;
-            var envelope = PlanExecutionEnvelopeV4(receiver.Ability.Derived,
+            var envelope = PlanExecutionEnvelopeV4(receiver.Ability.Snapshot,
                 new ExecutionIntentV4(identity, ExecutionCandidateCategoryV4.Receive,
                     target, outgoing, .5f), identity + ":sample",
                 ExecutionEnvelopePolicyV4.GateI);
@@ -4043,7 +4053,7 @@ namespace Volleyball.Presentation
                 .Select(pair => new GateITacticalPlayerV3(pair.Value.StableId, ToSide(pair.Key.Team),
                     ToSimulation(pair.Value.transform.position), pair.Key.Team == actor.Team,
                     _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
-                    pair.Value.Ability.Derived)).ToArray();
+                    pair.Value.Ability.Snapshot)).ToArray();
             _formalAuthority.AttackCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
                 _formalAuthority.NextSourceSequence(), accepted), new AttackPlanningRequestV3(intent.PlanRevision,
                 intent, accepted, players, _trajectoryPredictionProviderV4,
@@ -4829,7 +4839,7 @@ namespace Volleyball.Presentation
                 $"{(int)decision.Actor.Team}:{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}";
             var executionSamplingKey = executionIntentIdentity + ":sample";
             var plannedExecutionEnvelope = PlanExecutionEnvelopeV4(
-                actor.Ability.Derived,
+                actor.Ability.Snapshot,
                 new ExecutionIntentV4(
                     executionIntentIdentity,
                     executionCandidateCategory,
@@ -5099,7 +5109,7 @@ namespace Volleyball.Presentation
                            $"{SuccessfulContacts}:{(int)blocker.Team}:{(int)blocker.Role}:{blocker.RosterSlot}";
             var samplingKey = identity + ":sample";
             var envelope = PlanExecutionEnvelopeV4(
-                _players[blocker].Ability.Derived,
+                _players[blocker].Ability.Snapshot,
                 new ExecutionIntentV4(
                     identity,
                     ExecutionCandidateCategoryV4.Block,
@@ -6218,15 +6228,15 @@ namespace Volleyball.Presentation
             var observers = _players
                 .Where(pair => pair.Key.Team == observingTeam)
                 .OrderByDescending(pair => defenseAwareness
-                    ? pair.Value.Ability.Attributes.Defense.Awareness
-                    : pair.Value.Ability.Attributes.Receive.Awareness)
+                    ? pair.Value.Ability.Snapshot.DefenseAwareness
+                    : pair.Value.Ability.Snapshot.ReceiveAwareness)
                 .ThenBy(pair => pair.Value.StableId.Value,
                     StringComparer.Ordinal)
                 .ToArray();
             var observer = observers[0].Value;
             var awareness = defenseAwareness
-                ? observer.Ability.Attributes.Defense.Awareness
-                : observer.Ability.Attributes.Receive.Awareness;
+                ? observer.Ability.Snapshot.DefenseAwareness
+                : observer.Ability.Snapshot.ReceiveAwareness;
             var allowed = legalSupport
                 .Distinct()
                 .OrderBy(value => value.Value, StringComparer.Ordinal)
