@@ -122,6 +122,8 @@ namespace Volleyball.Shared.EditModeTests
             Assert.That(context.ContractVersion, Is.EqualTo(ContractVersions.MatchV5));
             Assert.That(context.ContextHash, Is.EqualTo(repeated.ContextHash));
             Assert.That(ContractJson.SerializeV5(context), Is.EqualTo(ContractJson.SerializeV5(repeated)));
+            Assert.That(ContractJson.SerializeV5(ContractJson.DeserializeMatchContextV5(
+                ContractJson.SerializeV5(context))), Is.EqualTo(ContractJson.SerializeV5(context)));
             Assert.That(context.Home.RotationOrder, Has.Count.EqualTo(6));
             var correct = MatchAttributeDerivationV5.Derive(CreateV5Bases(5000, 1800), DominantHandV5.Right);
             var different = MatchAttributeDerivationV5.Derive(CreateV5Bases(5001, 1800), DominantHandV5.Right);

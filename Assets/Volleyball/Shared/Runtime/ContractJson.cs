@@ -14,6 +14,44 @@ namespace Volleyball.Shared.Contracts
             return CanonicalMatchJsonV5.SerializeContext(value);
         }
 
+        public static MatchContextV5 DeserializeMatchContextV5(string json)
+        {
+            try
+            {
+                var root = StrictJsonV4.ParseObject(json);
+                StrictJsonV4.RequireExactProperties(root, "contractVersion", "rulesVersion", "sessionId",
+                    "seed", "physicsConfigurationHash", "home", "away", "contextHash");
+                if (StrictJsonV4.RequiredInt(root, "contractVersion") != ContractVersions.MatchV5)
+                {
+                    throw new ContractValidationException("Unsupported V5 context contract version.");
+                }
+
+                var context = MatchContextV5.Create(
+                    StrictJsonV4.RequiredGuid(root, "sessionId"),
+                    StrictJsonV4.RequiredInt(root, "seed"),
+                    DeserializeTeamV5(StrictJsonV4.RequiredObject(root, "home")),
+                    DeserializeTeamV5(StrictJsonV4.RequiredObject(root, "away")),
+                    StrictJsonV4.RequiredString(root, "physicsConfigurationHash"),
+                    StrictJsonV4.RequiredInt(root, "rulesVersion"));
+                if (!string.Equals(context.ContextHash, StrictJsonV4.RequiredString(root, "contextHash"),
+                    StringComparison.Ordinal))
+                {
+                    throw new ContractValidationException("contextHash does not match the native V5 context payload.");
+                }
+
+                return context;
+            }
+            catch (ContractValidationException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is FormatException || exception is OverflowException ||
+                                               exception is ArgumentException)
+            {
+                throw new ContractValidationException("Native V5 context JSON is malformed.", exception);
+            }
+        }
+
         public static string SerializeV5(MatchResultV5 value)
         {
             if (value == null) throw new ArgumentNullException(nameof(value));
@@ -294,6 +332,55 @@ namespace Volleyball.Shared.Contracts
                 StrictJsonV4.RequiredString(value, "displayName"),
                 (TeamSide)StrictJsonV4.RequiredInt(value, "side"),
                 players);
+        }
+
+        private static TeamSnapshotV5 DeserializeTeamV5(StrictJsonObjectV4 value)
+        {
+            StrictJsonV4.RequireExactProperties(value, "teamId", "displayName", "side", "rotationOrder");
+            var values = StrictJsonV4.RequiredArray(value, "rotationOrder");
+            var players = new PlayerSnapshotV5[values.Count];
+            for (var index = 0; index < players.Length; index++)
+            {
+                players[index] = DeserializePlayerV5(StrictJsonV4.AsObject(values[index], "rotationOrder"));
+            }
+
+            return new TeamSnapshotV5(new TeamId(StrictJsonV4.RequiredString(value, "teamId")),
+                StrictJsonV4.RequiredString(value, "displayName"),
+                (TeamSide)StrictJsonV4.RequiredInt(value, "side"), players);
+        }
+
+        private static PlayerSnapshotV5 DeserializePlayerV5(StrictJsonObjectV4 value)
+        {
+            StrictJsonV4.RequireExactProperties(value, "playerId", "displayName", "jerseyNumber", "position",
+                "dominantHand", "bases", "derived");
+            var bases = StrictJsonV4.RequiredObject(value, "bases");
+            StrictJsonV4.RequireExactProperties(bases, "strength", "heightMillimeters", "jump", "movement",
+                "reaction", "coordination", "attack", "defense", "courtIq", "block", "serve", "set");
+            var derived = StrictJsonV4.RequiredObject(value, "derived");
+            StrictJsonV4.RequireExactProperties(derived, "formulaVersion", "coefficientVersion", "inputFingerprint",
+                "resultFingerprint");
+            var player = new PlayerSnapshotV5(
+                new PlayerId(StrictJsonV4.RequiredString(value, "playerId")),
+                StrictJsonV4.RequiredString(value, "displayName"),
+                StrictJsonV4.RequiredInt(value, "jerseyNumber"),
+                (PlayerPosition)StrictJsonV4.RequiredInt(value, "position"),
+                (DominantHandV5)StrictJsonV4.RequiredInt(value, "dominantHand"),
+                new CareerBaseAttributesV5(
+                    StrictJsonV4.RequiredInt(bases, "strength"), StrictJsonV4.RequiredInt(bases, "heightMillimeters"),
+                    StrictJsonV4.RequiredInt(bases, "jump"), StrictJsonV4.RequiredInt(bases, "movement"),
+                    StrictJsonV4.RequiredInt(bases, "reaction"), StrictJsonV4.RequiredInt(bases, "coordination"),
+                    StrictJsonV4.RequiredInt(bases, "attack"), StrictJsonV4.RequiredInt(bases, "defense"),
+                    StrictJsonV4.RequiredInt(bases, "courtIq"), StrictJsonV4.RequiredInt(bases, "block"),
+                    StrictJsonV4.RequiredInt(bases, "serve"), StrictJsonV4.RequiredInt(bases, "set")));
+            if (player.Derived.FormulaVersion != StrictJsonV4.RequiredInt(derived, "formulaVersion") ||
+                player.Derived.CoefficientVersion != StrictJsonV4.RequiredInt(derived, "coefficientVersion") ||
+                !string.Equals(player.Derived.InputFingerprint, StrictJsonV4.RequiredString(derived, "inputFingerprint"), StringComparison.Ordinal) ||
+                !string.Equals(player.Derived.ResultFingerprint, StrictJsonV4.RequiredString(derived, "resultFingerprint"), StringComparison.Ordinal))
+            {
+                throw new ContractValidationException("Serialized derived fingerprints do not match the recomputed V5 player.");
+            }
+
+            return player;
         }
 
         private static PlayerSnapshotV4 DeserializePlayerV4(
