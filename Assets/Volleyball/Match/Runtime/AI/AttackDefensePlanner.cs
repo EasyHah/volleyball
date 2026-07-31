@@ -304,6 +304,16 @@ namespace Volleyball.AI
         public GateISetIntentV3 PlanAcceptedSetIntent(
             AcceptedSetIntentPlanningRequestV3 request)
         {
+            if (!TryPlanAcceptedSetIntent(request, out var intent))
+                throw new InvalidOperationException(
+                    "The accepted Set has no future airborne attack contact.");
+            return intent;
+        }
+
+        public bool TryPlanAcceptedSetIntent(
+            AcceptedSetIntentPlanningRequestV3 request,
+            out GateISetIntentV3 intent)
+        {
             if (request == null) throw new ArgumentNullException(nameof(request));
             var attacker = request.Players
                 .Where(player =>
@@ -351,16 +361,18 @@ namespace Volleyball.AI
                     ExecutionDegradationStepV4.FullSampling));
             var contact = trajectory.PredictionSnapshot.Samples
                 .Where(value =>
-                    value.TimeSeconds >= .25f &&
-                    value.Position.Y > request.AcceptedSetBall.Radius)
-                .OrderBy(value => Math.Abs(value.TimeSeconds - .55f))
+                    value.TimeSeconds >= .05f &&
+                    value.Position.Y >= 1.95f)
+                .OrderBy(value => Math.Abs(value.TimeSeconds - .25f))
                 .ThenBy(value => value.TimeSeconds)
                 .FirstOrDefault();
             if (contact.TimeSeconds <= 0f)
-                throw new InvalidOperationException(
-                    "The accepted Set has no future airborne attack contact.");
+            {
+                intent = null;
+                return false;
+            }
 
-            return new GateISetIntentV3(
+            intent = new GateISetIntentV3(
                 request.Revision,
                 request.SourceSequence,
                 request.Organizer,
@@ -370,6 +382,7 @@ namespace Volleyball.AI
                 classification,
                 trajectory,
                 contact.TimeSeconds);
+            return true;
         }
 
         private static SimVector3 AttackTarget(GateITacticalPlayerV3 attacker)

@@ -308,7 +308,7 @@ namespace Volleyball.Presentation
         private PlayerId? _scheduledBlockPrimary;
         private float _committedGateIBlockTime = -1f;
         private bool _awaitingPostBlockCrossing;
-        private bool _trainingPostBlockAuthoritySeeded;
+        private bool _trainingHistoricalAttackAuthoritySeeded;
         private TeamId? _postBlockerTeam;
         private StablePlayerId? _postBlockerActor;
         private SimVector3 _postBlockImpactCenter;
@@ -1338,7 +1338,7 @@ namespace Volleyball.Presentation
             _activePostAttackReceives.Clear();
             _scheduledBlockPrimary = null;
             _awaitingPostBlockCrossing = false;
-            _trainingPostBlockAuthoritySeeded = false;
+            _trainingHistoricalAttackAuthoritySeeded = false;
             _postBlockerTeam = null;
             _postBlockerActor = null;
             _postBlockImpactCenter = SimVector3.Zero;
@@ -1423,12 +1423,16 @@ namespace Volleyball.Presentation
                     BeginPossessionDecision(team, EstimateTrainingLeadSeconds());
                     break;
                 case RallyStartRecipeV3.AfterReceive:
-                    ScheduleDecision(
-                        PlanDecision(
-                            team,
-                            RallyDecisionStage.Organize,
-                            EstimateTrainingLeadSeconds()),
-                        EstimateTrainingLeadSeconds());
+                    if (!runtimeLastActor.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Post-Receive training start requires the mapped receiver.");
+                    }
+
+                    SeedGateHAfterAcceptedReceive(
+                        team,
+                        StableId(runtimeLastActor.Value),
+                        scenario.ContentHash);
                     break;
                 case RallyStartRecipeV3.AfterSet:
                     if (!runtimeLastActor.HasValue)
@@ -1443,6 +1447,31 @@ namespace Volleyball.Presentation
                         false);
                     break;
                 case RallyStartRecipeV3.AfterAttack:
+                    if (!runtimeLastActor.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Post-attack training start requires the mapped attacker.");
+                    }
+
+                    var historicalAttackingTeam =
+                        runtimeLastActor.Value.Team;
+                    var historicalOrganizer = _players
+                        .Where(pair =>
+                            pair.Key.Team == historicalAttackingTeam &&
+                            !pair.Value.StableId.Equals(
+                                scenario.StartState.LastLegalActor.Value))
+                        .OrderBy(pair =>
+                            pair.Key.Role == PlayerRole.Setter ? 0 : 1)
+                        .ThenBy(pair => pair.Key.RosterSlot)
+                        .Select(pair => pair.Value.StableId)
+                        .First();
+                    if (SeedGateIAfterAcceptedSet(
+                            historicalAttackingTeam,
+                            historicalOrganizer,
+                            true))
+                    {
+                        _trainingHistoricalAttackAuthoritySeeded = true;
+                    }
                     break;
                 case RallyStartRecipeV3.AfterAcceptedBlock:
                     if (!runtimeLastActor.HasValue)
@@ -1468,11 +1497,15 @@ namespace Volleyball.Presentation
                         .ThenBy(pair => pair.Key.RosterSlot)
                         .Select(pair => pair.Value.StableId)
                         .First();
-                    SeedGateIAfterAcceptedSet(
-                        priorAttackingTeam,
-                        priorOrganizer,
-                        true);
-                    _trainingPostBlockAuthoritySeeded = true;
+                    if (!SeedGateIAfterAcceptedSet(
+                            priorAttackingTeam,
+                            priorOrganizer,
+                            true))
+                    {
+                        throw new InvalidOperationException(
+                            "Post-block training start requires a complete continuation plan.");
+                    }
+                    _trainingHistoricalAttackAuthoritySeeded = true;
                     PostBlockPossessionDeferrals++;
                     PostBlockContinuations++;
                     break;
@@ -1499,6 +1532,47 @@ namespace Volleyball.Presentation
             }
 
             return .55f;
+        }
+
+        private void SeedGateHAfterAcceptedReceive(
+            TeamId team,
+            StablePlayerId receiver,
+            string scenarioHash)
+        {
+            _activeTacticalWeights = LocalTacticalWeights();
+            var planning = PlanGateHReceive(
+                team,
+                EstimateTrainingLeadSeconds(),
+                receiver);
+            if (planning == null)
+            {
+                return;
+            }
+
+            var state = _formalAuthority.ReceiveCoordinator.State;
+            _formalAuthority.ReceiveCoordinator
+                .SeedPlannedReceiveAsAlreadyAccepted(
+                    new AcceptedReceiveV3(
+                        state.Revision,
+                        _formalAuthority.NextSourceSequence(),
+                        receiver,
+                        PredictGate5BallCenterV4(
+                            team,
+                            RallyDecisionStage.Organize,
+                            ReceiveFlightSeconds),
+                        PlanCoverageReason.WithinConditionalEnvelope,
+                        "training-semantic-receive-trajectory:" +
+                        scenarioHash,
+                        "training-semantic-receive-classification:" +
+                        scenarioHash));
+            var organization =
+                _formalAuthority.ReceiveCoordinator.CurrentPlanning;
+            if (organization.Decision.HasDecision)
+            {
+                ScheduleDecision(
+                    organization.Decision,
+                    ReceiveFlightSeconds);
+            }
         }
 
         private void BeginPossession(TeamId team, float availableSeconds)
@@ -2820,12 +2894,18 @@ namespace Volleyball.Presentation
             }
             if (receives.Length == 0)
             {
-                return _trainingPostBlockAuthoritySeeded &&
-                       OpenDeclaredSeededDefenseWindow(
-                           receivingTeam,
-                           actualPosition,
-                           actualVelocity,
-                           out openedReceipt);
+                if (!_trainingHistoricalAttackAuthoritySeeded)
+                {
+                    return false;
+                }
+
+                var opened = OpenDeclaredSeededDefenseWindow(
+                    receivingTeam,
+                    actualPosition,
+                    actualVelocity,
+                    out openedReceipt);
+                _trainingHistoricalAttackAuthoritySeeded = false;
+                return opened;
             }
 
             // Pre-crossing executions authorize actors and commit movement, but
@@ -3745,6 +3825,14 @@ namespace Volleyball.Presentation
                         break;
                     }
 
+                    if (authorityContact?.Transition.After.RemainingHits == 0)
+                    {
+                        _scheduledDecision = null;
+                        _scheduledPrimaryActor = null;
+                        _contactDeadlineActive = false;
+                        break;
+                    }
+
                     if (GateHAuthorityEnabled)
                     {
                         AdvanceGateHAfterReceive(
@@ -4325,7 +4413,7 @@ namespace Volleyball.Presentation
                 false);
         }
 
-        private void SeedGateIAfterAcceptedSet(
+        private bool SeedGateIAfterAcceptedSet(
             TeamId attackingTeam,
             StablePlayerId organizer,
             bool seedPostBlockContinuation)
@@ -4342,9 +4430,9 @@ namespace Volleyball.Presentation
                 attackingTeam,
                 organizer);
             var organizerPlayer = PlayerForStableId(organizer);
-            var result = _formalAuthority.AttackCoordinator
-                .SeedAcceptedSetIntent(
-                    new AcceptedSetIntentPlanningRequestV3(
+            if (!_formalAuthority.AttackCoordinator
+                    .TrySeedAcceptedSetIntent(
+                        new AcceptedSetIntentPlanningRequestV3(
                         _formalAuthority.CurrentPlanRevision,
                         _formalAuthority.NextSourceSequence(),
                         ToSide(attackingTeam),
@@ -4358,7 +4446,11 @@ namespace Volleyball.Presentation
                         _matchContext.PhysicsConfigurationHash,
                         (long)(uint)BitConverter.ToInt32(
                             BitConverter.GetBytes(_ball.SimulationTime),
-                            0)));
+                            0)),
+                        out var result))
+            {
+                return false;
+            }
             _formalAuthority.ActiveSetIntent = result;
             GateISetIntentCommitted?.Invoke(result.Receipt);
             var intent = result.Intent;
@@ -4372,6 +4464,7 @@ namespace Volleyball.Presentation
                 accepted,
                 players,
                 seedPostBlockContinuation);
+            return true;
         }
 
         private GateITacticalPlayerV3[] BuildGateITacticalPlayers(
@@ -4451,7 +4544,8 @@ namespace Volleyball.Presentation
                 defensePlayers, assignments, exits, perception));
             if (seedPostBlockContinuation)
             {
-                _formalAuthority.AttackCoordinator.SeedAfterAcceptedBlock(
+                _formalAuthority.AttackCoordinator
+                    .SeedAfterAcceptedAttackWithoutHistoricalCommands(
                     intent.PlanRevision,
                     _formalAuthority.NextSourceSequence(),
                     defense);
@@ -5762,6 +5856,7 @@ namespace Volleyball.Presentation
 
             var sourceTeam = _flightSegmentOriginTeam.Value;
             InvalidatePreNetContinuation();
+            CancelGateIUnacceptedSetChainForNetDeflection();
             if (!IsMovingTowardTeam(_ball.State.Velocity, sourceTeam))
             {
                 // A deflection headed across the net is deliberately left to
@@ -5788,6 +5883,45 @@ namespace Volleyball.Presentation
             {
                 _status = $"Net deflection; {sourceTeam} receive replanned";
             }
+        }
+
+        private void CancelGateIUnacceptedSetChainForNetDeflection()
+        {
+            if (!GateIAuthorityEnabled ||
+                _formalAuthority?.AttackCoordinator == null)
+            {
+                return;
+            }
+
+            var phase =
+                _formalAuthority.AttackCoordinator.State.Phase;
+            if (phase ==
+                AttackDefenseAuthorityPhaseV3.AttackCommitted)
+            {
+                ExpirePendingGateIReceiveWindows(
+                    "SetNetDeflectionBeforeAttack");
+                _formalAuthority.AttackCoordinator
+                    .CancelUnacceptedAttackAndReset(
+                        _formalAuthority.AttackCoordinator.State.Revision,
+                        _formalAuthority.NextSourceSequence());
+            }
+            else if (phase ==
+                     AttackDefenseAuthorityPhaseV3.SetIntentPlanned)
+            {
+                _formalAuthority.AttackCoordinator
+                    .CancelSetIntentAndReset(
+                        _formalAuthority.AttackCoordinator.State.Revision,
+                        _formalAuthority.NextSourceSequence());
+            }
+            else
+            {
+                return;
+            }
+
+            _formalAuthority.ClearGateI();
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = null;
+            _committedGateIBlockTime = -1f;
         }
 
         private void InvalidatePreNetContinuation()
@@ -5975,7 +6109,7 @@ namespace Volleyball.Presentation
                     actualVelocity,
                     out openedReceipt);
             }
-            _trainingPostBlockAuthoritySeeded = false;
+            _trainingHistoricalAttackAuthoritySeeded = false;
 
             if (openedReceipt != null)
             {
@@ -6074,7 +6208,9 @@ namespace Volleyball.Presentation
                     PostAttackContinuationStateV4.DefendingSideFloorDefense;
             }
 
-            if (GateIAuthorityEnabled)
+            if (GateIAuthorityEnabled &&
+                _formalAuthority.AttackCoordinator.State.Phase !=
+                AttackDefenseAuthorityPhaseV3.Idle)
             {
                 OpenPendingGateIReceiveWindow(
                     receivingTeam,

@@ -1,0 +1,121 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e719cc843cec41c5853605b9b2b5aa2c, type: 3}
+  m_Name: post-block-net
+  m_EditorClassIdentifier: Volleyball.Match.Presentation::Volleyball.Presentation.TrainingLab.TrainingScenarioPresetV1
+  scenarioId: training-v1/post-block-net
+  displayName: 'Accepted block: rebound contacts net'
+  source: project-catalog
+  formatVersion: 1
+  matchContextJson: '{"contractVersion":4,"rulesVersion":3,"sessionId":"66666666-2222-6666-2222-666666666666","seed":7351,"physicsConfigurationHash":"b6b69fb7a07bfeb140ae957afc3646102277e33dbd85fcfa32a05ae61e4dee73","trajectoryPredictionProviderConfiguration":{"cacheCapacity":128,"cacheEvictionPolicy":0,"predictorVersion":4,"predictorConfigurationHash":"83c6de7001833621977e4765e07da2db87efa1a3f55d121186808bbb1524bb4c"},"formulaVersion":1,"coefficientVersion":1,"home":{"teamId":"formal-home","displayName":"Blue","side":0,"rotationOrder":[{"playerId":"home-opposite","displayName":"Opposite","jerseyNumber":1,"position":3,"dominantHand":1,"physical":{"heightMeters":2,"standingReachMeters":2.57,"jump":0.95,"mobility":0.9,"reaction":0.89,"coordination":0.9},"technical":{"attackTechnique":0.95,"attackPower":0.95,"blockTechnique":0.91,"defenseTechnique":0.75,"receiveTechnique":0.75,"setTechnique":0.74,"serveTechnique":0.91,"softTouch":0.78,"courtAwareness":0.88},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"6af37cb4bb458eed9acde459156384565fba2c7788ff6afb196d6c58f3d301c5","resultFingerprint":"6947412cdbf1b222fc674703fd9a10f27520d8b59d18316c7766b658f0466d62"}},{"playerId":"home-outside-a","displayName":"Outside
+    A","jerseyNumber":2,"position":1,"dominantHand":1,"physical":{"heightMeters":1.96,"standingReachMeters":2.51,"jump":0.93,"mobility":0.92,"reaction":0.91,"coordination":0.92},"technical":{"attackTechnique":0.94,"attackPower":0.92,"blockTechnique":0.86,"defenseTechnique":0.86,"receiveTechnique":0.86,"setTechnique":0.76,"serveTechnique":0.9,"softTouch":0.82,"courtAwareness":0.91},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"09589683b770f532c22c16d5b9260e272090210dbf81e5ec6db378b376dc6f08","resultFingerprint":"ea843d058fdac0f6e2d892aeaa9513278154aa59cebd2644d7b096da4ead28bf"}},{"playerId":"home-middle","displayName":"Middle","jerseyNumber":3,"position":2,"dominantHand":1,"physical":{"heightMeters":2.04,"standingReachMeters":2.62,"jump":0.97,"mobility":0.87,"reaction":0.91,"coordination":0.9},"technical":{"attackTechnique":0.91,"attackPower":0.92,"blockTechnique":0.96,"defenseTechnique":0.72,"receiveTechnique":0.72,"setTechnique":0.7,"serveTechnique":0.82,"softTouch":0.76,"courtAwareness":0.86},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"f45a21dfe45469f483cf26f88ded64dbf50836b09b17aa27b05f68103c1d34d6","resultFingerprint":"45b53c9a3f8bd7d89ce0e0c828861e3208c1501675656da8c68d6404a7c756d4"}},{"playerId":"home-setter","displayName":"Setter","jerseyNumber":4,"position":0,"dominantHand":1,"physical":{"heightMeters":1.91,"standingReachMeters":2.43,"jump":0.8,"mobility":0.9,"reaction":0.93,"coordination":0.91},"technical":{"attackTechnique":0.74,"attackPower":0.7,"blockTechnique":0.72,"defenseTechnique":0.8,"receiveTechnique":0.8,"setTechnique":0.95,"serveTechnique":0.72,"softTouch":0.94,"courtAwareness":0.93},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"43c2fce286e37d3d903c6095d223851f6e005477037bb030a5627c8e198336cd","resultFingerprint":"95a89cacb695f8e277ce4f30e4d1e47d0915b7a84c733938db778b92e085c911"}},{"playerId":"home-outside-b","displayName":"Outside
+    B","jerseyNumber":5,"position":1,"dominantHand":1,"physical":{"heightMeters":1.96,"standingReachMeters":2.51,"jump":0.93,"mobility":0.92,"reaction":0.91,"coordination":0.92},"technical":{"attackTechnique":0.94,"attackPower":0.92,"blockTechnique":0.86,"defenseTechnique":0.86,"receiveTechnique":0.86,"setTechnique":0.76,"serveTechnique":0.9,"softTouch":0.82,"courtAwareness":0.91},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"09589683b770f532c22c16d5b9260e272090210dbf81e5ec6db378b376dc6f08","resultFingerprint":"ea843d058fdac0f6e2d892aeaa9513278154aa59cebd2644d7b096da4ead28bf"}},{"playerId":"home-libero","displayName":"Libero","jerseyNumber":6,"position":4,"dominantHand":1,"physical":{"heightMeters":1.84,"standingReachMeters":2.34,"jump":0.72,"mobility":0.94,"reaction":0.95,"coordination":0.94},"technical":{"attackTechnique":0.62,"attackPower":0.6,"blockTechnique":0.65,"defenseTechnique":0.97,"receiveTechnique":0.97,"setTechnique":0.76,"serveTechnique":0.68,"softTouch":0.9,"courtAwareness":0.95},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"ae2ddd106bfdd6bf6f168a309dd4ff673efe549ea21a2f96045b0d983fb6bdec","resultFingerprint":"4694a492b15dc6cb53322bde9431c2d21b0b6add89a964e8a627ec20c83b4e56"}}]},"away":{"teamId":"formal-away","displayName":"Orange","side":1,"rotationOrder":[{"playerId":"away-opposite","displayName":"Opposite","jerseyNumber":1,"position":3,"dominantHand":1,"physical":{"heightMeters":2,"standingReachMeters":2.57,"jump":0.95,"mobility":0.9,"reaction":0.89,"coordination":0.9},"technical":{"attackTechnique":0.95,"attackPower":0.95,"blockTechnique":0.91,"defenseTechnique":0.75,"receiveTechnique":0.75,"setTechnique":0.74,"serveTechnique":0.91,"softTouch":0.78,"courtAwareness":0.88},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"6af37cb4bb458eed9acde459156384565fba2c7788ff6afb196d6c58f3d301c5","resultFingerprint":"6947412cdbf1b222fc674703fd9a10f27520d8b59d18316c7766b658f0466d62"}},{"playerId":"away-outside-a","displayName":"Outside
+    A","jerseyNumber":2,"position":1,"dominantHand":1,"physical":{"heightMeters":1.96,"standingReachMeters":2.51,"jump":0.93,"mobility":0.92,"reaction":0.91,"coordination":0.92},"technical":{"attackTechnique":0.94,"attackPower":0.92,"blockTechnique":0.86,"defenseTechnique":0.86,"receiveTechnique":0.86,"setTechnique":0.76,"serveTechnique":0.9,"softTouch":0.82,"courtAwareness":0.91},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"09589683b770f532c22c16d5b9260e272090210dbf81e5ec6db378b376dc6f08","resultFingerprint":"ea843d058fdac0f6e2d892aeaa9513278154aa59cebd2644d7b096da4ead28bf"}},{"playerId":"away-middle","displayName":"Middle","jerseyNumber":3,"position":2,"dominantHand":1,"physical":{"heightMeters":2.04,"standingReachMeters":2.62,"jump":0.97,"mobility":0.87,"reaction":0.91,"coordination":0.9},"technical":{"attackTechnique":0.91,"attackPower":0.92,"blockTechnique":0.96,"defenseTechnique":0.72,"receiveTechnique":0.72,"setTechnique":0.7,"serveTechnique":0.82,"softTouch":0.76,"courtAwareness":0.86},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"f45a21dfe45469f483cf26f88ded64dbf50836b09b17aa27b05f68103c1d34d6","resultFingerprint":"45b53c9a3f8bd7d89ce0e0c828861e3208c1501675656da8c68d6404a7c756d4"}},{"playerId":"away-setter","displayName":"Setter","jerseyNumber":4,"position":0,"dominantHand":1,"physical":{"heightMeters":1.91,"standingReachMeters":2.43,"jump":0.8,"mobility":0.9,"reaction":0.93,"coordination":0.91},"technical":{"attackTechnique":0.74,"attackPower":0.7,"blockTechnique":0.72,"defenseTechnique":0.8,"receiveTechnique":0.8,"setTechnique":0.95,"serveTechnique":0.72,"softTouch":0.94,"courtAwareness":0.93},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"43c2fce286e37d3d903c6095d223851f6e005477037bb030a5627c8e198336cd","resultFingerprint":"95a89cacb695f8e277ce4f30e4d1e47d0915b7a84c733938db778b92e085c911"}},{"playerId":"away-outside-b","displayName":"Outside
+    B","jerseyNumber":5,"position":1,"dominantHand":1,"physical":{"heightMeters":1.96,"standingReachMeters":2.51,"jump":0.93,"mobility":0.92,"reaction":0.91,"coordination":0.92},"technical":{"attackTechnique":0.94,"attackPower":0.92,"blockTechnique":0.86,"defenseTechnique":0.86,"receiveTechnique":0.86,"setTechnique":0.76,"serveTechnique":0.9,"softTouch":0.82,"courtAwareness":0.91},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"09589683b770f532c22c16d5b9260e272090210dbf81e5ec6db378b376dc6f08","resultFingerprint":"ea843d058fdac0f6e2d892aeaa9513278154aa59cebd2644d7b096da4ead28bf"}},{"playerId":"away-libero","displayName":"Libero","jerseyNumber":6,"position":4,"dominantHand":1,"physical":{"heightMeters":1.84,"standingReachMeters":2.34,"jump":0.72,"mobility":0.94,"reaction":0.95,"coordination":0.94},"technical":{"attackTechnique":0.62,"attackPower":0.6,"blockTechnique":0.65,"defenseTechnique":0.97,"receiveTechnique":0.97,"setTechnique":0.76,"serveTechnique":0.68,"softTouch":0.9,"courtAwareness":0.95},"derived":{"formulaVersion":1,"coefficientVersion":1,"inputFingerprint":"ae2ddd106bfdd6bf6f168a309dd4ff673efe549ea21a2f96045b0d983fb6bdec","resultFingerprint":"4694a492b15dc6cb53322bde9431c2d21b0b6add89a964e8a627ec20c83b4e56"}}]},"contextHash":"bcbee6c7179615eb6848f93bd011bda811ec13e852d9f5327508ba6a9250d9bf"}'
+  firstServingSide: 0
+  homeInitialRotationOffset: 0
+  awayInitialRotationOffset: 0
+  homeTactics:
+    SetRoute: 0
+    SpikeRoute: 1
+    SetterX: 0
+    SetterZ: -2.5
+    AttackerX: 2.4
+    AttackerZ: -1.8
+    DefenderX: -2.2
+    DefenderZ: -5.4
+    Blocker: 4
+    BlockX: 2.2
+    BlockZ: -0.55
+    CoverReceiver: 0
+    CoverX: 0
+    CoverZ: -1.6
+    SetRhythm: 2
+    AttackFlightSeconds: 0.45
+  awayTactics:
+    SetRoute: 0
+    SpikeRoute: 1
+    SetterX: 0
+    SetterZ: 2.5
+    AttackerX: 2.4
+    AttackerZ: 1.8
+    DefenderX: -2.2
+    DefenderZ: 5.4
+    Blocker: 4
+    BlockX: 2.2
+    BlockZ: 0.55
+    CoverReceiver: 0
+    CoverX: 0
+    CoverZ: 1.6
+    SetRhythm: 2
+    AttackFlightSeconds: 0.45
+  ai:
+    RolePreference: 1
+    Reachability: 1.15
+    ApproachDistance: 1
+    DirectionTolerance: 1
+  players:
+  - playerId: away-libero
+    position: {x: 0, y: 0, z: 5.55}
+    forward: {x: 0, y: 0, z: -1}
+    pose: 0
+  - playerId: away-middle
+    position: {x: 0, y: 0, z: 2.05}
+    forward: {x: 0, y: 0, z: -1}
+    pose: 0
+  - playerId: away-opposite
+    position: {x: 3.05, y: 0, z: 6.25}
+    forward: {x: 0, y: 0, z: -1}
+    pose: 0
+  - playerId: away-outside-a
+    position: {x: 3, y: 0, z: 2.35}
+    forward: {x: 0, y: 0, z: -1}
+    pose: 0
+  - playerId: away-outside-b
+    position: {x: -3.05, y: 0, z: 6.25}
+    forward: {x: 0, y: 0, z: -1}
+    pose: 0
+  - playerId: away-setter
+    position: {x: -3, y: 0, z: 2.35}
+    forward: {x: 0, y: 0, z: -1}
+    pose: 0
+  - playerId: home-libero
+    position: {x: 0, y: 0, z: -5.55}
+    forward: {x: 0, y: 0, z: 1}
+    pose: 0
+  - playerId: home-middle
+    position: {x: 0, y: 0, z: -2.05}
+    forward: {x: 0, y: 0, z: 1}
+    pose: 0
+  - playerId: home-opposite
+    position: {x: 3.05, y: 0, z: -6.25}
+    forward: {x: 0, y: 0, z: 1}
+    pose: 0
+  - playerId: home-outside-a
+    position: {x: 3, y: 0, z: -2.35}
+    forward: {x: 0, y: 0, z: 1}
+    pose: 0
+  - playerId: home-outside-b
+    position: {x: -3.05, y: 0, z: -6.25}
+    forward: {x: 0, y: 0, z: 1}
+    pose: 0
+  - playerId: home-setter
+    position: {x: -3, y: 0, z: -2.35}
+    forward: {x: 0, y: 0, z: 1}
+    pose: 0
+  ballPosition: {x: 0, y: 2, z: -0.42}
+  ballVelocity: {x: 0, y: 0, z: 5}
+  startRecipe: 4
+  sourceTeam: 0
+  lastLegalActorId: home-outside-a
+  accessLevel: 0
+  contentHash: 77c6019a85567f99a79943c5d20d18351c264c76aa10d221e3d33e285e55c1da

@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
+using UnityEngine;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
@@ -116,6 +117,34 @@ namespace Volleyball.EditModeTests
             Assert.That(names, Does.Not.Contain("Score"));
             Assert.That(names, Does.Not.Contain("CountedHits"));
             Assert.That(names, Does.Not.Contain("ContactWindow"));
+        }
+
+        [Test]
+        public void ProjectPresets_MatchCatalogDefinitionsAndHashes()
+        {
+            var hashes = TrainingScenarioCatalogV1.ScenarioIds
+                .Select(id =>
+                {
+                    var preset = Resources.Load<TrainingScenarioPresetV1>(
+                        "TrainingScenariosV1/" + id);
+                    Assert.That(preset, Is.Not.Null, id);
+                    var asset = preset.ToDefinition();
+                    var catalog = TrainingScenarioCatalogV1.Create(id);
+                    Assert.That(
+                        asset.ScenarioId,
+                        Is.EqualTo(catalog.ScenarioId),
+                        id);
+                    Assert.That(
+                        asset.ContentHash,
+                        Is.EqualTo(catalog.ContentHash),
+                        id);
+                    return asset.ContentHash;
+                })
+                .ToArray();
+
+            Assert.That(
+                hashes.Distinct(StringComparer.Ordinal).Count(),
+                Is.EqualTo(TrainingScenarioCatalogV1.ScenarioIds.Count));
         }
 
         internal static TrainingScenarioDraftV1 CreateValidDraft()
