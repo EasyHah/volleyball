@@ -1255,7 +1255,7 @@ namespace Volleyball.Presentation
             if (_v3RulesAdapter != null)
             {
                 _v3RulesAdapter.BeginRally(
-                    CreateV3Eligibility(_matchContext),
+                    CreateFormalEligibility(),
                     _set.ServingSide);
                 _pendingV3AuthorityContact = null;
                 _lastAcceptedV3Actor = null;
@@ -1564,7 +1564,7 @@ namespace Volleyball.Presentation
                 receiveInput,
                 organizationInput,
                 attackInput,
-                CreateV3Eligibility(_matchContext),
+                CreateFormalEligibility(),
                 bindings);
             _formalAuthority.ReceiveCoordinator.PlanReceive(
                 request,
@@ -1973,7 +1973,7 @@ namespace Volleyball.Presentation
             }
             var executionCandidateCategory = ToExecutionCandidateCategoryV4(decision.Action);
             var executionIntentIdentity =
-                $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
+                $"execution:{FormalSessionIdentity}:" +
                 $"{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:{SuccessfulContacts}:{(int)decision.Actor.Team}:" +
                 $"{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}:{(int)decision.Action}";
             var executionSamplingKey = executionIntentIdentity + ":sample";
@@ -2287,7 +2287,7 @@ namespace Volleyball.Presentation
             BallTrajectoryPredictionArtifactV4 passPrediction)
         {
             if (_formalAuthority.AttackCoordinator == null || _trajectoryPredictionProviderV4 == null ||
-                _matchContext == null)
+                !HasFormalContext)
                 throw new InvalidOperationException("Formal Gate I requires initialized authority facts.");
             if (_formalAuthority.AttackCoordinator.State.Phase != AttackDefenseAuthorityPhaseV3.Idle)
                 throw new InvalidOperationException("Gate I cannot plan a second SetIntent before the accepted Set.");
@@ -2306,7 +2306,7 @@ namespace Volleyball.Presentation
                 _formalAuthority.CurrentPlanRevision, _formalAuthority.NextSourceSequence(), side, organizer.StableId,
                 _ball.SimulationTime + flightSeconds, PredictBallState(flightSeconds), players, organizer.Ability.Snapshot,
                 passPrediction ?? _lastTrajectoryPredictionArtifactV4 ?? throw new InvalidOperationException("Accepted pass trajectory is required."),
-                _trajectoryPredictionProviderV4, SimulationParameters, _matchContext.PhysicsConfigurationHash,
+                _trajectoryPredictionProviderV4, SimulationParameters, FormalPhysicsConfigurationHash,
                 _formalAuthority.CurrentSourceSequence));
             _formalAuthority.ActiveSetIntent = result;
             _formalAuthority.StoreGateISetIntent(
@@ -3903,10 +3903,10 @@ namespace Volleyball.Presentation
                 _trajectoryPredictionProviderV4,
                 new BallTrajectoryPredictionRequestV4(ToSide(receiver.Id.Team), stateVersion,
                     new BallState(contactCenter, outgoing, SimulatedBall.DefaultRadius),
-                    SimulationParameters, _matchContext.PhysicsConfigurationHash,
+                    SimulationParameters, FormalPhysicsConfigurationHash,
                     identity + ":trajectory",
-                    _matchContext.TrajectoryPredictionProviderConfiguration.PredictorVersion,
-                    _matchContext.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                    FormalTrajectoryPredictorVersion,
+                    FormalTrajectoryPredictorConfigurationHash,
                     envelope.Identity, ExecutionDegradationStepV4.FullSampling),
                 ExecutionEnvelopePolicyV4.Default);
             // Resolve the receiving platform's root from the actual rebound.
@@ -4101,7 +4101,7 @@ namespace Volleyball.Presentation
             _formalAuthority.AttackCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
                 _formalAuthority.NextSourceSequence(), accepted), new AttackPlanningRequestV3(intent.PlanRevision,
                 intent, accepted, players, _trajectoryPredictionProviderV4,
-                SimulationParameters, _matchContext.PhysicsConfigurationHash,
+                SimulationParameters, FormalPhysicsConfigurationHash,
                 // Gate I candidate trajectories start from this accepted Set's
                 // physical ball snapshot, not from a planner-invented version.
                 (long)(uint)BitConverter.ToInt32(
@@ -4345,7 +4345,7 @@ namespace Volleyball.Presentation
             int contactGroup)
         {
 
-            var eligibility = CreateV3Eligibility(_matchContext);
+            var eligibility = CreateFormalEligibility();
             var playerFacts = new List<PlayerWorldSnapshotV3>(eligibility.Players.Count);
             for (var index = 0; index < eligibility.Players.Count; index++)
             {
@@ -4878,7 +4878,7 @@ namespace Volleyball.Presentation
             ExecutionErrorApplications++;
             var executionCandidateCategory = ExecutionCandidateCategoryV4.Receive;
             var executionIntentIdentity =
-                $"execution:{(_matchContext == null ? "prototype" : _matchContext.SessionId.ToString("D"))}:" +
+                $"execution:{FormalSessionIdentity}:" +
                 $"controlled-handling:{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:{SuccessfulContacts}:" +
                 $"{(int)decision.Actor.Team}:{(int)decision.Actor.Role}:{decision.Actor.RosterSlot}";
             var executionSamplingKey = executionIntentIdentity + ":sample";
@@ -5144,12 +5144,12 @@ namespace Volleyball.Presentation
             out BallTrajectoryPredictionArtifactV4 trajectoryArtifact)
         {
             trajectoryArtifact = null;
-            if (_matchContext == null)
+            if (!HasFormalContext)
             {
                 return null;
             }
 
-            var identity = $"execution:{_matchContext.SessionId:D}:block:{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:" +
+            var identity = $"execution:{FormalSessionIdentity}:block:{_tacticRevision}:{_decisionCoordinator.DecisionIndex}:" +
                            $"{SuccessfulContacts}:{(int)blocker.Team}:{(int)blocker.Role}:{blocker.RosterSlot}";
             var samplingKey = identity + ":sample";
             var envelope = PlanExecutionEnvelopeV4(
@@ -5186,10 +5186,10 @@ namespace Volleyball.Presentation
                 stateVersion,
                 new BallState(interceptPoint, rebound, SimulatedBall.DefaultRadius),
                 SimulationParameters,
-                _matchContext.PhysicsConfigurationHash,
+                FormalPhysicsConfigurationHash,
                 samplingKeyForTrajectory,
-                _matchContext.TrajectoryPredictionProviderConfiguration.PredictorVersion,
-                _matchContext.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash,
+                FormalTrajectoryPredictorVersion,
+                FormalTrajectoryPredictorConfigurationHash,
                 envelope.Identity,
                 ExecutionDegradationStepV4.FullSampling);
             trajectoryArtifact = PredictSharedGate5TrajectoryV4(
@@ -6210,7 +6210,7 @@ namespace Volleyball.Presentation
             RallyDecisionStage stage,
             float flightSeconds)
         {
-            if (_matchContext == null)
+            if (!HasFormalContext)
             {
                 return PredictBallCenter(flightSeconds);
             }
@@ -6244,12 +6244,10 @@ namespace Volleyball.Presentation
                 stateVersion,
                 _ball.State,
                 SimulationParameters,
-                _matchContext.PhysicsConfigurationHash,
+                FormalPhysicsConfigurationHash,
                 samplingKey,
-                _matchContext.TrajectoryPredictionProviderConfiguration
-                    .PredictorVersion,
-                _matchContext.TrajectoryPredictionProviderConfiguration
-                    .PredictorConfigurationHash,
+                FormalTrajectoryPredictorVersion,
+                FormalTrajectoryPredictorConfigurationHash,
                 envelopeIdentity,
                 ExecutionDegradationStepV4.FullSampling);
             _lastTrajectoryPredictionArtifactV4 =
@@ -6322,7 +6320,7 @@ namespace Volleyball.Presentation
                         entry.Zone, entry.Probability, entry.ArrivalTime))
                     .ToArray();
             var request = new CourtPerceptionRequestV3(
-                _matchContext.Seed.ToString(
+                FormalSeed.ToString(
                     System.Globalization.CultureInfo.InvariantCulture),
                 revision, sourceSequence, ToSide(observingTeam),
                 observer.StableId, awareness, artifactIdentity,
@@ -6458,7 +6456,41 @@ namespace Volleyball.Presentation
             return _contactGroupSequence++;
         }
 
-        private int ExecutionSeed => _matchContext?.Seed ?? PrototypeExecutionSeed;
+        private bool HasFormalContext => _matchContext != null || _matchContextV5 != null;
+
+        private string FormalSessionIdentity => HasFormalContext
+            ? (_matchContext != null ? _matchContext.SessionId : _matchContextV5.SessionId).ToString("D")
+            : "prototype";
+
+        private int FormalSeed => _matchContext != null
+            ? _matchContext.Seed
+            : _matchContextV5 != null ? _matchContextV5.Seed : PrototypeExecutionSeed;
+
+        private string FormalPhysicsConfigurationHash => _matchContext != null
+            ? _matchContext.PhysicsConfigurationHash
+            : _matchContextV5?.PhysicsConfigurationHash ??
+                throw new InvalidOperationException("A formal physics configuration is required.");
+
+        private int FormalTrajectoryPredictorVersion => _matchContext != null
+            ? _matchContext.TrajectoryPredictionProviderConfiguration.PredictorVersion
+            : _matchContextV5?.TrajectoryPredictionProviderConfiguration.PredictorVersion ??
+                throw new InvalidOperationException("A formal trajectory configuration is required.");
+
+        private string FormalTrajectoryPredictorConfigurationHash => _matchContext != null
+            ? _matchContext.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash
+            : _matchContextV5?.TrajectoryPredictionProviderConfiguration.PredictorConfigurationHash ??
+                throw new InvalidOperationException("A formal trajectory configuration is required.");
+
+        private OnCourtEligibilitySnapshot CreateFormalEligibility()
+        {
+            return _matchContext != null
+                ? CreateV3Eligibility(_matchContext)
+                : OnCourtLineupRulesV5.Create(_matchContextV5,
+                    RotationOrder(TeamSide.Home), RotationOrder(TeamSide.Away),
+                    _set.ServerFor(TeamSide.Home), _set.ServerFor(TeamSide.Away));
+        }
+
+        private int ExecutionSeed => FormalSeed;
 
         private static void NotifyReplay<T>(Action<T> handler, T payload)
         {
