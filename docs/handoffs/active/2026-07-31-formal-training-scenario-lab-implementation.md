@@ -54,3 +54,27 @@
 ## 结束处理
 
 完成或替代时，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继任务单链接。
+
+## 当前验证状态（2026-07-31）
+
+已实现并自动验证：
+
+- 语义化正式回合起点、训练契约/校验/hash、一次性正式运行器；
+- 六类触网资源固定种子双跑；
+- 只读时间线、决策快照和 Editor-only 导出；
+- 独立四区 UI、预览拖放、运行锁定、暂停、固定步单步、reset 和同 seed 对比；
+- 独立场景、构建列表追加和 Windows x64 IL2CPP Development Build 入口；
+- 完整 EditMode 1518/1518；
+- 指定 PlayMode 19/19；
+- 实验室场景 EditMode 10/10、PlayMode 2/2；
+- 正式 6v6 25 分整局 smoke 1/1，25:23；
+- Repository validator、依赖扫描和 diff 检查。
+
+仍未满足完成条件：
+
+- 当前 Unity 安装没有 Windows Build Support (IL2CPP)，BuildReport 立即返回 unsupported；
+- macOS 处于锁屏状态，无法完成 1920×1080 实际画面和键鼠人工验收；
+- 独立全面复核需用户明确授权 subagent，当前尚未执行；
+- Windows Player 实机键鼠、日志和图形验收需成功构建后执行。
+
+因此任务保持 `Status: active`，不得移动到 completed 或声称“完成”。

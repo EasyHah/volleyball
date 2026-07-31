@@ -1,7 +1,7 @@
 # CHG-20260730-003：V4 统一首次触网续球
 
 - 日期：2026-07-30
-- 状态：已实现，验证受限
+- 状态：已自动验证
 - 负责人：Match
 - 影响模块：Match / Tests / Docs
 - 交互级别：模块内部
@@ -39,9 +39,10 @@ Formal 6v6 现在以“发球或已接受球员触球”划分飞行段。每段
 - [x] focused EditMode：`RallyTouchStateTests;FullRallyV3RulesEngineTests`，30/30。
 - [x] 完整 EditMode：1480/1480。
 - [x] `DefensiveContactContinuationPlayModeTests`：11/11；含本次计数排他性修正后的重跑。
-- [ ] 指定中回合触网情景：当前 `FormalMatchScenarioDefinitionV4` 只允许开球输入，明确不接受
-  中回合球状态或伪造已接受触球，无法合法表达 `SecondTouchNetOwnSide`、
-  `ThirdTouchNetOwnSide`、`ThirdTouchNetCross`、`PostBlockNet` 和多次触网情景。
+- [x] 指定中回合触网情景：`FormalMatchScenarioDefinitionV4` 保持只表达开球输入；所需覆盖由
+  [CHG-20260731-001](2026-07-31-001-formal-training-scenario-lab.md) 的语义化正式训练起点补齐；
+  `SecondTouchNetOwnSide`、`ThirdTouchNetOwnSide`、`ThirdTouchNetCross`、
+  `PostBlockNet`、多次触网和不可达变体的固定种子双跑及受影响 PlayMode 回归通过。
 - [x] Formal 6v6 单局 smoke：关闭该测试中逐条诊断 `Log` 的堆栈追踪、并在 `finally` 恢复
   原设置后通过；固定种子赛局在 333.19 秒以 21:25、346 次已接受接触完成。此前 360 秒停在
   23:22 是测试日志堆栈追踪耗尽实时预算，不是规则断言或回合停滞。
@@ -51,7 +52,6 @@ Formal 6v6 现在以“发球或已接受球员触球”划分飞行段。每段
 
 ## 回滚与风险
 
-回滚本改动即可恢复仅发球触网的续球路径。主要剩余风险是中回合触网尚缺少不伪造接触的
-冻结物理情景；该缺口已转入
-`docs/handoffs/active/2026-07-31-formal-training-scenario-lab-implementation.md`。在新基础设施完成指定
-情景验证前，本改动不得标记为“已自动验证”或“完成”。
+回滚本改动即可恢复仅发球触网的续球路径。中回合触网的真实物理验证缺口已由
+`docs/handoffs/active/2026-07-31-formal-training-scenario-lab-implementation.md`
+补齐；训练实验室自身的 Windows、视觉和独立复核门禁仍由该 active handoff 跟踪。
