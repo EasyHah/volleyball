@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
+using Volleyball.Career.MatchIntegration;
 using Volleyball.Presentation;
 using Volleyball.Shared.Contracts;
 
@@ -29,7 +30,8 @@ namespace Volleyball.Bootstrap
 
     /// <summary>Bootstrap bridge for a persisted V5 context and the Formal 6v6 scene.</summary>
     [DisallowMultipleComponent]
-    public sealed class CareerFormalSixVsSixMatchRunnerV5 : MonoBehaviour
+    public sealed class CareerFormalSixVsSixMatchRunnerV5 : MonoBehaviour,
+        ICareerMatchRunnerV5
     {
         private UIDocument _careerDocument;
         private CareerMenuInputRouter _menuInputRouter;
@@ -112,6 +114,13 @@ namespace Volleyball.Bootstrap
                 _activeCancellation = null;
                 _executing = false;
             }
+        }
+
+        public async Task<CareerMatchRunOutcomeV5> ExecuteAsync(MatchContextV5 context,
+            CancellationToken cancellationToken)
+        {
+            var outcome = await ExecuteWithReplayAsync(context, cancellationToken);
+            return new CareerMatchRunOutcomeV5(outcome.Result, outcome.Replay);
         }
 
         private void OnDestroy() => _activeCancellation?.Cancel();
