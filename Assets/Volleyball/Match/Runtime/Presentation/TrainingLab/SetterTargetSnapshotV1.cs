@@ -61,6 +61,12 @@ namespace Volleyball.Presentation.TrainingLab
                     "Candidates cannot contain null.", nameof(candidates)))
                 .OrderBy(candidate => candidate.PlayerId.Value, StringComparer.Ordinal)
                 .ToArray();
+            if (copy.Select(candidate => candidate.PlayerId).Distinct().Count() != copy.Length)
+            {
+                throw new ArgumentException(
+                    "Candidates must have unique player IDs.", nameof(candidates));
+            }
+
             if (copy.Length == 0 ||
                 !copy.Any(candidate => candidate.PlayerId.Equals(selectedAttacker) &&
                                       candidate.IsFeasible))

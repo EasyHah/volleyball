@@ -23,6 +23,29 @@ namespace Volleyball.Editor.AI.SetterTeacher
             GetWindow<SetterTeacherReviewWindowV1>("Setter Target Review");
         }
 
+        public static void OpenForSnapshot(string snapshotHash)
+        {
+            var window = GetWindow<SetterTeacherReviewWindowV1>(
+                "Setter Target Review");
+            var snapshots = FindSnapshots();
+            var index = Array.FindIndex(
+                snapshots,
+                value => value.SnapshotHash == snapshotHash);
+            if (index < 0)
+            {
+                window._message = "训练室快照已不可用，请先刷新并重新选择。";
+            }
+            else
+            {
+                window._snapshotIndex = index;
+                window._message = "已选中训练室中的最新二传目标快照。";
+            }
+
+            window.Show();
+            window.Focus();
+            window.Repaint();
+        }
+
         private void OnGUI()
         {
             var snapshots = FindSnapshots();

@@ -76,6 +76,7 @@ namespace Volleyball.Presentation.TrainingLab
         private Button _rerun;
         private Button _returnToEdit;
         private Button _export;
+        private Button _reviewSetter;
         private bool _rendering;
         private bool _ownsController;
         private bool _initialized;
@@ -175,6 +176,7 @@ namespace Volleyball.Presentation.TrainingLab
             _rerun = _root.Q<Button>("rerun-button");
             _returnToEdit = _root.Q<Button>("edit-button");
             _export = _root.Q<Button>("export-button");
+            _reviewSetter = _root.Q<Button>("review-setter-button");
 
             ConfigureChoices();
             RegisterUiEvents();
@@ -210,6 +212,7 @@ namespace Volleyball.Presentation.TrainingLab
             _rerun.clicked += () => _controller.RerunSameSeed();
             _returnToEdit.clicked += () => _controller.ReturnToEditing();
             _export.clicked += ExportEvidence;
+            _reviewSetter.clicked += OpenSetterReview;
 
             _displayName.RegisterValueChangedCallback(value =>
             {
@@ -423,6 +426,8 @@ namespace Volleyball.Presentation.TrainingLab
                 state == TrainingScenarioLabStateV1.Faulted);
             _export.SetEnabled(
                 _controller.VisibleEvidence?.Decisions.Count > 0);
+            _reviewSetter.SetEnabled(
+                _controller.VisibleEvidence?.SetterTargets.Count > 0);
         }
 
         private void SyncWorld()
@@ -809,6 +814,37 @@ namespace Volleyball.Presentation.TrainingLab
             }
 #else
             _feedback.text = "Player 只显示快照摘要，不写数据集文件。";
+#endif
+        }
+
+        private void OpenSetterReview()
+        {
+#if UNITY_EDITOR
+            var snapshot = _controller.VisibleEvidence?.SetterTargets
+                .LastOrDefault();
+            if (snapshot == null) return;
+            try
+            {
+                var editorAssembly = AppDomain.CurrentDomain.GetAssemblies()
+                    .FirstOrDefault(value => value.GetName().Name ==
+                        "Volleyball.Match.AI.Editor");
+                var type = editorAssembly?.GetType(
+                    "Volleyball.Editor.AI.SetterTeacher." +
+                    "SetterTeacherReviewWindowV1");
+                type?.GetMethod(
+                    "OpenForSnapshot",
+                    BindingFlags.Public | BindingFlags.Static)
+                    ?.Invoke(null, new object[] { snapshot.SnapshotHash });
+                if (type == null)
+                    throw new InvalidOperationException(
+                        "Setter teacher review editor tools are unavailable.");
+            }
+            catch (Exception exception)
+            {
+                _feedback.text = "无法打开二传审核 · " + exception.Message;
+            }
+#else
+            _feedback.text = "二传审核只在 Unity Editor 训练室中可用。";
 #endif
         }
 

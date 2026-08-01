@@ -33,6 +33,17 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void DuplicateCandidatePlayerIds_AreRejectedAtFrozenSnapshotBoundary()
+        {
+            Assert.That(() => Create(new[]
+                {
+                    Candidate("home-a", .8f, true),
+                    Candidate("home-a", .7f, true)
+                }),
+                Throws.ArgumentException.With.Message.Contains("unique player IDs"));
+        }
+
+        [Test]
         public void Contract_DoesNotExposeFutureOrOutcomeFields()
         {
             var names = typeof(SetterTargetSnapshotV1)

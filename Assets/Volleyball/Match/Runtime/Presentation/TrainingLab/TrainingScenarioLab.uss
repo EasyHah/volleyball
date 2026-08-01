@@ -6,7 +6,7 @@
 }
 
 .top-bar {
-    height: 72px;
+    height: 58px;
     flex-direction: row;
     align-items: center;
     padding: 10px 20px;
@@ -16,7 +16,7 @@
 }
 
 .title-block { flex-grow: 1; }
-.app-title { font-size: 23px; -unity-font-style: bold; color: rgb(244, 249, 249); }
+.app-title { font-size: 19px; -unity-font-style: bold; color: rgb(244, 249, 249); }
 .app-subtitle { font-size: 12px; color: rgb(116, 184, 193); margin-top: 2px; }
 .state-label {
     min-width: 94px;
@@ -111,15 +111,15 @@
 
 .compact-row { flex-direction: row; margin-top: 8px; }
 .bottom-console {
-    height: 248px;
+    height: 178px;
     padding: 10px 18px 14px 18px;
     background-color: rgba(8, 19, 26, 0.98);
     border-top-width: 1px;
     border-top-color: rgb(47, 82, 94);
 }
-.run-toolbar { height: 46px; flex-direction: row; align-items: center; }
+.run-toolbar { height: 40px; flex-direction: row; align-items: center; }
 .evidence-row { flex-grow: 1; flex-direction: row; }
-.evidence-summary { width: 255px; padding: 8px 12px 8px 0; }
+.evidence-summary { width: 215px; padding: 5px 12px 5px 0; }
 .comparison-label { margin-top: 8px; color: rgb(242, 196, 93); -unity-font-style: bold; white-space: normal; }
 .feedback-label { margin-top: 8px; color: rgb(231, 119, 104); white-space: normal; font-size: 11px; }
 .timeline-list {

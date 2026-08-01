@@ -64,6 +64,10 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q<Button>("step-button"), Is.Not.Null);
             Assert.That(root.Q<Button>("rerun-button"), Is.Not.Null);
             Assert.That(root.Q<Button>("export-button"), Is.Not.Null);
+            Assert.That(root.Q<Button>("review-setter-button"), Is.Not.Null);
+            Assert.That(
+                root.Q<Button>("review-setter-button").tooltip,
+                Does.Contain("Editor"));
         }
 
         [Test]
@@ -142,6 +146,21 @@ namespace Volleyball.EditModeTests
             Assert.That(
                 exporter.Assembly,
                 Is.Not.EqualTo(typeof(TrainingScenarioLabView).Assembly));
+        }
+
+        [Test]
+        public void SetterReviewWindow_RemainsInEditorAssembly()
+        {
+            var reviewWindow = AppDomain.CurrentDomain.GetAssemblies()
+                .Single(value =>
+                    value.GetName().Name == "Volleyball.Match.AI.Editor")
+                .GetType(
+                    "Volleyball.Editor.AI.SetterTeacher." +
+                    "SetterTeacherReviewWindowV1",
+                    true);
+            Assert.That(reviewWindow.Assembly, Is.Not.EqualTo(
+                typeof(TrainingScenarioLabView).Assembly));
+            Assert.That(reviewWindow.GetMethod("OpenForSnapshot"), Is.Not.Null);
         }
     }
 }

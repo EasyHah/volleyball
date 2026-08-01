@@ -4,7 +4,7 @@
         <ui:VisualElement class="top-bar">
             <ui:VisualElement class="title-block">
                 <ui:Label text="正式训练情景实验室" class="app-title" />
-                <ui:Label text="受约束起点 · 正式 6v6 物理与裁判" class="app-subtitle" />
+                <ui:Label text="训练起点 · 正式 6v6" class="app-subtitle" />
             </ui:VisualElement>
             <ui:Label name="state-label" class="state-label" />
             <ui:Label name="hash-label" class="hash-label" />
@@ -24,8 +24,7 @@
 
             <ui:VisualElement name="world-viewport" class="world-viewport">
                 <ui:VisualElement class="world-chip-row" picking-mode="Ignore">
-                    <ui:Label text="3D 正式球场预览" class="world-chip" />
-                    <ui:Label text="拖动球员/球 · 黄色选中 · 红色问题" class="world-help" />
+                    <ui:Label text="拖动球员或球调整起点" class="world-chip" />
                 </ui:VisualElement>
                 <ui:VisualElement class="world-spacer" picking-mode="Ignore" />
                 <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
@@ -77,10 +76,11 @@
                 <ui:Button name="rerun-button" text="同 seed 重跑" />
                 <ui:Button name="edit-button" text="返回编辑" />
                 <ui:Button name="export-button" text="导出决策快照" class="secondary" />
+                <ui:Button name="review-setter-button" text="审核二传" class="secondary" tooltip="在 Unity Editor 中审核最新 Gate I 攻手目标快照" />
             </ui:VisualElement>
             <ui:VisualElement class="evidence-row">
                 <ui:VisualElement class="evidence-summary">
-                    <ui:Label text="运行证据" class="panel-title" />
+                    <ui:Label text="运行摘要" class="panel-title" />
                     <ui:Label name="comparison-label" class="comparison-label" />
                     <ui:Label name="feedback-label" class="feedback-label" />
                 </ui:VisualElement>

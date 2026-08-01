@@ -12,6 +12,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 
 | 编号 | 日期 | 状态 | 影响模块 | 交互级别 | 改动 |
 | --- | --- | --- | --- | --- | --- |
+| CHG-20260801-001 | 2026-08-01 | 已自动验证，待人工验收 | Match / Tests / Docs | 模块内部 | [HUD 精简与训练室二传审核入口](2026-08-01-001-hud-setter-review-entry.md) |
 | CHG-20260731-001 | 2026-07-31 | 已自动验证，待人工验收 | Match / ProjectSettings / Tests / Docs / Build | **跨模块（重点）** | [正式训练情景实验室](2026-07-31-001-formal-training-scenario-lab.md) |
 | CHG-20260730-003 | 2026-07-30 | 已自动验证 | Match / Tests / Docs | 模块内部 | [V4 统一首次触网续球](2026-07-30-003-v4-unified-net-continuation.md) |
 | CHG-20260730-002 | 2026-07-30 | 已完成 | Career / Match / Bootstrap / Tests / Docs / Repository | **跨模块（重点）** | [Career 正式物理 6v6 V4 生命周期](2026-07-30-002-career-formal-6v6-lifecycle.md) |
