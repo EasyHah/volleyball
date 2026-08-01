@@ -15,17 +15,24 @@ namespace Volleyball.Bootstrap
     /// <summary>Result of a native V5 formal run; no V4 contract is involved.</summary>
     public sealed class CareerFormalMatchRunOutcomeV5
     {
-        public CareerFormalMatchRunOutcomeV5(MatchResultV5 result, MatchReplayV5 replay)
+        public CareerFormalMatchRunOutcomeV5(MatchResultV5 result, MatchReplayV5 replay,
+            CareerMatchReportV1 report)
         {
             Result = result ?? throw new ArgumentNullException(nameof(result));
             Replay = replay ?? throw new ArgumentNullException(nameof(replay));
+            Report = report ?? throw new ArgumentNullException(nameof(report));
             if (result.SessionId != replay.Context.SessionId ||
                 !string.Equals(result.ContextHash, replay.ContextHash, StringComparison.Ordinal))
                 throw new ArgumentException("Formal V5 result and replay must share their context.");
+            Report.ValidateAgainst(replay.Context, result);
+            if (Report.EvidenceKind != CareerMatchEvidenceKindV1.PhysicalReplay ||
+                !string.Equals(Report.EvidenceHash, replay.ReplayHash, StringComparison.Ordinal))
+                throw new ArgumentException("Formal V5 report must bind its physical replay.");
         }
 
         public MatchResultV5 Result { get; }
         public MatchReplayV5 Replay { get; }
+        public CareerMatchReportV1 Report { get; }
     }
 
     /// <summary>Bootstrap bridge for a persisted V5 context and the Formal 6v6 scene.</summary>
@@ -95,7 +102,8 @@ namespace Volleyball.Bootstrap
 
                 director.ResultV5.ValidateAgainst(context);
                 var replay = recorder.Complete();
-                return new CareerFormalMatchRunOutcomeV5(director.ResultV5, replay);
+                return new CareerFormalMatchRunOutcomeV5(director.ResultV5, replay,
+                    recorder.CompleteReport(replay));
             }
             finally
             {
@@ -120,7 +128,7 @@ namespace Volleyball.Bootstrap
             CancellationToken cancellationToken)
         {
             var outcome = await ExecuteWithReplayAsync(context, cancellationToken);
-            return new CareerMatchRunOutcomeV5(outcome.Result, outcome.Replay);
+            return new CareerMatchRunOutcomeV5(outcome.Result, outcome.Replay, outcome.Report);
         }
 
         private void OnDestroy() => _activeCancellation?.Cancel();

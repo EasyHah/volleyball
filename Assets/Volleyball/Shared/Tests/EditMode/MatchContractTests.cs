@@ -148,6 +148,8 @@ namespace Volleyball.Shared.EditModeTests
 
             result.ValidateAgainst(context);
             Assert.That(ContractJson.SerializeV5(result), Does.Contain(result.ResultHash));
+            Assert.That(ContractJson.SerializeV5(ContractJson.DeserializeMatchResultV5(
+                ContractJson.SerializeV5(result), context)), Is.EqualTo(ContractJson.SerializeV5(result)));
             Assert.That(replay.ContextHash, Is.EqualTo(context.ContextHash));
             Assert.That(replay.DerivedAttributeFingerprints, Has.Count.EqualTo(12));
             var evidence = new MatchReplayAttributeEvidenceV5(
@@ -156,12 +158,86 @@ namespace Volleyball.Shared.EditModeTests
             var replayWithEvidence = MatchReplayV5.Create("formal-v5-evidence", context,
                 new[] { evidence });
             Assert.That(replayWithEvidence.AttributeEvidence, Has.Count.EqualTo(1));
+            var reportFact = new MatchReplayReportFactV1(0, context.Home.RotationOrder[0].PlayerId,
+                "Contact", "Attack", true, false, 90, attributeEvidenceSequenceNumber: 0);
+            var replayWithReportFacts = MatchReplayV5.Create("formal-v5-report-facts", context,
+                new[] { evidence }, new[] { reportFact });
+            Assert.That(replayWithReportFacts.ReportFacts, Has.Count.EqualTo(1));
+            Assert.That(() => MatchReplayV5.Create("formal-v5-duplicate-evidence", context,
+                new[] { evidence }, new[]
+                {
+                    reportFact,
+                    new MatchReplayReportFactV1(1, context.Home.RotationOrder[0].PlayerId,
+                        "Contact", "Attack", true, false, 90, attributeEvidenceSequenceNumber: 0)
+                }), Throws.TypeOf<ContractValidationException>());
+            var decisionFact = new MatchReplayReportFactV1(0, context.Home.RotationOrder[0].PlayerId,
+                "Decision", "Attack", true, false, 0, executableChoices: 2,
+                selectedChoice: "Attack", decisionReason: "HighestExecutableScore");
+            Assert.That(decisionFact.ExecutableChoices, Is.EqualTo(2));
+            Assert.That(() => new MatchReplayReportFactV1(0, context.Home.RotationOrder[0].PlayerId,
+                "Decision", "Attack", true, false, 0, executableChoices: 1,
+                selectedChoice: "Attack", decisionReason: "Invalid"),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => MatchReplayV5.Create("formal-v5-unproven-result", context,
+                new[] { evidence }, new[] { new MatchReplayReportFactV1(0,
+                    context.Home.RotationOrder[0].PlayerId, "RallyResult", "Attack", true, false, 0) }),
+                Throws.TypeOf<ContractValidationException>());
             Assert.That(() => MatchReplayV5.Create("formal-v5-invalid", context,
                 new[] { new MatchReplayAttributeEvidenceV5(0,
                     context.Home.RotationOrder[0].PlayerId, "Attack", 1234,
                     context.Away.RotationOrder[0].Derived.ResultFingerprint) }),
                 Throws.TypeOf<ContractValidationException>());
             Assert.That(() => MatchResultV5.Create(context, context.Home.TeamId, 20, 25, 45),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void CareerMatchReportV1_IsCanonicalAndRejectsInvalidBindingsAndCounters()
+        {
+            var context = MatchContextV5.Create(Guid.Parse("77777777-7777-7777-7777-777777777777"), 99,
+                CreateV5Team("home", TeamSide.Home, 5000), CreateV5Team("away", TeamSide.Away, 6000),
+                new string('d', 64), CreateV5TrajectoryConfiguration());
+            var result = MatchResultV5.Create(context, context.Home.TeamId, 25, 20, 45);
+            var reports = context.Home.RotationOrder.Concat(context.Away.RotationOrder)
+                .Select((player, index) => CreateCareerReport(player.PlayerId, index == 0)).ToArray();
+            var report = CareerMatchReportV1.Create(context, result, CareerMatchEvidenceKindV1.PhysicalReplay,
+                new string('e', 64), reports);
+
+            var json = ContractJson.SerializeV1(report);
+            Assert.That(ContractJson.SerializeV1(ContractJson.DeserializeCareerMatchReportV1(json, context, result)), Is.EqualTo(json));
+            Assert.That(report.PlayerReports, Has.Count.EqualTo(12));
+            Assert.That(() => CareerMatchReportV1.Create(context, result, CareerMatchEvidenceKindV1.PhysicalReplay,
+                new string('e', 64), reports.Reverse().ToArray()), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => new CareerMatchPlayerReportV1(reports[0].PlayerId,
+                attackAttempts: 1, attackPoints: 1, attackErrors: 1,
+                serveAttempts: 0, serveAces: 0, serveErrors: 0,
+                receiveAttempts: 0, receivePerfect: 0, receivePositive: 0, receiveNeutral: 0, receiveNegative: 0, receiveErrors: 0,
+                defenseAttempts: 0, defenseSuccesses: 0, blockAttempts: 0, blockEffectiveTouches: 0, blockPoints: 0,
+                setAttempts: 0, setSuccesses: 0, setErrors: 0, rallies: 0, movementMillimeters: 0, jumps: 0,
+                workloadBasisPoints: 1, workloadFormulaVersion: 1, criticalActions: 0, criticalSuccesses: 0,
+                criticalErrors: 0, streakEpisodes: 0, longestStreak: 0, decisionQualitySuccesses: 0, decisionQualityErrors: 0),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => ContractJson.DeserializeCareerMatchReportV1(json.Replace(report.ResultHash, new string('f', 64)), context, result),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void QuickSimulationTraceV1_IsByteStableAndRejectsOutOfContextPlayers()
+        {
+            var context = MatchContextV5.Create(Guid.Parse("88888888-8888-8888-8888-888888888888"), 77,
+                CreateV5Team("home", TeamSide.Home, 5000), CreateV5Team("away", TeamSide.Away, 6000),
+                new string('f', 64), CreateV5TrajectoryConfiguration());
+            var entry = new QuickSimulationTraceEntryV1(0, context.Home.RotationOrder[0].PlayerId,
+                "Attack", "Success", true, 100, 2, "Attack", "Test");
+            var first = QuickSimulationTraceV1.Create(context, new[] { entry });
+            var repeated = QuickSimulationTraceV1.Create(context, new[] { entry });
+            first.ValidateAgainst(context);
+            Assert.That(first.TraceHash, Is.EqualTo(repeated.TraceHash));
+            Assert.That(ContractJson.SerializeV1(first), Is.EqualTo(ContractJson.SerializeV1(repeated)));
+            Assert.That(ContractJson.SerializeV1(ContractJson.DeserializeQuickSimulationTraceV1(
+                ContractJson.SerializeV1(first), context)), Is.EqualTo(ContractJson.SerializeV1(first)));
+            Assert.That(() => QuickSimulationTraceV1.Create(context, new[] {
+                new QuickSimulationTraceEntryV1(0, new PlayerId("not-on-court"), "Attack", "Success", false, 0, 0, null, null) }),
                 Throws.TypeOf<ContractValidationException>());
         }
 
@@ -1649,6 +1725,19 @@ namespace Volleyball.Shared.EditModeTests
                 basisPoints,
                 basisPoints,
                 basisPoints);
+        }
+
+        private static CareerMatchPlayerReportV1 CreateCareerReport(PlayerId playerId, bool nonZero)
+        {
+            return new CareerMatchPlayerReportV1(playerId,
+                nonZero ? 3 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0,
+                nonZero ? 2 : 0, nonZero ? 1 : 0, 0,
+                nonZero ? 4 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0, 0, nonZero ? 1 : 0,
+                nonZero ? 2 : 0, nonZero ? 1 : 0, nonZero ? 2 : 0, nonZero ? 1 : 0, 0,
+                nonZero ? 2 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0,
+                nonZero ? 45 : 0, nonZero ? 2000 : 0, nonZero ? 2 : 0, nonZero ? 2500 : 0, 1,
+                nonZero ? 2 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0, nonZero ? 1 : 0,
+                nonZero ? 1 : 0, nonZero ? 1 : 0);
         }
 
         private static TeamSnapshotV5 CreateV5Team(

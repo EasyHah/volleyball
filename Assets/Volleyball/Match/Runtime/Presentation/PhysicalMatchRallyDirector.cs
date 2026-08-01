@@ -152,7 +152,8 @@ namespace Volleyball.Presentation
             BallTrajectoryPredictionArtifactV4 trajectoryArtifact = null,
             ReceiveOrganizationAuthorityReceipt organizationAuthority = null,
             GateISetIntentReceiptV3 gateISetIntentAuthority = null,
-            AttackDefenseAuthorityReceipt attackDefenseAuthority = null)
+            AttackDefenseAuthorityReceipt attackDefenseAuthority = null,
+            int movementMillimeters = 0)
             : base(kind, simulationTimeSeconds, team, playerId)
         {
             if (gateISetIntentAuthority != null && attackDefenseAuthority != null)
@@ -166,6 +167,7 @@ namespace Volleyball.Presentation
             OrganizationAuthority = organizationAuthority;
             GateISetIntentAuthority = gateISetIntentAuthority;
             AttackDefenseAuthority = attackDefenseAuthority;
+            MovementMillimeters = movementMillimeters;
         }
 
         public TechniqueAction Action { get; }
@@ -177,6 +179,7 @@ namespace Volleyball.Presentation
         public ReceiveOrganizationAuthorityReceipt OrganizationAuthority { get; }
         public GateISetIntentReceiptV3 GateISetIntentAuthority { get; }
         public AttackDefenseAuthorityReceipt AttackDefenseAuthority { get; }
+        public int MovementMillimeters { get; }
     }
 
     public sealed class ReplayDefenseAttemptEvent
@@ -254,15 +257,24 @@ namespace Volleyball.Presentation
             TeamId winningTeam,
             StablePlayerId? scorerId,
             StablePlayerId? errorPlayerId,
-            string reason)
+            string reason,
+            int homeScore,
+            int awayScore,
+            bool isCritical)
             : base("RallyResolved", simulationTimeSeconds, winningTeam, scorerId)
         {
             ErrorPlayerId = errorPlayerId;
             Reason = reason;
+            HomeScore = homeScore;
+            AwayScore = awayScore;
+            IsCritical = isCritical;
         }
 
         public StablePlayerId? ErrorPlayerId { get; }
         public string Reason { get; }
+        public int HomeScore { get; }
+        public int AwayScore { get; }
+        public bool IsCritical { get; }
     }
 
     public class PhysicalMatchRallyDirector : MonoBehaviour
@@ -3658,7 +3670,8 @@ namespace Volleyball.Presentation
                     acceptedTrajectoryArtifact,
                     gateHAuthorityReceipt,
                     gateISetIntentReceipt,
-                    gateIContactReceipt));
+                    gateIContactReceipt,
+                    Mathf.Max(0, Mathf.RoundToInt(movementDistance * 1000f))));
             if (contact.Candidate.Action == TechniqueAction.Receive &&
                 gateIContactReceipt != null)
             {
@@ -5788,6 +5801,8 @@ namespace Volleyball.Presentation
                 player.CancelScheduledContact();
             }
 
+            var isCritical = _set.HomeScore >= _set.SetTargetScore - 2 ||
+                _set.AwayScore >= _set.SetTargetScore - 2;
             _set.ResolveRally(
                 outcome.Winner,
                 scorer.HasValue ? StableId(scorer.Value) : null,
@@ -5801,7 +5816,7 @@ namespace Volleyball.Presentation
                     FromSide(outcome.Winner),
                     scorer.HasValue ? StableId(scorer.Value) : null,
                     resolvedErrorPlayer.HasValue ? StableId(resolvedErrorPlayer.Value) : null,
-                    reason));
+                    reason, _set.HomeScore, _set.AwayScore, isCritical));
             Debug.Log(
                 $"[{_configuration.LogTag}] rally={reason} winner={outcome.Winner} " +
                 $"score={_set.HomeScore}:{_set.AwayScore}");

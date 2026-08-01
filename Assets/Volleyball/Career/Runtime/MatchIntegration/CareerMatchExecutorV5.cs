@@ -14,17 +14,36 @@ namespace Volleyball.Career.MatchIntegration
 
     public sealed class CareerMatchRunOutcomeV5
     {
-        public CareerMatchRunOutcomeV5(MatchResultV5 result, MatchReplayV5 replay)
+        public CareerMatchRunOutcomeV5(MatchResultV5 result, MatchReplayV5 replay,
+            CareerMatchReportV1 report = null, QuickSimulationTraceV1 quickTrace = null)
         {
             Result = result ?? throw new ArgumentNullException(nameof(result));
             Replay = replay ?? throw new ArgumentNullException(nameof(replay));
+            Report = report;
+            QuickTrace = quickTrace;
             if (result.SessionId != replay.Context.SessionId ||
                 !string.Equals(result.ContextHash, replay.ContextHash, StringComparison.Ordinal))
                 throw new ArgumentException("V5 result and replay must bind the same context.");
+            if (report != null)
+            {
+                report.ValidateAgainst(replay.Context, result);
+                if (report.EvidenceKind == CareerMatchEvidenceKindV1.PhysicalReplay &&
+                    !string.Equals(report.EvidenceHash, replay.ReplayHash, StringComparison.Ordinal))
+                    throw new ArgumentException("V5 report must bind the supplied physical replay.");
+            }
+            if (quickTrace != null)
+            {
+                quickTrace.ValidateAgainst(replay.Context);
+                if (report == null || report.EvidenceKind != CareerMatchEvidenceKindV1.QuickSimulationTrace ||
+                    !string.Equals(report.EvidenceHash, quickTrace.TraceHash, StringComparison.Ordinal))
+                    throw new ArgumentException("V5 quick report must bind the supplied quick trace.");
+            }
         }
 
         public MatchResultV5 Result { get; }
         public MatchReplayV5 Replay { get; }
+        public CareerMatchReportV1 Report { get; }
+        public QuickSimulationTraceV1 QuickTrace { get; }
     }
 
     /// <summary>
@@ -64,6 +83,8 @@ namespace Volleyball.Career.MatchIntegration
             outcome.Result.ValidateAgainst(decoded);
             if (!string.Equals(outcome.Replay.ContextHash, decoded.ContextHash, StringComparison.Ordinal))
                 throw new ContractValidationException("V5 replay does not bind the canonical context.");
+            if (outcome.Report != null) outcome.Report.ValidateAgainst(decoded, outcome.Result);
+            if (outcome.QuickTrace != null) outcome.QuickTrace.ValidateAgainst(decoded);
             return outcome;
         }
 

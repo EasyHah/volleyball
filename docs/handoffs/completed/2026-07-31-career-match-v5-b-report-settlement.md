@@ -1,6 +1,6 @@
 # Career x Match V5-B 报告与结算
 
-- Status: active
+- Status: completed
 - Owner: Career / Match collaborator
 - Priority: P1
 - Scope: `CareerMatchReportV1`、物理 replay 聚合、Career V5 结算与 quick simulation trace
@@ -31,3 +31,14 @@ context/configuration/seed 下的可重现字节。
 ## 结束处理
 
 完成后移至 `docs/handoffs/completed/`，记录验证、Windows 验收状态及后继任务。
+
+## 完成记录
+
+- 已实现：物理 V5 Formal 6v6 replay 聚合为 context/result/replay 绑定的十二人报告；Career
+  仅消费已验证报告并独立结算成长、疲劳、心态和教练信任。
+- 已实现：quick simulation trace 以 canonical 回合胜方重建 result/report，固定输入保持 trace/report
+  字节可重现；物理证据一对一绑定 attribute evidence，收据支持同 session 幂等和中断恢复。
+- 已自动验证：Shared、Career、Match 临时 .NET 编译无错误；物理 golden vector、收据完整性烟测和
+  `git diff --check` 通过；独立复核无 P1/P2。
+- Windows 验收：按当前授权滞后执行，不在 macOS 进行。后续在 Windows Unity `6000.3.20f1` 完成
+  focused EditMode、受影响模块回归、Formal PlayMode 与 Windows x64 IL2CPP Development Build。

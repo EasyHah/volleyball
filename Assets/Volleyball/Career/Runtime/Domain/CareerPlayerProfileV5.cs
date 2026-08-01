@@ -11,7 +11,8 @@ namespace Volleyball.Career.Domain
     {
         public CareerPlayerProfileV5(PlayerId playerId, string displayName,
             int jerseyNumber, DominantHandV5 dominantHand,
-            CareerBaseAttributesV5 bases)
+            CareerBaseAttributesV5 bases, int fatigue = 0, int mindset = 50,
+            int coachTrust = 50)
         {
             if (string.IsNullOrWhiteSpace(playerId.Value))
                 throw new ArgumentException("A player ID is required.", nameof(playerId));
@@ -26,6 +27,11 @@ namespace Volleyball.Career.Domain
             JerseyNumber = jerseyNumber;
             DominantHand = dominantHand;
             Bases = bases ?? throw new ArgumentNullException(nameof(bases));
+            if (fatigue < 0 || fatigue > 100 || mindset < 0 || mindset > 100 || coachTrust < 0 || coachTrust > 100)
+                throw new ArgumentOutOfRangeException("V5 profile state must be in [0, 100].");
+            Fatigue = fatigue;
+            Mindset = mindset;
+            CoachTrust = coachTrust;
         }
 
         public PlayerId PlayerId { get; }
@@ -33,5 +39,8 @@ namespace Volleyball.Career.Domain
         public int JerseyNumber { get; }
         public DominantHandV5 DominantHand { get; }
         public CareerBaseAttributesV5 Bases { get; }
+        public int Fatigue { get; }
+        public int Mindset { get; }
+        public int CoachTrust { get; }
     }
 }

@@ -12,7 +12,7 @@ namespace Volleyball.Career.Persistence
     /// </summary>
     public static class CareerPlayerProfileV5JsonCodec
     {
-        private const int SchemaVersion = 5;
+        private const int SchemaVersion = 6;
         private static readonly UTF8Encoding Utf8 = new UTF8Encoding(false, true);
 
         public static byte[] Serialize(CareerPlayerProfileV5 profile)
@@ -28,10 +28,13 @@ namespace Volleyball.Career.Persistence
             var root = StrictJsonReader.Parse(canonicalUtf8);
             if (root.Kind != StrictJsonKind.Object) throw new FormatException("V5 Career profile must be an object.");
             var document = root.ObjectValue;
-            if (document.ContainsUnknownProperty("schemaVersion", "playerId", "displayName", "jerseyNumber", "dominantHand", "bases"))
-                throw new FormatException("V5 Career profile has an unknown field.");
-            if (RequiredInt(document, "schemaVersion") != SchemaVersion)
+            var schemaVersion = RequiredInt(document, "schemaVersion");
+            if (schemaVersion != 5 && schemaVersion != SchemaVersion)
                 throw new FormatException("Unsupported V5 Career profile schema.");
+            if (schemaVersion == 5
+                ? document.ContainsUnknownProperty("schemaVersion", "playerId", "displayName", "jerseyNumber", "dominantHand", "bases")
+                : document.ContainsUnknownProperty("schemaVersion", "playerId", "displayName", "jerseyNumber", "dominantHand", "bases", "fatigue", "mindset", "coachTrust"))
+                throw new FormatException("V5 Career profile has an unknown field.");
             var bases = RequiredObject(document, "bases");
             if (bases.ContainsUnknownProperty("strength", "heightMillimeters", "jump", "movement", "reaction", "coordination", "attack", "defense", "courtIq", "block", "serve", "set"))
                 throw new FormatException("V5 Career profile bases have an unknown field.");
@@ -41,8 +44,11 @@ namespace Volleyball.Career.Persistence
                     RequiredInt(bases, "strength"), RequiredInt(bases, "heightMillimeters"),
                     RequiredInt(bases, "jump"), RequiredInt(bases, "movement"), RequiredInt(bases, "reaction"),
                     RequiredInt(bases, "coordination"), RequiredInt(bases, "attack"), RequiredInt(bases, "defense"),
-                    RequiredInt(bases, "courtIq"), RequiredInt(bases, "block"), RequiredInt(bases, "serve"), RequiredInt(bases, "set")));
-            if (!string.Equals(json, Utf8.GetString(Serialize(profile)), StringComparison.Ordinal))
+                    RequiredInt(bases, "courtIq"), RequiredInt(bases, "block"), RequiredInt(bases, "serve"), RequiredInt(bases, "set")),
+                schemaVersion == 5 ? 0 : RequiredInt(document, "fatigue"),
+                schemaVersion == 5 ? 50 : RequiredInt(document, "mindset"),
+                schemaVersion == 5 ? 50 : RequiredInt(document, "coachTrust"));
+            if (schemaVersion == SchemaVersion && !string.Equals(json, Utf8.GetString(Serialize(profile)), StringComparison.Ordinal))
                 throw new FormatException("V5 Career profile is not canonical.");
             return profile;
         }
@@ -51,10 +57,11 @@ namespace Volleyball.Career.Persistence
         {
             var b = value.Bases;
             return string.Format(CultureInfo.InvariantCulture,
-                "{{\"schemaVersion\":5,\"playerId\":{0},\"displayName\":{1},\"jerseyNumber\":{2},\"dominantHand\":{3},\"bases\":{{\"strength\":{4},\"heightMillimeters\":{5},\"jump\":{6},\"movement\":{7},\"reaction\":{8},\"coordination\":{9},\"attack\":{10},\"defense\":{11},\"courtIq\":{12},\"block\":{13},\"serve\":{14},\"set\":{15}}}}}",
+                "{{\"schemaVersion\":6,\"playerId\":{0},\"displayName\":{1},\"jerseyNumber\":{2},\"dominantHand\":{3},\"bases\":{{\"strength\":{4},\"heightMillimeters\":{5},\"jump\":{6},\"movement\":{7},\"reaction\":{8},\"coordination\":{9},\"attack\":{10},\"defense\":{11},\"courtIq\":{12},\"block\":{13},\"serve\":{14},\"set\":{15}}},\"fatigue\":{16},\"mindset\":{17},\"coachTrust\":{18}}}",
                 Quote(value.PlayerId.Value), Quote(value.DisplayName), value.JerseyNumber, (int)value.DominantHand,
                 b.Strength, b.HeightMillimeters, b.Jump, b.Movement, b.Reaction, b.Coordination,
-                b.Attack, b.Defense, b.CourtIq, b.Block, b.Serve, b.Set);
+                b.Attack, b.Defense, b.CourtIq, b.Block, b.Serve, b.Set,
+                value.Fatigue, value.Mindset, value.CoachTrust);
         }
 
         private static string Quote(string value)

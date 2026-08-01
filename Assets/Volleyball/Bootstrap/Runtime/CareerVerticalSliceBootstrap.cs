@@ -123,12 +123,13 @@ namespace Volleyball.Bootstrap
                 new CareerBaseAttributesV5(input.Strength, input.HeightMillimeters,
                     input.Jump, input.Movement, input.Reaction, input.Coordination,
                     input.Attack, input.Defense, input.CourtIq, input.Block, input.Serve, input.Set));
+            profile = V5MatchLifecycle.LoadPersistedProfile(profile.PlayerId) ?? profile;
             var recovery = V5MatchLifecycle.LoadPending(profile);
             var pending = recovery.Pending ?? V5MatchLifecycle.CreateAndPersistPending(
-                profile, new TeamId("team.university.player.v5"), 0,
+                profile, new TeamId("team.university.player.v5"), profile.Fatigue,
                 Guid.NewGuid(), unchecked((uint)Guid.NewGuid().GetHashCode()));
-            await V5MatchLifecycle.ExecuteAsync(pending, cancellationToken);
-            V5MatchLifecycle.DiscardPending(profile);
+            var outcome = await V5MatchLifecycle.ExecuteAsync(pending, cancellationToken);
+            V5MatchLifecycle.SettleAndPersist(profile, pending, outcome);
         }
 
         private void ConfigureInput(UIDocument document)

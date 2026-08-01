@@ -269,7 +269,7 @@ namespace Volleyball.Career.EditModeTests
                 new PlayerId("v5.profile.player"), "V5 Player", 8,
                 DominantHandV5.Left, new CareerBaseAttributesV5(
                     6100, 1975, 6200, 6300, 6400, 6500,
-                    6600, 6700, 6800, 6900, 7000, 7100));
+                    6600, 6700, 6800, 6900, 7000, 7100), 12, 64, 77);
 
             var bytes = CareerPlayerProfileV5JsonCodec.Serialize(profile);
             var restored = CareerPlayerProfileV5JsonCodec.Deserialize(bytes);
@@ -278,6 +278,37 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(restored.DominantHand, Is.EqualTo(DominantHandV5.Left));
             Assert.That(restored.Bases.HeightMillimeters, Is.EqualTo(1975));
             Assert.That(restored.Bases.Set, Is.EqualTo(7100));
+            Assert.That(restored.Fatigue, Is.EqualTo(12));
+            Assert.That(restored.Mindset, Is.EqualTo(64));
+            Assert.That(restored.CoachTrust, Is.EqualTo(77));
+        }
+
+        [Test]
+        public void V5Settlement_ConsumesVerifiedReportWithoutRescanningReplay()
+        {
+            var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                new PlayerId("v5.settlement.player"), "Settlement Player", 8,
+                DominantHandV5.Right, V5Bases(new[] { 5000, 1900, 5000, 5000, 5000, 5000,
+                    5000, 5000, 5000, 5000, 5000, 5000 }));
+            var launch = new CareerFirstMatchLaunchFactoryV5().Create(profile, new TeamId("v5.settlement.home"),
+                0, new Guid("99999999-9999-9999-9999-999999999999"), 10);
+            var context = new CareerMatchV5Mapper(new string('a', 64), V5TrajectoryConfiguration()).ToContext(launch);
+            var result = MatchResultV5.Create(context, context.Home.TeamId, 25, 20, 45);
+            var reports = context.Home.RotationOrder.Concat(context.Away.RotationOrder).Select(player =>
+                new CareerMatchPlayerReportV1(player.PlayerId, player.PlayerId.Equals(profile.PlayerId) ? 3 : 0,
+                    player.PlayerId.Equals(profile.PlayerId) ? 2 : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    0, 0, 0, 0, 0, 0, 0, 0, 45, 0, 1, 300, 1, 1, 1, 0, 0, 0, 0, 0)).ToArray();
+            var replay = MatchReplayV5.Create("v5.settlement", context);
+            var report = CareerMatchReportV1.Create(context, result, CareerMatchEvidenceKindV1.PhysicalReplay,
+                replay.ReplayHash, reports);
+
+            var settlement = CareerV5MatchSettlementRules.Apply(profile, context, result, report,
+                replay, null);
+
+            Assert.That(settlement.Profile.Bases.Attack, Is.GreaterThan(profile.Bases.Attack));
+            Assert.That(settlement.FatigueDelta, Is.EqualTo(3));
+            Assert.That(settlement.Profile.Fatigue, Is.EqualTo(profile.Fatigue + settlement.FatigueDelta));
+            Assert.That(settlement.ReportHash, Is.EqualTo(report.ReportHash));
         }
 
         [Test]
@@ -353,6 +384,110 @@ namespace Volleyball.Career.EditModeTests
             Assert.That(pending.Context.Home.RotationOrder.Single(player =>
                 player.PlayerId.Equals(profile.PlayerId)).Bases.Attack, Is.EqualTo(6000));
             Assert.That(result.Result.ContextHash, Is.EqualTo(pending.ContextHash));
+        }
+
+        [Test]
+        public async Task V5QuickSimulation_RepeatsTraceAndReportBytesForTheSameContext()
+        {
+            var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                new PlayerId("v5.quick.player"), "Quick Player", 10,
+                DominantHandV5.Right, V5Bases(new[] { 6000, 1900, 6000, 6000, 6000, 6000,
+                    6000, 6000, 6000, 6000, 6000, 6000 }));
+            var context = new CareerMatchV5Mapper(new string('a', 64),
+                V5TrajectoryConfiguration()).ToContext(V5Launch(profile.Bases, 0));
+            var runner = new DeterministicQuickSimulationRunnerV5();
+            var first = await runner.ExecuteAsync(context, CancellationToken.None);
+            var second = await runner.ExecuteAsync(context, CancellationToken.None);
+
+            Assert.That(ContractJson.SerializeV1(first.QuickTrace),
+                Is.EqualTo(ContractJson.SerializeV1(second.QuickTrace)));
+            Assert.That(ContractJson.SerializeV1(first.Report),
+                Is.EqualTo(ContractJson.SerializeV1(second.Report)));
+            first.QuickTrace.ValidateAgainst(context);
+            first.Report.ValidateAgainst(context, first.Result);
+            Assert.That(first.Report.EvidenceHash, Is.EqualTo(first.QuickTrace.TraceHash));
+            Assert.That(ContractJson.SerializeV1(DeterministicQuickSimulationRunnerV5.RebuildReport(
+                context, first.Result, first.QuickTrace)), Is.EqualTo(ContractJson.SerializeV1(first.Report)));
+            Assert.That(DeterministicQuickSimulationRunnerV5.RebuildResult(context, first.QuickTrace).ResultHash,
+                Is.EqualTo(first.Result.ResultHash));
+        }
+
+        [Test]
+        public async Task V5SettlementStore_IsIdempotentPerSessionAndAllowsTheNextSession()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "volleyball-v5-settlement-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                    new PlayerId("v5.home.p0"), "Settled Player", 8, DominantHandV5.Right,
+                    V5Bases(new[] { 5000, 1900, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000 }));
+                var context = new CareerMatchV5Mapper(new string('a', 64),
+                    V5TrajectoryConfiguration()).ToContext(V5Launch(profile.Bases, 0));
+                var runner = new DeterministicQuickSimulationRunnerV5();
+                var first = await runner.ExecuteAsync(context, CancellationToken.None);
+                var store = new CareerV5PendingStore(new CareerStoragePaths(root), new SystemAtomicFileSystem());
+                var firstSettlement = CareerV5MatchSettlementRules.Apply(profile, context, first.Result,
+                    first.Report, null, first.QuickTrace);
+
+                store.SavePending(profile.PlayerId, Encoding.UTF8.GetBytes(ContractJson.SerializeV5(context)));
+                store.CommitSettlement(firstSettlement.Profile, context, first.Result, first.Report, first.QuickTrace);
+                store.CommitSettlement(firstSettlement.Profile, context, first.Result, first.Report, first.QuickTrace);
+                Assert.That(store.LoadPending(profile.PlayerId), Is.Null);
+                Assert.That(store.LoadProfile(profile.PlayerId).Fatigue, Is.EqualTo(firstSettlement.Profile.Fatigue));
+                var latestReceiptPath = Directory.GetFiles(root, "settlement-receipt.json", SearchOption.AllDirectories).Single();
+                File.Delete(latestReceiptPath);
+                Assert.That(store.LoadProfile(profile.PlayerId).Fatigue, Is.EqualTo(firstSettlement.Profile.Fatigue));
+                Assert.That(File.Exists(latestReceiptPath), Is.True);
+
+                var nextContext = MatchContextV5.Create(
+                    new Guid("bbbbbbbb-cccc-dddd-eeee-ffffffffffff"), context.Seed, context.Home, context.Away,
+                    context.PhysicsConfigurationHash, context.TrajectoryPredictionProviderConfiguration);
+                var second = await runner.ExecuteAsync(nextContext, CancellationToken.None);
+                store.SavePending(profile.PlayerId, Encoding.UTF8.GetBytes(ContractJson.SerializeV5(nextContext)));
+                Assert.That(store.LoadPending(profile.PlayerId), Is.Not.Null);
+                var secondSettlement = CareerV5MatchSettlementRules.Apply(firstSettlement.Profile, nextContext,
+                    second.Result, second.Report, null, second.QuickTrace);
+                store.CommitSettlement(secondSettlement.Profile, nextContext, second.Result, second.Report, second.QuickTrace);
+
+                Assert.That(store.LoadPending(profile.PlayerId), Is.Null);
+                Assert.That(store.LoadProfile(profile.PlayerId).Fatigue, Is.EqualTo(secondSettlement.Profile.Fatigue));
+                store.CommitSettlement(firstSettlement.Profile, context, first.Result, first.Report, first.QuickTrace);
+                Assert.That(store.LoadProfile(profile.PlayerId).Fatigue, Is.EqualTo(secondSettlement.Profile.Fatigue));
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        [Test]
+        public async Task V5SettlementStore_RejectsTamperedDurableReceipt()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "volleyball-v5-tamper-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                    new PlayerId("v5.home.p0"), "Receipt Player", 8, DominantHandV5.Right,
+                    V5Bases(new[] { 5000, 1900, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000, 5000 }));
+                var context = new CareerMatchV5Mapper(new string('a', 64),
+                    V5TrajectoryConfiguration()).ToContext(V5Launch(profile.Bases, 0));
+                var outcome = await new DeterministicQuickSimulationRunnerV5().ExecuteAsync(context, CancellationToken.None);
+                var settlement = CareerV5MatchSettlementRules.Apply(profile, context, outcome.Result,
+                    outcome.Report, null, outcome.QuickTrace);
+                var store = new CareerV5PendingStore(new CareerStoragePaths(root), new SystemAtomicFileSystem());
+                store.CommitSettlement(settlement.Profile, context, outcome.Result, outcome.Report, outcome.QuickTrace);
+
+                var receiptPath = Directory.GetFiles(root, "settlement-receipt.json", SearchOption.AllDirectories).Single();
+                var bytes = File.ReadAllBytes(receiptPath);
+                bytes[bytes.Length / 2] ^= 0x01;
+                File.WriteAllBytes(receiptPath, bytes);
+
+                Assert.That(() => store.LoadProfile(profile.PlayerId), Throws.Exception);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
         }
 
         private static TrajectoryPredictionProviderConfigurationV5 V5TrajectoryConfiguration()

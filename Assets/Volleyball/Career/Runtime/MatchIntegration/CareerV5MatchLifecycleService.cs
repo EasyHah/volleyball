@@ -9,7 +9,7 @@ namespace Volleyball.Career.MatchIntegration
 {
     /// <summary>
     /// The V5-A Career lifecycle: profile -> canonical V5 pending -> formal
-    /// result/replay. Settlement intentionally begins only in V5-B.
+    /// result/replay/report, followed by independent Career V5 settlement.
     /// </summary>
     public sealed class CareerV5MatchLifecycleService
     {
@@ -46,6 +46,12 @@ namespace Volleyball.Career.MatchIntegration
             return pending;
         }
 
+        public CareerPlayerProfileV5 LoadPersistedProfile(PlayerId playerId)
+        {
+            if (_pendingStore == null) throw new InvalidOperationException("The V5 pending store is not configured.");
+            return _pendingStore.LoadProfile(playerId);
+        }
+
         public CareerV5PendingRecovery LoadPending(CareerPlayerProfileV5 profile)
         {
             if (profile == null) throw new ArgumentNullException(nameof(profile));
@@ -65,13 +71,38 @@ namespace Volleyball.Career.MatchIntegration
             return _pendingStore.DiscardPending(profile.PlayerId);
         }
 
-        public Task<CareerMatchRunOutcomeV5> ExecuteAsync(CareerPendingMatchV5 pending,
+        public async Task<CareerMatchRunOutcomeV5> ExecuteAsync(CareerPendingMatchV5 pending,
             CancellationToken cancellationToken)
         {
             if (pending == null) throw new ArgumentNullException(nameof(pending));
             // The pending artifact itself is the immutable canonical V5 source
             // of truth; executing it never re-applies fatigue or re-maps bases.
-            return _executor.ExecuteContextAsync(pending.Context, cancellationToken);
+            var outcome = await _executor.ExecuteContextAsync(pending.Context, cancellationToken);
+            return outcome;
+        }
+
+        public CareerV5MatchSettlement SettleAndPersist(CareerPlayerProfileV5 profile,
+            CareerPendingMatchV5 pending, CareerMatchRunOutcomeV5 outcome)
+        {
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            if (pending == null) throw new ArgumentNullException(nameof(pending));
+            if (outcome == null || outcome.Report == null)
+                throw new ContractValidationException("V5 settlement requires a verified report.");
+            if (_pendingStore == null) throw new InvalidOperationException("The V5 pending store is not configured.");
+            var settlement = CareerV5MatchSettlementRules.Apply(profile, pending.Context,
+                outcome.Result, outcome.Report,
+                outcome.QuickTrace == null ? outcome.Replay : null, outcome.QuickTrace);
+            _pendingStore.CommitSettlement(settlement.Profile, pending.Context, outcome.Result,
+                outcome.Report, outcome.QuickTrace);
+            return settlement;
+        }
+
+        public Task<CareerMatchRunOutcomeV5> ExecuteQuickSimulationAsync(
+            CareerPendingMatchV5 pending, CancellationToken cancellationToken)
+        {
+            if (pending == null) throw new ArgumentNullException(nameof(pending));
+            return new DeterministicQuickSimulationRunnerV5().ExecuteAsync(
+                pending.Context, cancellationToken);
         }
 
         public CareerV5PendingRecovery RecoverLegacy(PendingCareerMatch legacy) =>
