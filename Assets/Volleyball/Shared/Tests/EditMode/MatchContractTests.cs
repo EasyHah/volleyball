@@ -163,6 +163,9 @@ namespace Volleyball.Shared.EditModeTests
             var replayWithReportFacts = MatchReplayV5.Create("formal-v5-report-facts", context,
                 new[] { evidence }, new[] { reportFact });
             Assert.That(replayWithReportFacts.ReportFacts, Has.Count.EqualTo(1));
+            var replayJson = ContractJson.SerializeV5(replayWithReportFacts);
+            Assert.That(ContractJson.SerializeV5(ContractJson.DeserializeMatchReplayV5(
+                replayJson, context)), Is.EqualTo(replayJson));
             Assert.That(() => MatchReplayV5.Create("formal-v5-duplicate-evidence", context,
                 new[] { evidence }, new[]
                 {
