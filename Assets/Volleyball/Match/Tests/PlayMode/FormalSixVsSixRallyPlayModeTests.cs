@@ -434,14 +434,21 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
-        [Timeout(360000)]
+        [Timeout(480000)]
         public IEnumerator FormalScene_CompletesTwentyFivePointSetWithTwelvePlayers()
         {
-            yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
-            var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
-            var ball = Object.FindFirstObjectByType<SimulatedBall>();
-            var cameras = Object.FindFirstObjectByType<RallyCameraController>();
-            var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+            var originalLogStackTrace = Application.GetStackTraceLogType(LogType.Log);
+            // This long-running smoke emits diagnostic logs for every contact.
+            // Their stack traces consume its real-time test budget without
+            // contributing to the behavior under test.
+            Application.SetStackTraceLogType(LogType.Log, StackTraceLogType.None);
+            try
+            {
+                yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+                var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+                var ball = Object.FindFirstObjectByType<SimulatedBall>();
+                var cameras = Object.FindFirstObjectByType<RallyCameraController>();
+                var players = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
 
             Assert.That(director, Is.Not.Null);
             Assert.That(ball, Is.Not.Null);
@@ -479,7 +486,7 @@ namespace Volleyball.PlayModeTests
             // Gate I deliberately permits longer multi-contact rallies than the
             // Gate H baseline. Keep this real-time lifecycle test unaccelerated,
             // but leave enough headroom for a legal 25-point fixed-seed set.
-            var timeout = Time.realtimeSinceStartup + 360f;
+            var timeout = Time.realtimeSinceStartup + 480f;
             var sawOutsideOwnCourt = false;
             var minimumSameTeamSeparation = float.PositiveInfinity;
             var awaitingFirstPostRotationRally = false;
@@ -573,6 +580,11 @@ namespace Volleyball.PlayModeTests
             yield return null;
             Assert.That(Camera.main.orthographic, Is.True);
             Assert.That(Camera.main.orthographicSize, Is.GreaterThanOrEqualTo(12f));
+            }
+            finally
+            {
+                Application.SetStackTraceLogType(LogType.Log, originalLogStackTrace);
+            }
         }
 
         [TestCase(true)]

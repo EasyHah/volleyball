@@ -14,7 +14,7 @@ namespace Volleyball.AI
     public enum AttackDefenseCommandKind
     {
         AttackPreparation, AttackContact, BlockContact, FloorDefense, AttackCover,
-        Reorganization, CancelUncommitted
+        Reorganization, CancelUncommitted, InvalidateCommitted
     }
 
     public enum AttackDefenseAuthorityPhaseV3
@@ -242,6 +242,52 @@ namespace Volleyball.AI
             return new GateISetIntentPlanningResultV3(intent, new GateISetIntentReceiptV3(intent.PlanRevision, intent.SourceSequence, intent));
         }
 
+        public GateISetIntentPlanningResultV3 SeedAcceptedSetIntent(
+            AcceptedSetIntentPlanningRequestV3 request)
+        {
+            if (!TrySeedAcceptedSetIntent(request, out var result))
+                throw new InvalidOperationException(
+                    "The accepted Set has no future airborne attack contact.");
+            return result;
+        }
+
+        public bool TrySeedAcceptedSetIntent(
+            AcceptedSetIntentPlanningRequestV3 request,
+            out GateISetIntentPlanningResultV3 result)
+        {
+            if (State.Phase != AttackDefenseAuthorityPhaseV3.Idle)
+                throw new InvalidOperationException(
+                    "Accepted Set authority is already initialized.");
+            if (!_planner.TryPlanAcceptedSetIntent(
+                    request ?? throw new ArgumentNullException(nameof(request)),
+                    out var intent))
+            {
+                result = null;
+                return false;
+            }
+            if (intent.SourceSequence <= _lastSequence)
+                throw new InvalidOperationException(
+                    "Source sequence must increase.");
+            _intent = intent;
+            _lastSequence = intent.SourceSequence;
+            _attackingSide = request.AttackingSide;
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.SetIntentPlanned,
+                intent.PlanRevision,
+                _attackingSide,
+                null,
+                PlanCoverageDecision.Covered(
+                    intent.PlanRevision.ToString(),
+                    PlanCoverageReason.RallyOpen));
+            result = new GateISetIntentPlanningResultV3(
+                intent,
+                new GateISetIntentReceiptV3(
+                    intent.PlanRevision,
+                    intent.SourceSequence,
+                    intent));
+            return true;
+        }
+
         public AttackDefenseAuthorityStateV3 AcceptSet(GateIAcceptedSetV3 accepted, AttackPlanningRequestV3 request)
         {
             if (accepted == null || request == null) throw new ArgumentNullException(accepted == null ? nameof(accepted) : nameof(request));
@@ -313,6 +359,104 @@ namespace Volleyball.AI
                 AttackCoverageFor(_attack));
             State = new AttackDefenseAuthorityStateV3(AttackDefenseAuthorityPhaseV3.AttackCommitted, revision, _attackingSide, plan, State.CoverageDecision);
             Publish(sourceSequence, State, new[] { new AttackDefenseAuthorityCommand(revision, sourceSequence, AttackDefenseCommandKind.AttackContact, selected.Actor, true, ExecutionFor(selected.Actor, AttackDefenseCommandKind.AttackContact), candidateIdentity: selected.CandidateIdentity) });
+            return State;
+        }
+
+        // A semantic post-attack start reconstructs the immutable plan that
+        // authorizes the possible defense/coverage continuations, but it must
+        // not schedule or publish the historical attack or block contacts.
+        public AttackDefenseAuthorityStateV3
+            SeedAfterAcceptedAttackWithoutHistoricalCommands(
+            long revision,
+            long sourceSequence,
+            JointDefensePlanV3 defense)
+        {
+            Require(
+                AttackDefenseAuthorityPhaseV3.ThreatPublished,
+                revision,
+                sourceSequence);
+            if (defense == null ||
+                defense.SourceThreatIdentity != _attack.PublicThreat.ThreatIdentity)
+                throw new InvalidOperationException(
+                    "Post-block authority requires defense from the published threat.");
+
+            _defense = defense;
+            _lastSequence = sourceSequence;
+            var selected = _planner.ChooseFinal(_attack, _defense).Candidate;
+            var plan = new AttackDefensePlanV3(
+                _attackingSide,
+                revision,
+                "gate-i-plan-" + revision,
+                _intent,
+                _attack.Candidates,
+                _attack.PublicThreat,
+                _defense,
+                selected,
+                MergeExits(_defense),
+                AttackCoverageFor(_attack));
+            State = new AttackDefenseAuthorityStateV3(
+                AttackDefenseAuthorityPhaseV3.AwaitingActualContact,
+                revision,
+                _attackingSide,
+                plan,
+                State.CoverageDecision);
+            return State;
+        }
+
+        public AttackDefenseAuthorityStateV3 CancelUnacceptedAttackAndReset(
+            long revision,
+            long sourceSequence)
+        {
+            Require(
+                AttackDefenseAuthorityPhaseV3.AttackCommitted,
+                revision,
+                sourceSequence);
+            var cancelledSequence = _lastSequence;
+            var actor = State.Plan.SelectedAction.Actor;
+            Publish(
+                sourceSequence,
+                State,
+                new[]
+                {
+                    new AttackDefenseAuthorityCommand(
+                        revision,
+                        sourceSequence,
+                        AttackDefenseCommandKind.InvalidateCommitted,
+                        actor,
+                        false,
+                        cancelTargetSourceSequence: cancelledSequence,
+                        cancelTargetKind:
+                            AttackDefenseCommandKind.AttackContact)
+                });
+            _lastSequence = sourceSequence;
+            _intent = null;
+            _attack = null;
+            _defense = null;
+            _players = null;
+            _committedDefenseExecutions.Clear();
+            _toolRecoveryReceiveExecution = null;
+            _perception = null;
+            State = AttackDefenseAuthorityStateV3.Idle;
+            return State;
+        }
+
+        public AttackDefenseAuthorityStateV3 CancelSetIntentAndReset(
+            long revision,
+            long sourceSequence)
+        {
+            Require(
+                AttackDefenseAuthorityPhaseV3.SetIntentPlanned,
+                revision,
+                sourceSequence);
+            _lastSequence = sourceSequence;
+            _intent = null;
+            _attack = null;
+            _defense = null;
+            _players = null;
+            _committedDefenseExecutions.Clear();
+            _toolRecoveryReceiveExecution = null;
+            _perception = null;
+            State = AttackDefenseAuthorityStateV3.Idle;
             return State;
         }
 
