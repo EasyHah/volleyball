@@ -20,6 +20,9 @@ namespace Volleyball.Presentation.TrainingLab
         Faulted
     }
 
+    public enum TrainingLabStepV1 { Rotation, Positioning, ServeBall, Validation, Running }
+    public enum TrainingServeToolV1 { MoveBall, AdjustVelocity, ViewTrajectory }
+
     public sealed class TrainingScenarioLabController : IDisposable
     {
         private readonly TrainingScenarioDraftStoreV1 _store;
@@ -45,6 +48,7 @@ namespace Volleyball.Presentation.TrainingLab
             State = TrainingScenarioLabStateV1.Editing;
             SelectedObjectId = "ball";
             SelectedPropertyPath = "ball.position";
+            CurrentStep = Draft.RotationLocked ? TrainingLabStepV1.Positioning : TrainingLabStepV1.Rotation;
         }
 
         public event Action Changed;
@@ -63,6 +67,9 @@ namespace Volleyball.Presentation.TrainingLab
         public string FailureMessage { get; private set; } = string.Empty;
         public string RunComparisonSummary { get; private set; } =
             "尚未运行";
+        public TrainingLabStepV1 CurrentStep { get; private set; }
+        public TrainingServeToolV1 ServeTool { get; private set; } = TrainingServeToolV1.MoveBall;
+        public IReadOnlyList<PositionFaultV1> PositionFaultPreview => CreatePositionFaultPreview();
         public IReadOnlyList<TrainingScenarioDraftEntryV1> Entries =>
             _store.Entries;
         public bool EditingLocked =>
@@ -127,6 +134,63 @@ namespace Volleyball.Presentation.TrainingLab
         public void SetBallVelocity(SimVector3 value)
         {
             Mutate(() => Draft.BallVelocity = value);
+        }
+
+        public void SetRotation(TeamSide side, IReadOnlyList<StablePlayerId> playerIds)
+        {
+            if (CurrentStep != TrainingLabStepV1.Rotation)
+                throw new InvalidOperationException("Rotation can only be edited in the rotation step.");
+            Mutate(() =>
+            {
+                var target = side == TeamSide.Home ? Draft.HomeRotation : Draft.AwayRotation;
+                target.Clear();
+                if (playerIds != null) target.AddRange(playerIds);
+                Draft.RotationLocked = false;
+            });
+        }
+
+        public void ConfirmRotation()
+        {
+            EnsureEditable();
+            Draft.RotationLocked = true;
+            Validation = TrainingScenarioValidatorV1.Validate(Draft);
+            if (Validation.Issues.Any(value => value.Code ==
+                    TrainingScenarioIssueCodesV1.InvalidRotationMembership))
+            {
+                Draft.RotationLocked = false;
+                throw new InvalidOperationException("Both rotations must contain each on-court player exactly once.");
+            }
+            CurrentStep = TrainingLabStepV1.Positioning;
+            Changed?.Invoke();
+        }
+
+        public void ReopenRotation()
+        {
+            EnsureEditable();
+            Draft.RotationLocked = false;
+            ReadyScenario = null;
+            CurrentStep = TrainingLabStepV1.Rotation;
+            Validation = TrainingScenarioValidatorV1.Validate(Draft);
+            Changed?.Invoke();
+        }
+
+        public void SelectServeTool(TrainingServeToolV1 tool)
+        {
+            EnsureEditable();
+            if (!Enum.IsDefined(typeof(TrainingServeToolV1), tool))
+                throw new ArgumentOutOfRangeException(nameof(tool));
+            ServeTool = tool;
+            CurrentStep = TrainingLabStepV1.ServeBall;
+            Changed?.Invoke();
+        }
+
+        public void GoToValidation()
+        {
+            EnsureEditable();
+            if (!Draft.RotationLocked)
+                throw new InvalidOperationException("Confirm rotation before validation.");
+            CurrentStep = TrainingLabStepV1.Validation;
+            Changed?.Invoke();
         }
 
         public void SetPlayerPosition(
@@ -233,6 +297,7 @@ namespace Volleyball.Presentation.TrainingLab
 
             ReadyScenario = TrainingScenarioValidatorV1.Build(Draft);
             State = TrainingScenarioLabStateV1.Ready;
+            CurrentStep = TrainingLabStepV1.Validation;
             Changed?.Invoke();
             return true;
         }
@@ -290,6 +355,7 @@ namespace Volleyball.Presentation.TrainingLab
             FailureMessage = string.Empty;
             _simulation.Start(ReadyScenario);
             State = TrainingScenarioLabStateV1.Running;
+            CurrentStep = TrainingLabStepV1.Running;
             Changed?.Invoke();
         }
 
@@ -307,6 +373,7 @@ namespace Volleyball.Presentation.TrainingLab
             FailureMessage = string.Empty;
             Validation = TrainingScenarioValidatorV1.Validate(Draft);
             State = TrainingScenarioLabStateV1.Editing;
+            CurrentStep = Draft.RotationLocked ? TrainingLabStepV1.Positioning : TrainingLabStepV1.Rotation;
             Changed?.Invoke();
         }
 
@@ -357,8 +424,9 @@ namespace Volleyball.Presentation.TrainingLab
                 LastEvidence = null;
                 FailureMessage = string.Empty;
                 _simulation.Start(ReadyScenario);
-                State = TrainingScenarioLabStateV1.Running;
-                Changed?.Invoke();
+            State = TrainingScenarioLabStateV1.Running;
+            CurrentStep = TrainingLabStepV1.Running;
+            Changed?.Invoke();
             }
             catch (Exception exception)
             {
@@ -394,6 +462,7 @@ namespace Volleyball.Presentation.TrainingLab
             RunComparisonSummary = "尚未运行";
             Validation = TrainingScenarioValidatorV1.Validate(Draft);
             State = TrainingScenarioLabStateV1.Editing;
+            CurrentStep = Draft.RotationLocked ? TrainingLabStepV1.Positioning : TrainingLabStepV1.Rotation;
             SelectedObjectId = "ball";
             SelectedPropertyPath = "ball.position";
             Changed?.Invoke();
@@ -439,6 +508,24 @@ namespace Volleyball.Presentation.TrainingLab
                    (value.PlayerId?.Value ?? string.Empty) + "|" +
                    value.Summary + "|" +
                    (value.Decision?.SnapshotHash ?? string.Empty);
+        }
+
+        private IReadOnlyList<PositionFaultV1> CreatePositionFaultPreview()
+        {
+            try
+            {
+                var poses = Draft.Players.OrderBy(value => value.PlayerId.Value,
+                        StringComparer.Ordinal)
+                    .Select(value => new TrainingPlayerPoseV1(value.PlayerId,
+                        value.Position, value.Forward, value.Pose)).ToArray();
+                return PositionFaultEvaluatorV1.Evaluate(new TrainingServeStartV1(
+                    Draft.FirstServingSide, Draft.HomeRotation, Draft.AwayRotation,
+                    poses, Draft.BallPosition, Draft.BallVelocity).CreatePositionSlots());
+            }
+            catch (Exception)
+            {
+                return Array.Empty<PositionFaultV1>();
+            }
         }
     }
 }

@@ -25,6 +25,8 @@ namespace Volleyball.Presentation.TrainingLab
             AppendInt(output, "firstServingSide", (int)value.FirstServingSide);
             AppendInt(output, "homeRotationOffset", value.HomeInitialRotationOffset);
             AppendInt(output, "awayRotationOffset", value.AwayInitialRotationOffset);
+            AppendRotation(output, "homeRotation", value.ServeStart.HomeRotation);
+            AppendRotation(output, "awayRotation", value.ServeStart.AwayRotation);
             AppendTactic(output, "homeTactics", value.HomeTactics);
             AppendTactic(output, "awayTactics", value.AwayTactics);
             AppendFloat(output, "ai.rolePreference", value.Ai.RolePreference);
@@ -52,6 +54,14 @@ namespace Volleyball.Presentation.TrainingLab
                 value.StartState.LastLegalActor?.Value ?? string.Empty);
             AppendInt(output, "access", (int)value.AccessLevel);
             return Encoding.UTF8.GetBytes(output.ToString());
+        }
+
+        private static void AppendRotation(StringBuilder output, string prefix,
+            System.Collections.Generic.IReadOnlyList<PlayerId> rotation)
+        {
+            for (var index = 0; index < rotation.Count; index++)
+                AppendText(output, prefix + "." + index.ToString(CultureInfo.InvariantCulture),
+                    rotation[index].Value);
         }
 
         public static string ComputeContentHash(TrainingScenarioV1 value)

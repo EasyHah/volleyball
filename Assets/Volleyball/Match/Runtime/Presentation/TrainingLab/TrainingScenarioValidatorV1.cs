@@ -36,6 +36,12 @@ namespace Volleyball.Presentation.TrainingLab
         public const string BallPlayerOverlap = "TRAINING_BALL_PLAYER_OVERLAP";
         public const string InvalidRallyStart = "TRAINING_RALLY_START_INVALID";
         public const string InvalidAccess = "TRAINING_ACCESS_INVALID";
+        public const string RotationUnlocked = "TRAINING_ROTATION_UNLOCKED";
+        public const string InvalidRotationMembership = "TRAINING_ROTATION_MEMBERSHIP_INVALID";
+        public const string BallNotBehindServingEndLine = "TRAINING_BALL_NOT_BEHIND_SERVING_END_LINE";
+        public const string PositionFault = "TRAINING_POSITION_FAULT";
+        public const string InvalidAttributeOverride = "TRAINING_ATTRIBUTE_OVERRIDE_INVALID";
+        public const string InvalidCameraBookmark = "TRAINING_CAMERA_BOOKMARK_INVALID";
     }
 
     public sealed class TrainingScenarioIssueV1
@@ -113,6 +119,8 @@ namespace Volleyball.Presentation.TrainingLab
             ValidatePlayers(draft, issues);
             ValidateBall(draft, issues);
             ValidateRallyStart(draft, issues);
+            ValidateServeStart(draft, issues);
+            ValidateTrainingOnlyData(draft, issues);
 
             if (draft.AccessLevel != TrainingScenarioAccessLevelV1.Developer)
             {
@@ -177,6 +185,9 @@ namespace Volleyball.Presentation.TrainingLab
                 draft.BallPosition,
                 draft.BallVelocity,
                 startState,
+                CreateServeStart(draft, players),
+                draft.AttributeOverrides,
+                draft.CameraBookmarks,
                 draft.AccessLevel,
                 suppliedContentHash);
         }
@@ -199,6 +210,14 @@ namespace Volleyball.Presentation.TrainingLab
                 set.ServerFor(TeamSide.Home),
                 set.ServerFor(TeamSide.Away),
                 Array.Empty<LiberoReplacementV3>());
+        }
+
+        private static TrainingServeStartV1 CreateServeStart(
+            TrainingScenarioDraftV1 draft, IReadOnlyList<TrainingPlayerPoseV1> players)
+        {
+            return new TrainingServeStartV1(draft.FirstServingSide,
+                draft.HomeRotation, draft.AwayRotation, players,
+                draft.BallPosition, draft.BallVelocity);
         }
 
         private static StablePlayerId[] RotationFor(MatchSet set, TeamSide side)
@@ -582,6 +601,86 @@ namespace Volleyball.Presentation.TrainingLab
                     "ball.position",
                     "Ball begins inside a player contact root.");
             }
+        }
+
+        private static void ValidateServeStart(TrainingScenarioDraftV1 draft,
+            ICollection<TrainingScenarioIssueV1> issues)
+        {
+            if (!draft.RotationLocked)
+            {
+                Add(issues, TrainingScenarioIssueCodesV1.RotationUnlocked,
+                    draft.ScenarioId, "rotationLocked",
+                    "Confirm both rotations before positioning and serving.");
+            }
+            if (!ExactRotation(draft.HomeRotation, draft.Context?.Home) ||
+                !ExactRotation(draft.AwayRotation, draft.Context?.Away))
+            {
+                Add(issues, TrainingScenarioIssueCodesV1.InvalidRotationMembership,
+                    draft.ScenarioId, "rotation",
+                    "Each locked rotation must be a six-player permutation of its team.");
+                return;
+            }
+            if (draft.BallPosition.IsFinite &&
+                !IsBehindServingEndLine(draft.FirstServingSide, draft.BallPosition))
+            {
+                Add(issues, TrainingScenarioIssueCodesV1.BallNotBehindServingEndLine,
+                    "ball", "ball.position",
+                    "The serve ball must be behind the serving team's end line.");
+            }
+            try
+            {
+                var poses = draft.Players.OrderBy(value => value.PlayerId.Value,
+                        StringComparer.Ordinal)
+                    .Select(value => new TrainingPlayerPoseV1(value.PlayerId,
+                        value.Position, value.Forward, value.Pose)).ToArray();
+                var faults = PositionFaultEvaluatorV1.Evaluate(
+                    CreateServeStart(draft, poses).CreatePositionSlots());
+                foreach (var fault in faults)
+                {
+                    Add(issues, TrainingScenarioIssueCodesV1.PositionFault,
+                        fault.ViolatingBehindOrRight.PlayerId.Value, "players",
+                        fault.Rule + " is reversed at serve contact.");
+                }
+            }
+            catch (Exception)
+            {
+                // Other validators report the concrete invalid player/rotation field.
+            }
+        }
+
+        private static bool ExactRotation(IReadOnlyList<StablePlayerId> rotation,
+            TeamSnapshotV4 team)
+        {
+            return rotation != null && rotation.Count == 6 && team?.Players?.Count == 6 &&
+                rotation.Distinct().Count() == 6 &&
+                rotation.All(value => team.Players.Any(player => player.PlayerId.Equals(value)));
+        }
+
+        private static bool IsBehindServingEndLine(TeamSide servingSide,
+            SimVector3 position)
+        {
+            return servingSide == TeamSide.Home
+                ? position.Z <= -CourtBuilder.FormalHalfLength
+                : position.Z >= CourtBuilder.FormalHalfLength;
+        }
+
+        private static void ValidateTrainingOnlyData(TrainingScenarioDraftV1 draft,
+            ICollection<TrainingScenarioIssueV1> issues)
+        {
+            var allowed = new HashSet<StablePlayerId>(draft.Context?.Home?.Players
+                .Concat(draft.Context?.Away?.Players ?? Array.Empty<PlayerSnapshotV4>())
+                .Select(player => player.PlayerId) ?? Array.Empty<StablePlayerId>());
+            foreach (var pair in draft.AttributeOverrides)
+            {
+                if (!allowed.Contains(pair.Key) || pair.Value == null)
+                    Add(issues, TrainingScenarioIssueCodesV1.InvalidAttributeOverride,
+                        pair.Key.Value, "attributeOverrides", "Override player must be on this training court.");
+            }
+            if (draft.CameraBookmarks.Any(value => value == null) ||
+                draft.CameraBookmarks.GroupBy(value => value.Name, StringComparer.Ordinal)
+                    .Any(group => group.Count() != 1))
+                Add(issues, TrainingScenarioIssueCodesV1.InvalidCameraBookmark,
+                    draft.ScenarioId, "cameraBookmarks", "Camera bookmark names must be unique.");
         }
 
         private static void ValidateRallyStart(

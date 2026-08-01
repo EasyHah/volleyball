@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Volleyball.AI;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
@@ -109,6 +110,7 @@ namespace Volleyball.Presentation.TrainingLab
                         new SimVector3(0f, .52f, -.32f),
                         new SimVector3(0f, -1f, 10f));
                     MoveHomePlayersOutOfReach(draft, context.Home);
+                    ResetToLegalServePoses(draft, draft.Context.Home, TeamSide.Home);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException(
@@ -138,6 +140,9 @@ namespace Volleyball.Presentation.TrainingLab
             };
             AddPoses(draft, context.Home, TeamSide.Home);
             AddPoses(draft, context.Away, TeamSide.Away);
+            draft.HomeRotation.AddRange(context.Home.RotationOrder.Select(value => value.PlayerId));
+            draft.AwayRotation.AddRange(context.Away.RotationOrder.Select(value => value.PlayerId));
+            draft.RotationLocked = true;
             return draft;
         }
 
@@ -151,11 +156,30 @@ namespace Volleyball.Presentation.TrainingLab
             SimVector3 ballVelocity)
         {
             draft.DisplayName = displayName;
-            draft.StartRecipe = recipe;
-            draft.SourceTeam = sourceTeam;
-            draft.LastLegalActor = lastActor;
-            draft.BallPosition = ballPosition;
-            draft.BallVelocity = ballVelocity;
+            // TrainingLab V2 always begins at an actual serve. The historical
+            // net-continuation recipes remain catalog names only, not runtime injection points.
+            draft.StartRecipe = RallyStartRecipeV3.ServeFlight;
+            draft.SourceTeam = draft.FirstServingSide;
+            draft.LastLegalActor = null;
+            var sign = draft.FirstServingSide == TeamSide.Home ? -1f : 1f;
+            draft.BallPosition = new SimVector3(0f, 2.2f,
+                sign * (CourtBuilder.FormalHalfLength + .2f));
+            draft.BallVelocity = new SimVector3(0f, 2.5f, -sign * 10f);
+            ResetToLegalServePoses(draft, draft.Context.Home, TeamSide.Home);
+            ResetToLegalServePoses(draft, draft.Context.Away, TeamSide.Away);
+        }
+
+        private static void ResetToLegalServePoses(TrainingScenarioDraftV1 draft,
+            TeamSnapshotV4 team, TeamSide side)
+        {
+            for (var index = 0; index < team.RotationOrder.Count; index++)
+            {
+                var player = draft.Players.Single(value =>
+                    value.PlayerId.Equals(team.RotationOrder[index].PlayerId));
+                var position = PhysicalMatchConfiguration.FormalIndoorSixVsSix
+                    .PositionFor(side, index + 1);
+                player.Position = new SimVector3(position.x, position.y, position.z);
+            }
         }
 
         private static void AddPoses(

@@ -33,6 +33,10 @@ namespace Volleyball.Presentation.TrainingLab
         public TrainingScenarioDraftV1()
         {
             Players = new List<TrainingPlayerPoseDraftV1>();
+            HomeRotation = new List<StablePlayerId>();
+            AwayRotation = new List<StablePlayerId>();
+            AttributeOverrides = new Dictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1>();
+            CameraBookmarks = new List<TrainingCameraBookmarkV1>();
         }
 
         public string ScenarioId { get; set; }
@@ -50,6 +54,12 @@ namespace Volleyball.Presentation.TrainingLab
         public int HomeInitialRotationOffset { get; set; }
 
         public int AwayInitialRotationOffset { get; set; }
+
+        public List<StablePlayerId> HomeRotation { get; }
+
+        public List<StablePlayerId> AwayRotation { get; }
+
+        public bool RotationLocked { get; set; }
 
         public FormalMatchTacticInputV4 HomeTactics { get; set; }
 
@@ -72,6 +82,10 @@ namespace Volleyball.Presentation.TrainingLab
         public TrainingScenarioAccessLevelV1 AccessLevel { get; set; } =
             TrainingScenarioAccessLevelV1.Developer;
 
+        public Dictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1> AttributeOverrides { get; }
+
+        public List<TrainingCameraBookmarkV1> CameraBookmarks { get; }
+
         public TrainingScenarioDraftV1 DeepCopy()
         {
             var copy = new TrainingScenarioDraftV1
@@ -84,6 +98,7 @@ namespace Volleyball.Presentation.TrainingLab
                 FirstServingSide = FirstServingSide,
                 HomeInitialRotationOffset = HomeInitialRotationOffset,
                 AwayInitialRotationOffset = AwayInitialRotationOffset,
+                RotationLocked = RotationLocked,
                 HomeTactics = Clone(HomeTactics),
                 AwayTactics = Clone(AwayTactics),
                 Ai = Clone(Ai),
@@ -98,6 +113,11 @@ namespace Volleyball.Presentation.TrainingLab
             {
                 copy.Players.Add(Players[index]?.DeepCopy());
             }
+            copy.HomeRotation.AddRange(HomeRotation);
+            copy.AwayRotation.AddRange(AwayRotation);
+            foreach (var pair in AttributeOverrides)
+                copy.AttributeOverrides.Add(pair.Key, pair.Value);
+            copy.CameraBookmarks.AddRange(CameraBookmarks);
 
             return copy;
         }

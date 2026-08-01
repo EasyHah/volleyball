@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using Volleyball.AI;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
@@ -174,6 +175,9 @@ namespace Volleyball.Presentation.TrainingLab
         public const string ScenarioIdPrefix = "training-v1/";
 
         private readonly IReadOnlyList<TrainingPlayerPoseV1> _players;
+        private readonly IReadOnlyDictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1>
+            _attributeOverrides;
+        private readonly IReadOnlyList<TrainingCameraBookmarkV1> _cameraBookmarks;
 
         internal TrainingScenarioV1(
             string scenarioId,
@@ -190,6 +194,9 @@ namespace Volleyball.Presentation.TrainingLab
             SimVector3 ballPosition,
             SimVector3 ballVelocity,
             RallyStartStateV3 startState,
+            TrainingServeStartV1 serveStart,
+            IReadOnlyDictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1> attributeOverrides,
+            IReadOnlyList<TrainingCameraBookmarkV1> cameraBookmarks,
             TrainingScenarioAccessLevelV1 accessLevel,
             string suppliedContentHash)
         {
@@ -209,6 +216,12 @@ namespace Volleyball.Presentation.TrainingLab
             BallPosition = ballPosition;
             BallVelocity = ballVelocity;
             StartState = startState;
+            ServeStart = serveStart ?? throw new ArgumentNullException(nameof(serveStart));
+            _attributeOverrides = new ReadOnlyDictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1>(
+                new Dictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1>(
+                    attributeOverrides ?? throw new ArgumentNullException(nameof(attributeOverrides))));
+            _cameraBookmarks = new ReadOnlyCollection<TrainingCameraBookmarkV1>(
+                (cameraBookmarks ?? throw new ArgumentNullException(nameof(cameraBookmarks))).ToArray());
             AccessLevel = accessLevel;
             ContentHash = TrainingScenarioCanonicalizerV1.ComputeContentHash(this);
             if (!string.IsNullOrWhiteSpace(suppliedContentHash) &&
@@ -238,6 +251,10 @@ namespace Volleyball.Presentation.TrainingLab
         public SimVector3 BallPosition { get; }
         public SimVector3 BallVelocity { get; }
         public RallyStartStateV3 StartState { get; }
+        public TrainingServeStartV1 ServeStart { get; }
+        public IReadOnlyDictionary<StablePlayerId, TrainingPlayerAttributeOverrideV1>
+            AttributeOverrides => _attributeOverrides;
+        public IReadOnlyList<TrainingCameraBookmarkV1> CameraBookmarks => _cameraBookmarks;
         public TrainingScenarioAccessLevelV1 AccessLevel { get; }
         public string ContentHash { get; }
 

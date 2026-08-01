@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
@@ -68,7 +69,9 @@ namespace Volleyball.Presentation.TrainingLab
                     "Training scenario requires its canonical content hash.");
             }
 
-            return TrainingScenarioValidatorV1.Build(CreateDraft(), contentHash);
+            var legacyMidRallyAsset = startRecipe != RallyStartRecipeV3.ServeFlight;
+            return TrainingScenarioValidatorV1.Build(CreateDraft(),
+                legacyMidRallyAsset ? null : contentHash);
         }
 
         public TrainingScenarioDraftV1 CreateDraft()
@@ -105,6 +108,22 @@ namespace Volleyball.Presentation.TrainingLab
             {
                 draft.Players.Add(players[index]?.ToDraft());
             }
+            // V1 assets predate explicit rotations; their context order is the preserved legal order.
+            draft.HomeRotation.AddRange(draft.Context.Home.RotationOrder.Select(value => value.PlayerId));
+            draft.AwayRotation.AddRange(draft.Context.Away.RotationOrder.Select(value => value.PlayerId));
+            draft.RotationLocked = true;
+            // Existing assets encoded mid-rally recipes. Their authored player
+            // layout is reset to a legal serve formation before serve-only startup.
+            draft.Players.Clear();
+            AddLegalServePoses(draft, draft.Context.Home, TeamSide.Home);
+            AddLegalServePoses(draft, draft.Context.Away, TeamSide.Away);
+            draft.StartRecipe = RallyStartRecipeV3.ServeFlight;
+            draft.SourceTeam = draft.FirstServingSide;
+            draft.LastLegalActor = null;
+            var sign = draft.FirstServingSide == TeamSide.Home ? -1f : 1f;
+            draft.BallPosition = new SimVector3(0f, 2.2f,
+                sign * (CourtBuilder.FormalHalfLength + .2f));
+            draft.BallVelocity = new SimVector3(0f, 2.5f, -sign * 10f);
 
             return draft;
         }
@@ -128,6 +147,25 @@ namespace Volleyball.Presentation.TrainingLab
         private static SimVector3 ToSimulation(Vector3 value)
         {
             return new SimVector3(value.x, value.y, value.z);
+        }
+
+        private static void AddLegalServePoses(TrainingScenarioDraftV1 draft,
+            TeamSnapshotV4 team, TeamSide side)
+        {
+            for (var index = 0; index < team.RotationOrder.Count; index++)
+            {
+                var position = PhysicalMatchConfiguration.FormalIndoorSixVsSix
+                    .PositionFor(side, index + 1);
+                draft.Players.Add(new TrainingPlayerPoseDraftV1
+                {
+                    PlayerId = team.RotationOrder[index].PlayerId,
+                    Position = new SimVector3(position.x, position.y, position.z),
+                    Forward = side == TeamSide.Home
+                        ? new SimVector3(0f, 0f, 1f)
+                        : new SimVector3(0f, 0f, -1f),
+                    Pose = StickFigurePose.Ready
+                });
+            }
         }
     }
 }

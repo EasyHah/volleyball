@@ -24,7 +24,7 @@ namespace Volleyball.EditModeTests
                 TrainingScenarioCanonicalizerV1.ToCanonicalBytes(second));
             Assert.That(first.ContentHash, Is.EqualTo(second.ContentHash));
             Assert.That(first.Players, Has.Count.EqualTo(12));
-            Assert.That(first.StartState.TouchSequence.CountedHits, Is.EqualTo(2));
+            Assert.That(first.StartState.TouchSequence.CountedHits, Is.Zero);
         }
 
         [Test]
@@ -56,9 +56,7 @@ namespace Volleyball.EditModeTests
                 Change(CreateValidDraft(), draft =>
                     draft.BallVelocity += new SimVector3(0f, .05f, 0f)),
                 Change(CreateValidDraft(), draft =>
-                    draft.StartRecipe = RallyStartRecipeV3.AfterReceive),
-                Change(CreateValidDraft(), draft =>
-                    draft.LastLegalActor = draft.Context.Home.Players[2].PlayerId),
+                    draft.HomeTactics.SetterX += .03f),
                 Change(CreateValidDraft(), draft =>
                     draft.HomeTactics.SetterX += .05f),
                 Change(CreateValidDraft(), draft =>
@@ -165,16 +163,19 @@ namespace Volleyball.EditModeTests
                 HomeTactics = CreateTactics(-1f),
                 AwayTactics = CreateTactics(1f),
                 Ai = new FormalMatchAiInputV4(),
-                BallPosition = new SimVector3(0f, 2.1f, -1.2f),
-                BallVelocity = new SimVector3(.1f, -.3f, 6.5f),
-                StartRecipe = RallyStartRecipeV3.AfterSet,
-                SourceTeam = TeamSide.Home,
-                LastLegalActor = context.Home.Players[1].PlayerId,
+                BallPosition = new SimVector3(0f, 2.1f, 9.2f),
+                BallVelocity = new SimVector3(.1f, 2.5f, -8.5f),
+                StartRecipe = RallyStartRecipeV3.ServeFlight,
+                SourceTeam = TeamSide.Away,
+                LastLegalActor = null,
                 AccessLevel = TrainingScenarioAccessLevelV1.Developer
             };
 
             AddTeamPoses(draft, context.Home, -1f);
             AddTeamPoses(draft, context.Away, 1f);
+            draft.HomeRotation.AddRange(context.Home.RotationOrder.Select(value => value.PlayerId));
+            draft.AwayRotation.AddRange(context.Away.RotationOrder.Select(value => value.PlayerId));
+            draft.RotationLocked = true;
             return draft;
         }
 
@@ -185,12 +186,12 @@ namespace Volleyball.EditModeTests
         {
             for (var index = 0; index < team.Players.Count; index++)
             {
-                var lane = (index % 3) - 1;
-                var row = index < 3 ? 2.2f : 5.8f;
+                var position = PhysicalMatchConfiguration.FormalIndoorSixVsSix
+                    .PositionFor(team.Side, index + 1);
                 draft.Players.Add(new TrainingPlayerPoseDraftV1
                 {
                     PlayerId = team.Players[index].PlayerId,
-                    Position = new SimVector3(lane * 2.7f, 0f, row * sideSign),
+                    Position = new SimVector3(position.x, 0f, position.z),
                     Forward = new SimVector3(0f, 0f, -sideSign),
                     Pose = StickFigurePose.Ready
                 });

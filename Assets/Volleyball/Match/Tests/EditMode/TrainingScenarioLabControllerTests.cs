@@ -70,6 +70,22 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void RotationMustBeConfirmedBeforePositioningAndRun()
+        {
+            using var controller = new TrainingScenarioLabController(Store(), new FakeSimulation());
+
+            controller.ReopenRotation();
+            Assert.That(controller.CurrentStep, Is.EqualTo(TrainingLabStepV1.Rotation));
+            Assert.That(controller.Validate(), Is.False);
+            controller.ConfirmRotation();
+
+            Assert.That(controller.CurrentStep, Is.EqualTo(TrainingLabStepV1.Positioning));
+            controller.SelectServeTool(TrainingServeToolV1.AdjustVelocity);
+            Assert.That(controller.ServeTool, Is.EqualTo(TrainingServeToolV1.AdjustVelocity));
+            Assert.That(controller.CurrentStep, Is.EqualTo(TrainingLabStepV1.ServeBall));
+        }
+
+        [Test]
         public void PauseStepResume_UsesOnlyTheRuntimeLifecycleSurface()
         {
             var runtime = new FakeSimulation();

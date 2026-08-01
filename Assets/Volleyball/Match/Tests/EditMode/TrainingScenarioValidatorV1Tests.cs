@@ -104,27 +104,23 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void Validate_RejectsServeFlightFromNonServingTeam()
+        public void Validate_ServeBallMustRemainBehindServingEndLine()
         {
             var draft = TrainingScenarioV1Tests.CreateValidDraft();
-            draft.StartRecipe = RallyStartRecipeV3.ServeFlight;
-            draft.SourceTeam = TeamSide.Home;
-            draft.LastLegalActor = null;
-            draft.BallPosition = new SimVector3(0f, 2.1f, -1.2f);
-            draft.BallVelocity = new SimVector3(0f, .5f, 6.5f);
+            draft.BallPosition = new SimVector3(0f, 2.1f, 8.9f);
 
             var result = TrainingScenarioValidatorV1.Validate(draft);
 
             Assert.That(
                 result.Issues.Select(issue => issue.Code),
-                Does.Contain(TrainingScenarioIssueCodesV1.InvalidRallyStart));
+                Does.Contain(TrainingScenarioIssueCodesV1.BallNotBehindServingEndLine));
         }
 
         [Test]
-        public void Validate_RejectsBallTravellingBackTowardSourceTeam()
+        public void Validate_RejectsBallTravellingAwayFromReceivingCourt()
         {
             var draft = TrainingScenarioV1Tests.CreateValidDraft();
-            draft.BallVelocity = new SimVector3(.1f, -.3f, -6.5f);
+            draft.BallVelocity = new SimVector3(.1f, -.3f, 6.5f);
 
             var result = TrainingScenarioValidatorV1.Validate(draft);
 
@@ -143,25 +139,17 @@ namespace Volleyball.EditModeTests
 
             Assert.That(
                 result.Issues.Select(issue => issue.Code),
-                Does.Contain(TrainingScenarioIssueCodesV1.InvalidRallyStart));
+                Does.Contain(TrainingScenarioIssueCodesV1.BallNotBehindServingEndLine));
         }
 
         [Test]
-        public void Build_DerivesThirdTouchAndPostBlockExclusivelyWithoutRawDraftFields()
+        public void Build_ServeStartIsAlwaysZeroTouch()
         {
-            var attackDraft = TrainingScenarioV1Tests.CreateValidDraft();
-            attackDraft.StartRecipe = RallyStartRecipeV3.AfterAttack;
-            var attack = TrainingScenarioValidatorV1.Build(attackDraft);
-            var blockDraft = TrainingScenarioV1Tests.CreateValidDraft();
-            blockDraft.StartRecipe = RallyStartRecipeV3.AfterAcceptedBlock;
-            blockDraft.LastLegalActor = blockDraft.Context.Home.Players[1].PlayerId;
-            var block = TrainingScenarioValidatorV1.Build(blockDraft);
-
-            Assert.That(attack.StartState.TouchSequence.CountedHits, Is.EqualTo(3));
-            Assert.That(attack.StartState.IsPostBlock, Is.False);
-            Assert.That(block.StartState.TouchSequence.CountedHits, Is.Zero);
-            Assert.That(block.StartState.IsPostBlock, Is.True);
-            Assert.That(block.StartState.TouchSequence.CurrentCountedSequenceTeam, Is.Null);
+            var scenario = TrainingScenarioValidatorV1.Build(
+                TrainingScenarioV1Tests.CreateValidDraft());
+            Assert.That(scenario.StartState.TouchSequence.CountedHits, Is.Zero);
+            Assert.That(scenario.StartState.Recipe,
+                Is.EqualTo(RallyStartRecipeV3.ServeFlight));
         }
 
         [Test]
