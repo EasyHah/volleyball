@@ -24,6 +24,13 @@ using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttribu
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using TechnicalBaseAttributesV4 = Volleyball.Shared.Contracts.TechnicalBaseAttributesV4;
+using CareerBaseAttributesV5 = Volleyball.Shared.Contracts.CareerBaseAttributesV5;
+using DominantHandV5 = Volleyball.Shared.Contracts.DominantHandV5;
+using MatchContextV5 = Volleyball.Shared.Contracts.MatchContextV5;
+using PlayerPositionV5 = Volleyball.Shared.Contracts.PlayerPosition;
+using PlayerSnapshotV5 = Volleyball.Shared.Contracts.PlayerSnapshotV5;
+using TeamIdV5 = Volleyball.Shared.Contracts.TeamId;
+using TeamSnapshotV5 = Volleyball.Shared.Contracts.TeamSnapshotV5;
 
 namespace Volleyball.PlayModeTests
 {
@@ -1074,6 +1081,73 @@ namespace Volleyball.PlayModeTests
                     courtAwareness: awareness),
                 DominantHandV4.Right,
                 MatchAttributeDerivationConfigV4.Version1));
+        }
+
+        [UnityTest]
+        [Timeout(30000)]
+        public IEnumerator V5PositionFault_AwardsBeforeContactsAndEmitsStructuredEvidence()
+        {
+            var context = CreatePositionFaultContext();
+            var originalTimeScale = Time.timeScale;
+            try
+            {
+                // Freeze before scene activation so the first serve-contact check cannot
+                // race ahead of the deliberately invalid live formation.
+                Time.timeScale = 0f;
+                FormalMatchContextStartupV5.PrepareNextFormalStart(context);
+                yield return SceneManager.LoadSceneAsync("FormalIndoor6v6", LoadSceneMode.Single);
+                // Allow StartInitialLoop to establish the formation and block at
+                // its scaled serve delay while the simulation remains frozen.
+                yield return null;
+                var director = Object.FindFirstObjectByType<FormalSixVsSixRallyDirector>();
+                var agents = Object.FindObjectsByType<PrototypePlayerAgent>(FindObjectsSortMode.None);
+                Assert.That(director, Is.Not.Null);
+                Assert.That(director.MatchContextV5, Is.SameAs(context));
+                var slot4 = agents.Single(agent => agent.StableId.Equals(context.Home.RotationOrder[3].PlayerId));
+                var slot5 = agents.Single(agent => agent.StableId.Equals(context.Home.RotationOrder[4].PlayerId));
+                var faults = new List<ReplayPositionFaultEvent>();
+                var contacts = 0;
+                director.ReplayPositionFault += faults.Add;
+                director.ReplayContactAccepted += _ => contacts++;
+                slot4.transform.position = slot5.transform.position + Vector3.back * 4f;
+
+                Time.timeScale = 10f;
+                var timeout = Time.realtimeSinceStartup + 10f;
+                while (faults.Count == 0 && Time.realtimeSinceStartup < timeout)
+                {
+                    slot4.transform.position = slot5.transform.position + Vector3.back * 4f;
+                    yield return null;
+                }
+
+                Assert.That(faults, Has.Count.EqualTo(1));
+                Assert.That(contacts, Is.Zero);
+                Assert.That(faults[0].ViolatingSide, Is.EqualTo(TeamSide.Home));
+                Assert.That(faults[0].Evidence.Single().Rule, Is.EqualTo("Slot4BehindSlot5"));
+                Assert.That(director.AwayScore, Is.EqualTo(1));
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+            }
+        }
+
+        private static MatchContextV5 CreatePositionFaultContext()
+        {
+            TeamSnapshotV5 Team(string prefix, TeamSide side)
+            {
+                var players = Enumerable.Range(1, 6).Select(slot => new PlayerSnapshotV5(
+                    new StablePlayerId(prefix + "." + slot), prefix + " " + slot, slot,
+                    slot == 2 ? PlayerPositionV5.Setter :
+                    slot == 3 ? PlayerPositionV5.MiddleBlocker :
+                    slot == 4 ? PlayerPositionV5.Opposite : PlayerPositionV5.OutsideHitter,
+                    DominantHandV5.Right,
+                    new CareerBaseAttributesV5(7000, 1900, 7000, 7000, 7000, 7000,
+                        7000, 7000, 7000, 7000, 7000, 7000))).ToArray();
+                return new TeamSnapshotV5(new TeamIdV5(prefix + ".team"), prefix, side, players);
+            }
+            return MatchContextV5.Create(System.Guid.NewGuid(), 77, Team("v5.home", TeamSide.Home),
+                Team("v5.away", TeamSide.Away), FormalSixVsSixRallyBootstrap.FormalPhysicsConfigurationHash,
+                FormalSixVsSixRallyBootstrap.CreateFormalTrajectoryPredictionProviderConfigurationV5());
         }
 
         private sealed class FormalAuthoritySummary

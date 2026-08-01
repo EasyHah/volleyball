@@ -192,6 +192,43 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void V5PositionFaultEvidence_IsCanonicalAndRejectsUnknownRulesOrSlotRelations()
+        {
+            var context = MatchContextV5.Create(Guid.NewGuid(), 99,
+                CreateV5Team("home", TeamSide.Home, 5000),
+                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64),
+                CreateV5TrajectoryConfiguration());
+            var fault = new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Home.RotationOrder[3].PlayerId, 4,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000);
+            var result = MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                new[] { fault });
+            var baseline = MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1);
+            var replay = MatchReplayV5.Create("faulted-v5", context,
+                Array.Empty<MatchReplayAttributeEvidenceV5>(),
+                Array.Empty<MatchReplayReportFactV1>(), new[] { fault });
+
+            Assert.That(result.PositionFaults.Single().Rule, Is.EqualTo("Slot4BehindSlot5"));
+            Assert.That(result.ResultHash, Is.Not.EqualTo(baseline.ResultHash));
+            Assert.That(ContractJson.DeserializeMatchResultV5(ContractJson.SerializeV5(result), context)
+                .PositionFaults.Single().ViolatingPlayerId, Is.EqualTo(fault.ViolatingPlayerId));
+            Assert.That(replay.PositionFaults.Single().RequiredSlot, Is.EqualTo(4));
+            Assert.That(replay.ReplayHash, Is.Not.EqualTo(MatchReplayV5.Create("faulted-v5", context)
+                .ReplayHash));
+            var replayJson = ContractJson.SerializeV5(replay);
+            Assert.That(ContractJson.SerializeV5(ContractJson.DeserializeMatchReplayV5(
+                replayJson, context)), Is.EqualTo(replayJson));
+            Assert.That(() => new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "UnknownRule", context.Home.RotationOrder[3].PlayerId, 4,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Home.RotationOrder[3].PlayerId, 3,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
         public void CareerMatchReportV1_IsCanonicalAndRejectsInvalidBindingsAndCounters()
         {
             var context = MatchContextV5.Create(Guid.Parse("77777777-7777-7777-7777-777777777777"), 99,

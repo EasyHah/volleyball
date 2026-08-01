@@ -18,6 +18,7 @@ namespace Volleyball.Presentation.TrainingLab
         NetCrossing,
         GroundContact,
         DefenseAttempt,
+        PositionFault,
         RallyResolved
     }
 

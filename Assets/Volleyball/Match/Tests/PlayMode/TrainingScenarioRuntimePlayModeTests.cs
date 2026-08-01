@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -25,9 +26,9 @@ namespace Volleyball.PlayModeTests
         {
             var scenario = CreateScenario(
                 "pending",
-                RallyStartRecipeV3.AfterAttack,
-                new SimVector3(0f, 1.2f, -4f),
-                new SimVector3(0f, -1.5f, 0f));
+                RallyStartRecipeV3.ServeFlight,
+                new SimVector3(0f, 2.1f, -10f),
+                new SimVector3(0f, 2.5f, 12f));
 
             TrainingScenarioStartupV1.PrepareNextTrainingStart(scenario);
             Assert.That(
@@ -52,13 +53,13 @@ namespace Volleyball.PlayModeTests
 
         [UnityTest]
         [Timeout(60000)]
-        public IEnumerator SeededStart_UsesFormalStateWithoutHistoricalContactAndStopsAfterOneResult()
+        public IEnumerator ServeStart_UsesNoHistoricalContactAndStopsAfterOneResult()
         {
             var scenario = CreateScenario(
-                "seeded-ground",
-                RallyStartRecipeV3.AfterAttack,
-                new SimVector3(0f, 1.2f, -4f),
-                new SimVector3(0f, -1.5f, 0f));
+                "serve-start",
+                RallyStartRecipeV3.ServeFlight,
+                new SimVector3(0f, 2.1f, -10f),
+                new SimVector3(0f, 2.5f, 12f));
             var host = new GameObject("training-runtime-test");
             var accepted = new List<ReplayContactEvent>();
             var resolved = new List<ReplayRallyResolvedEvent>();
@@ -79,15 +80,6 @@ namespace Volleyball.PlayModeTests
                 }
 
                 Assert.That(director.IsLoopRunning, Is.True);
-                Assert.That(accepted, Is.Empty);
-                Assert.That(director.CountedTeamTouches, Is.EqualTo(3));
-                Assert.That(director.V3CountedHits, Is.EqualTo(3));
-                Assert.That(
-                    director.LastTouchPlayer,
-                    Is.EqualTo(scenario.StartState.LastLegalActor));
-                Assert.That(
-                    director.V3LastCountedActor,
-                    Is.EqualTo(scenario.StartState.LastLegalActor));
                 Assert.That(director.ScenarioProvenance.ScenarioId,
                     Is.EqualTo(scenario.ScenarioId));
                 Assert.That(director.ScenarioProvenance.ContentHash,
@@ -102,7 +94,6 @@ namespace Volleyball.PlayModeTests
 
                 Assert.That(director.TrainingSingleRallyCompleted, Is.True);
                 Assert.That(resolved, Has.Count.EqualTo(1));
-                Assert.That(accepted, Is.Empty);
                 Assert.That(director.IsLoopRunning, Is.False);
                 var score = director.HomeScore + director.AwayScore;
                 Assert.That(score, Is.EqualTo(1));
@@ -119,121 +110,53 @@ namespace Volleyball.PlayModeTests
             }
         }
 
-        [UnityTest]
-        [Timeout(60000)]
-        public IEnumerator AfterSet_ReentersCommittedGateIWithoutHistoricalContact()
+        [Test]
+        public void NonServeStarts_AreRejectedBeforeRuntime()
         {
-            var scenario = CreateScenario(
-                "after-set-gate-i",
-                RallyStartRecipeV3.AfterSet,
-                new SimVector3(0f, 3f, -3f),
-                new SimVector3(0f, 2.5f, 2.4f));
-            var host = new GameObject("training-after-set-test");
-            var accepted = new List<ReplayContactEvent>();
-            try
-            {
-                var director =
-                    FormalSixVsSixRallyBootstrap.InitializeTrainingScenario(
-                        host.transform,
-                        scenario);
-                director.ReplayContactAccepted += accepted.Add;
-
-                var deadline = Time.realtimeSinceStartup + 10f;
-                while (!director.IsLoopRunning &&
-                       Time.realtimeSinceStartup < deadline)
-                {
-                    yield return null;
-                }
-
-                Assert.That(director.IsLoopRunning, Is.True);
-                Assert.That(accepted, Is.Empty);
-                Assert.That(
-                    director.GateIAuthorityPhase,
-                    Is.EqualTo(AttackDefenseAuthorityPhaseV3.AttackCommitted));
-                Assert.That(director.CountedTeamTouches, Is.EqualTo(2));
-                Assert.That(director.V3CountedHits, Is.EqualTo(2));
-
-                deadline = Time.realtimeSinceStartup + 5f;
-                while (accepted.Count == 0 &&
-                       !director.TrainingSingleRallyCompleted &&
-                       Time.realtimeSinceStartup < deadline)
-                {
-                    yield return new WaitForFixedUpdate();
-                }
-
-                Assert.That(
-                    accepted,
-                    Has.Count.GreaterThanOrEqualTo(1),
-                    "The seeded Gate I plan must be completed by real swept geometry.");
-                Assert.That(
-                    accepted[0].Action,
-                    Is.EqualTo(TechniqueAction.Attack));
-                Assert.That(accepted[0].AttackDefenseAuthority, Is.Not.Null);
-                Assert.That(
-                    accepted[0].RuleTransition.Before.CountedHits,
-                    Is.EqualTo(2));
-                Assert.That(
-                    accepted[0].RuleTransition.After.CountedHits,
-                    Is.EqualTo(3));
-            }
-            finally
-            {
-                UnityEngine.Object.Destroy(host);
-            }
+            Assert.That(() => CreateScenario("after-set", RallyStartRecipeV3.AfterSet,
+                    new SimVector3(0f, 2.1f, -10f), new SimVector3(0f, 2.5f, 12f)),
+                Throws.ArgumentException.With.Message.Contains(TrainingScenarioIssueCodesV1.InvalidRallyStart));
+            Assert.That(() => CreateScenario("after-block", RallyStartRecipeV3.AfterAcceptedBlock,
+                    new SimVector3(0f, 2.1f, -10f), new SimVector3(0f, 2.5f, 12f)),
+                Throws.ArgumentException.With.Message.Contains(TrainingScenarioIssueCodesV1.InvalidRallyStart));
         }
 
         [UnityTest]
-        [Timeout(60000)]
-        public IEnumerator AfterAcceptedBlock_SeedsOneGateIContinuationAuthority()
+        [Timeout(30000)]
+        public IEnumerator PositionFault_EndsTrainingBeforeAnyPlayerContact()
         {
             var scenario = CreateScenario(
-                "post-block-gate-i",
-                RallyStartRecipeV3.AfterAcceptedBlock,
-                new SimVector3(0f, 2.4f, -.25f),
-                new SimVector3(0f, 1.2f, -3.2f));
-            var host = new GameObject("training-post-block-test");
-            var accepted = new List<ReplayContactEvent>();
-            var attempts = new List<ReplayDefenseAttemptEvent>();
+                "position-fault",
+                RallyStartRecipeV3.ServeFlight,
+                new SimVector3(0f, 2.1f, -10f),
+                new SimVector3(0f, 2.5f, 12f),
+                positionFault: true);
+            var host = new GameObject("training-position-fault-test");
             try
             {
-                var director =
-                    FormalSixVsSixRallyBootstrap.InitializeTrainingScenario(
-                        host.transform,
-                        scenario);
-                director.ReplayContactAccepted += accepted.Add;
-                director.ReplayDefenseAttemptRecorded += attempts.Add;
+                var director = FormalSixVsSixRallyBootstrap.InitializeTrainingScenario(
+                    host.transform, scenario);
+                var faults = new List<ReplayPositionFaultEvent>();
+                var contacts = 0;
+                ReplayRallyResolvedEvent resolution = null;
+                director.ReplayPositionFault += faults.Add;
+                director.ReplayContactAccepted += _ => contacts++;
+                director.ReplayRallyResolved += value => resolution = value;
 
                 var deadline = Time.realtimeSinceStartup + 10f;
-                while (!director.IsLoopRunning &&
+                while (!director.TrainingSingleRallyCompleted &&
                        Time.realtimeSinceStartup < deadline)
                 {
                     yield return null;
                 }
 
-                Assert.That(director.IsLoopRunning, Is.True);
-                Assert.That(accepted, Is.Empty);
-                Assert.That(
-                    director.GateIAuthorityPhase,
-                    Is.EqualTo(
-                        AttackDefenseAuthorityPhaseV3.AwaitingActualContact));
-                Assert.That(director.CountedTeamTouches, Is.Zero);
-                Assert.That(director.V3CountedHits, Is.Zero);
-                Assert.That(director.NetDeflectionDispatches, Is.Zero);
-
-                deadline = Time.realtimeSinceStartup + 5f;
-                while (attempts.Count == 0 &&
-                       !director.TrainingSingleRallyCompleted &&
-                       Time.realtimeSinceStartup < deadline)
-                {
-                    yield return new WaitForFixedUpdate();
-                }
-
-                Assert.That(director.PostBlockContinuations, Is.EqualTo(1));
-                Assert.That(director.PostBlockPossessionDeferrals, Is.EqualTo(1));
-                Assert.That(
-                    director.PrematurePostBlockReceiveWindows,
-                    Is.Zero);
-                Assert.That(director.NetDeflectionDispatches, Is.Zero);
+                Assert.That(director.TrainingSingleRallyCompleted, Is.True);
+                Assert.That(faults, Has.Count.EqualTo(1));
+                Assert.That(faults[0].Evidence, Is.Empty);
+                Assert.That(contacts, Is.Zero);
+                Assert.That(resolution?.Reason, Is.EqualTo("PositionFault"));
+                Assert.That(resolution?.Team,
+                    Is.EqualTo(Volleyball.Domain.Prototype.TeamId.Orange));
             }
             finally
             {
@@ -245,7 +168,8 @@ namespace Volleyball.PlayModeTests
             string id,
             RallyStartRecipeV3 recipe,
             SimVector3 ballPosition,
-            SimVector3 ballVelocity)
+            SimVector3 ballVelocity,
+            bool positionFault = false)
         {
             var context =
                 FormalSixVsSixRallyBootstrap.CreateDefaultFormalContext();
@@ -264,12 +188,28 @@ namespace Volleyball.PlayModeTests
                 BallVelocity = ballVelocity,
                 StartRecipe = recipe,
                 SourceTeam = TeamSide.Home,
-                LastLegalActor = context.Home.Players[1].PlayerId,
+                LastLegalActor = recipe == RallyStartRecipeV3.ServeFlight
+                    ? null
+                    : context.Home.Players[1].PlayerId,
                 AccessLevel = TrainingScenarioAccessLevelV1.Developer
             };
 
             AddPoses(draft, context.Home, TeamSide.Home);
             AddPoses(draft, context.Away, TeamSide.Away);
+            draft.HomeRotation.AddRange(context.Home.RotationOrder.Select(value => value.PlayerId));
+            draft.AwayRotation.AddRange(context.Away.RotationOrder.Select(value => value.PlayerId));
+            draft.RotationLocked = true;
+            if (positionFault)
+            {
+                var slot4 = draft.Players.Single(value =>
+                    value.PlayerId.Equals(draft.HomeRotation[3]));
+                var slot5 = draft.Players.Single(value =>
+                    value.PlayerId.Equals(draft.HomeRotation[4]));
+                slot4.Position = new SimVector3(
+                    slot4.Position.X,
+                    slot4.Position.Y,
+                    slot5.Position.Z - 1f);
+            }
             return TrainingScenarioValidatorV1.Build(draft);
         }
 

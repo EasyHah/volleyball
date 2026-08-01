@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
+using Volleyball.Domain.Players;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Presentation;
@@ -67,7 +68,17 @@ namespace Volleyball.EditModeTests
                         draft.Context.Away,
                         draft.Context.PhysicsConfigurationHash,
                         draft.Context.TrajectoryPredictionProviderConfiguration,
-                        draft.Context.RulesVersion))
+                        draft.Context.RulesVersion)),
+                Change(CreateValidDraft(), draft => draft.AttributeOverrides.Add(
+                    draft.Context.Home.Players[0].PlayerId,
+                    new TrainingPlayerAttributeOverrideV1(2050,
+                        DominantHandV4.Left,
+                        draft.Context.Home.Players[0].Physical,
+                        draft.Context.Home.Players[0].Technical))),
+                Change(CreateValidDraft(), draft => draft.CameraBookmarks.Add(
+                    new TrainingCameraBookmarkV1("hash-camera",
+                        new SimVector3(1f, 8f, -12f),
+                        new SimVector3(0f, -.3f, 1f), 8f, false)))
             };
 
             foreach (var variant in variants)
@@ -115,6 +126,68 @@ namespace Volleyball.EditModeTests
             Assert.That(names, Does.Not.Contain("Score"));
             Assert.That(names, Does.Not.Contain("CountedHits"));
             Assert.That(names, Does.Not.Contain("ContactWindow"));
+        }
+
+        [Test]
+        public void RuntimeAdapter_AppliesScenarioPrivateAttributeOverrideOnlyToTrainingAgents()
+        {
+            var draft = CreateValidDraft();
+            var player = draft.Context.Home.Players[0];
+            var attributeOverride = new TrainingPlayerAttributeOverrideV1(
+                2050,
+                DominantHandV4.Left,
+                player.Physical,
+                player.Technical);
+            draft.AttributeOverrides.Add(player.PlayerId, attributeOverride);
+            var scenario = TrainingScenarioValidatorV1.Build(draft);
+            var objects = new System.Collections.Generic.List<GameObject>();
+
+            try
+            {
+                var homeIds = draft.Context.Home.Players
+                    .Select(value => value.PlayerId)
+                    .ToHashSet();
+                var agents = scenario.Players.Select((snapshot, index) =>
+                {
+                    var gameObject = new GameObject("training-agent-" + index);
+                    objects.Add(gameObject);
+                    var agent = gameObject.AddComponent<PrototypePlayerAgent>();
+                    agent.Initialize(new Volleyball.Domain.Prototype.PlayerId(
+                            homeIds.Contains(snapshot.PlayerId)
+                                ? Volleyball.Domain.Prototype.TeamId.Blue
+                                : Volleyball.Domain.Prototype.TeamId.Orange,
+                            Volleyball.Domain.Prototype.PlayerRole.Defender,
+                            index),
+                        snapshot.PlayerId, Color.white, index.ToString());
+                    agent.SetAbility(PlayerAbilityProfile.Default);
+                    return agent;
+                }).ToArray();
+
+                new TrainingScenarioRuntimeAdapterV1(scenario).ApplyPlayerSnapshots(agents);
+
+                var runtime = agents.Single(agent => agent.StableId.Equals(player.PlayerId));
+                var expectedPhysical = new PhysicalBaseAttributesV4(
+                    2.05f,
+                    2.05f + (player.Physical.StandingReachMeters - player.Physical.HeightMeters),
+                    player.Physical.Jump,
+                    player.Physical.Mobility,
+                    player.Physical.Reaction,
+                    player.Physical.Coordination);
+                var expected = MatchAttributeDerivationV4.Derive(
+                    expectedPhysical,
+                    player.Technical,
+                    DominantHandV4.Left,
+                    MatchAttributeDerivationConfigV4.Version1);
+                Assert.That(runtime.Ability.Derived.InputFingerprint,
+                    Is.EqualTo(expected.InputFingerprint));
+                Assert.That(runtime.Ability.Derived.ResultFingerprint,
+                    Is.EqualTo(expected.ResultFingerprint));
+            }
+            finally
+            {
+                foreach (var gameObject in objects)
+                    UnityEngine.Object.DestroyImmediate(gameObject);
+            }
         }
 
         [Test]

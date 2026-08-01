@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Text;
 
 namespace Volleyball.Shared.Contracts
@@ -11,11 +12,13 @@ namespace Volleyball.Shared.Contracts
         private readonly string[] _derivedAttributeFingerprints;
         private readonly MatchReplayAttributeEvidenceV5[] _attributeEvidence;
         private readonly MatchReplayReportFactV1[] _reportFacts;
+        private readonly MatchPositionFaultV5[] _positionFaults;
 
         private MatchReplayV5(string replayId, MatchContextV5 context,
             IReadOnlyList<string> derivedAttributeFingerprints,
             IReadOnlyList<MatchReplayAttributeEvidenceV5> attributeEvidence,
-            IReadOnlyList<MatchReplayReportFactV1> reportFacts)
+            IReadOnlyList<MatchReplayReportFactV1> reportFacts,
+            IReadOnlyList<MatchPositionFaultV5> positionFaults)
         {
             if (string.IsNullOrWhiteSpace(replayId))
             {
@@ -88,12 +91,28 @@ namespace Volleyball.Shared.Contracts
                 _reportFacts[index] = fact;
             }
 
+            _positionFaults = (positionFaults ?? throw new ContractValidationException(
+                "V5 replay position-fault evidence is required.")).ToArray();
+            for (var index = 0; index < _positionFaults.Length; index++)
+            {
+                var fault = _positionFaults[index] ?? throw new ContractValidationException(
+                    "V5 replay position-fault evidence cannot contain null.");
+                if (fault.RuleVersionValue != ContractVersions.PositionFaultEvidenceV5 ||
+                    !ContainsPlayer(Context, fault.RequiredPlayerId) ||
+                    !ContainsPlayer(Context, fault.ViolatingPlayerId))
+                    throw new ContractValidationException("V5 replay position-fault evidence is outside its context.");
+                if (index > 0 && CompareFaults(_positionFaults[index - 1], fault) >= 0)
+                    throw new ContractValidationException("V5 replay position-fault evidence must be in canonical order.");
+            }
+
             FormatVersion = ContractVersions.ReplayV5;
+            PositionFaultEvidenceVersion = ContractVersions.PositionFaultEvidenceV5;
             ReplayId = replayId;
             ReplayHash = CanonicalMatchReplayHashV5.Compute(this);
         }
 
         public int FormatVersion { get; }
+        public int PositionFaultEvidenceVersion { get; }
         public string ReplayId { get; }
         public MatchContextV5 Context { get; }
         public string ContextHash => Context.ContextHash;
@@ -103,6 +122,8 @@ namespace Volleyball.Shared.Contracts
             new ReadOnlyCollection<MatchReplayAttributeEvidenceV5>(_attributeEvidence);
         public IReadOnlyList<MatchReplayReportFactV1> ReportFacts =>
             new ReadOnlyCollection<MatchReplayReportFactV1>(_reportFacts);
+        public IReadOnlyList<MatchPositionFaultV5> PositionFaults =>
+            new ReadOnlyCollection<MatchPositionFaultV5>(_positionFaults);
         public string ReplayHash { get; }
 
         public static MatchReplayV5 Create(string replayId, MatchContextV5 context)
@@ -112,7 +133,8 @@ namespace Volleyball.Shared.Contracts
             AddExpected(context.Home, fingerprints);
             AddExpected(context.Away, fingerprints);
             return new MatchReplayV5(replayId, context, fingerprints,
-                Array.Empty<MatchReplayAttributeEvidenceV5>(), Array.Empty<MatchReplayReportFactV1>());
+                Array.Empty<MatchReplayAttributeEvidenceV5>(), Array.Empty<MatchReplayReportFactV1>(),
+                Array.Empty<MatchPositionFaultV5>());
         }
 
         public static MatchReplayV5 Create(string replayId, MatchContextV5 context,
@@ -123,18 +145,28 @@ namespace Volleyball.Shared.Contracts
             AddExpected(context.Home, fingerprints);
             AddExpected(context.Away, fingerprints);
             return new MatchReplayV5(replayId, context, fingerprints, attributeEvidence,
-                Array.Empty<MatchReplayReportFactV1>());
+                Array.Empty<MatchReplayReportFactV1>(), Array.Empty<MatchPositionFaultV5>());
         }
 
         public static MatchReplayV5 Create(string replayId, MatchContextV5 context,
             IReadOnlyList<MatchReplayAttributeEvidenceV5> attributeEvidence,
             IReadOnlyList<MatchReplayReportFactV1> reportFacts)
         {
+            return Create(replayId, context, attributeEvidence, reportFacts,
+                Array.Empty<MatchPositionFaultV5>());
+        }
+
+        public static MatchReplayV5 Create(string replayId, MatchContextV5 context,
+            IReadOnlyList<MatchReplayAttributeEvidenceV5> attributeEvidence,
+            IReadOnlyList<MatchReplayReportFactV1> reportFacts,
+            IReadOnlyList<MatchPositionFaultV5> positionFaults)
+        {
             if (context == null) throw new ArgumentNullException(nameof(context));
             var fingerprints = new List<string>(12);
             AddExpected(context.Home, fingerprints);
             AddExpected(context.Away, fingerprints);
-            return new MatchReplayV5(replayId, context, fingerprints, attributeEvidence, reportFacts);
+            return new MatchReplayV5(replayId, context, fingerprints, attributeEvidence, reportFacts,
+                positionFaults);
         }
 
         private static void AddExpected(TeamSnapshotV5 team, ICollection<string> output)
@@ -155,6 +187,12 @@ namespace Volleyball.Shared.Contracts
         {
             try { FindFingerprint(context, playerId); return true; }
             catch (ContractValidationException) { return false; }
+        }
+
+        private static int CompareFaults(MatchPositionFaultV5 left, MatchPositionFaultV5 right)
+        {
+            var rally = left.RallyNumber.CompareTo(right.RallyNumber);
+            return rally != 0 ? rally : string.CompareOrdinal(left.Rule, right.Rule);
         }
 
         private static void ValidateReportFact(MatchReplayReportFactV1 fact,
@@ -285,7 +323,8 @@ namespace Volleyball.Shared.Contracts
         {
             if (replay == null) throw new ArgumentNullException(nameof(replay));
             var output = new StringBuilder("volleyball.match-replay.v5\n");
-            output.Append(replay.ReplayId).Append('|').Append(replay.ContextHash);
+            output.Append(replay.ReplayId).Append('|').Append(replay.ContextHash)
+                .Append('|').Append(replay.PositionFaultEvidenceVersion);
             foreach (var fingerprint in replay.DerivedAttributeFingerprints) output.Append('|').Append(fingerprint);
             foreach (var evidence in replay.AttributeEvidence)
             {
@@ -304,7 +343,37 @@ namespace Volleyball.Shared.Contracts
                     .Append(':').Append(fact.DecisionReason).Append(':').Append(fact.RelatedContactSequenceNumber)
                     .Append(':').Append(fact.AttributeEvidenceSequenceNumber);
             }
+            foreach (var fault in replay.PositionFaults)
+            {
+                output.Append('|').Append(fault.RallyNumber).Append(':').Append(fault.RuleVersionValue)
+                    .Append(':').Append((int)fault.ViolatingSide).Append(':').Append((int)fault.AwardedSide)
+                    .Append(':').Append((int)fault.ServingSide).Append(':').Append(fault.Rule)
+                    .Append(':').Append(fault.RequiredPlayerId.Value).Append(':').Append(fault.RequiredSlot)
+                    .Append(':').Append(fault.RequiredXMillimeters).Append(':').Append(fault.RequiredZMillimeters)
+                    .Append(':').Append(fault.ViolatingPlayerId.Value).Append(':').Append(fault.ViolatingSlot)
+                    .Append(':').Append(fault.ViolatingXMillimeters).Append(':').Append(fault.ViolatingZMillimeters);
+            }
             return CanonicalJsonHashV4.Sha256(output.ToString());
         }
+    }
+
+    internal static class CanonicalMatchReplayJsonV5
+    {
+        public static string Serialize(MatchReplayV5 replay)
+        {
+            var output = new StringBuilder("{\"formatVersion\":5,\"positionFaultEvidenceVersion\":1,\"replayId\":");
+            output.Append(CanonicalMatchJsonV4.Quote(replay.ReplayId)).Append(",\"contextHash\":").Append(CanonicalMatchJsonV4.Quote(replay.ContextHash));
+            AppendStrings(output, "derivedAttributeFingerprints", replay.DerivedAttributeFingerprints);
+            output.Append(",\"attributeEvidence\":[");
+            for (var i = 0; i < replay.AttributeEvidence.Count; i++) { if (i > 0) output.Append(','); var e = replay.AttributeEvidence[i]; output.Append("{\"sequenceNumber\":").Append(e.SequenceNumber).Append(",\"playerId\":").Append(CanonicalMatchJsonV4.Quote(e.PlayerId.Value)).Append(",\"action\":").Append(CanonicalMatchJsonV4.Quote(e.Action)).Append(",\"simulationMilliseconds\":").Append(e.SimulationMilliseconds).Append(",\"derivedAttributesFingerprint\":").Append(CanonicalMatchJsonV4.Quote(e.DerivedAttributesFingerprint)).Append('}'); }
+            output.Append("],\"reportFacts\":[");
+            for (var i = 0; i < replay.ReportFacts.Count; i++) { if (i > 0) output.Append(','); var f = replay.ReportFacts[i]; output.Append("{\"sequenceNumber\":").Append(f.SequenceNumber).Append(",\"playerId\":").Append(CanonicalMatchJsonV4.Quote(f.PlayerId.Value)).Append(",\"kind\":").Append(CanonicalMatchJsonV4.Quote(f.Kind)).Append(",\"action\":").Append(CanonicalMatchJsonV4.Quote(f.Action)).Append(",\"success\":").Append(f.Success ? "true" : "false").Append(",\"critical\":").Append(f.Critical ? "true" : "false").Append(",\"workloadBasisPoints\":").Append(f.WorkloadBasisPoints).Append(",\"movementMillimeters\":").Append(f.MovementMillimeters).Append(",\"executableChoices\":").Append(f.ExecutableChoices).Append(",\"selectedChoice\":").Append(CanonicalMatchJsonV4.Quote(f.SelectedChoice)).Append(",\"decisionReason\":").Append(CanonicalMatchJsonV4.Quote(f.DecisionReason)).Append(",\"relatedContactSequenceNumber\":").Append(f.RelatedContactSequenceNumber).Append(",\"attributeEvidenceSequenceNumber\":").Append(f.AttributeEvidenceSequenceNumber).Append('}'); }
+            output.Append("],\"positionFaults\":");
+            AppendFaults(output, replay.PositionFaults);
+            output.Append(",\"replayHash\":").Append(CanonicalMatchJsonV4.Quote(replay.ReplayHash)).Append('}');
+            return output.ToString();
+        }
+        private static void AppendStrings(StringBuilder output, string name, IReadOnlyList<string> values) { output.Append(",\"").Append(name).Append("\":["); for (var i = 0; i < values.Count; i++) { if (i > 0) output.Append(','); output.Append(CanonicalMatchJsonV4.Quote(values[i])); } output.Append(']'); }
+        private static void AppendFaults(StringBuilder output, IReadOnlyList<MatchPositionFaultV5> values) { output.Append('['); for (var i = 0; i < values.Count; i++) { if (i > 0) output.Append(','); var f = values[i]; output.Append("{\"rallyNumber\":").Append(f.RallyNumber).Append(",\"ruleVersion\":").Append(f.RuleVersionValue).Append(",\"violatingSide\":").Append((int)f.ViolatingSide).Append(",\"awardedSide\":").Append((int)f.AwardedSide).Append(",\"servingSide\":").Append((int)f.ServingSide).Append(",\"rule\":").Append(CanonicalMatchJsonV4.Quote(f.Rule)).Append(",\"requiredPlayerId\":").Append(CanonicalMatchJsonV4.Quote(f.RequiredPlayerId.Value)).Append(",\"requiredSlot\":").Append(f.RequiredSlot).Append(",\"requiredXMillimeters\":").Append(f.RequiredXMillimeters).Append(",\"requiredZMillimeters\":").Append(f.RequiredZMillimeters).Append(",\"violatingPlayerId\":").Append(CanonicalMatchJsonV4.Quote(f.ViolatingPlayerId.Value)).Append(",\"violatingSlot\":").Append(f.ViolatingSlot).Append(",\"violatingXMillimeters\":").Append(f.ViolatingXMillimeters).Append(",\"violatingZMillimeters\":").Append(f.ViolatingZMillimeters).Append('}'); } output.Append(']'); }
     }
 }

@@ -184,6 +184,15 @@ namespace Volleyball.Presentation.TrainingLab
             Changed?.Invoke();
         }
 
+        public void GoToPositioning()
+        {
+            EnsureEditable();
+            if (!Draft.RotationLocked)
+                throw new InvalidOperationException("Confirm rotation before positioning players.");
+            CurrentStep = TrainingLabStepV1.Positioning;
+            Changed?.Invoke();
+        }
+
         public void GoToValidation()
         {
             EnsureEditable();
@@ -197,6 +206,8 @@ namespace Volleyball.Presentation.TrainingLab
             StablePlayerId playerId,
             SimVector3 value)
         {
+            if (!Draft.RotationLocked || CurrentStep == TrainingLabStepV1.Rotation)
+                throw new InvalidOperationException("Confirm rotation before positioning players.");
             Mutate(() =>
             {
                 var pose = Draft.Players.Single(player =>
@@ -215,6 +226,32 @@ namespace Volleyball.Presentation.TrainingLab
                 Draft.StartRecipe = recipe;
                 Draft.SourceTeam = sourceTeam;
                 Draft.LastLegalActor = lastLegalActor;
+            });
+        }
+
+        public void SetTrainingAttributeOverride(StablePlayerId playerId,
+            TrainingPlayerAttributeOverrideV1 value)
+        {
+            Mutate(() =>
+            {
+                if (Draft.AccessLevel != TrainingScenarioAccessLevelV1.Developer)
+                    throw new InvalidOperationException("Only administrators can edit training test attributes.");
+                if (!Draft.Players.Any(player => player != null && player.PlayerId.Equals(playerId)))
+                    throw new ArgumentException("The player is not in this training scenario.", nameof(playerId));
+                if (value == null) Draft.AttributeOverrides.Remove(playerId);
+                else Draft.AttributeOverrides[playerId] = value;
+            });
+        }
+
+        public void SaveCameraBookmark(string name, SimVector3 position,
+            SimVector3 forward, float orthographicSize, bool orthographic)
+        {
+            Mutate(() =>
+            {
+                if (Draft.CameraBookmarks.Any(value => value.Name == name))
+                    throw new InvalidOperationException("Camera bookmark names must be unique.");
+                Draft.CameraBookmarks.Add(new TrainingCameraBookmarkV1(name,
+                    position, forward, orthographicSize, orthographic));
             });
         }
 

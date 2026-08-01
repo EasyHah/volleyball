@@ -14,6 +14,7 @@ using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
 using MatchContextV5 = Volleyball.Shared.Contracts.MatchContextV5;
 using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
 using MatchResultV5 = Volleyball.Shared.Contracts.MatchResultV5;
+using MatchPositionFaultV5 = Volleyball.Shared.Contracts.MatchPositionFaultV5;
 using ReplayScenarioProvenanceV4 =
     Volleyball.Shared.Contracts.ReplayScenarioProvenanceV4;
 using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
@@ -280,6 +281,30 @@ namespace Volleyball.Presentation
         public bool IsCritical { get; }
     }
 
+    public sealed class ReplayPositionFaultEvent
+    {
+        public ReplayPositionFaultEvent(float simulationTimeSeconds,
+            TeamSide servingSide, TeamSide violatingSide,
+            IReadOnlyList<PositionFaultV1> faults,
+            IReadOnlyList<MatchPositionFaultV5> evidence)
+        {
+            if (faults == null || faults.Count == 0 || evidence == null ||
+                (evidence.Count != 0 && evidence.Count != faults.Count))
+                throw new ArgumentException("Position-fault evidence is required.", nameof(faults));
+            SimulationTimeSeconds = simulationTimeSeconds;
+            ServingSide = servingSide;
+            ViolatingSide = violatingSide;
+            Faults = faults.ToArray();
+            Evidence = evidence.ToArray();
+        }
+
+        public float SimulationTimeSeconds { get; }
+        public TeamSide ServingSide { get; }
+        public TeamSide ViolatingSide { get; }
+        public IReadOnlyList<PositionFaultV1> Faults { get; }
+        public IReadOnlyList<MatchPositionFaultV5> Evidence { get; }
+    }
+
     public class PhysicalMatchRallyDirector : MonoBehaviour
     {
         public const float ServeArrivalVerticalSpeed = -8f;
@@ -361,6 +386,8 @@ namespace Volleyball.Presentation
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
         private MatchContextV4 _matchContext;
         private MatchContextV5 _matchContextV5;
+        private readonly List<MatchPositionFaultV5> _v5PositionFaults =
+            new List<MatchPositionFaultV5>();
         private MatchSet _formalSet;
         private ExecutionEnvelopeV4 _lastPlannedExecutionEnvelopeV4;
         private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
@@ -752,6 +779,8 @@ namespace Volleyball.Presentation
         public event Action<SetterTargetSnapshotV1> SetterTargetPlanned;
 
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
+
+        public event Action<ReplayPositionFaultEvent> ReplayPositionFault;
 
         public event Action<ReplaySimpleEvent> ReplayNetCrossed;
 
@@ -1318,6 +1347,7 @@ namespace Volleyball.Presentation
             {
                 pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
             }
+
         }
 
         private PhysicalRallyTactics InitialTactics()
@@ -1328,6 +1358,15 @@ namespace Volleyball.Presentation
         private IEnumerator StartInitialLoop(float delay)
         {
             _rallyActive = false;
+
+            // Establish the next rally's formation before the serve delay.  The
+            // serve-contact position check must observe the live formation, not
+            // overwrite it immediately before evaluation.
+            foreach (var pair in _players)
+            {
+                pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
+            }
+
             yield return new WaitForSeconds(delay);
 
             if (_matchContext != null)
@@ -1343,11 +1382,6 @@ namespace Volleyball.Presentation
                 _lastTrajectoryPredictionArtifactV4 = null;
             }
 
-            foreach (var pair in _players)
-            {
-                pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
-            }
-
             var receivingTeam = FromSide(_set.ReceivingSide);
             _touchState = new RallyTouchState(receivingTeam);
             if (_v3RulesAdapter != null)
@@ -1360,6 +1394,11 @@ namespace Volleyball.Presentation
                 _lastAcceptedV3Classification = null;
             }
             ResetRallyTransientState();
+
+            if (TryResolvePositionFaultAtServeContact())
+            {
+                yield break;
+            }
 
             var initialFlightSeconds = _initialServeFlightSeconds;
             var nominalReceiver = FindPlayer(
@@ -1408,6 +1447,69 @@ namespace Volleyball.Presentation
                 ReplayServeStarted,
                 new ReplaySimpleEvent("Serve", _ball.SimulationTime, FromSide(_set.ServingSide), stableServer));
             BeginPossessionDecision(receivingTeam, initialFlightSeconds);
+        }
+
+        private bool TryResolvePositionFaultAtServeContact()
+        {
+            if (_matchContextV5 == null && _trainingRuntime == null)
+                return false;
+
+            var faults = PositionFaultEvaluatorV1.Evaluate(CreateLiveServePositionSlots());
+            if (faults.Count == 0)
+                return false;
+
+            var faultSide = faults[0].Side;
+            var sideFaults = faults.Where(value => value.Side == faultSide).ToArray();
+            var evidence = _matchContextV5 == null
+                ? Array.Empty<MatchPositionFaultV5>()
+                : sideFaults.Select(CreateV5PositionFault).ToArray();
+            if (_matchContextV5 != null)
+                _v5PositionFaults.AddRange(evidence);
+            NotifyReplay(ReplayPositionFault, new ReplayPositionFaultEvent(
+                _ball.SimulationTime, _set.ServingSide, faultSide,
+                sideFaults, evidence));
+            var winner = Opponent(faultSide);
+            ResolveRally(new RallyOutcome(winner, true, "PositionFault"),
+                null, null, "PositionFault");
+            return true;
+        }
+
+        private MatchPositionFaultV5 CreateV5PositionFault(PositionFaultV1 fault)
+        {
+            var required = fault.RequiredAheadOrLeft;
+            var violating = fault.ViolatingBehindOrRight;
+            return new MatchPositionFaultV5(
+                _set.HomeScore + _set.AwayScore + 1,
+                fault.Side,
+                Opponent(fault.Side),
+                _set.ServingSide,
+                fault.Rule.ToString(),
+                required.PlayerId, required.Slot,
+                Mathf.RoundToInt(required.FootProjection.X * 1000f),
+                Mathf.RoundToInt(required.FootProjection.Z * 1000f),
+                violating.PlayerId, violating.Slot,
+                Mathf.RoundToInt(violating.FootProjection.X * 1000f),
+                Mathf.RoundToInt(violating.FootProjection.Z * 1000f));
+        }
+
+        private IReadOnlyList<ServePositionSlotV1> CreateLiveServePositionSlots()
+        {
+            var slots = new List<ServePositionSlotV1>(12);
+            AddLiveServePositionSlots(slots, TeamSide.Home);
+            AddLiveServePositionSlots(slots, TeamSide.Away);
+            return slots;
+        }
+
+        private void AddLiveServePositionSlots(ICollection<ServePositionSlotV1> output,
+            TeamSide side)
+        {
+            var rotation = RotationOrder(side);
+            for (var index = 0; index < rotation.Length; index++)
+            {
+                var player = FindPlayer(rotation[index]);
+                output.Add(new ServePositionSlotV1(side, index + 1,
+                    rotation[index], ToSimulation(player.transform.position)));
+            }
         }
 
         private void ResetRallyTransientState()
@@ -1461,46 +1563,43 @@ namespace Volleyball.Presentation
             _trainingRuntime.ApplyPlayerSnapshots(_players.Values);
 
             var scenario = _trainingRuntime.Scenario;
-            var runtimeLastActor =
-                _trainingRuntime.ResolveRuntimeLastActor(_players.Values);
-            _touchState = scenario.StartState.CreateCompatibilityState(
-                runtimeLastActor);
+            var serveStart = scenario.ServeStart;
+            _touchState = new RallyTouchState(FromSide(Opponent(serveStart.ServingSide)));
             if (_v3RulesAdapter != null)
             {
                 _v3RulesAdapter.BeginRally(
                     CreateV3Eligibility(_matchContext),
-                    scenario.StartState);
+                    serveStart.ServingSide);
                 _pendingV3AuthorityContact = null;
                 _lastAcceptedV3Actor = null;
                 _lastAcceptedV3Classification = null;
-            }
-
-            _ball.ResetBall(ToUnity(scenario.BallPosition));
-            _ball.Launch(ToUnity(scenario.BallVelocity));
-            _serveInFlight =
-                scenario.StartState.Recipe == RallyStartRecipeV3.ServeFlight;
-            if (_serveInFlight)
-            {
-                var stableServer = _set.ServerFor(_set.ServingSide);
-                var runtimeServer = FindPlayer(stableServer).Id;
-                _touchState.SynchronizeAuthoritativeContact(
-                    runtimeServer,
-                    TechniqueAction.Serve,
-                    0);
-                BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
-            }
-            else
-            {
-                BeginFlightSegment(
-                    FlightSegmentOrigin.AcceptedPlayerContact,
-                    FromSide(scenario.StartState.SourceTeam));
             }
 
             _rallyActive = true;
             _restartScheduled = false;
             _trainingSingleRallyCompleted = false;
             _status = "TRAINING " + scenario.DisplayName;
-            InitializeTrainingContinuation(scenario, runtimeLastActor);
+            if (TryResolvePositionFaultAtServeContact())
+                yield break;
+            BeginTrainingServe(serveStart);
+        }
+
+        private void BeginTrainingServe(TrainingServeStartV1 serveStart)
+        {
+            if (serveStart.ServingSide != _set.ServingSide)
+                throw new InvalidOperationException("Frozen training serving side does not match the match set.");
+            _ball.ResetBall(ToUnity(serveStart.BallPosition));
+            _ball.Launch(ToUnity(serveStart.BallVelocity));
+            var stableServer = _set.ServerFor(_set.ServingSide);
+            var runtimeServer = FindPlayer(stableServer).Id;
+            _touchState.SynchronizeAuthoritativeContact(runtimeServer, TechniqueAction.Serve, 0);
+            _players[runtimeServer].Rig.SetPose(StickFigurePose.Serve, 1f);
+            _set.RecordContact(stableServer, 0f);
+            _serveInFlight = true;
+            BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
+            NotifyReplay(ReplayServeStarted, new ReplaySimpleEvent("Serve", _ball.SimulationTime,
+                runtimeServer.Team, stableServer));
+            BeginPossessionDecision(Opponent(runtimeServer.Team), EstimateTrainingLeadSeconds());
         }
 
         private void InitializeTrainingContinuation(
@@ -6544,7 +6643,7 @@ namespace Volleyball.Presentation
                             : _matchContextV5.Away.TeamId;
                         ResultV5 = MatchResultV5.Create(_matchContextV5, winner,
                             _set.HomeScore, _set.AwayScore,
-                            _set.HomeScore + _set.AwayScore);
+                            _set.HomeScore + _set.AwayScore, _v5PositionFaults);
                     }
                 }
                 else

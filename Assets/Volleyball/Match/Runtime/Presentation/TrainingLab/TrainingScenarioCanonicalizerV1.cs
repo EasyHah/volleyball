@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using Volleyball.Domain.Simulation;
@@ -42,6 +43,35 @@ namespace Volleyball.Presentation.TrainingLab
                 AppendVector(output, prefix + ".position", player.Position);
                 AppendVector(output, prefix + ".forward", player.Forward);
                 AppendInt(output, prefix + ".pose", (int)player.Pose);
+            }
+
+            foreach (var pair in value.AttributeOverrides.OrderBy(
+                item => item.Key.Value,
+                StringComparer.Ordinal))
+            {
+                var prefix = "attributeOverrides." + pair.Key.Value;
+                var attributeOverride = pair.Value;
+                AppendInt(output, prefix + ".heightMillimeters",
+                    attributeOverride.HeightMillimeters);
+                AppendInt(output, prefix + ".dominantHand",
+                    (int)attributeOverride.DominantHand);
+                AppendPhysical(output, prefix + ".physical",
+                    attributeOverride.Physical);
+                AppendTechnical(output, prefix + ".technical",
+                    attributeOverride.Technical);
+            }
+
+            foreach (var bookmark in value.CameraBookmarks.OrderBy(
+                item => item.Name,
+                StringComparer.Ordinal))
+            {
+                var prefix = "cameraBookmarks." + bookmark.Name;
+                AppendVector(output, prefix + ".position", bookmark.Position);
+                AppendVector(output, prefix + ".forward", bookmark.Forward);
+                AppendFloat(output, prefix + ".orthographicSize",
+                    bookmark.OrthographicSize);
+                AppendInt(output, prefix + ".orthographic",
+                    bookmark.Orthographic ? 1 : 0);
             }
 
             AppendVector(output, "ball.position", value.BallPosition);
@@ -98,6 +128,31 @@ namespace Volleyball.Presentation.TrainingLab
             AppendFloat(output, prefix + ".coverZ", value.CoverZ);
             AppendInt(output, prefix + ".setRhythm", (int)value.SetRhythm);
             AppendFloat(output, prefix + ".attackFlight", value.AttackFlightSeconds);
+        }
+
+        private static void AppendPhysical(StringBuilder output, string prefix,
+            PhysicalBaseAttributesV4 value)
+        {
+            AppendFloat(output, prefix + ".heightMeters", value.HeightMeters);
+            AppendFloat(output, prefix + ".standingReachMeters", value.StandingReachMeters);
+            AppendFloat(output, prefix + ".jump", value.Jump);
+            AppendFloat(output, prefix + ".mobility", value.Mobility);
+            AppendFloat(output, prefix + ".reaction", value.Reaction);
+            AppendFloat(output, prefix + ".coordination", value.Coordination);
+        }
+
+        private static void AppendTechnical(StringBuilder output, string prefix,
+            TechnicalBaseAttributesV4 value)
+        {
+            AppendFloat(output, prefix + ".attackTechnique", value.AttackTechnique);
+            AppendFloat(output, prefix + ".attackPower", value.AttackPower);
+            AppendFloat(output, prefix + ".blockTechnique", value.BlockTechnique);
+            AppendFloat(output, prefix + ".defenseTechnique", value.DefenseTechnique);
+            AppendFloat(output, prefix + ".receiveTechnique", value.ReceiveTechnique);
+            AppendFloat(output, prefix + ".setTechnique", value.SetTechnique);
+            AppendFloat(output, prefix + ".serveTechnique", value.ServeTechnique);
+            AppendFloat(output, prefix + ".softTouch", value.SoftTouch);
+            AppendFloat(output, prefix + ".courtAwareness", value.CourtAwareness);
         }
 
         private static void AppendVector(

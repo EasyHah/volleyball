@@ -48,12 +48,17 @@ namespace Volleyball.Presentation.TrainingLab
         private VisualElement _timeline;
         private VisualElement _viewport;
         private VisualElement _editorControls;
+        private VisualElement _rotationList;
+        private VisualElement _attributeTable;
+        private VisualElement _bookmarkList;
         private Label _state;
         private Label _hash;
         private Label _rules;
         private Label _selection;
         private Label _comparison;
         private Label _feedback;
+        private Label _monitor;
+        private Label _viewportHint;
         private TextField _displayName;
         private IntegerField _seed;
         private DropdownField _recipe;
@@ -77,6 +82,7 @@ namespace Volleyball.Presentation.TrainingLab
         private Button _returnToEdit;
         private Button _export;
         private Button _reviewSetter;
+        private TextField _bookmarkName;
         private bool _rendering;
         private bool _ownsController;
         private bool _initialized;
@@ -148,12 +154,17 @@ namespace Volleyball.Presentation.TrainingLab
             _timeline = _root.Q<VisualElement>("timeline-list");
             _viewport = _root.Q<VisualElement>("world-viewport");
             _editorControls = _root.Q<VisualElement>("editor-controls");
+            _rotationList = _root.Q<VisualElement>("rotation-list");
+            _attributeTable = _root.Q<VisualElement>("attribute-table");
+            _bookmarkList = _root.Q<VisualElement>("bookmark-list");
             _state = _root.Q<Label>("state-label");
             _hash = _root.Q<Label>("hash-label");
             _rules = _root.Q<Label>("rules-label");
             _selection = _root.Q<Label>("selection-label");
             _comparison = _root.Q<Label>("comparison-label");
             _feedback = _root.Q<Label>("feedback-label");
+            _monitor = _root.Q<Label>("monitor-label");
+            _viewportHint = _root.Q<Label>("viewport-hint");
             _displayName = _root.Q<TextField>("display-name");
             _seed = _root.Q<IntegerField>("match-seed");
             _recipe = _root.Q<DropdownField>("start-recipe");
@@ -177,6 +188,7 @@ namespace Volleyball.Presentation.TrainingLab
             _returnToEdit = _root.Q<Button>("edit-button");
             _export = _root.Q<Button>("export-button");
             _reviewSetter = _root.Q<Button>("review-setter-button");
+            _bookmarkName = _root.Q<TextField>("bookmark-name");
 
             ConfigureChoices();
             RegisterUiEvents();
@@ -213,6 +225,19 @@ namespace Volleyball.Presentation.TrainingLab
             _returnToEdit.clicked += () => _controller.ReturnToEditing();
             _export.clicked += ExportEvidence;
             _reviewSetter.clicked += OpenSetterReview;
+            _root.Q<Button>("confirm-rotation-button").clicked += () => _controller.ConfirmRotation();
+            _root.Q<Button>("reopen-rotation-button").clicked += () => _controller.ReopenRotation();
+            _root.Q<Button>("step-rotation").clicked += () => _controller.ReopenRotation();
+            _root.Q<Button>("step-positioning").clicked += () =>
+            {
+                if (_controller.Draft.RotationLocked) _controller.GoToPositioning();
+            };
+            _root.Q<Button>("step-serve").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.MoveBall);
+            _root.Q<Button>("step-validation").clicked += () => _controller.GoToValidation();
+            _root.Q<Button>("tool-move-ball").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.MoveBall);
+            _root.Q<Button>("tool-velocity").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.AdjustVelocity);
+            _root.Q<Button>("tool-trajectory").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.ViewTrajectory);
+            _root.Q<Button>("save-bookmark-button").clicked += SaveCurrentCameraBookmark;
 
             _displayName.RegisterValueChangedCallback(value =>
             {
@@ -287,6 +312,7 @@ namespace Volleyball.Presentation.TrainingLab
                     draft.LastLegalActor?.Value ?? "无");
                 SetTacticValues();
                 RenderSelectedObject();
+                RenderRotationAndAttributes();
                 RenderIssues();
                 RenderTimeline();
                 RenderControls();
@@ -346,6 +372,130 @@ namespace Volleyball.Presentation.TrainingLab
             _velocityX.SetEnabled(canEditVelocity);
             _velocityY.SetEnabled(canEditVelocity);
             _velocityZ.SetEnabled(canEditVelocity);
+        }
+
+        private void RenderRotationAndAttributes()
+        {
+            _rotationList.Clear();
+            foreach (var side in new[] { TeamSide.Home, TeamSide.Away })
+            {
+                var rotation = side == TeamSide.Home
+                    ? _controller.Draft.HomeRotation
+                    : _controller.Draft.AwayRotation;
+                var teamPlayers = (side == TeamSide.Home
+                        ? _controller.Draft.Context.Home.Players
+                        : _controller.Draft.Context.Away.Players)
+                    .OrderBy(value => value.JerseyNumber)
+                    .ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal)
+                    .ToArray();
+                var choices = teamPlayers.Select(RotationChoice).ToList();
+                for (var index = 0; index < rotation.Count; index++)
+                {
+                    var slot = index;
+                    var selected = teamPlayers.Single(value =>
+                        value.PlayerId.Equals(rotation[slot]));
+                    var row = new VisualElement { name = "rotation-" + side + "-" + (slot + 1) };
+                    row.AddToClassList("rotation-row");
+                    row.Add(new Label(side + " " + (slot + 1)));
+                    var picker = new DropdownField(choices, RotationChoice(selected));
+                    picker.SetEnabled(!_controller.EditingLocked &&
+                        !_controller.Draft.RotationLocked);
+                    picker.RegisterValueChangedCallback(change =>
+                    {
+                        if (_rendering) return;
+                        var selectedIndex = choices.IndexOf(change.newValue);
+                        if (selectedIndex < 0) return;
+                        var updated = rotation.ToArray();
+                        updated[slot] = teamPlayers[selectedIndex].PlayerId;
+                        _controller.SetRotation(side, updated);
+                    });
+                    row.Add(picker);
+                    _rotationList.Add(row);
+                }
+            }
+
+            _attributeTable.Clear();
+            foreach (var player in _controller.Draft.Context.Home.Players.Concat(_controller.Draft.Context.Away.Players))
+            {
+                var row = new VisualElement();
+                row.AddToClassList("attribute-row");
+                row.Add(new Label(player.DisplayName + " · " + PositionName(player.Position)));
+                var height = new IntegerField { value = _controller.Draft.AttributeOverrides.TryGetValue(player.PlayerId, out var value) ? value.HeightMillimeters : Mathf.RoundToInt(player.Physical.HeightMeters * 1000f) };
+                var hand = new DropdownField(new List<string> { "Left", "Right" }, (_controller.Draft.AttributeOverrides.TryGetValue(player.PlayerId, out value) ? value.DominantHand : player.DominantHand).ToString());
+                height.SetEnabled(!_controller.EditingLocked && _controller.Draft.AccessLevel == TrainingScenarioAccessLevelV1.Developer);
+                hand.SetEnabled(height.enabledSelf);
+                height.RegisterValueChangedCallback(change => SetOverride(player, change.newValue, hand.value));
+                hand.RegisterValueChangedCallback(change => SetOverride(player, height.value, change.newValue));
+                row.Add(height);
+                row.Add(hand);
+                _attributeTable.Add(row);
+            }
+
+            _bookmarkList.Clear();
+            foreach (var bookmark in _controller.Draft.CameraBookmarks)
+            {
+                var target = bookmark;
+                var button = new Button(() => ApplyCameraBookmark(target))
+                {
+                    text = bookmark.Name + " · " + (bookmark.Orthographic ? "正交" : "自由") + "视角"
+                };
+                button.AddToClassList("bookmark-row");
+                _bookmarkList.Add(button);
+            }
+        }
+
+        private static string RotationChoice(PlayerSnapshotV4 player)
+        {
+            return player.JerseyNumber + " · " + player.DisplayName +
+                " · " + PositionName(player.Position);
+        }
+
+        private void SaveCurrentCameraBookmark()
+        {
+            if (_worldCamera == null)
+            {
+                _feedback.text = "预览场地尚未就绪，无法保存机位。";
+                return;
+            }
+
+            var position = _worldCamera.transform.position;
+            var forward = _worldCamera.transform.forward;
+            _controller.SaveCameraBookmark(
+                _bookmarkName.value,
+                new SimVector3(position.x, position.y, position.z),
+                new SimVector3(forward.x, forward.y, forward.z),
+                _worldCamera.orthographicSize,
+                _worldCamera.orthographic);
+        }
+
+        private void ApplyCameraBookmark(TrainingCameraBookmarkV1 bookmark)
+        {
+            if (_worldCamera == null) return;
+            _worldCamera.transform.position = ToUnity(bookmark.Position);
+            _worldCamera.transform.forward = ToUnity(bookmark.Forward);
+            _worldCamera.orthographic = bookmark.Orthographic;
+            _worldCamera.orthographicSize = bookmark.OrthographicSize;
+        }
+
+        private void SetOverride(PlayerSnapshotV4 player, int height, string hand)
+        {
+            if (_rendering) return;
+            _controller.SetTrainingAttributeOverride(player.PlayerId,
+                new TrainingPlayerAttributeOverrideV1(height,
+                    Enum.Parse<DominantHandV4>(hand), player.Physical, player.Technical));
+        }
+
+        private static string PositionName(PlayerPosition position)
+        {
+            return position switch
+            {
+                PlayerPosition.Setter => "二传",
+                PlayerPosition.OutsideHitter => "主攻",
+                PlayerPosition.MiddleBlocker => "副攻",
+                PlayerPosition.Opposite => "接应",
+                PlayerPosition.Libero => "自由人",
+                _ => "防守"
+            };
         }
 
         private void RenderIssues()
@@ -428,6 +578,19 @@ namespace Volleyball.Presentation.TrainingLab
                 _controller.VisibleEvidence?.Decisions.Count > 0);
             _reviewSetter.SetEnabled(
                 _controller.VisibleEvidence?.SetterTargets.Count > 0);
+            _monitor.text = "阶段 " + _controller.CurrentStep + " · 发球方 " +
+                _controller.Draft.FirstServingSide + " · 触球 " +
+                (_controller.VisibleEvidence?.Timeline.Count(value => value.Kind == TrainingTimelineEventKindV1.ContactAccepted) ?? 0) +
+                " · 裁判 " + (_controller.PositionFaultPreview.Count == 0 ? "站位合法" : "位置错误 " + _controller.PositionFaultPreview.Count);
+            _viewportHint.text = _controller.CurrentStep == TrainingLabStepV1.Rotation
+                ? "步骤 1：确认轮转位次后才能拖动摆位"
+                : _controller.ServeTool == TrainingServeToolV1.AdjustVelocity
+                    ? "速度工具：拖动红色速度箭头或精确填写 VX/VY/VZ"
+                    : _controller.ServeTool == TrainingServeToolV1.ViewTrajectory
+                        ? "轨迹工具：只读预览"
+                        : "摆位：球员头顶显示职业与锁定的 1-6 位次";
+            foreach (var step in Enum.GetValues(typeof(TrainingLabStepV1)).Cast<TrainingLabStepV1>())
+                _root.Q<Button>("step-" + step.ToString().ToLowerInvariant())?.EnableInClassList("active-step", _controller.CurrentStep == step);
         }
 
         private void SyncWorld()
@@ -615,7 +778,8 @@ namespace Volleyball.Presentation.TrainingLab
 
         private void OnPointerDown(PointerDownEvent value)
         {
-            if (_controller.EditingLocked || _worldCamera == null) return;
+            if (_controller.EditingLocked || _worldCamera == null ||
+                _controller.CurrentStep == TrainingLabStepV1.Rotation) return;
             var ray = ScreenRay(value.position);
             if (!Physics.Raycast(ray, out var hit, 100f)) return;
             var marker =
@@ -640,6 +804,7 @@ namespace Volleyball.Presentation.TrainingLab
             var point = ray.GetPoint(distance);
             if (_dragObjectId == "ball")
             {
+                if (_controller.ServeTool != TrainingServeToolV1.MoveBall) return;
                 var current = _controller.Draft.BallPosition;
                 _controller.SetBallPosition(
                     new SimVector3(point.x, current.Y, point.z));

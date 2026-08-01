@@ -30,6 +30,10 @@
 }
 .state-error { background-color: rgb(153, 54, 50); }
 .hash-label { min-width: 190px; color: rgb(238, 190, 91); font-size: 12px; }
+.workbench-steps { height: 44px; flex-direction: row; align-items: center; padding: 5px 18px; background-color: rgb(16, 36, 46); }
+.workbench-steps Button { min-height: 28px; background-color: rgb(39, 68, 79); }
+.workbench-steps Button.active-step { background-color: rgb(35, 134, 102); border-bottom-width: 2px; border-bottom-color: rgb(248, 199, 77); }
+.monitor-label { flex-grow: 1; margin-left: 10px; color: rgb(242, 210, 122); font-size: 11px; white-space: normal; }
 
 .workspace { flex-grow: 1; flex-direction: row; min-height: 360px; }
 .panel { background-color: rgba(12, 27, 36, 0.97); }
@@ -92,6 +96,14 @@
 .vector-row { flex-direction: row; }
 .vector-field { flex-grow: 1; margin-right: 5px; }
 .selection-label { color: rgb(242, 196, 93); }
+.rotation-list, .attribute-table, .bookmark-list { margin-top: 4px; padding: 5px; background-color: rgb(9, 23, 30); border-width: 1px; border-color: rgb(42, 76, 87); }
+.rotation-row, .attribute-row, .bookmark-row { flex-direction: row; align-items: center; min-height: 25px; color: rgb(195, 218, 221); font-size: 11px; }
+.rotation-row Label { flex-grow: 1; }
+.rotation-row DropdownField { width: 220px; }
+.attribute-row Label { width: 148px; white-space: normal; }
+.attribute-row IntegerField { width: 70px; margin-right: 4px; }
+.attribute-row DropdownField { width: 90px; }
+.bookmark-name { width: 125px; }
 .issue-list { margin-bottom: 10px; }
 .issue-button {
     min-height: 52px;

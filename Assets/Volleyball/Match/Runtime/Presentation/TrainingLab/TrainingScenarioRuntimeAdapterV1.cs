@@ -1,8 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Match.Domain.FullRallyV3;
+using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
+using MatchAttributeDerivationV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationV4;
+using PhysicalBaseAttributesV4 = Volleyball.Shared.Contracts.PhysicalBaseAttributesV4;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation.TrainingLab
@@ -52,7 +56,37 @@ namespace Volleyball.Presentation.TrainingLab
                     snapshot.Position,
                     snapshot.Forward,
                     snapshot.Pose);
+
+                if (_scenario.AttributeOverrides.TryGetValue(
+                        snapshot.PlayerId, out var attributeOverride))
+                {
+                    player.SetAbility(new PlayerAbilityProfile(
+                        MatchAttributeDerivationV4.Derive(
+                            OverridePhysical(attributeOverride),
+                            attributeOverride.Technical,
+                            attributeOverride.DominantHand,
+                            MatchAttributeDerivationConfigV4.Version1)));
+                }
             }
+        }
+
+        private static PhysicalBaseAttributesV4 OverridePhysical(
+            TrainingPlayerAttributeOverrideV1 attributeOverride)
+        {
+            var source = attributeOverride.Physical;
+            var heightMeters = attributeOverride.HeightMillimeters / 1000f;
+            // Keep the configured reach surplus when height changes, rather than
+            // allowing an otherwise valid training override to create an invalid
+            // base-attribute tuple.
+            var standingReach = heightMeters +
+                (source.StandingReachMeters - source.HeightMeters);
+            return new PhysicalBaseAttributesV4(
+                heightMeters,
+                standingReach,
+                source.Jump,
+                source.Mobility,
+                source.Reaction,
+                source.Coordination);
         }
 
         public PlayerId? ResolveRuntimeLastActor(

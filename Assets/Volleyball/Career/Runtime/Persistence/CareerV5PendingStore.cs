@@ -60,7 +60,17 @@ namespace Volleyball.Career.Persistence
             var path = PendingPath(playerId);
             if (!_fileSystem.FileExists(path)) return null;
             var pending = _fileSystem.ReadAllBytes(path);
-            var pendingContext = ContractJson.DeserializeMatchContextV5(Encoding.UTF8.GetString(pending));
+            MatchContextV5 pendingContext;
+            try
+            {
+                pendingContext = ContractJson.DeserializeMatchContextV5(Encoding.UTF8.GetString(pending));
+            }
+            catch (ContractValidationException)
+            {
+                // Keep unsupported historical bytes intact. Lifecycle recovery decides whether
+                // the user must discard them; storage must not silently migrate or delete them.
+                return pending;
+            }
             if (_fileSystem.FileExists(SettlementReceiptPath(playerId, pendingContext.SessionId))) return null;
             if (!_fileSystem.FileExists(SettlementReceiptPath(playerId))) return pending;
             var receipt = CareerV5SettlementReceiptCodec.Deserialize(

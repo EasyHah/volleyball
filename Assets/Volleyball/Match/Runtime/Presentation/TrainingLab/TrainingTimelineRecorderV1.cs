@@ -58,6 +58,7 @@ namespace Volleyball.Presentation.TrainingLab
             _director.ReplayNetCrossed += OnNetCrossing;
             _director.ReplayDefenseAttemptRecorded += OnDefenseAttempt;
             _director.ReplayRallyResolved += OnResolved;
+            _director.ReplayPositionFault += OnPositionFault;
             _ball.EnvironmentContact += OnEnvironmentContact;
         }
 
@@ -94,6 +95,7 @@ namespace Volleyball.Presentation.TrainingLab
             _director.ReplayNetCrossed -= OnNetCrossing;
             _director.ReplayDefenseAttemptRecorded -= OnDefenseAttempt;
             _director.ReplayRallyResolved -= OnResolved;
+            _director.ReplayPositionFault -= OnPositionFault;
             _ball.EnvironmentContact -= OnEnvironmentContact;
         }
 
@@ -229,6 +231,25 @@ namespace Volleyball.Presentation.TrainingLab
                 value.Team,
                 value.PlayerId,
                 value.Reason);
+        }
+
+        private void OnPositionFault(ReplayPositionFaultEvent value)
+        {
+            if (value == null) return;
+            foreach (var fault in value.Faults)
+            {
+                var required = fault.RequiredAheadOrLeft;
+                var violating = fault.ViolatingBehindOrRight;
+                Add(value.SimulationTimeSeconds, TrainingTimelineEventKindV1.PositionFault,
+                    FromSide(value.ViolatingSide), violating.PlayerId,
+                    fault.Rule + ": slot " + violating.Slot + " vs " + required.Slot);
+            }
+        }
+
+        private static TeamId FromSide(Volleyball.Shared.Contracts.TeamSide side)
+        {
+            return side == Volleyball.Shared.Contracts.TeamSide.Home
+                ? TeamId.Blue : TeamId.Orange;
         }
 
         private void Add(

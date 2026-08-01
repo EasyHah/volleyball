@@ -80,9 +80,29 @@ namespace Volleyball.EditModeTests
             controller.ConfirmRotation();
 
             Assert.That(controller.CurrentStep, Is.EqualTo(TrainingLabStepV1.Positioning));
+            controller.GoToPositioning();
+            Assert.That(controller.CurrentStep, Is.EqualTo(TrainingLabStepV1.Positioning));
             controller.SelectServeTool(TrainingServeToolV1.AdjustVelocity);
             Assert.That(controller.ServeTool, Is.EqualTo(TrainingServeToolV1.AdjustVelocity));
             Assert.That(controller.CurrentStep, Is.EqualTo(TrainingLabStepV1.ServeBall));
+        }
+
+        [Test]
+        public void CameraBookmarks_StoreTheCurrentFreeCameraWithoutChangingMatchContext()
+        {
+            using var controller = new TrainingScenarioLabController(Store(), new FakeSimulation());
+            var contextHash = controller.Draft.Context.ContextHash;
+
+            controller.SaveCameraBookmark("观察机位",
+                new SimVector3(2f, 8f, -12f),
+                new SimVector3(0f, -.35f, 1f),
+                7.5f, false);
+
+            Assert.That(controller.Draft.CameraBookmarks, Has.Count.EqualTo(1));
+            Assert.That(controller.Draft.CameraBookmarks[0].Position,
+                Is.EqualTo(new SimVector3(2f, 8f, -12f)));
+            Assert.That(controller.Draft.Context.ContextHash,
+                Is.EqualTo(contextHash));
         }
 
         [Test]

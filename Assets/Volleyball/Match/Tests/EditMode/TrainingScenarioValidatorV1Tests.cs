@@ -153,6 +153,27 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void Validate_PositionFaultWarnsAndPreservesTheRuntimeTrainingCase()
+        {
+            var draft = TrainingScenarioV1Tests.CreateValidDraft();
+            var slot4 = draft.HomeRotation[3];
+            var slot5 = draft.HomeRotation[4];
+            var required = draft.Players.Single(value => value.PlayerId.Equals(slot5));
+            var violating = draft.Players.Single(value => value.PlayerId.Equals(slot4));
+            violating.Position = new SimVector3(
+                violating.Position.X, violating.Position.Y, required.Position.Z - 1f);
+
+            var result = TrainingScenarioValidatorV1.Validate(draft);
+
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Issues.Single(issue =>
+                    issue.Code == TrainingScenarioIssueCodesV1.PositionFault).Severity,
+                Is.EqualTo(TrainingScenarioIssueSeverityV1.Warning));
+            Assert.That(TrainingScenarioValidatorV1.Build(draft).ServeStart,
+                Is.Not.Null);
+        }
+
+        [Test]
         public void Validate_ReservesPlayerAccessButDoesNotEnableItInFirstMilestone()
         {
             var draft = TrainingScenarioV1Tests.CreateValidDraft();

@@ -639,7 +639,8 @@ namespace Volleyball.Presentation.TrainingLab
                 {
                     Add(issues, TrainingScenarioIssueCodesV1.PositionFault,
                         fault.ViolatingBehindOrRight.PlayerId.Value, "players",
-                        fault.Rule + " is reversed at serve contact.");
+                        fault.Rule + " is reversed at serve contact.",
+                        TrainingScenarioIssueSeverityV1.Warning);
                 }
             }
             catch (Exception)
@@ -694,6 +695,17 @@ namespace Volleyball.Presentation.TrainingLab
                 draft.AwayInitialRotationOffset < 0 ||
                 draft.AwayInitialRotationOffset >= 6)
             {
+                return;
+            }
+
+            if (draft.StartRecipe != RallyStartRecipeV3.ServeFlight ||
+                draft.LastLegalActor.HasValue ||
+                draft.SourceTeam != draft.FirstServingSide)
+            {
+                AddInvalidRallyStart(
+                    draft,
+                    issues,
+                    "Training scenarios must begin before the first serve with no historical contact actor.");
                 return;
             }
 
@@ -776,14 +788,16 @@ namespace Volleyball.Presentation.TrainingLab
             string code,
             string objectId,
             string propertyPath,
-            string message)
+            string message,
+            TrainingScenarioIssueSeverityV1 severity =
+                TrainingScenarioIssueSeverityV1.Error)
         {
             issues.Add(new TrainingScenarioIssueV1(
                 code,
                 objectId,
                 propertyPath,
                 message,
-                TrainingScenarioIssueSeverityV1.Error));
+                severity));
         }
     }
 }

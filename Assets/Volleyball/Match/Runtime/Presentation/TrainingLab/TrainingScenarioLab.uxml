@@ -9,6 +9,14 @@
             <ui:Label name="state-label" class="state-label" />
             <ui:Label name="hash-label" class="hash-label" />
         </ui:VisualElement>
+        <ui:VisualElement class="workbench-steps">
+            <ui:Button name="step-rotation" text="1 轮转" />
+            <ui:Button name="step-positioning" text="2 摆位" />
+            <ui:Button name="step-serve" text="3 发球球" />
+            <ui:Button name="step-validation" text="4 校验" />
+            <ui:Button name="step-running" text="5 运行" />
+            <ui:Label name="monitor-label" class="monitor-label" />
+        </ui:VisualElement>
 
         <ui:VisualElement class="workspace">
             <ui:VisualElement class="left-panel panel">
@@ -24,7 +32,7 @@
 
             <ui:VisualElement name="world-viewport" class="world-viewport">
                 <ui:VisualElement class="world-chip-row" picking-mode="Ignore">
-                    <ui:Label text="拖动球员或球调整起点" class="world-chip" />
+                    <ui:Label name="viewport-hint" text="先确认轮转，再拖动球员摆位" class="world-chip" />
                 </ui:VisualElement>
                 <ui:VisualElement class="world-spacer" picking-mode="Ignore" />
                 <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
@@ -39,6 +47,13 @@
                     <ui:DropdownField name="source-team" label="来源队伍" class="field" />
                     <ui:DropdownField name="last-actor" label="最后合法触球者" class="field" />
 
+                    <ui:Label text="轮转位次（锁定后才可摆位）" class="section-title" />
+                    <ui:VisualElement name="rotation-list" class="rotation-list" />
+                    <ui:VisualElement class="compact-row">
+                        <ui:Button name="confirm-rotation-button" text="确认并锁定位次" />
+                        <ui:Button name="reopen-rotation-button" text="重新编辑轮转" class="secondary" />
+                    </ui:VisualElement>
+
                     <ui:Label text="对象属性" class="section-title" />
                     <ui:Label name="selection-label" class="selection-label" />
                     <ui:Label text="位置 XYZ" class="mini-label" />
@@ -47,6 +62,22 @@
                         <ui:FloatField name="position-y" class="vector-field" />
                         <ui:FloatField name="position-z" class="vector-field" />
                     </ui:VisualElement>
+                    <ui:Label text="发球球工具（三种模式互斥）" class="section-title" />
+                    <ui:VisualElement class="compact-row">
+                        <ui:Button name="tool-move-ball" text="移动球" />
+                        <ui:Button name="tool-velocity" text="调整速度" />
+                        <ui:Button name="tool-trajectory" text="查看轨迹" />
+                    </ui:VisualElement>
+                    <ui:Label text="正交编辑：XY（俯视）· ZY（边线）· XZ（底线）" class="mini-label" />
+
+                    <ui:Label text="管理员测试属性（仅本训练情景）" class="section-title" />
+                    <ui:VisualElement name="attribute-table" class="attribute-table" />
+                    <ui:Label text="自由观察机位" class="section-title" />
+                    <ui:VisualElement class="compact-row">
+                        <ui:TextField name="bookmark-name" value="机位 1" class="bookmark-name" />
+                        <ui:Button name="save-bookmark-button" text="保存当前机位" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="bookmark-list" class="bookmark-list" />
                     <ui:Label text="球线速度 XYZ" class="mini-label" />
                     <ui:VisualElement class="vector-row">
                         <ui:FloatField name="velocity-x" class="vector-field" />
