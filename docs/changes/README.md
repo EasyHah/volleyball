@@ -28,7 +28,7 @@ Shared 契约或模块编排改动，都必须在这里新增或更新一份改�
 | CHG-20260724-002 | 2026-07-24 | 已完成 | Career / Shared / Match / Replay / Docs | **跨模块（重点）** | [Full Rally V4 Gates A–E contract cut](2026-07-24-002-full-rally-v4-gates-a-e.md) |
 | CHG-20260724-001 | 2026-07-24 | 进行中 | Match / Docs | 模块内部 | [Stage 2 能力投影、共享执行 envelope 与物理预测 cache](2026-07-24-001-stage2-ability-envelope-and-prediction.md) |
 | CHG-20260723-005 | 2026-07-23 | 已完成 | Career.Domain / Career.Application / Career.MatchIntegration / Tests / Docs | **跨模块（重点）** | [Career 首场比赛持久化生命周期](2026-07-23-005-career-first-match-lifecycle.md) |
-| CHG-20260723-004 | 2026-07-23 | 进行中 | Career.Application / Career.Persistence / Career.Presentation / Bootstrap / Tests / Tools / Docs | **跨模块（重点）** | [Career 恢复、开发诊断与 Windows 构建](2026-07-23-004-career-recovery-windows-build.md) |
+| CHG-20260723-004 | 2026-07-23 | 进行中（2026-08-03 Windows IL2CPP 构建复验通过；实体键盘与 XInput 验收待完成） | Career.Application / Career.Persistence / Career.Presentation / Bootstrap / Tests / Tools / Docs | **跨模块（重点）** | [Career 恢复、开发诊断与 Windows 构建](2026-07-23-004-career-recovery-windows-build.md) |
 | CHG-20260723-003 | 2026-07-23 | 已完成 | Career.Application / Career.Presentation / Bootstrap / Project Settings / Tests / Docs | **跨模块（重点）** | [Career 首周 UI 可玩垂直切片](2026-07-23-003-career-ui-vertical-slice.md) |
 | CHG-20260723-002 | 2026-07-23 | 已完成 | Packages / Project Settings / Career.Presentation / Career.EditModeTests / Tools / Docs | **跨模块（重点）** | [Career 菜单输入基线](2026-07-23-002-career-input-system-baseline.md) |
 | CHG-20260723-001 | 2026-07-23 | 已完成 | Shared / Match / Career / Docs | **跨模块（重点）** | [Full Rally V3 架构与 Shared 契约预留](2026-07-23-001-full-rally-v3-architecture.md) |

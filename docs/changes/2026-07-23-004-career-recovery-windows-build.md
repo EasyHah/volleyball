@@ -63,6 +63,16 @@
   `1,538,767,094` 字节，EXE PE machine 为 `0x8664`（x64）。
 - [x] Windows 构建鼠标功能闭环与退出重开恢复：已完成“新建职业生涯 → 三段试训 → 周计划 →
   临时事件 → 快速比赛 → 原子结算 → 第二周”，重启后从最近生涯指针恢复到第二周权威快照。
+- [x] 2026-08-03 Windows x64 IL2CPP Development Build 复验：Unity `6000.3.20f1`、
+  Windows IL2CPP Build Support、Visual Studio 2022 Build Tools 与 Windows SDK `10.0.19041.0`
+  已安装；`CareerWindowsDevelopmentBuild.Build` 成功生成
+  `Builds/Windows/VolleyballCareer.exe` 与 manifest。manifest 记录
+  `StandaloneWindows64`、`x86_64`、`IL2CPP`、Development、Allow Debugging，产物总大小
+  `1,444,637,468` bytes。
+- [x] 2026-08-03 编译边界修复：`Career.Persistence` 曾直接调用已依赖其的
+  `Career.MatchIntegration` 重建器，导致程序集循环方向无法编译。收据读取保留 canonical
+  trace、result 与 report 的绑定校验，移除了重复的跨层重建调用；Windows Player 编译与构建
+  已证明修复生效。
 - [ ] Windows 构建纯键盘完整闭环：自动化工具注入的 Return/Tab 没有进入 Unity Player 的键盘事件链，
   不能据此判定实体键盘结果；现有动作图与聚焦 PlayMode 仍为 1/1，需人工使用物理键盘确认。
 - [ ] 实体 XInput 手柄完整闭环：尚未执行，不能用 Input System 自动化绑定测试替代。1920×1080

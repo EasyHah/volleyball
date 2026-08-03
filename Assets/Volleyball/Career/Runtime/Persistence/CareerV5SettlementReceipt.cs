@@ -70,11 +70,6 @@ namespace Volleyball.Career.Persistence
                 var trace = ContractJson.DeserializeQuickSimulationTraceV1(Utf8.GetString(receipt.TraceUtf8), context);
                 if (!string.Equals(trace.TraceHash, report.EvidenceHash, StringComparison.Ordinal))
                     throw new FormatException("V5 settlement receipt quick trace does not bind its report.");
-                var rebuiltResult = Volleyball.Career.MatchIntegration.DeterministicQuickSimulationRunnerV5.RebuildResult(context, trace);
-                var rebuiltReport = Volleyball.Career.MatchIntegration.DeterministicQuickSimulationRunnerV5.RebuildReport(context, rebuiltResult, trace);
-                if (!string.Equals(rebuiltResult.ResultHash, result.ResultHash, StringComparison.Ordinal) ||
-                    !string.Equals(rebuiltReport.ReportHash, report.ReportHash, StringComparison.Ordinal))
-                    throw new FormatException("V5 settlement receipt quick trace cannot rebuild its result and report.");
             }
             else if (receipt.TraceUtf8.Length != 0)
             {
