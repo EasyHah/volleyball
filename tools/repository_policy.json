@@ -82,7 +82,7 @@
     },
     "Volleyball.Career.MatchIntegration": {
       "path": "Assets/Volleyball/Career/Runtime/MatchIntegration/Volleyball.Career.MatchIntegration.asmdef",
-      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application"],
+      "references": ["Volleyball.Shared", "Volleyball.Career.Domain", "Volleyball.Career.Application", "Volleyball.Career.Persistence"],
       "noEngineReferences": true
     },
     "Volleyball.Career.Persistence": {
