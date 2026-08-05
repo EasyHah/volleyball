@@ -163,6 +163,9 @@ namespace Volleyball.Shared.EditModeTests
             var replayWithReportFacts = MatchReplayV5.Create("formal-v5-report-facts", context,
                 new[] { evidence }, new[] { reportFact });
             Assert.That(replayWithReportFacts.ReportFacts, Has.Count.EqualTo(1));
+            var replayJson = ContractJson.SerializeV5(replayWithReportFacts);
+            Assert.That(ContractJson.SerializeV5(ContractJson.DeserializeMatchReplayV5(
+                replayJson, context)), Is.EqualTo(replayJson));
             Assert.That(() => MatchReplayV5.Create("formal-v5-duplicate-evidence", context,
                 new[] { evidence }, new[]
                 {
@@ -189,6 +192,67 @@ namespace Volleyball.Shared.EditModeTests
                 Throws.TypeOf<ContractValidationException>());
             Assert.That(() => MatchResultV5.Create(context, context.Home.TeamId, 20, 25, 45),
                 Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void V5PositionFaultEvidence_IsCanonicalAndRejectsUnknownRulesOrSlotRelations()
+        {
+            var context = MatchContextV5.Create(Guid.NewGuid(), 99,
+                CreateV5Team("home", TeamSide.Home, 5000),
+                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64),
+                CreateV5TrajectoryConfiguration());
+            var fault = new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Home.RotationOrder[3].PlayerId, 4,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000);
+            var result = MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                new[] { fault });
+            var baseline = MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1);
+            var replay = MatchReplayV5.Create("faulted-v5", context,
+                Array.Empty<MatchReplayAttributeEvidenceV5>(),
+                Array.Empty<MatchReplayReportFactV1>(), new[] { fault });
+
+            Assert.That(result.PositionFaults.Single().Rule, Is.EqualTo("Slot4BehindSlot5"));
+            Assert.That(result.ResultHash, Is.Not.EqualTo(baseline.ResultHash));
+            Assert.That(ContractJson.DeserializeMatchResultV5(ContractJson.SerializeV5(result), context)
+                .PositionFaults.Single().ViolatingPlayerId, Is.EqualTo(fault.ViolatingPlayerId));
+            Assert.That(replay.PositionFaults.Single().RequiredSlot, Is.EqualTo(4));
+            Assert.That(replay.ReplayHash, Is.Not.EqualTo(MatchReplayV5.Create("faulted-v5", context)
+                .ReplayHash));
+            var replayJson = ContractJson.SerializeV5(replay);
+            Assert.That(ContractJson.SerializeV5(ContractJson.DeserializeMatchReplayV5(
+                replayJson, context)), Is.EqualTo(replayJson));
+            Assert.That(() => new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "UnknownRule", context.Home.RotationOrder[3].PlayerId, 4,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Home.RotationOrder[3].PlayerId, 3,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
+        public void V5PositionFaultEvidence_RejectsPlayersOutsideTheViolatingTeamSlots()
+        {
+            var context = MatchContextV5.Create(Guid.NewGuid(), 99,
+                CreateV5Team("home", TeamSide.Home, 5000),
+                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64),
+                CreateV5TrajectoryConfiguration());
+            var foreignTeamFault = new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Away.RotationOrder[3].PlayerId, 4,
+                0, -1000, context.Away.RotationOrder[4].PlayerId, 5, 0, -2000);
+            var wrongSlotFault = new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Home.RotationOrder[2].PlayerId, 4,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000);
+
+            Assert.That(() => MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                    new[] { foreignTeamFault }), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => MatchReplayV5.Create("foreign-fault", context,
+                    Array.Empty<MatchReplayAttributeEvidenceV5>(),
+                    Array.Empty<MatchReplayReportFactV1>(), new[] { foreignTeamFault }),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                    new[] { wrongSlotFault }), Throws.TypeOf<ContractValidationException>());
         }
 
         [Test]

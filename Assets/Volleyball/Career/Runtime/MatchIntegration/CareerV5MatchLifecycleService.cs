@@ -58,9 +58,18 @@ namespace Volleyball.Career.MatchIntegration
             if (_pendingStore == null)
                 throw new InvalidOperationException("The V5 pending store is not configured.");
             var bytes = _pendingStore.LoadPending(profile.PlayerId);
-            return CareerV5PendingRecovery.Read(bytes == null
-                ? null
-                : CareerPendingMatchV5.FromCanonicalContext(bytes));
+            if (bytes == null) return CareerV5PendingRecovery.Read(null);
+            try
+            {
+                return CareerV5PendingRecovery.Read(
+                    CareerPendingMatchV5.FromCanonicalContext(bytes));
+            }
+            catch (ContractValidationException)
+            {
+                // Never rewrite or fill historical V5 payloads. The caller gets one explicit
+                // discard-and-create-new path while the raw bytes remain available for diagnosis.
+                return CareerV5PendingRecovery.RejectUnsupportedEvidence();
+            }
         }
 
         public bool DiscardPending(CareerPlayerProfileV5 profile)

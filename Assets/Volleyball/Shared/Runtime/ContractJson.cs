@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.Text;
 
 namespace Volleyball.Shared.Contracts
@@ -30,12 +31,15 @@ namespace Volleyball.Shared.Contracts
             try
             {
                 var root = StrictJsonV4.ParseObject(json);
-                StrictJsonV4.RequireExactProperties(root, "contractVersion", "rulesVersion", "sessionId",
+                StrictJsonV4.RequireExactProperties(root, "contractVersion", "positionFaultEvidenceVersion", "rulesVersion", "sessionId",
                     "seed", "physicsConfigurationHash", "trajectoryPredictionProviderConfiguration", "home", "away", "contextHash");
                 if (StrictJsonV4.RequiredInt(root, "contractVersion") != ContractVersions.MatchV5)
                 {
                     throw new ContractValidationException("Unsupported V5 context contract version.");
                 }
+                if (StrictJsonV4.RequiredInt(root, "positionFaultEvidenceVersion") !=
+                    ContractVersions.PositionFaultEvidenceV5)
+                    throw new ContractValidationException("Unsupported V5 position-fault evidence version.");
 
                 var context = MatchContextV5.Create(
                     StrictJsonV4.RequiredGuid(root, "sessionId"),
@@ -77,16 +81,18 @@ namespace Volleyball.Shared.Contracts
             try
             {
                 var root = StrictJsonV4.ParseObject(json);
-                StrictJsonV4.RequireExactProperties(root, "contractVersion", "sessionId", "contextHash",
-                    "winnerTeamId", "homeScore", "awayScore", "ralliesPlayed", "resultHash");
+                StrictJsonV4.RequireExactProperties(root, "contractVersion", "positionFaultEvidenceVersion", "sessionId", "contextHash",
+                    "winnerTeamId", "homeScore", "awayScore", "ralliesPlayed", "positionFaults", "resultHash");
                 if (StrictJsonV4.RequiredInt(root, "contractVersion") != ContractVersions.MatchV5 ||
+                    StrictJsonV4.RequiredInt(root, "positionFaultEvidenceVersion") != ContractVersions.PositionFaultEvidenceV5 ||
                     StrictJsonV4.RequiredGuid(root, "sessionId") != context.SessionId ||
                     !string.Equals(StrictJsonV4.RequiredString(root, "contextHash"), context.ContextHash, StringComparison.Ordinal))
                     throw new ContractValidationException("V5 result bindings do not match its context.");
                 var result = MatchResultV5.Create(context,
                     new TeamId(StrictJsonV4.RequiredString(root, "winnerTeamId")),
                     StrictJsonV4.RequiredInt(root, "homeScore"), StrictJsonV4.RequiredInt(root, "awayScore"),
-                    StrictJsonV4.RequiredInt(root, "ralliesPlayed"));
+                    StrictJsonV4.RequiredInt(root, "ralliesPlayed"),
+                    DeserializePositionFaultsV5(StrictJsonV4.RequiredArray(root, "positionFaults")));
                 if (!string.Equals(result.ResultHash, StrictJsonV4.RequiredString(root, "resultHash"), StringComparison.Ordinal) ||
                     !string.Equals(SerializeV5(result), json, StringComparison.Ordinal))
                     throw new ContractValidationException("V5 result JSON is not canonical or its hash is invalid.");
@@ -97,6 +103,102 @@ namespace Volleyball.Shared.Contracts
             {
                 throw new ContractValidationException("Native V5 result JSON is malformed.", exception);
             }
+        }
+
+        private static IReadOnlyList<MatchPositionFaultV5> DeserializePositionFaultsV5(
+            IReadOnlyList<StrictJsonValueV4> values)
+        {
+            var faults = new MatchPositionFaultV5[values.Count];
+            for (var index = 0; index < faults.Length; index++)
+            {
+                var value = StrictJsonV4.AsObject(values[index], "positionFaults");
+                StrictJsonV4.RequireExactProperties(value, "rallyNumber", "ruleVersion", "violatingSide",
+                    "awardedSide", "servingSide", "rule", "requiredPlayerId", "requiredSlot",
+                    "requiredXMillimeters", "requiredZMillimeters", "violatingPlayerId", "violatingSlot",
+                    "violatingXMillimeters", "violatingZMillimeters");
+                if (StrictJsonV4.RequiredInt(value, "ruleVersion") != ContractVersions.PositionFaultEvidenceV5)
+                    throw new ContractValidationException("Unsupported V5 position-fault rule version.");
+                faults[index] = new MatchPositionFaultV5(
+                    StrictJsonV4.RequiredInt(value, "rallyNumber"),
+                    (TeamSide)StrictJsonV4.RequiredInt(value, "violatingSide"),
+                    (TeamSide)StrictJsonV4.RequiredInt(value, "awardedSide"),
+                    (TeamSide)StrictJsonV4.RequiredInt(value, "servingSide"),
+                    StrictJsonV4.RequiredString(value, "rule"),
+                    new PlayerId(StrictJsonV4.RequiredString(value, "requiredPlayerId")),
+                    StrictJsonV4.RequiredInt(value, "requiredSlot"),
+                    StrictJsonV4.RequiredInt(value, "requiredXMillimeters"),
+                    StrictJsonV4.RequiredInt(value, "requiredZMillimeters"),
+                    new PlayerId(StrictJsonV4.RequiredString(value, "violatingPlayerId")),
+                    StrictJsonV4.RequiredInt(value, "violatingSlot"),
+                    StrictJsonV4.RequiredInt(value, "violatingXMillimeters"),
+                    StrictJsonV4.RequiredInt(value, "violatingZMillimeters"));
+            }
+            return faults;
+        }
+
+        public static string SerializeV5(MatchReplayV5 value)
+        {
+            if (value == null) throw new ArgumentNullException(nameof(value));
+            return CanonicalMatchReplayJsonV5.Serialize(value);
+        }
+
+        public static MatchReplayV5 DeserializeMatchReplayV5(string json, MatchContextV5 context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            try
+            {
+                var root = StrictJsonV4.ParseObject(json);
+                StrictJsonV4.RequireExactProperties(root, "formatVersion", "positionFaultEvidenceVersion",
+                    "replayId", "contextHash", "derivedAttributeFingerprints", "attributeEvidence",
+                    "reportFacts", "positionFaults", "replayHash");
+                if (StrictJsonV4.RequiredInt(root, "formatVersion") != ContractVersions.ReplayV5 ||
+                    StrictJsonV4.RequiredInt(root, "positionFaultEvidenceVersion") != ContractVersions.PositionFaultEvidenceV5 ||
+                    !string.Equals(StrictJsonV4.RequiredString(root, "contextHash"), context.ContextHash, StringComparison.Ordinal))
+                    throw new ContractValidationException("V5 replay bindings do not match its context.");
+                var replay = MatchReplayV5.Create(StrictJsonV4.RequiredString(root, "replayId"), context,
+                    DeserializeReplayEvidenceV5(StrictJsonV4.RequiredArray(root, "attributeEvidence")),
+                    DeserializeReplayFactsV5(StrictJsonV4.RequiredArray(root, "reportFacts")),
+                    DeserializePositionFaultsV5(StrictJsonV4.RequiredArray(root, "positionFaults")));
+                var fingerprints = StrictJsonV4.RequiredArray(root, "derivedAttributeFingerprints");
+                if (fingerprints.Count != replay.DerivedAttributeFingerprints.Count ||
+                    fingerprints.Where((value, index) => value.Kind != StrictJsonKindV4.String ||
+                        !string.Equals((string)value.Value, replay.DerivedAttributeFingerprints[index], StringComparison.Ordinal)).Any() ||
+                    !string.Equals(StrictJsonV4.RequiredString(root, "replayHash"), replay.ReplayHash, StringComparison.Ordinal) ||
+                    !string.Equals(SerializeV5(replay), json, StringComparison.Ordinal))
+                    throw new ContractValidationException("V5 replay JSON is not canonical or its hash is invalid.");
+                return replay;
+            }
+            catch (ContractValidationException) { throw; }
+            catch (Exception exception) when (exception is FormatException || exception is OverflowException || exception is ArgumentException)
+            { throw new ContractValidationException("Native V5 replay JSON is malformed.", exception); }
+        }
+
+        private static IReadOnlyList<MatchReplayAttributeEvidenceV5> DeserializeReplayEvidenceV5(IReadOnlyList<StrictJsonValueV4> values)
+        {
+            return values.Select((value, index) =>
+            {
+                var item = StrictJsonV4.AsObject(value, "attributeEvidence[" + index + "]");
+                StrictJsonV4.RequireExactProperties(item, "sequenceNumber", "playerId", "action", "simulationMilliseconds", "derivedAttributesFingerprint");
+                return new MatchReplayAttributeEvidenceV5(StrictJsonV4.RequiredInt(item, "sequenceNumber"),
+                    new PlayerId(StrictJsonV4.RequiredString(item, "playerId")), StrictJsonV4.RequiredString(item, "action"),
+                    StrictJsonV4.RequiredInt(item, "simulationMilliseconds"), StrictJsonV4.RequiredString(item, "derivedAttributesFingerprint"));
+            }).ToArray();
+        }
+
+        private static IReadOnlyList<MatchReplayReportFactV1> DeserializeReplayFactsV5(IReadOnlyList<StrictJsonValueV4> values)
+        {
+            return values.Select((value, index) =>
+            {
+                var item = StrictJsonV4.AsObject(value, "reportFacts[" + index + "]");
+                StrictJsonV4.RequireExactProperties(item, "sequenceNumber", "playerId", "kind", "action", "success", "critical", "workloadBasisPoints", "movementMillimeters", "executableChoices", "selectedChoice", "decisionReason", "relatedContactSequenceNumber", "attributeEvidenceSequenceNumber");
+                return new MatchReplayReportFactV1(StrictJsonV4.RequiredInt(item, "sequenceNumber"),
+                    new PlayerId(StrictJsonV4.RequiredString(item, "playerId")), StrictJsonV4.RequiredString(item, "kind"),
+                    StrictJsonV4.RequiredString(item, "action"), StrictJsonV4.RequiredBoolean(item, "success"),
+                    StrictJsonV4.RequiredBoolean(item, "critical"), StrictJsonV4.RequiredInt(item, "workloadBasisPoints"),
+                    StrictJsonV4.RequiredInt(item, "movementMillimeters"), StrictJsonV4.RequiredInt(item, "executableChoices"),
+                    StrictJsonV4.RequiredString(item, "selectedChoice"), StrictJsonV4.RequiredString(item, "decisionReason"),
+                    StrictJsonV4.RequiredInt(item, "relatedContactSequenceNumber"), StrictJsonV4.RequiredInt(item, "attributeEvidenceSequenceNumber"));
+            }).ToArray();
         }
 
         public static string SerializeV1(CareerMatchReportV1 value)

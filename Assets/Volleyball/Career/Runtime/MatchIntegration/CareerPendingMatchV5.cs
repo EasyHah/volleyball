@@ -54,7 +54,8 @@ namespace Volleyball.Career.MatchIntegration
     public enum CareerV5PendingRecoveryKind
     {
         Ready = 0,
-        DiscardLegacyPendingAndCreateV5 = 1
+        DiscardLegacyPendingAndCreateV5 = 1,
+        DiscardUnsupportedEvidenceAndCreateNewMatch = 2
     }
 
     public sealed class CareerV5PendingRecovery
@@ -81,5 +82,11 @@ namespace Volleyball.Career.MatchIntegration
                     CareerV5PendingRecoveryKind.DiscardLegacyPendingAndCreateV5,
                     null,
                     "legacy_v4_pending_requires_discard_and_v5_recreate");
+
+        public static CareerV5PendingRecovery RejectUnsupportedEvidence() =>
+            new CareerV5PendingRecovery(
+                CareerV5PendingRecoveryKind.DiscardUnsupportedEvidenceAndCreateNewMatch,
+                null,
+                "unsupported_v5_position_fault_evidence_requires_discard_and_new_match");
     }
 }

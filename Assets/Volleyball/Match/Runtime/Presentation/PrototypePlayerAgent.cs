@@ -756,6 +756,41 @@ namespace Volleyball.Presentation
             _presentation.ApplyReadyPose();
         }
 
+        public void PrepareForTrainingSnapshot(
+            SimVector3 worldPosition,
+            SimVector3 forward,
+            StickFigurePose pose)
+        {
+            if (!worldPosition.IsFinite || !forward.IsFinite ||
+                forward.SqrMagnitude < .25f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(worldPosition),
+                    "Training pose vectors must be finite with a usable forward.");
+            }
+
+            if (!Enum.IsDefined(typeof(StickFigurePose), pose))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pose));
+            }
+
+            CancelScheduledContact();
+            var requested = ToUnity(worldPosition);
+            var constrained = ConstrainToOwnCourt(requested);
+            if ((constrained - requested).sqrMagnitude > .000001f)
+            {
+                throw new ArgumentException(
+                    "Training pose must already satisfy formal court constraints.",
+                    nameof(worldPosition));
+            }
+
+            SetRootPosition(constrained);
+            _locomotion.MotionOrigin = constrained;
+            _locomotion.PreparedForward = forward.Normalized;
+            transform.forward = ToUnity(_locomotion.PreparedForward);
+            Rig.SetPose(pose, 1f);
+        }
+
         public void SetPreparedFacing(TeamCourtFrame frame, SetRoute route)
         {
             if (!Enum.IsDefined(typeof(SetRoute), route))

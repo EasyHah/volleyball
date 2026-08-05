@@ -138,7 +138,14 @@ namespace Volleyball.Presentation
             }
 
             foreach (var command in prepared)
-                if (command.Command.IsCommitted)
+                if (command.Command.Kind ==
+                    AttackDefenseCommandKind.InvalidateCommitted)
+                {
+                    _committed.Remove(new CommandActorIdentity(
+                        batch.Evidence.PlanRevision,
+                        command.Command.Actor));
+                }
+                else if (command.Command.IsCommitted)
                     _committed.Add(new CommandActorIdentity(
                         batch.Evidence.PlanRevision, command.Command.Actor));
                 else if (command.Command.Kind != AttackDefenseCommandKind.CancelUncommitted)
@@ -179,6 +186,20 @@ namespace Volleyball.Presentation
             if (!IsAllowedInPhase(batch.Evidence.Phase, command.Kind))
                 throw new InvalidOperationException("Command kind is incompatible with the authority phase.");
             ValidateDeclaredActor(batch.Evidence.Plan, command);
+            if (command.Kind ==
+                AttackDefenseCommandKind.InvalidateCommitted)
+            {
+                if (command.CancelTargetKind !=
+                        AttackDefenseCommandKind.AttackContact ||
+                    command.CancelTargetSourceSequence !=
+                    _latestSourceSequence ||
+                    !_committed.Contains(new CommandActorIdentity(
+                        command.PlanRevision,
+                        command.Actor)))
+                    throw new InvalidOperationException(
+                        "Committed invalidation requires the latest exact attack command.");
+                return new PreparedCommand(command, player);
+            }
             if (command.Kind == AttackDefenseCommandKind.CancelUncommitted)
             {
                 if (!command.CancelTargetKind.HasValue || command.CancelTargetSourceSequence < 0)
@@ -226,7 +247,9 @@ namespace Volleyball.Presentation
                 kind == AttackDefenseCommandKind.BlockContact || kind == AttackDefenseCommandKind.FloorDefense ||
                 kind == AttackDefenseCommandKind.AttackCover || kind == AttackDefenseCommandKind.CancelUncommitted,
             AttackDefenseAuthorityPhaseV3.AttackCommitted =>
-                kind == AttackDefenseCommandKind.AttackContact || kind == AttackDefenseCommandKind.CancelUncommitted,
+                kind == AttackDefenseCommandKind.AttackContact ||
+                kind == AttackDefenseCommandKind.CancelUncommitted ||
+                kind == AttackDefenseCommandKind.InvalidateCommitted,
             AttackDefenseAuthorityPhaseV3.AwaitingActualContact =>
                 kind == AttackDefenseCommandKind.FloorDefense ||
                 kind == AttackDefenseCommandKind.AttackCover ||
@@ -271,7 +294,8 @@ namespace Volleyball.Presentation
                                .Equals(command.Actor)),
                 AttackDefenseCommandKind.Reorganization => plan.ReorganizationExits.Any(x =>
                     x.Actor.Equals(command.Actor) && x.Identity == command.ReorganizationExitIdentity),
-                AttackDefenseCommandKind.CancelUncommitted => true,
+                AttackDefenseCommandKind.CancelUncommitted or
+                    AttackDefenseCommandKind.InvalidateCommitted => true,
                 _ => false
             };
             if (!declared) throw new InvalidOperationException("Authority actor is not declared by the immutable plan.");
@@ -359,6 +383,11 @@ namespace Volleyball.Presentation
                     // The target is a controller-owned Gate I identity.  The player
                     // is touched only after preflight has proved it still owns that
                     // identity, preventing Gate H/legacy contacts from being erased.
+                    prepared.Player.CancelScheduledContact();
+                    break;
+                case AttackDefenseCommandKind.InvalidateCommitted:
+                    // A real environment collision invalidated the exact
+                    // accepted-set attack before physical contact.
                     prepared.Player.CancelScheduledContact();
                     break;
                 default: throw new ArgumentOutOfRangeException();

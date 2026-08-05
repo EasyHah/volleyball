@@ -8,6 +8,8 @@ namespace Volleyball.Shared.Contracts
         public const int ReplayV4 = 4;
         public const int MatchV5 = 5;
         public const int ReplayV5 = 5;
+        // V5 artifacts must declare this rather than treating position-fault facts as optional.
+        public const int PositionFaultEvidenceV5 = 1;
         public const int CareerMatchReportV1 = 1;
         public const int QuickSimulationTraceV1 = 1;
     }

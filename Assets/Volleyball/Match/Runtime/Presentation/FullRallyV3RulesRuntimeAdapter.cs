@@ -50,6 +50,8 @@ namespace Volleyball.Presentation
         // Immutable per-rally rules facts for downstream authority planners.
         public OnCourtEligibilitySnapshot Eligibility => _eligibility;
 
+        public TouchSequenceStateV3 State => _engine.State;
+
         public void BeginRally(TeamSide initialPossession)
         {
             _engine = RallyRulesEngineV3.Open(initialPossession);
@@ -63,6 +65,20 @@ namespace Volleyball.Presentation
                 eligibility ?? throw new ArgumentNullException(nameof(eligibility));
             _eligibility = refreshedEligibility;
             BeginRally(initialPossession);
+        }
+
+        public void BeginRally(RallyStartStateV3 startState)
+        {
+            ValidateStartEligibility(startState);
+            _engine = RallyRulesEngineV3.Open(startState);
+        }
+
+        public void BeginRally(
+            OnCourtEligibilitySnapshot eligibility,
+            RallyStartStateV3 startState)
+        {
+            _eligibility = eligibility ?? throw new ArgumentNullException(nameof(eligibility));
+            BeginRally(startState);
         }
 
         public RuleTransitionV3 ObserveAcceptedContact(
@@ -205,6 +221,39 @@ namespace Volleyball.Presentation
         private RuleTransitionV3 Reject(RuleRejectionReasonV3 reason)
         {
             return RuleTransitionV3.Reject(reason, _engine.State);
+        }
+
+        private void ValidateStartEligibility(RallyStartStateV3 startState)
+        {
+            if (startState == null)
+            {
+                throw new ArgumentNullException(nameof(startState));
+            }
+
+            if (!startState.LastLegalActor.HasValue)
+            {
+                return;
+            }
+
+            OnCourtPlayerEligibilityV3 actor;
+            try
+            {
+                actor = _eligibility.For(startState.LastLegalActor.Value);
+            }
+            catch (KeyNotFoundException exception)
+            {
+                throw new ArgumentException(
+                    "The rally-start actor is not present in the active eligibility snapshot.",
+                    nameof(startState),
+                    exception);
+            }
+
+            if (actor.Side != startState.SourceTeam)
+            {
+                throw new ArgumentException(
+                    "The rally-start actor side does not match active eligibility.",
+                    nameof(startState));
+            }
         }
 
     }

@@ -31,6 +31,7 @@ namespace Volleyball.Shared.Contracts
             }
 
             ContractVersion = ContractVersions.MatchV5;
+            PositionFaultEvidenceVersion = ContractVersions.PositionFaultEvidenceV5;
             RulesVersion = rulesVersion;
             SessionId = sessionId;
             Seed = seed;
@@ -40,6 +41,7 @@ namespace Volleyball.Shared.Contracts
         }
 
         public int ContractVersion { get; }
+        public int PositionFaultEvidenceVersion { get; }
         public int RulesVersion { get; }
         public Guid SessionId { get; }
         public int Seed { get; }
@@ -60,6 +62,7 @@ namespace Volleyball.Shared.Contracts
         internal void Validate()
         {
             if (ContractVersion != ContractVersions.MatchV5 ||
+                PositionFaultEvidenceVersion != ContractVersions.PositionFaultEvidenceV5 ||
                 !string.Equals(ContextHash, CanonicalMatchContextHashV5.Compute(this), StringComparison.Ordinal))
             {
                 throw new ContractValidationException("The V5 context identity does not match its payload.");
@@ -111,6 +114,7 @@ namespace Volleyball.Shared.Contracts
         {
             var output = new StringBuilder(8192);
             output.Append("{\"contractVersion\":").Append(context.ContractVersion);
+            output.Append(",\"positionFaultEvidenceVersion\":").Append(context.PositionFaultEvidenceVersion);
             output.Append(",\"rulesVersion\":").Append(context.RulesVersion);
             output.Append(",\"sessionId\":").Append(Quote(context.SessionId.ToString("D")));
             output.Append(",\"seed\":").Append(context.Seed);

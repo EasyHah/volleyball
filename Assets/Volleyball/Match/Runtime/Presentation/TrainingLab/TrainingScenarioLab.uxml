@@ -1,0 +1,122 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="TrainingScenarioLab.uss" />
+    <ui:VisualElement name="training-lab" class="training-lab" focusable="true">
+        <ui:VisualElement class="top-bar">
+            <ui:VisualElement class="title-block">
+                <ui:Label text="正式训练情景实验室" class="app-title" />
+                <ui:Label text="训练起点 · 正式 6v6" class="app-subtitle" />
+            </ui:VisualElement>
+            <ui:Label name="state-label" class="state-label" />
+            <ui:Label name="hash-label" class="hash-label" />
+        </ui:VisualElement>
+        <ui:VisualElement class="workbench-steps">
+            <ui:Button name="step-rotation" text="1 轮转" />
+            <ui:Button name="step-positioning" text="2 摆位" />
+            <ui:Button name="step-serve" text="3 发球球" />
+            <ui:Button name="step-validation" text="4 校验" />
+            <ui:Button name="step-running" text="5 运行" />
+            <ui:Label name="monitor-label" class="monitor-label" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="workspace">
+            <ui:VisualElement class="left-panel panel">
+                <ui:Label text="情景库" class="panel-title" />
+                <ui:Label text="项目标准情景与本次会话草稿" class="panel-hint" />
+                <ui:ScrollView name="scenario-list" class="scenario-list" />
+                <ui:VisualElement class="compact-row">
+                    <ui:Button name="new-button" text="新建" />
+                    <ui:Button name="duplicate-button" text="复制" />
+                    <ui:Button name="reset-draft-button" text="重置" class="secondary" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <ui:VisualElement name="world-viewport" class="world-viewport">
+                <ui:VisualElement class="world-chip-row" picking-mode="Ignore">
+                    <ui:Label name="viewport-hint" text="先确认轮转，再拖动球员摆位" class="world-chip" />
+                </ui:VisualElement>
+                <ui:VisualElement class="world-spacer" picking-mode="Ignore" />
+                <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
+            </ui:VisualElement>
+
+            <ui:ScrollView class="right-panel panel">
+                <ui:VisualElement name="editor-controls">
+                    <ui:Label text="情景与规则" class="panel-title" />
+                    <ui:TextField name="display-name" label="名称" class="field" />
+                    <ui:IntegerField name="match-seed" label="matchSeed" class="field" />
+                    <ui:DropdownField name="start-recipe" label="语义起点" class="field" />
+                    <ui:DropdownField name="source-team" label="来源队伍" class="field" />
+                    <ui:DropdownField name="last-actor" label="最后合法触球者" class="field" />
+
+                    <ui:Label text="轮转位次（锁定后才可摆位）" class="section-title" />
+                    <ui:VisualElement name="rotation-list" class="rotation-list" />
+                    <ui:VisualElement class="compact-row">
+                        <ui:Button name="confirm-rotation-button" text="确认并锁定位次" />
+                        <ui:Button name="reopen-rotation-button" text="重新编辑轮转" class="secondary" />
+                    </ui:VisualElement>
+
+                    <ui:Label text="对象属性" class="section-title" />
+                    <ui:Label name="selection-label" class="selection-label" />
+                    <ui:Label text="位置 XYZ" class="mini-label" />
+                    <ui:VisualElement class="vector-row">
+                        <ui:FloatField name="position-x" class="vector-field" />
+                        <ui:FloatField name="position-y" class="vector-field" />
+                        <ui:FloatField name="position-z" class="vector-field" />
+                    </ui:VisualElement>
+                    <ui:Label text="发球球工具（三种模式互斥）" class="section-title" />
+                    <ui:VisualElement class="compact-row">
+                        <ui:Button name="tool-move-ball" text="移动球" />
+                        <ui:Button name="tool-velocity" text="调整速度" />
+                        <ui:Button name="tool-trajectory" text="查看轨迹" />
+                    </ui:VisualElement>
+                    <ui:Label text="正交编辑：XY（俯视）· ZY（边线）· XZ（底线）" class="mini-label" />
+
+                    <ui:Label text="管理员测试属性（仅本训练情景）" class="section-title" />
+                    <ui:VisualElement name="attribute-table" class="attribute-table" />
+                    <ui:Label text="自由观察机位" class="section-title" />
+                    <ui:VisualElement class="compact-row">
+                        <ui:TextField name="bookmark-name" value="机位 1" class="bookmark-name" />
+                        <ui:Button name="save-bookmark-button" text="保存当前机位" />
+                    </ui:VisualElement>
+                    <ui:VisualElement name="bookmark-list" class="bookmark-list" />
+                    <ui:Label text="球线速度 XYZ" class="mini-label" />
+                    <ui:VisualElement class="vector-row">
+                        <ui:FloatField name="velocity-x" class="vector-field" />
+                        <ui:FloatField name="velocity-y" class="vector-field" />
+                        <ui:FloatField name="velocity-z" class="vector-field" />
+                    </ui:VisualElement>
+
+                    <ui:Label text="Home 战术" class="section-title" />
+                    <ui:DropdownField name="home-set-route" label="二传路线" class="field" />
+                    <ui:DropdownField name="home-spike-route" label="进攻路线" class="field" />
+                    <ui:Label text="Away 战术" class="section-title" />
+                    <ui:DropdownField name="away-set-route" label="二传路线" class="field" />
+                    <ui:DropdownField name="away-spike-route" label="进攻路线" class="field" />
+                </ui:VisualElement>
+
+                <ui:Label text="校验问题" class="section-title" />
+                <ui:VisualElement name="issue-list" class="issue-list" />
+            </ui:ScrollView>
+        </ui:VisualElement>
+
+        <ui:VisualElement class="bottom-console">
+            <ui:VisualElement class="run-toolbar">
+                <ui:Button name="validate-button" text="校验" />
+                <ui:Button name="run-button" text="运行正式回合" class="primary" />
+                <ui:Button name="pause-button" text="暂停" />
+                <ui:Button name="step-button" text="单步 1/120s" />
+                <ui:Button name="rerun-button" text="同 seed 重跑" />
+                <ui:Button name="edit-button" text="返回编辑" />
+                <ui:Button name="export-button" text="导出决策快照" class="secondary" />
+                <ui:Button name="review-setter-button" text="审核二传" class="secondary" tooltip="在 Unity Editor 中审核最新 Gate I 攻手目标快照" />
+            </ui:VisualElement>
+            <ui:VisualElement class="evidence-row">
+                <ui:VisualElement class="evidence-summary">
+                    <ui:Label text="运行摘要" class="panel-title" />
+                    <ui:Label name="comparison-label" class="comparison-label" />
+                    <ui:Label name="feedback-label" class="feedback-label" />
+                </ui:VisualElement>
+                <ui:ScrollView name="timeline-list" class="timeline-list" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

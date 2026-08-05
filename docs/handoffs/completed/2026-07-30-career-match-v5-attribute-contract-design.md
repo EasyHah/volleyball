@@ -53,7 +53,7 @@
 
 ## 结束处理
 
-设计确认后，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继实现任务单链接。
+结束日期：2026-08-01
 
 ## 完成记录（2026-07-31）
 
@@ -65,6 +65,12 @@ V5-A 已在 `codex/career-match-v5-a` 实现：Career UI 提供独立 V5 profile
 
 验证：Shared 44/44、Career 715/715、Match 733/733、完整 EditMode 1492/1492，
 Career PlayMode 9/9；`git diff --check` 通过。实现提交包括 `1f660d1` 与
-`77cfe46`。Windows Development IL2CPP 无法在当前仅安装 MacStandaloneSupport
-的编辑器上执行，保留为 PR 后的 Windows 人工验证。V5-B 的
-`CareerMatchReportV1`、成长/疲劳/信任结算与快速模拟仍明确不在本任务范围。
+`77cfe46`。V5-B 随后完成 `CareerMatchReportV1`、成长/疲劳/信任结算与快速模拟。
+
+## Windows 验证更新（2026-08-03）
+
+V5-A 与 V5-B 已通过 macOS 自动验证；Windows x64 IL2CPP Development Build 已使用
+Unity `6000.3.20f1`、Windows IL2CPP Build Support、Visual Studio 2022 Build Tools 与
+Windows SDK `10.0.19041.0` 复验通过。构建暴露的 Career Persistence 程序集边界问题已在
+`9a3897e` 修复，验证证据记录于
+`docs/changes/2026-07-23-004-career-recovery-windows-build.md`。

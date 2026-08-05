@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Volleyball.Domain.Players;
+using Volleyball.Match.Domain.FullRallyV3;
 
 namespace Volleyball.Domain.Prototype
 {
@@ -197,6 +198,42 @@ namespace Volleyball.Domain.Prototype
         public PlayerId? LastPhysicalTouch { get; private set; }
 
         public RallyContactWindow ContactWindow { get; private set; }
+
+        internal static RallyTouchState CreateSemanticStart(
+            RallyStartStateV3 startState,
+            PlayerId? mappedLastLegalActor)
+        {
+            if (startState == null)
+            {
+                throw new ArgumentNullException(nameof(startState));
+            }
+
+            var possessionTeam = startState.SourceTeam ==
+                                 Volleyball.Shared.Contracts.TeamSide.Home
+                ? TeamId.Blue
+                : TeamId.Orange;
+            var state = new RallyTouchState(possessionTeam);
+            if (startState.Recipe == RallyStartRecipeV3.ServeFlight)
+            {
+                return state;
+            }
+
+            if (!mappedLastLegalActor.HasValue)
+            {
+                throw new ArgumentException(
+                    "The semantic start requires a mapped last legal actor.",
+                    nameof(mappedLastLegalActor));
+            }
+
+            state.LastPhysicalTouch = mappedLastLegalActor;
+            if (!startState.IsPostBlock)
+            {
+                state.CountedTeamTouches = startState.TouchSequence.CountedHits;
+                state.LastCountedActor = mappedLastLegalActor;
+            }
+
+            return state;
+        }
 
         public void BeginPossession(TeamId team)
         {
