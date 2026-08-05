@@ -1394,6 +1394,7 @@ namespace Volleyball.Presentation
                 _lastAcceptedV3Classification = null;
             }
             ResetRallyTransientState();
+            _restartScheduled = false;
 
             if (TryResolvePositionFaultAtServeContact())
             {
@@ -1441,7 +1442,6 @@ namespace Volleyball.Presentation
             _serveInFlight = true;
             BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
             _rallyActive = true;
-            _restartScheduled = false;
 
             NotifyReplay(
                 ReplayServeStarted,
@@ -4728,7 +4728,7 @@ namespace Volleyball.Presentation
                     _v3RulesAdapter.Eligibility
                         .For(pair.Value.StableId)
                         .CanBlock,
-                    pair.Value.Ability.Derived))
+                    pair.Value.Ability.Snapshot))
                 .ToArray();
         }
 

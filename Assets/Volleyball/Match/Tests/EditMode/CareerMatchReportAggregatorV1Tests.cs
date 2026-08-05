@@ -67,6 +67,32 @@ namespace Volleyball.EditModeTests
             Assert.That(report.PlayerReports[11].WorkloadBasisPoints, Is.Zero);
         }
 
+        [Test]
+        public void Aggregate_RejectsReplayWhosePositionFaultFactsDifferFromResult()
+        {
+            var context = MatchContextV5.Create(Guid.NewGuid(), 44,
+                Team("home", TeamSide.Home), Team("away", TeamSide.Away), new string('a', 64), Configuration());
+            var resultFault = Fault(context, "Slot4BehindSlot5");
+            var replayFault = Fault(context, "Slot3BehindSlot6");
+            var result = MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                new[] { resultFault });
+            var replay = MatchReplayV5.Create("mismatched-faults", context,
+                Array.Empty<MatchReplayAttributeEvidenceV5>(),
+                Array.Empty<MatchReplayReportFactV1>(), new[] { replayFault });
+
+            Assert.That(() => CareerMatchReportAggregatorV1.Aggregate(context, result, replay),
+                Throws.TypeOf<ContractValidationException>());
+        }
+
+        private static MatchPositionFaultV5 Fault(MatchContextV5 context, string rule)
+        {
+            var requiredSlot = rule == "Slot4BehindSlot5" ? 4 : 3;
+            var violatingSlot = rule == "Slot4BehindSlot5" ? 5 : 6;
+            return new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away, TeamSide.Home, rule,
+                context.Home.RotationOrder[requiredSlot - 1].PlayerId, requiredSlot, 0, -1000,
+                context.Home.RotationOrder[violatingSlot - 1].PlayerId, violatingSlot, 0, -2000);
+        }
+
         private static void AddContact(MatchContextV5 context, ICollection<MatchReplayAttributeEvidenceV5> evidence,
             ICollection<MatchReplayReportFactV1> facts, PlayerId player, string action, int movement, int workload)
         {

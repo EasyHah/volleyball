@@ -1,6 +1,6 @@
 # 二传教师审核流水线
 
-- Status: active
+- Status: superseded
 - Owner: Match collaborator
 - Priority: P1
 - Scope: Match Editor / TrainingLab / MenShen / 本地标注数据
@@ -53,4 +53,7 @@ MenShen 接口，由开发者逐条接受或从既有合法候选中纠正，并
 
 ## 结束处理
 
-完成或替代时，将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期和后继任务单链接。
+结束日期：2026-07-31
+
+由用户于 2026-08-01 恢复为 HUD 精简与训练室二传审核入口里程碑。后继任务单：
+`docs/handoffs/completed/2026-08-01-hud-simplification-setter-review-entry.md`。

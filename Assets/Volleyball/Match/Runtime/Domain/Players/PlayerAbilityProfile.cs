@@ -60,9 +60,9 @@ namespace Volleyball.Domain.Players
         // must consume Snapshot and never reads a V4-derived DTO.
         public DerivedMatchAttributesV4 Derived { get; }
 
-        public float Mobility => Snapshot.AttackApproachMobility;
+        public float Mobility => Snapshot.DefenseCoverageMobility;
 
-        public float Reaction => Snapshot.BlockTiming;
+        public float Reaction => Snapshot.DefenseReaction;
 
         public float Jump => Snapshot.BlockTiming;
 

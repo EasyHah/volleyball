@@ -13,9 +13,11 @@ namespace Volleyball.Domain.Players
             float attackDirectionControl, float attackSpeedControl, float attackPowerCapacity,
             float attackContactHeightMeters, float attackApproachMobility,
             float blockTiming, float blockHandControl, float blockReachHeightMeters,
-            float blockLateralMobility, float defensePlatformControl, float defenseAwareness,
-            float receiveControl, float receiveAwareness, float setPlacementControl,
-            float setTempoControl, float setSoftTouch, float serveDirectionControl,
+            float blockLateralMobility, float defenseCoverageMobility, float defenseReaction,
+            float defensePlatformControl, float defenseAwareness,
+            float receiveMovement, float receiveControl, float receiveAwareness,
+            float setMovement, float setPlacementControl, float setTempoControl,
+            float setSoftTouch, float serveDirectionControl,
             float serveSpeedControl, float servePowerCapacity, string fingerprint,
             DominantHandV5? dominantHand = null)
         {
@@ -28,10 +30,14 @@ namespace Volleyball.Domain.Players
             BlockHandControl = Unit(blockHandControl, nameof(blockHandControl));
             BlockReachHeightMeters = Positive(blockReachHeightMeters, nameof(blockReachHeightMeters));
             BlockLateralMobility = Unit(blockLateralMobility, nameof(blockLateralMobility));
+            DefenseCoverageMobility = Unit(defenseCoverageMobility, nameof(defenseCoverageMobility));
+            DefenseReaction = Unit(defenseReaction, nameof(defenseReaction));
             DefensePlatformControl = Unit(defensePlatformControl, nameof(defensePlatformControl));
             DefenseAwareness = Unit(defenseAwareness, nameof(defenseAwareness));
+            ReceiveMovement = Unit(receiveMovement, nameof(receiveMovement));
             ReceiveControl = Unit(receiveControl, nameof(receiveControl));
             ReceiveAwareness = Unit(receiveAwareness, nameof(receiveAwareness));
+            SetMovement = Unit(setMovement, nameof(setMovement));
             SetPlacementControl = Unit(setPlacementControl, nameof(setPlacementControl));
             SetTempoControl = Unit(setTempoControl, nameof(setTempoControl));
             SetSoftTouch = Unit(setSoftTouch, nameof(setSoftTouch));
@@ -56,10 +62,14 @@ namespace Volleyball.Domain.Players
         public float BlockHandControl { get; }
         public float BlockReachHeightMeters { get; }
         public float BlockLateralMobility { get; }
+        public float DefenseCoverageMobility { get; }
+        public float DefenseReaction { get; }
         public float DefensePlatformControl { get; }
         public float DefenseAwareness { get; }
+        public float ReceiveMovement { get; }
         public float ReceiveControl { get; }
         public float ReceiveAwareness { get; }
+        public float SetMovement { get; }
         public float SetPlacementControl { get; }
         public float SetTempoControl { get; }
         public float SetSoftTouch { get; }
@@ -76,8 +86,10 @@ namespace Volleyball.Domain.Players
             return new MatchAbilitySnapshot(a.Attack.DirectionControl, a.Attack.SpeedControl,
                 a.Attack.PowerCapacity, a.Attack.ContactHeightMeters, a.Attack.ApproachMobility,
                 a.Block.Timing, a.Block.HandControl, a.Block.ReachHeightMeters, a.Block.LateralMobility,
-                a.Defense.PlatformControl, a.Defense.Awareness, a.Receive.FirstTouchControl,
-                a.Receive.Awareness, a.Set.PlacementControl, a.Set.TempoControl, a.Set.SoftTouch,
+                a.Defense.CoverageMobility, a.Defense.Reaction,
+                a.Defense.PlatformControl, a.Defense.Awareness,
+                a.Receive.Movement, a.Receive.FirstTouchControl, a.Receive.Awareness,
+                a.Set.Movement, a.Set.PlacementControl, a.Set.TempoControl, a.Set.SoftTouch,
                 a.Serve.DirectionControl, a.Serve.SpeedControl, a.Serve.PowerCapacity, value.ResultFingerprint);
         }
 
@@ -89,8 +101,10 @@ namespace Volleyball.Domain.Players
                 value.AttackPower * scale, value.AttackReachMillimeters / 1000f,
                 value.Movement * scale, value.BlockControl * scale, value.BlockControl * scale,
                 value.BlockReachMillimeters / 1000f, value.Movement * scale,
-                value.DefenseControl * scale, value.CourtIq * scale, value.ReceiveControl * scale,
-                value.CourtIq * scale, value.SetControl * scale, value.SetControl * scale,
+                value.Movement * scale, value.CourtIq * scale,
+                value.DefenseControl * scale, value.CourtIq * scale,
+                value.Movement * scale, value.ReceiveControl * scale, value.CourtIq * scale,
+                value.Movement * scale, value.SetControl * scale, value.SetControl * scale,
                 value.SetControl * scale, value.ServeControl * scale, value.ServeControl * scale,
                 value.ServeControl * scale, value.ResultFingerprint, value.DominantHand);
         }

@@ -232,6 +232,30 @@ namespace Volleyball.Shared.EditModeTests
         }
 
         [Test]
+        public void V5PositionFaultEvidence_RejectsPlayersOutsideTheViolatingTeamSlots()
+        {
+            var context = MatchContextV5.Create(Guid.NewGuid(), 99,
+                CreateV5Team("home", TeamSide.Home, 5000),
+                CreateV5Team("away", TeamSide.Away, 6000), new string('b', 64),
+                CreateV5TrajectoryConfiguration());
+            var foreignTeamFault = new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Away.RotationOrder[3].PlayerId, 4,
+                0, -1000, context.Away.RotationOrder[4].PlayerId, 5, 0, -2000);
+            var wrongSlotFault = new MatchPositionFaultV5(1, TeamSide.Home, TeamSide.Away,
+                TeamSide.Home, "Slot4BehindSlot5", context.Home.RotationOrder[2].PlayerId, 4,
+                0, -1000, context.Home.RotationOrder[4].PlayerId, 5, 0, -2000);
+
+            Assert.That(() => MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                    new[] { foreignTeamFault }), Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => MatchReplayV5.Create("foreign-fault", context,
+                    Array.Empty<MatchReplayAttributeEvidenceV5>(),
+                    Array.Empty<MatchReplayReportFactV1>(), new[] { foreignTeamFault }),
+                Throws.TypeOf<ContractValidationException>());
+            Assert.That(() => MatchResultV5.Create(context, context.Away.TeamId, 0, 1, 1,
+                    new[] { wrongSlotFault }), Throws.TypeOf<ContractValidationException>());
+        }
+
+        [Test]
         public void CareerMatchReportV1_IsCanonicalAndRejectsInvalidBindingsAndCounters()
         {
             var context = MatchContextV5.Create(Guid.Parse("77777777-7777-7777-7777-777777777777"), 99,

@@ -97,10 +97,9 @@ namespace Volleyball.Shared.Contracts
             {
                 var fault = _positionFaults[index] ?? throw new ContractValidationException(
                     "V5 replay position-fault evidence cannot contain null.");
-                if (fault.RuleVersionValue != ContractVersions.PositionFaultEvidenceV5 ||
-                    !ContainsPlayer(Context, fault.RequiredPlayerId) ||
-                    !ContainsPlayer(Context, fault.ViolatingPlayerId))
+                if (fault.RuleVersionValue != ContractVersions.PositionFaultEvidenceV5)
                     throw new ContractValidationException("V5 replay position-fault evidence is outside its context.");
+                fault.ValidateAgainst(Context);
                 if (index > 0 && CompareFaults(_positionFaults[index - 1], fault) >= 0)
                     throw new ContractValidationException("V5 replay position-fault evidence must be in canonical order.");
             }
@@ -125,6 +124,18 @@ namespace Volleyball.Shared.Contracts
         public IReadOnlyList<MatchPositionFaultV5> PositionFaults =>
             new ReadOnlyCollection<MatchPositionFaultV5>(_positionFaults);
         public string ReplayHash { get; }
+
+        public void ValidateAgainst(MatchContextV5 context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            context.Validate();
+            if (FormatVersion != ContractVersions.ReplayV5 ||
+                PositionFaultEvidenceVersion != ContractVersions.PositionFaultEvidenceV5 ||
+                !string.Equals(ContextHash, context.ContextHash, StringComparison.Ordinal) ||
+                !string.Equals(ReplayHash, CanonicalMatchReplayHashV5.Compute(this), StringComparison.Ordinal))
+                throw new ContractValidationException("The V5 replay does not belong to its context.");
+            foreach (var fault in _positionFaults) fault.ValidateAgainst(context);
+        }
 
         public static MatchReplayV5 Create(string replayId, MatchContextV5 context)
         {

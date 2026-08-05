@@ -12,8 +12,10 @@ namespace Volleyball.Presentation
         {
             if (context == null || result == null || replay == null) throw new ArgumentNullException();
             result.ValidateAgainst(context);
-            if (!string.Equals(replay.ContextHash, context.ContextHash, StringComparison.Ordinal))
-                throw new ContractValidationException("Physical replay does not bind the report context.");
+            replay.ValidateAgainst(context);
+            if (!MatchPositionFaultV5.SequencesEqual(result.PositionFaults, replay.PositionFaults))
+                throw new ContractValidationException(
+                    "Physical replay position-fault evidence does not match the result.");
             var values = new Dictionary<PlayerId, Mutable>();
             foreach (var player in context.Home.RotationOrder) values.Add(player.PlayerId, new Mutable(player.PlayerId));
             foreach (var player in context.Away.RotationOrder) values.Add(player.PlayerId, new Mutable(player.PlayerId));

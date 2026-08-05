@@ -60,3 +60,21 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 
 完成后将本文件移入 `docs/handoffs/completed/`，更新 Status、结束日期、每类验证证据、Windows 状态和
 回滚/恢复结果；不得删除。
+
+## 执行记录（2026-08-04）
+
+- 已将 `origin/main`（含 `9a3897e` Windows IL2CPP 验证记录）合入
+  `codex/training-lineup-position-fault-v5`。
+- 已完成并验证 Task 1--8 主体实现：严格位置错误纯规则、训练发球冻结、TrainingLab 运行时/UI、V5
+  result/replay 证据、Career V5 边界与正式发球接触裁决。
+- 额外修复版本中立能力投影回归：V4 的 Receive/Set/Defense movement 与 defense reaction 字段保持
+  原语义；V5 正式 Gate I 使用 `MatchAbilitySnapshot`，不读取空的 V4 derived DTO。
+- 独立高风险复核发现并已修复两项 V5 证据契约问题：位置错误事实现在严格绑定违规队的 context 轮转
+  槽位，Career 聚合拒绝 result/replay 的不一致事实；另将 V5 PlayMode 的全局时钟恢复改为 `finally`。
+- 新鲜自动验证：完整 EditMode `1573/1573`；V5 契约与 Career 聚合测试 `50/50`；V5 runner PlayMode
+  `1/1`；TrainingLab 运行时 PlayMode `4/4`；`git diff --check` 通过。
+- 同批目标 PlayMode 的 V4 非确定性回归未全绿：22 项中 20 项通过，`Runner_CompletesPhysicalSixVsSixWithContextBoundResultAndReplay`
+  在预算内未结束，`Formal6v6_CalibratedToolRecovery_UsesPhysicalBlockAndNonAttackerSave` 首攻选为 `Tip`
+  而非 `BlockToolRecovery`。两项均不在本次 V5 契约改动路径，须在最终自动验收前单独稳定复现并处理。
+- 当前仍待：上述 V4 回归调查、1920x1080 macOS Editor 人工闭环，以及本计划新增 TrainingLab 的 Windows
+  x64 IL2CPP Player 验收。handoff 保持 `Status: active`，不得宣称阶段完成。

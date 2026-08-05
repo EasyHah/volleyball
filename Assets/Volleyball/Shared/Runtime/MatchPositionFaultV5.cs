@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Volleyball.Shared.Contracts
 {
@@ -52,6 +53,40 @@ namespace Volleyball.Shared.Contracts
         public int ViolatingSlot { get; }
         public int ViolatingXMillimeters { get; }
         public int ViolatingZMillimeters { get; }
+
+        public void ValidateAgainst(MatchContextV5 context)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            context.Validate();
+            var team = ViolatingSide == TeamSide.Home ? context.Home : context.Away;
+            if (AwardedSide == ViolatingSide ||
+                !team.RotationOrder[RequiredSlot - 1].PlayerId.Equals(RequiredPlayerId) ||
+                !team.RotationOrder[ViolatingSlot - 1].PlayerId.Equals(ViolatingPlayerId))
+                throw new ContractValidationException(
+                    "V5 position-fault evidence does not match its context rotation.");
+        }
+
+        public bool EqualsFact(MatchPositionFaultV5 other)
+        {
+            return other != null && RallyNumber == other.RallyNumber &&
+                ViolatingSide == other.ViolatingSide && AwardedSide == other.AwardedSide &&
+                ServingSide == other.ServingSide && string.Equals(Rule, other.Rule, StringComparison.Ordinal) &&
+                RequiredPlayerId.Equals(other.RequiredPlayerId) && RequiredSlot == other.RequiredSlot &&
+                RequiredXMillimeters == other.RequiredXMillimeters &&
+                RequiredZMillimeters == other.RequiredZMillimeters &&
+                ViolatingPlayerId.Equals(other.ViolatingPlayerId) && ViolatingSlot == other.ViolatingSlot &&
+                ViolatingXMillimeters == other.ViolatingXMillimeters &&
+                ViolatingZMillimeters == other.ViolatingZMillimeters;
+        }
+
+        public static bool SequencesEqual(IReadOnlyList<MatchPositionFaultV5> left,
+            IReadOnlyList<MatchPositionFaultV5> right)
+        {
+            if (left == null || right == null || left.Count != right.Count) return false;
+            for (var index = 0; index < left.Count; index++)
+                if (!left[index].EqualsFact(right[index])) return false;
+            return true;
+        }
 
         private static string ValidateRule(string rule, int requiredSlot, int violatingSlot)
         {

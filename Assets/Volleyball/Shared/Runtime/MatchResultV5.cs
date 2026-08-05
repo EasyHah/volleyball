@@ -45,9 +45,9 @@ namespace Volleyball.Shared.Contracts
                 var fault = _positionFaults[index] ?? throw new ContractValidationException(
                     "V5 position-fault evidence cannot contain null.");
                 if (fault.RuleVersionValue != ContractVersions.PositionFaultEvidenceV5 ||
-                    fault.RallyNumber > ralliesPlayed || !Contains(context, fault.RequiredPlayerId) ||
-                    !Contains(context, fault.ViolatingPlayerId))
+                    fault.RallyNumber > ralliesPlayed)
                     throw new ContractValidationException("V5 position-fault evidence does not bind its result.");
+                fault.ValidateAgainst(context);
                 if (index > 0 && Compare(_positionFaults[index - 1], fault) >= 0)
                     throw new ContractValidationException("V5 position-fault evidence must be in canonical order.");
             }
@@ -83,12 +83,6 @@ namespace Volleyball.Shared.Contracts
                 positionFaults);
         }
 
-        private static bool Contains(MatchContextV5 context, PlayerId playerId)
-        {
-            return context.Home.RotationOrder.Concat(context.Away.RotationOrder)
-                .Any(value => value.PlayerId.Equals(playerId));
-        }
-
         private static int Compare(MatchPositionFaultV5 left, MatchPositionFaultV5 right)
         {
             var rally = left.RallyNumber.CompareTo(right.RallyNumber);
@@ -107,6 +101,7 @@ namespace Volleyball.Shared.Contracts
             {
                 throw new ContractValidationException("The V5 result does not belong to its context.");
             }
+            foreach (var fault in _positionFaults) fault.ValidateAgainst(context);
         }
     }
 
