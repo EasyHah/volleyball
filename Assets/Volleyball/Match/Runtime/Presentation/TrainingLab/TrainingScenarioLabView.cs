@@ -189,8 +189,6 @@ namespace Volleyball.Presentation.TrainingLab
             _monitor = _root.Q<Label>("monitor-label");
             _boardInstruction = _root.Q<Label>("board-instruction");
             _tacticalBoardElement = _root.Q<VisualElement>("tactical-board");
-            _tacticalBoardElement.RegisterCallback<GeometryChangedEvent>(
-                _ => RenderTacticalBoardAfterLayout());
             _precisionElement = _root.Q<VisualElement>("precision-adjustment");
             _observationElement = _root.Q<VisualElement>("free-observation");
             _displayName = _root.Q<TextField>("display-name");
@@ -672,15 +670,6 @@ namespace Volleyball.Presentation.TrainingLab
                 TrainingLabPrecisionVectorModeV1.Position);
             velocity.EnableInClassList("active-view", PrecisionVectorMode ==
                 TrainingLabPrecisionVectorModeV1.Velocity);
-        }
-
-        private void RenderTacticalBoardAfterLayout()
-        {
-            if (_authoringMode != TrainingLabAuthoringModeV1.Board ||
-                _tacticalBoard == null || _tacticalBoardElement.contentRect.width <= 0f ||
-                _tacticalBoardElement.contentRect.height <= 0f)
-                return;
-            _tacticalBoard.Render();
         }
 
         public void OpenPrecisionAdjustment()

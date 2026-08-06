@@ -114,12 +114,3 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 - Unity `6000.3.20f1` 的 `-nographics` PlayMode 在此 RenderTexture 路径触发 Unity 原生图形渲染崩溃，常规 batch
   PlayMode 正常通过；这不替代 1920x1080 macOS Editor 和 Windows x64 IL2CPP Player 的观察交互人工验收。任务单保持
   `Status: active`。
-
-## 执行记录（2026-08-06 布局回归修复）
-
-- macOS Editor 实际画面发现战术板首次布局时没有绘制球员 token：初次 `Render()` 早于 UI Toolkit 取得非零布局尺寸，
-  而其后未触发 token 重绘。已在战术板尺寸变化时重绘，新增 `TacticalBoard_RendersAllTwelvePlayerTokensAfterLayout`
-  PlayMode 回归并通过。
-- 当前主机为 macOS arm64；Unity `6000.3.20f1` 安装只包含 `MacStandaloneSupport`，工作区没有 Windows x64 Player
-  产物。因此 Windows x64 IL2CPP 构建与 Player 人工验收无法在本机执行，必须移交到配置 Windows/IL2CPP 的环境；任务单
-  保持 `Status: active`。

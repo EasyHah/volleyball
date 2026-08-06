@@ -110,24 +110,6 @@ namespace Volleyball.PlayModeTests
 
         [UnityTest]
         [Timeout(60000)]
-        public IEnumerator TacticalBoard_RendersAllTwelvePlayerTokensAfterLayout()
-        {
-            yield return SceneManager.LoadSceneAsync(
-                SceneName,
-                LoadSceneMode.Single);
-            yield return null;
-            yield return null;
-
-            var view = Object.FindFirstObjectByType<
-                TrainingScenarioLabView>();
-            var tokens = view.GetComponent<UIDocument>().rootVisualElement
-                .Q<VisualElement>("tactical-token-layer");
-
-            Assert.That(tokens.childCount, Is.EqualTo(12));
-        }
-
-        [UnityTest]
-        [Timeout(60000)]
         public IEnumerator PrecisionAdjustment_OpensAndPreservesSelectedObject()
         {
             yield return SceneManager.LoadSceneAsync(
