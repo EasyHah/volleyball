@@ -53,7 +53,6 @@
                 </ui:VisualElement>
                 <ui:VisualElement name="free-observation" class="mode-surface is-hidden">
                     <ui:Label text="仅观察：可检查轨迹和保存机位，不会修改情景。" class="world-chip" />
-                    <ui:VisualElement name="observation-surface" class="observation-surface" />
                     <ui:Button name="return-from-observation-button" text="返回战术板" />
                 </ui:VisualElement>
                 <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />

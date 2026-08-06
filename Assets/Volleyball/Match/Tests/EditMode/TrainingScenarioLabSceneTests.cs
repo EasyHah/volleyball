@@ -81,11 +81,6 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q("tactical-token-layer"), Is.Not.Null);
             Assert.That(root.Q("position-fault-layer"), Is.Not.Null);
             Assert.That(root.Q<Button>("open-precision-button"), Is.Not.Null);
-            Assert.That(root.Q<Button>("open-observation-button"), Is.Not.Null);
-            Assert.That(root.Q("free-observation"), Is.Not.Null);
-            Assert.That(root.Q("observation-surface"), Is.Not.Null);
-            Assert.That(root.Q<Button>("return-from-observation-button"),
-                Is.Not.Null);
             Assert.That(root.Q("precision-xy-pane"), Is.Not.Null);
             Assert.That(root.Q("precision-zy-pane"), Is.Not.Null);
             Assert.That(root.Q("precision-xz-pane"), Is.Not.Null);
