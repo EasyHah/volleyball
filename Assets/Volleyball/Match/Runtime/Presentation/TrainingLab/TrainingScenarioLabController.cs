@@ -70,6 +70,13 @@ namespace Volleyball.Presentation.TrainingLab
         public TrainingLabStepV1 CurrentStep { get; private set; }
         public TrainingServeToolV1 ServeTool { get; private set; } = TrainingServeToolV1.MoveBall;
         public IReadOnlyList<PositionFaultV1> PositionFaultPreview => CreatePositionFaultPreview();
+        public bool CanEnterServeSetup =>
+            Draft.RotationLocked && PositionFaultPreview.Count == 0;
+        public string ServeSetupBlockReason => !Draft.RotationLocked
+            ? "Confirm rotation before configuring the serve."
+            : PositionFaultPreview.Count > 0
+                ? "Resolve every position fault before configuring the serve."
+                : string.Empty;
         public IReadOnlyList<TrainingScenarioDraftEntryV1> Entries =>
             _store.Entries;
         public bool EditingLocked =>
@@ -179,6 +186,8 @@ namespace Volleyball.Presentation.TrainingLab
             EnsureEditable();
             if (!Enum.IsDefined(typeof(TrainingServeToolV1), tool))
                 throw new ArgumentOutOfRangeException(nameof(tool));
+            if (!CanEnterServeSetup)
+                throw new InvalidOperationException(ServeSetupBlockReason);
             ServeTool = tool;
             CurrentStep = TrainingLabStepV1.ServeBall;
             Changed?.Invoke();

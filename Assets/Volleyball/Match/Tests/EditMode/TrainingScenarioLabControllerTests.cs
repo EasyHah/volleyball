@@ -88,6 +88,27 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void SelectServeTool_RejectsPositionFaultUntilItIsCleared()
+        {
+            using var controller = new TrainingScenarioLabController(
+                Store(), new FakeSimulation());
+            var homeSlotFour = controller.Draft.HomeRotation[3];
+            controller.SetPlayerPosition(homeSlotFour,
+                new SimVector3(-3f, 0f, -7f));
+
+            Assert.That(controller.PositionFaultPreview, Is.Not.Empty);
+            Assert.That(controller.CanEnterServeSetup, Is.False);
+            Assert.That(() => controller.SelectServeTool(
+                    TrainingServeToolV1.MoveBall),
+                Throws.InvalidOperationException.With.Message.Contains(
+                    "position fault"));
+
+            controller.ResetDraft();
+
+            Assert.That(controller.CanEnterServeSetup, Is.True);
+        }
+
+        [Test]
         public void CameraBookmarks_StoreTheCurrentFreeCameraWithoutChangingMatchContext()
         {
             using var controller = new TrainingScenarioLabController(Store(), new FakeSimulation());
