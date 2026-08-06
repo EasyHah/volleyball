@@ -123,6 +123,3 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 - 当前主机为 macOS arm64；Unity `6000.3.20f1` 安装只包含 `MacStandaloneSupport`，工作区没有 Windows x64 Player
   产物。因此 Windows x64 IL2CPP 构建与 Player 人工验收无法在本机执行，必须移交到配置 Windows/IL2CPP 的环境；任务单
   保持 `Status: active`。
-- 修复后已在 macOS Unity `6000.3.20f1` 的 `FormalTrainingScenarioLab` Play Mode 复核：战术板在首次显示即呈现
-  12 个 `职业 · N号位` token，底部仍保留自由 3D 观察和 `XY / ZY / XZ` 精确编辑入口。此项消除了首次布局漏绘，
-  但 Windows x64 IL2CPP Player 的构建与人工验收仍为唯一外部待办。
