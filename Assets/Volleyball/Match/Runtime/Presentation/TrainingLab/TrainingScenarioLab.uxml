@@ -31,30 +31,10 @@
             </ui:VisualElement>
 
             <ui:VisualElement name="world-viewport" class="world-viewport">
-                <ui:VisualElement name="tactical-board" class="tactical-board" focusable="true">
-                    <ui:VisualElement name="court-lines" class="court-lines" picking-mode="Ignore" />
-                    <ui:VisualElement name="position-fault-layer" picking-mode="Ignore" />
-                    <ui:VisualElement name="tactical-token-layer" />
-                    <ui:Label name="board-instruction" class="world-chip" picking-mode="Ignore" />
-                    <ui:Button name="open-precision-button" text="精确调整 (XY / ZY / XZ)" class="board-action" />
-                    <ui:Button name="open-observation-button" text="自由 3D 观察" class="board-action secondary" />
+                <ui:VisualElement class="world-chip-row" picking-mode="Ignore">
+                    <ui:Label name="viewport-hint" text="先确认轮转，再拖动球员摆位" class="world-chip" />
                 </ui:VisualElement>
-                <ui:VisualElement name="precision-adjustment" class="mode-surface is-hidden">
-                    <ui:VisualElement class="mode-toolbar">
-                        <ui:Button name="return-to-board-button" text="返回战术板" />
-                        <ui:Button name="precision-position-button" text="编辑位置" />
-                        <ui:Button name="precision-velocity-button" text="编辑速度" class="secondary" />
-                    </ui:VisualElement>
-                    <ui:VisualElement class="precision-grid">
-                        <ui:VisualElement name="precision-xy-pane" class="precision-pane" />
-                        <ui:VisualElement name="precision-zy-pane" class="precision-pane" />
-                        <ui:VisualElement name="precision-xz-pane" class="precision-pane" />
-                    </ui:VisualElement>
-                </ui:VisualElement>
-                <ui:VisualElement name="free-observation" class="mode-surface is-hidden">
-                    <ui:Label text="仅观察：可检查轨迹和保存机位，不会修改情景。" class="world-chip" />
-                    <ui:Button name="return-from-observation-button" text="返回战术板" />
-                </ui:VisualElement>
+                <ui:VisualElement class="world-spacer" picking-mode="Ignore" />
                 <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
             </ui:VisualElement>
 
@@ -88,6 +68,8 @@
                         <ui:Button name="tool-velocity" text="调整速度" />
                         <ui:Button name="tool-trajectory" text="查看轨迹" />
                     </ui:VisualElement>
+                    <ui:Label text="正交编辑：XY（俯视）· ZY（边线）· XZ（底线）" class="mini-label" />
+
                     <ui:Label text="管理员测试属性（仅本训练情景）" class="section-title" />
                     <ui:VisualElement name="attribute-table" class="attribute-table" />
                     <ui:Label text="自由观察机位" class="section-title" />

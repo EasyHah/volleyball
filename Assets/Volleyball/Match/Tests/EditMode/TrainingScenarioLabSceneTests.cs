@@ -71,22 +71,6 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void VisualTree_ExposesTacticalBoardAndPrecisionEditingViews()
-        {
-            var tree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
-                TreePath);
-            var root = tree.CloneTree();
-
-            Assert.That(root.Q("tactical-board"), Is.Not.Null);
-            Assert.That(root.Q("tactical-token-layer"), Is.Not.Null);
-            Assert.That(root.Q("position-fault-layer"), Is.Not.Null);
-            Assert.That(root.Q<Button>("open-precision-button"), Is.Not.Null);
-            Assert.That(root.Q("precision-xy-pane"), Is.Not.Null);
-            Assert.That(root.Q("precision-zy-pane"), Is.Not.Null);
-            Assert.That(root.Q("precision-xz-pane"), Is.Not.Null);
-        }
-
-        [Test]
         public void BuildList_AppendsLabWithoutReorderingExistingScenes()
         {
             var paths = EditorBuildSettings.scenes

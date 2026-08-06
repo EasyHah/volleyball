@@ -13,8 +13,6 @@ using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation.TrainingLab
 {
-    public enum TrainingLabAuthoringModeV1 { Board, Precision, Observation }
-
     public sealed class TrainingLabPreviewMarkerV1 : MonoBehaviour
     {
         public string ObjectId { get; private set; }
@@ -60,7 +58,7 @@ namespace Volleyball.Presentation.TrainingLab
         private Label _comparison;
         private Label _feedback;
         private Label _monitor;
-        private Label _boardInstruction;
+        private Label _viewportHint;
         private TextField _displayName;
         private IntegerField _seed;
         private DropdownField _recipe;
@@ -88,19 +86,11 @@ namespace Volleyball.Presentation.TrainingLab
         private bool _rendering;
         private bool _ownsController;
         private bool _initialized;
+        private int _dragPointer = -1;
+        private string _dragObjectId;
         private Font _runtimeFont;
-        private VisualElement _tacticalBoardElement;
-        private VisualElement _precisionElement;
-        private VisualElement _observationElement;
-        private TrainingLabTacticalBoardPresenterV1 _tacticalBoard;
-        private TrainingLabPrecisionAdjustmentPresenterV1 _precision;
-        private TrainingLabAuthoringModeV1 _authoringMode;
 
         public TrainingScenarioLabController Controller => _controller;
-        public TrainingLabPrecisionVectorModeV1 PrecisionVectorMode =>
-            _precision?.VectorMode ?? TrainingLabPrecisionVectorModeV1.Position;
-        public bool IsPrecisionAdjustmentOpen =>
-            _authoringMode == TrainingLabAuthoringModeV1.Precision;
 
         public void Bind(TrainingScenarioLabController controller)
         {
@@ -112,8 +102,6 @@ namespace Volleyball.Presentation.TrainingLab
                 _controller?.Dispose();
             _controller = controller;
             _ownsController = false;
-            _tacticalBoard = null;
-            _precision = null;
             if (isActiveAndEnabled)
             {
                 _controller.Changed += Render;
@@ -176,10 +164,7 @@ namespace Volleyball.Presentation.TrainingLab
             _comparison = _root.Q<Label>("comparison-label");
             _feedback = _root.Q<Label>("feedback-label");
             _monitor = _root.Q<Label>("monitor-label");
-            _boardInstruction = _root.Q<Label>("board-instruction");
-            _tacticalBoardElement = _root.Q<VisualElement>("tactical-board");
-            _precisionElement = _root.Q<VisualElement>("precision-adjustment");
-            _observationElement = _root.Q<VisualElement>("free-observation");
+            _viewportHint = _root.Q<Label>("viewport-hint");
             _displayName = _root.Q<TextField>("display-name");
             _seed = _root.Q<IntegerField>("match-seed");
             _recipe = _root.Q<DropdownField>("start-recipe");
@@ -252,14 +237,6 @@ namespace Volleyball.Presentation.TrainingLab
             _root.Q<Button>("tool-move-ball").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.MoveBall);
             _root.Q<Button>("tool-velocity").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.AdjustVelocity);
             _root.Q<Button>("tool-trajectory").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.ViewTrajectory);
-            _root.Q<Button>("open-precision-button").clicked +=
-                OpenPrecisionAdjustment;
-            _root.Q<Button>("return-to-board-button").clicked +=
-                ReturnToTacticalBoard;
-            _root.Q<Button>("precision-position-button").clicked += () =>
-                SetPrecisionVectorMode(TrainingLabPrecisionVectorModeV1.Position);
-            _root.Q<Button>("precision-velocity-button").clicked += () =>
-                SetPrecisionVectorMode(TrainingLabPrecisionVectorModeV1.Velocity);
             _root.Q<Button>("save-bookmark-button").clicked += SaveCurrentCameraBookmark;
 
             _displayName.RegisterValueChangedCallback(value =>
@@ -296,6 +273,9 @@ namespace Volleyball.Presentation.TrainingLab
             _velocityY.RegisterValueChangedCallback(_ => ApplyVelocity());
             _velocityZ.RegisterValueChangedCallback(_ => ApplyVelocity());
 
+            _viewport.RegisterCallback<PointerDownEvent>(OnPointerDown);
+            _viewport.RegisterCallback<PointerMoveEvent>(OnPointerMove);
+            _viewport.RegisterCallback<PointerUpEvent>(OnPointerUp);
             _root.RegisterCallback<KeyDownEvent>(OnKeyDown);
         }
 
@@ -336,8 +316,6 @@ namespace Volleyball.Presentation.TrainingLab
                 RenderIssues();
                 RenderTimeline();
                 RenderControls();
-                EnsureAuthoringPresenters();
-                RenderAuthoringSurfaces();
                 SyncWorld();
             }
             finally
@@ -502,12 +480,6 @@ namespace Volleyball.Presentation.TrainingLab
         private void SetOverride(PlayerSnapshotV4 player, int height, string hand)
         {
             if (_rendering) return;
-            if (height < 1400 || height > 2300)
-            {
-                _feedback.text = "训练身高必须在 1400 到 2300 毫米之间。";
-                return;
-            }
-
             _controller.SetTrainingAttributeOverride(player.PlayerId,
                 new TrainingPlayerAttributeOverrideV1(height,
                     Enum.Parse<DominantHandV4>(hand), player.Physical, player.Technical));
@@ -610,82 +582,15 @@ namespace Volleyball.Presentation.TrainingLab
                 _controller.Draft.FirstServingSide + " · 触球 " +
                 (_controller.VisibleEvidence?.Timeline.Count(value => value.Kind == TrainingTimelineEventKindV1.ContactAccepted) ?? 0) +
                 " · 裁判 " + (_controller.PositionFaultPreview.Count == 0 ? "站位合法" : "位置错误 " + _controller.PositionFaultPreview.Count);
-            _boardInstruction.text = _controller.CurrentStep ==
-                TrainingLabStepV1.Rotation
-                ? "步骤 1：确认轮转位次后才能在战术板摆位"
-                : _controller.PositionFaultPreview.Count > 0
-                    ? "先按红色连线和箭头修正位置错误，才能进入发球设置"
-                    : "摆位：直接拖动球员；需要精确数值时打开精确调整";
+            _viewportHint.text = _controller.CurrentStep == TrainingLabStepV1.Rotation
+                ? "步骤 1：确认轮转位次后才能拖动摆位"
+                : _controller.ServeTool == TrainingServeToolV1.AdjustVelocity
+                    ? "速度工具：拖动红色速度箭头或精确填写 VX/VY/VZ"
+                    : _controller.ServeTool == TrainingServeToolV1.ViewTrajectory
+                        ? "轨迹工具：只读预览"
+                        : "摆位：球员头顶显示职业与锁定的 1-6 位次";
             foreach (var step in Enum.GetValues(typeof(TrainingLabStepV1)).Cast<TrainingLabStepV1>())
                 _root.Q<Button>("step-" + step.ToString().ToLowerInvariant())?.EnableInClassList("active-step", _controller.CurrentStep == step);
-        }
-
-        private void EnsureAuthoringPresenters()
-        {
-            if (_tacticalBoard != null || _controller == null) return;
-            _tacticalBoard = new TrainingLabTacticalBoardPresenterV1(
-                _tacticalBoardElement,
-                _root.Q<VisualElement>("tactical-token-layer"),
-                _root.Q<VisualElement>("position-fault-layer"), _controller);
-            _precision = new TrainingLabPrecisionAdjustmentPresenterV1(
-                _controller,
-                _root.Q<VisualElement>("precision-xy-pane"),
-                _root.Q<VisualElement>("precision-zy-pane"),
-                _root.Q<VisualElement>("precision-xz-pane"));
-        }
-
-        private void RenderAuthoringSurfaces()
-        {
-            if (_tacticalBoard == null) return;
-            _tacticalBoardElement.EnableInClassList("is-hidden",
-                _authoringMode != TrainingLabAuthoringModeV1.Board);
-            _precisionElement.EnableInClassList("is-hidden",
-                _authoringMode != TrainingLabAuthoringModeV1.Precision);
-            _observationElement.EnableInClassList("is-hidden", true);
-            if (_authoringMode == TrainingLabAuthoringModeV1.Board)
-                _tacticalBoard.Render();
-            else if (_authoringMode == TrainingLabAuthoringModeV1.Precision)
-                _precision.Render();
-            var velocity = _root.Q<Button>("precision-velocity-button");
-            velocity.SetEnabled(_controller.SelectedObjectId == "ball" &&
-                !_controller.EditingLocked);
-            _root.Q<Button>("precision-position-button").EnableInClassList(
-                "active-view", PrecisionVectorMode ==
-                TrainingLabPrecisionVectorModeV1.Position);
-            velocity.EnableInClassList("active-view", PrecisionVectorMode ==
-                TrainingLabPrecisionVectorModeV1.Velocity);
-        }
-
-        public void OpenPrecisionAdjustment()
-        {
-            if (_controller == null || _controller.EditingLocked) return;
-            _authoringMode = TrainingLabAuthoringModeV1.Precision;
-            RenderAuthoringSurfaces();
-        }
-
-        public void ReturnToTacticalBoard()
-        {
-            _authoringMode = TrainingLabAuthoringModeV1.Board;
-            RenderAuthoringSurfaces();
-        }
-
-        public void SetPrecisionVectorMode(
-            TrainingLabPrecisionVectorModeV1 mode)
-        {
-            if (_precision == null) return;
-            _precision.SetVectorMode(mode);
-            RenderAuthoringSurfaces();
-        }
-
-        public void ApplyPrecisionAdjustment(
-            TrainingLabPrecisionPlaneV1 plane,
-            float horizontal,
-            float vertical)
-        {
-            if (_precision == null)
-                throw new InvalidOperationException(
-                    "Precision adjustment is not initialized.");
-            _precision.ApplyDrag(plane, horizontal, vertical);
         }
 
         private void SyncWorld()
@@ -772,24 +677,7 @@ namespace Volleyball.Presentation.TrainingLab
             var marker = markerObject.AddComponent<TrainingLabPreviewMarkerV1>();
             marker.Initialize(id);
             markerObject.GetComponent<Renderer>().material.color = color;
-            if (id != "ball")
-                CreatePlayerLabel(markerObject.transform);
             _markers.Add(id, marker);
-        }
-
-        private void CreatePlayerLabel(Transform marker)
-        {
-            var labelObject = new GameObject("RoleAndSlotLabel");
-            labelObject.transform.SetParent(marker, false);
-            labelObject.transform.localPosition = Vector3.up * 1.2f;
-            var label = labelObject.AddComponent<TextMesh>();
-            label.anchor = TextAnchor.LowerCenter;
-            label.alignment = TextAlignment.Center;
-            label.characterSize = .075f;
-            label.fontSize = 56;
-            label.color = Color.white;
-            if (_runtimeFont != null)
-                label.font = _runtimeFont;
         }
 
         private void UpdatePreview()
@@ -811,7 +699,6 @@ namespace Volleyball.Presentation.TrainingLab
                 marker.transform.localPosition =
                     ToUnity(pose.Position) + Vector3.up * .72f;
                 marker.transform.forward = ToUnity(pose.Forward);
-                UpdatePlayerLabel(marker, pose);
             }
 
             foreach (var pair in _markers)
@@ -834,33 +721,6 @@ namespace Volleyball.Presentation.TrainingLab
             }
 
             UpdateTrajectory();
-        }
-
-        private void UpdatePlayerLabel(
-            TrainingLabPreviewMarkerV1 marker,
-            TrainingPlayerPoseDraftV1 pose)
-        {
-            var label = marker.GetComponentInChildren<TextMesh>();
-            if (label == null) return;
-            var player = _controller.Draft.Context.Home.Players
-                .Concat(_controller.Draft.Context.Away.Players)
-                .Single(value => value.PlayerId.Equals(pose.PlayerId));
-            var slot = RotationSlot(player.PlayerId);
-            label.text = PositionName(player.Position) + " · " +
-                (slot > 0 ? slot + "号位" : "待锁定");
-            if (_worldCamera != null)
-                label.transform.rotation = Quaternion.LookRotation(
-                    -_worldCamera.transform.forward,
-                    _worldCamera.transform.up);
-        }
-
-        private int RotationSlot(StablePlayerId playerId)
-        {
-            if (!_controller.Draft.RotationLocked) return 0;
-            var rotation = _controller.Draft.HomeRotation.Contains(playerId)
-                ? _controller.Draft.HomeRotation
-                : _controller.Draft.AwayRotation;
-            return rotation.IndexOf(playerId) + 1;
         }
 
         private Color DefaultPlayerColor(string id)
@@ -916,6 +776,65 @@ namespace Volleyball.Presentation.TrainingLab
             _previewRoot = null;
         }
 
+        private void OnPointerDown(PointerDownEvent value)
+        {
+            if (_controller.EditingLocked || _worldCamera == null ||
+                _controller.CurrentStep == TrainingLabStepV1.Rotation) return;
+            var ray = ScreenRay(value.position);
+            if (!Physics.Raycast(ray, out var hit, 100f)) return;
+            var marker =
+                hit.collider.GetComponent<TrainingLabPreviewMarkerV1>();
+            if (marker == null) return;
+            _dragPointer = value.pointerId;
+            _dragObjectId = marker.ObjectId;
+            _controller.SelectObject(_dragObjectId, "position");
+            _viewport.CapturePointer(value.pointerId);
+            value.StopPropagation();
+        }
+
+        private void OnPointerMove(PointerMoveEvent value)
+        {
+            if (_dragPointer != value.pointerId ||
+                string.IsNullOrWhiteSpace(_dragObjectId) ||
+                !_viewport.HasPointerCapture(value.pointerId))
+                return;
+            var plane = new Plane(Vector3.up, Vector3.zero);
+            var ray = ScreenRay(value.position);
+            if (!plane.Raycast(ray, out var distance)) return;
+            var point = ray.GetPoint(distance);
+            if (_dragObjectId == "ball")
+            {
+                if (_controller.ServeTool != TrainingServeToolV1.MoveBall) return;
+                var current = _controller.Draft.BallPosition;
+                _controller.SetBallPosition(
+                    new SimVector3(point.x, current.Y, point.z));
+            }
+            else
+            {
+                _controller.SetPlayerPosition(
+                    new StablePlayerId(_dragObjectId),
+                    new SimVector3(point.x, 0f, point.z));
+            }
+            value.StopPropagation();
+        }
+
+        private void OnPointerUp(PointerUpEvent value)
+        {
+            if (_dragPointer != value.pointerId) return;
+            if (_viewport.HasPointerCapture(value.pointerId))
+                _viewport.ReleasePointer(value.pointerId);
+            _dragPointer = -1;
+            _dragObjectId = null;
+            value.StopPropagation();
+        }
+
+        private Ray ScreenRay(Vector2 panelPosition)
+        {
+            return _worldCamera.ScreenPointToRay(new Vector3(
+                panelPosition.x,
+                Screen.height - panelPosition.y,
+                0f));
+        }
 
         private void OnKeyDown(KeyDownEvent value)
         {
