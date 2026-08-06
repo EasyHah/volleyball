@@ -168,6 +168,40 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator FreeObservation_RendersReadOnlyCameraOutput()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                SceneName,
+                LoadSceneMode.Single);
+            yield return null;
+
+            var view = Object.FindFirstObjectByType<
+                TrainingScenarioLabView>();
+            var root = view.GetComponent<UIDocument>().rootVisualElement;
+            var selected = view.Controller.Draft.Players.First();
+            var selectedPosition = selected.Position;
+            var ballPosition = view.Controller.Draft.BallPosition;
+            var ballVelocity = view.Controller.Draft.BallVelocity;
+            view.Controller.SelectObject(selected.PlayerId.Value);
+
+            view.OpenFreeObservation();
+            yield return null;
+
+            Assert.That(root.Q<VisualElement>("free-observation")
+                .ClassListContains("is-hidden"), Is.False);
+            Assert.That(view.IsFreeObservationOpen, Is.True);
+            Assert.That(view.ObservationOutputReady, Is.True);
+            Assert.That(view.Controller.SelectedObjectId,
+                Is.EqualTo(selected.PlayerId.Value));
+            Assert.That(selected.Position, Is.EqualTo(selectedPosition));
+            Assert.That(view.Controller.Draft.BallPosition,
+                Is.EqualTo(ballPosition));
+            Assert.That(view.Controller.Draft.BallVelocity,
+                Is.EqualTo(ballVelocity));
+        }
+
+        [UnityTest]
         [Timeout(90000)]
         public IEnumerator RunPauseStepResetAndRerun_KeepOneFormalWorld()
         {

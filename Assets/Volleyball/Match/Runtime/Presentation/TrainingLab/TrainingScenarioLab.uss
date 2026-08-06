@@ -82,6 +82,7 @@
 .precision-grid { flex-grow: 1; flex-wrap: wrap; flex-direction: row; }
 .precision-pane { flex-grow: 1; min-width: 220px; min-height: 180px; margin: 5px; border-width: 1px; border-color: rgb(79, 148, 157); background-color: rgb(19, 65, 72); }
 .precision-pane-label { padding: 8px; color: rgb(225, 244, 244); -unity-font-style: bold; }
+.observation-surface { flex-grow: 1; margin-top: 8px; border-width: 1px; border-color: rgb(79, 148, 157); background-color: rgba(5, 13, 17, .7); }
 .world-chip-row { flex-direction: row; align-items: center; }
 .world-chip {
     padding: 6px 10px;

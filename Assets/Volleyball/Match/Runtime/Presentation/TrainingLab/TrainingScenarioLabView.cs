@@ -94,6 +94,7 @@ namespace Volleyball.Presentation.TrainingLab
         private VisualElement _observationElement;
         private TrainingLabTacticalBoardPresenterV1 _tacticalBoard;
         private TrainingLabPrecisionAdjustmentPresenterV1 _precision;
+        private TrainingLabFreeObservationPresenterV1 _observation;
         private TrainingLabAuthoringModeV1 _authoringMode;
 
         public TrainingScenarioLabController Controller => _controller;
@@ -101,6 +102,12 @@ namespace Volleyball.Presentation.TrainingLab
             _precision?.VectorMode ?? TrainingLabPrecisionVectorModeV1.Position;
         public bool IsPrecisionAdjustmentOpen =>
             _authoringMode == TrainingLabAuthoringModeV1.Precision;
+        public bool ObservationCameraChanged =>
+            _observation != null && _observation.CameraChanged;
+        public bool IsFreeObservationOpen =>
+            _authoringMode == TrainingLabAuthoringModeV1.Observation;
+        public bool ObservationOutputReady =>
+            _observation != null && _observation.Output != null;
 
         public void Bind(TrainingScenarioLabController controller)
         {
@@ -114,6 +121,8 @@ namespace Volleyball.Presentation.TrainingLab
             _ownsController = false;
             _tacticalBoard = null;
             _precision = null;
+            _observation?.Dispose();
+            _observation = null;
             if (isActiveAndEnabled)
             {
                 _controller.Changed += Render;
@@ -152,6 +161,8 @@ namespace Volleyball.Presentation.TrainingLab
         {
             if (_controller != null)
                 _controller.Changed -= Render;
+            _observation?.Dispose();
+            _observation = null;
         }
 
         private void EnsureDocument()
@@ -254,7 +265,11 @@ namespace Volleyball.Presentation.TrainingLab
             _root.Q<Button>("tool-trajectory").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.ViewTrajectory);
             _root.Q<Button>("open-precision-button").clicked +=
                 OpenPrecisionAdjustment;
+            _root.Q<Button>("open-observation-button").clicked +=
+                OpenFreeObservation;
             _root.Q<Button>("return-to-board-button").clicked +=
+                ReturnToTacticalBoard;
+            _root.Q<Button>("return-from-observation-button").clicked +=
                 ReturnToTacticalBoard;
             _root.Q<Button>("precision-position-button").clicked += () =>
                 SetPrecisionVectorMode(TrainingLabPrecisionVectorModeV1.Position);
@@ -641,7 +656,8 @@ namespace Volleyball.Presentation.TrainingLab
                 _authoringMode != TrainingLabAuthoringModeV1.Board);
             _precisionElement.EnableInClassList("is-hidden",
                 _authoringMode != TrainingLabAuthoringModeV1.Precision);
-            _observationElement.EnableInClassList("is-hidden", true);
+            _observationElement.EnableInClassList("is-hidden",
+                _authoringMode != TrainingLabAuthoringModeV1.Observation);
             if (_authoringMode == TrainingLabAuthoringModeV1.Board)
                 _tacticalBoard.Render();
             else if (_authoringMode == TrainingLabAuthoringModeV1.Precision)
@@ -665,7 +681,23 @@ namespace Volleyball.Presentation.TrainingLab
 
         public void ReturnToTacticalBoard()
         {
+            _observation?.Dispose();
+            _observation = null;
             _authoringMode = TrainingLabAuthoringModeV1.Board;
+            RenderAuthoringSurfaces();
+        }
+
+        public void OpenFreeObservation()
+        {
+            if (_controller == null || _controller.EditingLocked ||
+                _worldCamera == null)
+                return;
+            if (_observation == null)
+                _observation = new TrainingLabFreeObservationPresenterV1(
+                    _root.Q<VisualElement>("observation-surface"),
+                    _worldCamera);
+            _observation.Activate();
+            _authoringMode = TrainingLabAuthoringModeV1.Observation;
             RenderAuthoringSurfaces();
         }
 
@@ -905,6 +937,8 @@ namespace Volleyball.Presentation.TrainingLab
 
         private void DestroyPreview()
         {
+            _observation?.Dispose();
+            _observation = null;
             _markers.Clear();
             _trajectory = null;
             _worldCamera = null;
