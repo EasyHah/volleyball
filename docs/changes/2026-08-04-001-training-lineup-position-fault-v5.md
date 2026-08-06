@@ -45,6 +45,8 @@
 - 自由 3D 观察的可见输出与只读入口已自动验证；`-nographics` 渲染 RenderTexture 时 Unity `6000.3.20f1`
   会在原生图形管线中崩溃，故使用常规 batch PlayMode 执行该部分自动测试。观察模式的轨道/平移/缩放、轨迹可见性
   与书签操作仍需在 macOS Editor 和 Windows Player 人工确认。
+- 本机为 macOS arm64，安装的 Unity `6000.3.20f1` 只含 `MacStandaloneSupport`，工作区也没有 Windows Player
+  产物；因此 Windows x64 IL2CPP 构建与 Player 验收无法在本机执行，保持待验收。
 - 尚未在 Windows Player 中执行本计划新增 TrainingLab 的 IL2CPP 构建、输入、渲染及 pending 恢复验收；现有
   V5 Windows IL2CPP 构建记录保留在 `9a3897e` 对应改动文档中。
 - 回滚方式：回退本里程碑分支；新 V5 位置错误证据版本继续按 handoff 规则拒绝旧 pending/result/replay。
