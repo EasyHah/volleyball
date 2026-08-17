@@ -50,6 +50,54 @@ namespace Volleyball.Match.Domain.PreServe
             return draft;
         }
 
+        public static MatchSetupDraftV1 Restore(
+            MatchContextV5 context,
+            TeamSide firstServingSide,
+            IEnumerable<PlayerId> homeRotation,
+            IEnumerable<PlayerId> awayRotation,
+            IEnumerable<MatchPlayerPoseDraftV1> players,
+            SimVector3 ballPosition,
+            SimVector3 ballVelocity,
+            IReadOnlyDictionary<PlayerId, TrainingPlayerAttributeOverrideV2>
+                attributeOverrides,
+            bool rotationLocked)
+        {
+            if (context == null) throw new ArgumentNullException(nameof(context));
+            var draft = new MatchSetupDraftV1(context)
+            {
+                FirstServingSide = firstServingSide,
+                BallPosition = ballPosition,
+                BallVelocity = ballVelocity,
+                RotationLocked = rotationLocked
+            };
+            draft.HomeRotation.AddRange(homeRotation ??
+                throw new ArgumentNullException(nameof(homeRotation)));
+            draft.AwayRotation.AddRange(awayRotation ??
+                throw new ArgumentNullException(nameof(awayRotation)));
+            foreach (var player in players ??
+                     throw new ArgumentNullException(nameof(players)))
+                draft.Players.Add(player?.DeepCopy() ??
+                    throw new ArgumentException("Player poses cannot contain null.",
+                        nameof(players)));
+            if (attributeOverrides != null)
+            {
+                foreach (var pair in attributeOverrides)
+                    draft.AttributeOverrides.Add(pair.Key,
+                        pair.Value?.DeepCopy() ?? throw new ArgumentException(
+                            "Attribute overrides cannot contain null.",
+                            nameof(attributeOverrides)));
+            }
+            new MatchSetupEditorV1(draft).Validate();
+            return draft;
+        }
+
+        public MatchSetupDraftV1 DeepCopy()
+        {
+            return Restore(BaseContext, FirstServingSide, HomeRotation,
+                AwayRotation, Players, BallPosition, BallVelocity,
+                AttributeOverrides, RotationLocked);
+        }
+
         private static void AddTeam(
             MatchSetupDraftV1 draft,
             TeamSnapshotV5 team,

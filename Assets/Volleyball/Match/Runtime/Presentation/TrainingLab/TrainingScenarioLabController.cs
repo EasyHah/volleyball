@@ -4,6 +4,7 @@ using System.Linq;
 using Volleyball.AI;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Match.Domain.PreServe;
 using Volleyball.Shared.Contracts;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
@@ -22,11 +23,44 @@ namespace Volleyball.Presentation.TrainingLab
 
     public enum TrainingLabStepV1 { Rotation, Positioning, ServeBall, Validation, Running }
     public enum TrainingServeToolV1 { MoveBall, AdjustVelocity, ViewTrajectory }
+    public enum TrainingLabLeaveDecisionV1 { Save, Discard, Cancel }
+
+    public sealed class TrainingLabLeaveRequestV1
+    {
+        internal TrainingLabLeaveRequestV1(
+            bool canLeave,
+            bool requiresDecision,
+            bool isBlocked,
+            bool toHub,
+            string targetEntryKey,
+            string message)
+        {
+            CanLeave = canLeave;
+            RequiresDecision = requiresDecision;
+            IsBlocked = isBlocked;
+            ToHub = toHub;
+            TargetEntryKey = targetEntryKey;
+            Message = message ?? string.Empty;
+        }
+
+        public bool CanLeave { get; }
+        public bool RequiresDecision { get; }
+        public bool IsBlocked { get; }
+        public bool ToHub { get; }
+        public string TargetEntryKey { get; }
+        public string Message { get; }
+    }
 
     public sealed class TrainingScenarioLabController : IDisposable
     {
         private readonly TrainingScenarioDraftStoreV1 _store;
         private readonly ITrainingSimulationControllerV1 _simulation;
+        private readonly TrainingLabLocalScenarioRepositoryV2 _localRepository;
+        private TrainingLabLocalScenarioV2 _localScenario;
+        private string _savedPersistenceFingerprint;
+        private bool _hasSavedLocalScenario;
+        private bool _pendingLeaveToHub;
+        private string _pendingSwitchEntryKey;
         private int _sessionSequence;
         private bool _disposed;
 
@@ -49,6 +83,29 @@ namespace Volleyball.Presentation.TrainingLab
             SelectedObjectId = "ball";
             SelectedPropertyPath = "ball.position";
             CurrentStep = Draft.RotationLocked ? TrainingLabStepV1.Positioning : TrainingLabStepV1.Rotation;
+        }
+
+        public TrainingScenarioLabController(
+            TrainingLabLocalScenarioRepositoryV2 repository,
+            TrainingLabLocalScenarioV2 localScenario,
+            bool hasSavedCopy = false)
+        {
+            _localRepository = repository ??
+                throw new ArgumentNullException(nameof(repository));
+            _localScenario = localScenario ??
+                throw new ArgumentNullException(nameof(localScenario));
+            _hasSavedLocalScenario = hasSavedCopy;
+            _savedPersistenceFingerprint = hasSavedCopy
+                ? PersistenceFingerprint(localScenario)
+                : string.Empty;
+            SelectedEntryKey = localScenario.LocalId;
+            SelectedObjectId = string.IsNullOrWhiteSpace(
+                localScenario.SelectedObjectId)
+                ? "ball"
+                : localScenario.SelectedObjectId;
+            SelectedPropertyPath = "ball.position";
+            State = TrainingScenarioLabStateV1.Editing;
+            CurrentStep = TrainingLabStepV1.Rotation;
         }
 
         public event Action Changed;
@@ -77,6 +134,72 @@ namespace Volleyball.Presentation.TrainingLab
             State == TrainingScenarioLabStateV1.Paused ||
             State == TrainingScenarioLabStateV1.Completed ||
             State == TrainingScenarioLabStateV1.Faulted;
+        public TrainingLabLocalScenarioV2 LocalScenario => _localScenario;
+        public MatchSetupDraftV1 MatchSetup => _localScenario?.MatchSetup;
+        public bool IsDirty => _localScenario != null &&
+            (!_hasSavedLocalScenario || !string.Equals(
+                PersistenceFingerprint(_localScenario),
+                _savedPersistenceFingerprint,
+                StringComparison.Ordinal));
+
+        public void SaveCurrentLocalScenario()
+        {
+            EnsureLocalScenario();
+            _localRepository.Save(_localScenario);
+            _hasSavedLocalScenario = true;
+            _savedPersistenceFingerprint = PersistenceFingerprint(_localScenario);
+            Changed?.Invoke();
+        }
+
+        public TrainingLabLeaveRequestV1 RequestLeaveToHub()
+        {
+            return RequestLeave(true, null);
+        }
+
+        public TrainingLabLeaveRequestV1 RequestSwitch(string entryKey)
+        {
+            if (string.IsNullOrWhiteSpace(entryKey))
+                throw new ArgumentException("Entry key is required.",
+                    nameof(entryKey));
+            return RequestLeave(false, entryKey);
+        }
+
+        public TrainingLabLeaveRequestV1 ResolveLeave(
+            TrainingLabLeaveDecisionV1 decision)
+        {
+            EnsureLocalScenario();
+            if (!_pendingLeaveToHub &&
+                string.IsNullOrWhiteSpace(_pendingSwitchEntryKey))
+                throw new InvalidOperationException(
+                    "There is no pending TrainingLab leave request.");
+
+            var toHub = _pendingLeaveToHub;
+            var target = _pendingSwitchEntryKey;
+            if (decision == TrainingLabLeaveDecisionV1.Cancel)
+            {
+                ClearPendingLeave();
+                return LeaveRequest(false, false, false, toHub, target,
+                    "Leave cancelled.");
+            }
+
+            if (decision == TrainingLabLeaveDecisionV1.Save)
+                SaveCurrentLocalScenario();
+            else if (decision == TrainingLabLeaveDecisionV1.Discard)
+            {
+                if (_hasSavedLocalScenario)
+                    _localScenario = _localRepository.Load(
+                        _localScenario.LocalId);
+                else
+                    _localScenario = null;
+            }
+            else
+                throw new ArgumentOutOfRangeException(nameof(decision));
+
+            ClearPendingLeave();
+            Changed?.Invoke();
+            return LeaveRequest(true, false, false, toHub, target,
+                string.Empty);
+        }
 
         public void SelectDraftEntry(string key)
         {
@@ -435,10 +558,79 @@ namespace Volleyball.Presentation.TrainingLab
         public void Dispose()
         {
             if (_disposed) return;
-            _simulation.Completed -= OnCompleted;
-            _simulation.Faulted -= OnFaulted;
-            _simulation.Reset();
+            if (_simulation != null)
+            {
+                _simulation.Completed -= OnCompleted;
+                _simulation.Faulted -= OnFaulted;
+                _simulation.Reset();
+            }
             _disposed = true;
+        }
+
+        private TrainingLabLeaveRequestV1 RequestLeave(
+            bool toHub,
+            string targetEntryKey)
+        {
+            EnsureLocalScenario();
+            if (State == TrainingScenarioLabStateV1.Running ||
+                State == TrainingScenarioLabStateV1.Paused)
+            {
+                ClearPendingLeave();
+                return LeaveRequest(false, false, true, toHub,
+                    targetEntryKey,
+                    "Stop the active training rally before leaving.");
+            }
+
+            if (!IsDirty)
+                return LeaveRequest(true, false, false, toHub,
+                    targetEntryKey, string.Empty);
+
+            _pendingLeaveToHub = toHub;
+            _pendingSwitchEntryKey = targetEntryKey;
+            return LeaveRequest(false, true, false, toHub,
+                targetEntryKey,
+                "The local training scenario has unsaved changes.");
+        }
+
+        private void EnsureLocalScenario()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(
+                    nameof(TrainingScenarioLabController));
+            if (_localRepository == null || _localScenario == null)
+                throw new InvalidOperationException(
+                    "No native V5 local scenario is open.");
+        }
+
+        private void ClearPendingLeave()
+        {
+            _pendingLeaveToHub = false;
+            _pendingSwitchEntryKey = null;
+        }
+
+        private static TrainingLabLeaveRequestV1 LeaveRequest(
+            bool canLeave,
+            bool requiresDecision,
+            bool isBlocked,
+            bool toHub,
+            string targetEntryKey,
+            string message)
+        {
+            return new TrainingLabLeaveRequestV1(canLeave,
+                requiresDecision, isBlocked, toHub, targetEntryKey, message);
+        }
+
+        private static string PersistenceFingerprint(
+            TrainingLabLocalScenarioV2 local)
+        {
+            return string.Join("\n",
+                local.MatchSetupHash,
+                local.DisplayName ?? string.Empty,
+                local.ActiveStep ?? string.Empty,
+                local.ActiveView ?? string.Empty,
+                local.ActiveTool ?? string.Empty,
+                local.SelectedObjectId ?? string.Empty,
+                local.BookmarksJson ?? string.Empty);
         }
 
         private void Mutate(Action action)
