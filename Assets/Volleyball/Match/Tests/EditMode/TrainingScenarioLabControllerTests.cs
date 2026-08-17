@@ -238,6 +238,61 @@ namespace Volleyball.EditModeTests
                 Throws.InvalidOperationException);
         }
 
+        [Test]
+        public void V5Positioning_CourtAndRulerCommandsShareAxesAndSnap()
+        {
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            controller.ConfirmRotation();
+            var player = setup.AwayRotation[0];
+            var board = new UnityEngine.Rect(0f, 0f, 900f, 450f);
+            var fromCourt = controller.SetPlayerPositionFromCourt(
+                player, board, new UnityEngine.Vector2(650f, 100f));
+            controller.SetPlayerPosition(player,
+                new SimVector3(fromCourt.X, 0f, 2f));
+
+            var fromDepth = controller.SetPlayerDepthFromHorizontalRuler(
+                player, board, 650f);
+            Assert.That(fromDepth, Is.EqualTo(fromCourt));
+
+            controller.SetPlayerPosition(player,
+                new SimVector3(1f, 0f, fromCourt.Z));
+            var fromLateral = controller.SetPlayerLateralFromVerticalRuler(
+                player, board, 100f);
+            Assert.That(fromLateral, Is.EqualTo(fromCourt));
+        }
+
+        [Test]
+        public void V5PositionFaultFocus_SelectsExactlyParticipantsAndBlocksServe()
+        {
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            controller.ConfirmRotation();
+            var violating = setup.HomeRotation[3];
+            controller.SetPlayerPosition(violating,
+                new SimVector3(-3.5f, 0f, -7f));
+            var fault = controller.PositionFaults[0];
+            var hashBefore = new MatchSetupEditorV1(setup).Freeze().SetupHash;
+
+            controller.FocusPositionFault(0);
+
+            Assert.That(controller.FocusedPlayerIds,
+                Is.EquivalentTo(new[]
+                {
+                    fault.RequiredAheadOrLeft.PlayerId,
+                    fault.ViolatingBehindOrRight.PlayerId
+                }));
+            Assert.That(controller.SelectedObjectId,
+                Is.EqualTo(fault.ViolatingBehindOrRight.PlayerId.Value));
+            Assert.That(controller.CanEnterServeSetup, Is.False);
+            Assert.That(controller.ServeSetupBlockReason,
+                Does.Contain("all position faults"));
+            Assert.That(() => controller.ContinueToServeSetup(),
+                Throws.InvalidOperationException);
+            Assert.That(new MatchSetupEditorV1(setup).Freeze().SetupHash,
+                Is.EqualTo(hashBefore));
+        }
+
         private static TrainingScenarioDraftStoreV1 Store()
         {
             return new TrainingScenarioDraftStoreV1(

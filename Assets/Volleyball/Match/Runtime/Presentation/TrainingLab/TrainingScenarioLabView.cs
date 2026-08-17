@@ -525,6 +525,7 @@ namespace Volleyball.Presentation.TrainingLab
             _faultLayer.Clear();
             RenderRuler(_horizontalRuler, true);
             RenderRuler(_verticalRuler, false);
+            RenderSelectedPlayerRulerPoints();
 
             var homeIds = new HashSet<string>(
                 _controller.Draft.Context.Home.Players.Select(value => value.PlayerId.Value),
@@ -597,6 +598,36 @@ namespace Volleyball.Presentation.TrainingLab
                 arrow.style.top = correction.y - 9f;
                 _faultLayer.Add(arrow);
             }
+        }
+
+        private void RenderSelectedPlayerRulerPoints()
+        {
+            if (_controller.CurrentStep != TrainingLabStepV1.Positioning)
+                return;
+            var selected = _controller.Draft.Players.FirstOrDefault(value =>
+                value != null && value.PlayerId.Value ==
+                _controller.SelectedObjectId);
+            if (selected == null) return;
+            var point = TrainingLabCourtProjectionV1.CourtToBoard(
+                _courtBoardRect, selected.Position);
+            var depth = new VisualElement
+            {
+                name = "selected-player-depth-ruler-point",
+                userData = selected.PlayerId.Value + "|depth"
+            };
+            depth.AddToClassList("selected-ruler-point");
+            depth.style.left = point.x;
+            depth.style.top = 7f;
+            _horizontalRuler.Add(depth);
+            var lateral = new VisualElement
+            {
+                name = "selected-player-lateral-ruler-point",
+                userData = selected.PlayerId.Value + "|lateral"
+            };
+            lateral.AddToClassList("selected-ruler-point");
+            lateral.style.left = 15f;
+            lateral.style.top = point.y;
+            _verticalRuler.Add(lateral);
         }
 
         private void RenderRuler(VisualElement ruler, bool horizontal)
@@ -975,7 +1006,14 @@ namespace Volleyball.Presentation.TrainingLab
                     " 与 " + fault.ViolatingBehindOrRight.Slot + " 号位 " +
                     (violating?.DisplayName ?? fault.ViolatingBehindOrRight.PlayerId.Value) +
                     " 违反 " + fault.Rule + "；将后者拖向蓝色箭头即可修正。";
-                var card = new Label(text);
+                var focusedPlayerId =
+                    fault.ViolatingBehindOrRight.PlayerId.Value;
+                var card = new Button(() => _controller.SelectObject(
+                    focusedPlayerId, "position"))
+                {
+                    text = text,
+                    name = "position-fault-focus-" + focusedPlayerId
+                };
                 card.AddToClassList("fault-card");
                 _faultSummary.Add(card);
             }

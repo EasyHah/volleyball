@@ -1,6 +1,7 @@
 using UnityEngine;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Match.Domain.PreServe;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Presentation.TrainingLab
@@ -29,6 +30,30 @@ namespace Volleyball.Presentation.TrainingLab
             TeamSide side)
         {
             return SnapPlayerPosition(BoardToCourtPosition(board, point, 0f), side);
+        }
+
+        public static SimVector3 HorizontalRulerToPlayerPosition(
+            Rect board,
+            float pointerX,
+            SimVector3 current,
+            TeamSide side)
+        {
+            var depth = Mathf.Lerp(-PlayerZLimit, PlayerZLimit,
+                Mathf.Clamp01((pointerX - board.xMin) / board.width));
+            return SnapPlayerPosition(
+                new SimVector3(current.X, current.Y, depth), side);
+        }
+
+        public static SimVector3 VerticalRulerToPlayerPosition(
+            Rect board,
+            float pointerY,
+            SimVector3 current,
+            TeamSide side)
+        {
+            var lateral = Mathf.Lerp(-PlayerXLimit, PlayerXLimit,
+                Mathf.Clamp01((board.yMax - pointerY) / board.height));
+            return SnapPlayerPosition(
+                new SimVector3(lateral, current.Y, current.Z), side);
         }
 
         public static SimVector3 BoardToCourtPosition(Rect board, Vector2 point,
@@ -80,9 +105,11 @@ namespace Volleyball.Presentation.TrainingLab
         public static SimVector3 ShortestLegalCorrection(PositionFaultV1 fault)
         {
             if (fault == null) throw new System.ArgumentNullException(nameof(fault));
-            var violating = fault.ViolatingBehindOrRight.FootProjection;
-            var required = fault.RequiredAheadOrLeft.FootProjection;
-            return fault.Rule switch
+            var violating = TrainingTeamCourtTransformV1.ToLocal(fault.Side,
+                fault.ViolatingBehindOrRight.FootProjection);
+            var required = TrainingTeamCourtTransformV1.ToLocal(fault.Side,
+                fault.RequiredAheadOrLeft.FootProjection);
+            var local = fault.Rule switch
             {
                 PositionFaultRuleV1.Slot4BehindSlot5 or
                 PositionFaultRuleV1.Slot3BehindSlot6 or
@@ -90,6 +117,7 @@ namespace Volleyball.Presentation.TrainingLab
                     new SimVector3(violating.X, violating.Y, required.Z),
                 _ => new SimVector3(required.X, violating.Y, violating.Z)
             };
+            return TrainingTeamCourtTransformV1.ToWorld(fault.Side, local);
         }
 
         public static SimVector3 ClampServeBallPosition(SimVector3 position,

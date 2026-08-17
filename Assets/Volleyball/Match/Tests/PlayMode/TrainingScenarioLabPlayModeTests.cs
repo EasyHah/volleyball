@@ -103,6 +103,13 @@ namespace Volleyball.PlayModeTests
                     Is.EqualTo(DisplayStyle.None));
                 Assert.That(root.Q("rotation-board").resolvedStyle.display,
                     Is.EqualTo(DisplayStyle.None));
+                controller.SelectObject(
+                    controller.Draft.HomeRotation[0].Value, "position");
+                yield return null;
+                Assert.That(root.Q(
+                    "selected-player-depth-ruler-point"), Is.Not.Null);
+                Assert.That(root.Q(
+                    "selected-player-lateral-ruler-point"), Is.Not.Null);
 
                 controller.SelectServeTool(TrainingServeToolV1.MoveBall);
                 yield return null;

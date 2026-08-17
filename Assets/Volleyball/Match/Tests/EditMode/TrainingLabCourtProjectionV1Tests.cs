@@ -57,6 +57,26 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void CourtAndRulerDrags_UseOneSnappedMatchCoordinateSystem()
+        {
+            var board = new Rect(0f, 0f, 900f, 450f);
+            var pointer = new Vector2(650f, 100f);
+            var court = TrainingLabCourtProjectionV1.BoardToPlayerPosition(
+                board, pointer, TeamSide.Away);
+            var horizontal = TrainingLabCourtProjectionV1
+                .HorizontalRulerToPlayerPosition(board, pointer.x,
+                    new SimVector3(court.X, 0f, 2f), TeamSide.Away);
+            var vertical = TrainingLabCourtProjectionV1
+                .VerticalRulerToPlayerPosition(board, pointer.y,
+                    new SimVector3(1f, 0f, court.Z), TeamSide.Away);
+
+            Assert.That(horizontal, Is.EqualTo(court));
+            Assert.That(vertical, Is.EqualTo(court));
+            Assert.That(horizontal.X, Is.EqualTo(court.X));
+            Assert.That(vertical.Z, Is.EqualTo(court.Z));
+        }
+
+        [Test]
         public void ShortestLegalCorrection_MovesTheViolatingPlayerToTheRequiredRelation()
         {
             var required = new ServePositionSlotV1(TeamSide.Home, 4,
@@ -74,6 +94,23 @@ namespace Volleyball.EditModeTests
             Assert.That(TrainingLabCourtProjectionV1.ShortestLegalCorrection(
                     lateralFault),
                 Is.EqualTo(new SimVector3(-1f, 0f, -3f)));
+        }
+
+        [Test]
+        public void AwayCorrection_UsesTeamLocalLateralAxisThenReturnsWorldPoint()
+        {
+            var required = new ServePositionSlotV1(TeamSide.Away, 4,
+                new PlayerId("away-4"), new SimVector3(1f, 0f, 4f));
+            var violating = new ServePositionSlotV1(TeamSide.Away, 3,
+                new PlayerId("away-3"), new SimVector3(-2f, 0f, 3f));
+            var fault = new PositionFaultV1(TeamSide.Away,
+                PositionFaultRuleV1.Slot4RightOfSlot3,
+                required, violating);
+
+            var result = TrainingLabCourtProjectionV1
+                .ShortestLegalCorrection(fault);
+
+            Assert.That(result, Is.EqualTo(new SimVector3(1f, 0f, 3f)));
         }
 
         [Test]

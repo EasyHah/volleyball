@@ -190,6 +190,7 @@
 .horizontal-ruler .ruler-tick { top: 3px; width: 1px; height: 8px; }
 .vertical-ruler .ruler-tick { left: 11px; width: 8px; height: 1px; }
 .ruler-label { position: absolute; color: rgb(184, 214, 210); font-size: 9px; white-space: nowrap; }
+.selected-ruler-point { position: absolute; width: 12px; height: 12px; margin-left: -6px; margin-top: -6px; border-radius: 6px; background-color: rgb(92, 185, 255); border-width: 2px; border-color: rgb(223, 245, 255); }
 .horizontal-ruler .ruler-label { top: 12px; -unity-text-align: middle-center; }
 .vertical-ruler .ruler-label { left: 0; width: 11px; top: -5px; -unity-text-align: middle-right; }
 .board-mode-label { position: absolute; right: 10px; top: 8px; color: rgb(145, 184, 180); font-size: 10px; }
