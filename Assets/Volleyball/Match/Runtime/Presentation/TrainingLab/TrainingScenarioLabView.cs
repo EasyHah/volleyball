@@ -43,11 +43,28 @@ namespace Volleyball.Presentation.TrainingLab
         private LineRenderer _trajectory;
         private Camera _worldCamera;
         private VisualElement _root;
-        private VisualElement _scenarioList;
+        private VisualElement _scenarioHub;
+        private VisualElement _continueScenarios;
+        private VisualElement _standardScenarios;
+        private VisualElement _workbenchShell;
         private VisualElement _issues;
         private VisualElement _timeline;
         private VisualElement _viewport;
-        private VisualElement _editorControls;
+        private VisualElement _tacticalBoard;
+        private VisualElement _courtSurface;
+        private VisualElement _tokenLayer;
+        private VisualElement _faultLayer;
+        private VisualElement _horizontalRuler;
+        private VisualElement _verticalRuler;
+        private VisualElement _contextualInspector;
+        private VisualElement _rotationContext;
+        private VisualElement _positioningContext;
+        private VisualElement _serveContext;
+        private VisualElement _validationContext;
+        private VisualElement _runningContext;
+        private VisualElement _positionInputs;
+        private VisualElement _rotationIssues;
+        private VisualElement _faultSummary;
         private VisualElement _rotationList;
         private VisualElement _attributeTable;
         private VisualElement _bookmarkList;
@@ -59,6 +76,12 @@ namespace Volleyball.Presentation.TrainingLab
         private Label _feedback;
         private Label _monitor;
         private Label _viewportHint;
+        private Label _inspectorTitle;
+        private Label _inspectorSummary;
+        private Label _serveSetupBlock;
+        private Label _serveToolSummary;
+        private Label _validationSummary;
+        private Label _runningSummary;
         private TextField _displayName;
         private IntegerField _seed;
         private DropdownField _recipe;
@@ -74,7 +97,8 @@ namespace Volleyball.Presentation.TrainingLab
         private FloatField _velocityX;
         private FloatField _velocityY;
         private FloatField _velocityZ;
-        private Button _validate;
+        private Button _save;
+        private Button _returnToHub;
         private Button _run;
         private Button _pause;
         private Button _step;
@@ -84,10 +108,12 @@ namespace Volleyball.Presentation.TrainingLab
         private Button _reviewSetter;
         private TextField _bookmarkName;
         private bool _rendering;
+        private bool _showingScenarioHub = true;
         private bool _ownsController;
         private bool _initialized;
         private int _dragPointer = -1;
         private string _dragObjectId;
+        private Rect _courtBoardRect;
         private Font _runtimeFont;
 
         public TrainingScenarioLabController Controller => _controller;
@@ -149,11 +175,27 @@ namespace Volleyball.Presentation.TrainingLab
                 ? _document
                 : GetComponent<UIDocument>();
             _root = _document.rootVisualElement;
-            _scenarioList = _root.Q<VisualElement>("scenario-list");
+            _scenarioHub = _root.Q<VisualElement>("scenario-hub");
+            _continueScenarios = _root.Q<VisualElement>("continue-scenarios");
+            _standardScenarios = _root.Q<VisualElement>("standard-scenarios");
+            _workbenchShell = _root.Q<VisualElement>("workbench-shell");
             _issues = _root.Q<VisualElement>("issue-list");
             _timeline = _root.Q<VisualElement>("timeline-list");
             _viewport = _root.Q<VisualElement>("world-viewport");
-            _editorControls = _root.Q<VisualElement>("editor-controls");
+            _tacticalBoard = _root.Q<VisualElement>("tactical-board");
+            _courtSurface = _root.Q<VisualElement>("court-surface");
+            _tokenLayer = _root.Q<VisualElement>("tactical-token-layer");
+            _faultLayer = _root.Q<VisualElement>("position-fault-layer");
+            _horizontalRuler = _root.Q<VisualElement>("horizontal-ruler");
+            _verticalRuler = _root.Q<VisualElement>("vertical-ruler");
+            _contextualInspector = _root.Q<VisualElement>("contextual-inspector");
+            _rotationContext = _root.Q<VisualElement>("context-rotation");
+            _positioningContext = _root.Q<VisualElement>("context-positioning");
+            _serveContext = _root.Q<VisualElement>("context-serve-ball");
+            _validationContext = _root.Q<VisualElement>("context-validation");
+            _runningContext = _root.Q<VisualElement>("context-running");
+            _rotationIssues = _root.Q<VisualElement>("rotation-issues");
+            _faultSummary = _root.Q<VisualElement>("position-fault-summary");
             _rotationList = _root.Q<VisualElement>("rotation-list");
             _attributeTable = _root.Q<VisualElement>("attribute-table");
             _bookmarkList = _root.Q<VisualElement>("bookmark-list");
@@ -165,6 +207,12 @@ namespace Volleyball.Presentation.TrainingLab
             _feedback = _root.Q<Label>("feedback-label");
             _monitor = _root.Q<Label>("monitor-label");
             _viewportHint = _root.Q<Label>("viewport-hint");
+            _inspectorTitle = _root.Q<Label>("inspector-title");
+            _inspectorSummary = _root.Q<Label>("inspector-summary");
+            _serveSetupBlock = _root.Q<Label>("serve-setup-block");
+            _serveToolSummary = _root.Q<Label>("serve-tool-summary");
+            _validationSummary = _root.Q<Label>("validation-summary");
+            _runningSummary = _root.Q<Label>("running-summary");
             _displayName = _root.Q<TextField>("display-name");
             _seed = _root.Q<IntegerField>("match-seed");
             _recipe = _root.Q<DropdownField>("start-recipe");
@@ -174,13 +222,12 @@ namespace Volleyball.Presentation.TrainingLab
             _homeSpike = _root.Q<DropdownField>("home-spike-route");
             _awaySet = _root.Q<DropdownField>("away-set-route");
             _awaySpike = _root.Q<DropdownField>("away-spike-route");
-            _positionX = _root.Q<FloatField>("position-x");
-            _positionY = _root.Q<FloatField>("position-y");
-            _positionZ = _root.Q<FloatField>("position-z");
+            CreatePositionInputs();
             _velocityX = _root.Q<FloatField>("velocity-x");
             _velocityY = _root.Q<FloatField>("velocity-y");
             _velocityZ = _root.Q<FloatField>("velocity-z");
-            _validate = _root.Q<Button>("validate-button");
+            _save = _root.Q<Button>("save-button");
+            _returnToHub = _root.Q<Button>("return-to-hub-button");
             _run = _root.Q<Button>("run-button");
             _pause = _root.Q<Button>("pause-button");
             _step = _root.Q<Button>("step-button");
@@ -209,15 +256,42 @@ namespace Volleyball.Presentation.TrainingLab
             _awaySpike.choices = spikeRoutes;
         }
 
+        private void CreatePositionInputs()
+        {
+            var host = _root.Q<VisualElement>("position-input-host-positioning");
+            _positionInputs = new VisualElement { name = "position-inputs" };
+            var label = new Label("位置 XYZ");
+            label.AddToClassList("mini-label");
+            _positionInputs.Add(label);
+            var row = new VisualElement();
+            row.AddToClassList("vector-row");
+            _positionX = new FloatField { name = "position-x" };
+            _positionY = new FloatField { name = "position-y" };
+            _positionZ = new FloatField { name = "position-z" };
+            _positionX.AddToClassList("vector-field");
+            _positionY.AddToClassList("vector-field");
+            _positionZ.AddToClassList("vector-field");
+            row.Add(_positionX);
+            row.Add(_positionY);
+            row.Add(_positionZ);
+            _positionInputs.Add(row);
+            host.Add(_positionInputs);
+        }
+
         private void RegisterUiEvents()
         {
-            _root.Q<Button>("new-button").clicked += () =>
+            _root.Q<Button>("hub-new-from-standard-button").clicked += () =>
+            {
                 _controller.NewDraft();
-            _root.Q<Button>("duplicate-button").clicked += () =>
-                _controller.DuplicateDraft();
-            _root.Q<Button>("reset-draft-button").clicked += () =>
-                _controller.ResetDraft();
-            _validate.clicked += () => _controller.Validate();
+                ShowWorkbench(_controller.SelectedEntryKey);
+            };
+            _save.clicked += SaveLocalScenario;
+            _returnToHub.clicked += ShowScenarioHub;
+            _root.Q<Button>("more-button").clicked += () =>
+            {
+                var advanced = _root.Q<Foldout>("advanced-settings");
+                advanced.value = !advanced.value;
+            };
             _run.clicked += () => _controller.Run();
             _pause.clicked += TogglePause;
             _step.clicked += () => _controller.Step();
@@ -232,11 +306,15 @@ namespace Volleyball.Presentation.TrainingLab
             {
                 if (_controller.Draft.RotationLocked) _controller.GoToPositioning();
             };
-            _root.Q<Button>("step-serve").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.MoveBall);
+            _root.Q<Button>("step-serve").clicked += () => TrySelectServeTool(TrainingServeToolV1.MoveBall);
             _root.Q<Button>("step-validation").clicked += () => _controller.GoToValidation();
-            _root.Q<Button>("tool-move-ball").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.MoveBall);
-            _root.Q<Button>("tool-velocity").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.AdjustVelocity);
-            _root.Q<Button>("tool-trajectory").clicked += () => _controller.SelectServeTool(TrainingServeToolV1.ViewTrajectory);
+            _root.Q<Button>("positioning-next-button").clicked += () =>
+                TrySelectServeTool(TrainingServeToolV1.MoveBall);
+            _root.Q<Button>("serve-next-button").clicked += () => _controller.GoToValidation();
+            _root.Q<Button>("context-run-button").clicked += () => _controller.Run();
+            _root.Q<Button>("tool-move-ball").clicked += () => TrySelectServeTool(TrainingServeToolV1.MoveBall);
+            _root.Q<Button>("tool-velocity").clicked += () => TrySelectServeTool(TrainingServeToolV1.AdjustVelocity);
+            _root.Q<Button>("tool-trajectory").clicked += () => TrySelectServeTool(TrainingServeToolV1.ViewTrajectory);
             _root.Q<Button>("save-bookmark-button").clicked += SaveCurrentCameraBookmark;
 
             _displayName.RegisterValueChangedCallback(value =>
@@ -273,9 +351,13 @@ namespace Volleyball.Presentation.TrainingLab
             _velocityY.RegisterValueChangedCallback(_ => ApplyVelocity());
             _velocityZ.RegisterValueChangedCallback(_ => ApplyVelocity());
 
-            _viewport.RegisterCallback<PointerDownEvent>(OnPointerDown);
-            _viewport.RegisterCallback<PointerMoveEvent>(OnPointerMove);
-            _viewport.RegisterCallback<PointerUpEvent>(OnPointerUp);
+            _tacticalBoard.RegisterCallback<PointerMoveEvent>(OnPointerMove);
+            _tacticalBoard.RegisterCallback<PointerUpEvent>(OnPointerUp);
+            _tacticalBoard.RegisterCallback<GeometryChangedEvent>(_ =>
+            {
+                LayoutTacticalBoard();
+                RenderTacticalBoard();
+            });
             _root.RegisterCallback<KeyDownEvent>(OnKeyDown);
         }
 
@@ -285,7 +367,8 @@ namespace Volleyball.Presentation.TrainingLab
             _rendering = true;
             try
             {
-                RenderScenarioList();
+                RenderScenarioHub();
+                RenderScreenMode();
                 var draft = _controller.Draft;
                 _state.text = StateText(_controller.State);
                 _state.EnableInClassList(
@@ -314,8 +397,11 @@ namespace Volleyball.Presentation.TrainingLab
                 RenderSelectedObject();
                 RenderRotationAndAttributes();
                 RenderIssues();
+                RenderContextualInspector();
                 RenderTimeline();
                 RenderControls();
+                LayoutTacticalBoard();
+                RenderTacticalBoard();
                 SyncWorld();
             }
             finally
@@ -324,25 +410,254 @@ namespace Volleyball.Presentation.TrainingLab
             }
         }
 
-        private void RenderScenarioList()
+        public void ShowWorkbench(string entryKey)
         {
-            _scenarioList.Clear();
+            if (!string.IsNullOrWhiteSpace(entryKey) &&
+                !string.Equals(entryKey, _controller.SelectedEntryKey,
+                    StringComparison.Ordinal))
+                _controller.SelectDraftEntry(entryKey);
+            _showingScenarioHub = false;
+            RenderScreenMode();
+        }
+
+        public void ShowScenarioHub()
+        {
+            _showingScenarioHub = true;
+            RenderScenarioHub();
+            RenderScreenMode();
+        }
+
+        private void SaveLocalScenario()
+        {
+            if (_controller.LocalScenario == null) return;
+            _controller.SaveCurrentLocalScenario();
+        }
+
+        private void RenderScenarioHub()
+        {
+            if (_continueScenarios == null || _standardScenarios == null)
+                return;
+            _continueScenarios.Clear();
+            _standardScenarios.Clear();
             foreach (var entry in _controller.Entries)
             {
                 var captured = entry.Key;
-                var button = new Button(() =>
-                    _controller.SelectDraftEntry(captured))
+                var card = new VisualElement();
+                card.AddToClassList("scenario-card");
+                var title = new Label(entry.DisplayName);
+                title.AddToClassList("scenario-card-title");
+                card.Add(title);
+                var detail = new Label(entry.IsBuiltIn
+                    ? "只读标准模板 · 打开后创建本地工作副本"
+                    : "本地工作副本");
+                detail.AddToClassList("scenario-card-detail");
+                card.Add(detail);
+                var button = new Button(() => ShowWorkbench(captured))
                 {
-                    text = (entry.IsBuiltIn ? "标准 · " : "草稿 · ") +
-                           entry.DisplayName
+                    text = entry.IsBuiltIn ? "打开" : "继续编辑"
                 };
-                button.AddToClassList("scenario-button");
-                button.EnableInClassList(
-                    "selected",
-                    captured == _controller.SelectedEntryKey);
                 button.SetEnabled(!_controller.EditingLocked);
-                _scenarioList.Add(button);
+                card.Add(button);
+                (entry.IsBuiltIn ? _standardScenarios : _continueScenarios)
+                    .Add(card);
             }
+            if (_continueScenarios.childCount == 0)
+            {
+                var empty = new Label("尚无已保存的本地情景。打开标准情景即可开始。");
+                empty.AddToClassList("hub-empty");
+                _continueScenarios.Add(empty);
+            }
+        }
+
+        private void RenderScreenMode()
+        {
+            if (_scenarioHub == null || _workbenchShell == null) return;
+            _scenarioHub.style.display = _showingScenarioHub
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            _workbenchShell.style.display = _showingScenarioHub
+                ? DisplayStyle.None
+                : DisplayStyle.Flex;
+        }
+
+        private void LayoutTacticalBoard()
+        {
+            if (_tacticalBoard == null || _courtSurface == null)
+                return;
+            var width = _tacticalBoard.contentRect.width;
+            var height = _tacticalBoard.contentRect.height;
+            if (width < 10f || height < 10f)
+                return;
+
+            var maxWidth = Mathf.Max(80f, width - 154f);
+            var maxHeight = Mathf.Max(80f, height - 72f);
+            var courtWidth = Mathf.Min(maxWidth, maxHeight * 2f);
+            var courtHeight = courtWidth * .5f;
+            var left = Mathf.Max(76f, (width - courtWidth) * .5f);
+            var top = Mathf.Max(28f, (height - courtHeight - 30f) * .5f);
+
+            _courtSurface.style.left = left;
+            _courtSurface.style.top = top;
+            _courtSurface.style.width = courtWidth;
+            _courtSurface.style.height = courtHeight;
+            _horizontalRuler.style.left = left;
+            _horizontalRuler.style.top = top + courtHeight + 8f;
+            _horizontalRuler.style.width = courtWidth;
+            _verticalRuler.style.left = left - 31f;
+            _verticalRuler.style.top = top;
+            _verticalRuler.style.height = courtHeight;
+            _courtBoardRect = new Rect(0f, 0f, courtWidth, courtHeight);
+        }
+
+        private void RenderTacticalBoard()
+        {
+            if (_courtSurface == null || _tokenLayer == null ||
+                _courtBoardRect.width < 10f)
+                return;
+
+            _tokenLayer.Clear();
+            _faultLayer.Clear();
+            RenderRuler(_horizontalRuler, true);
+            RenderRuler(_verticalRuler, false);
+
+            var homeIds = new HashSet<string>(
+                _controller.Draft.Context.Home.Players.Select(value => value.PlayerId.Value),
+                StringComparer.Ordinal);
+            var slots = BuildRotationSlots();
+            foreach (var pose in _controller.Draft.Players)
+            {
+                if (pose == null || !pose.Position.IsFinite)
+                    continue;
+                var player = FindPlayer(pose.PlayerId.Value);
+                var token = new VisualElement { userData = pose.PlayerId.Value };
+                token.AddToClassList("tactical-token");
+                token.AddToClassList(homeIds.Contains(pose.PlayerId.Value)
+                    ? "home-token" : "away-token");
+                if (_controller.SelectedObjectId == pose.PlayerId.Value)
+                    token.AddToClassList("selected-token");
+                if (_controller.PositionFaultPreview.Any(fault =>
+                        fault.RequiredAheadOrLeft.PlayerId.Value == pose.PlayerId.Value ||
+                        fault.ViolatingBehindOrRight.PlayerId.Value == pose.PlayerId.Value))
+                    token.AddToClassList("fault-token");
+                var boardPoint = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtBoardRect, pose.Position);
+                token.style.left = boardPoint.x;
+                token.style.top = boardPoint.y;
+                var slotText = slots.TryGetValue(pose.PlayerId.Value, out var slot)
+                    ? slot + "号位"
+                    : "未锁定位次";
+                token.Add(new Label(slotText));
+                var label = new Label(player == null
+                    ? pose.PlayerId.Value
+                    : player.DisplayName + " · " + PositionName(player.Position));
+                label.AddToClassList("token-label");
+                if (!homeIds.Contains(pose.PlayerId.Value))
+                    label.AddToClassList("away-label");
+                token.Add(label);
+                token.RegisterCallback<PointerDownEvent>(OnTokenPointerDown);
+                _tokenLayer.Add(token);
+            }
+
+            if (_controller.Draft.BallPosition.IsFinite)
+            {
+                var ball = new VisualElement { userData = "ball" };
+                ball.AddToClassList("tactical-token");
+                ball.AddToClassList("ball-token");
+                if (_controller.SelectedObjectId == "ball")
+                    ball.AddToClassList("selected-token");
+                var point = TrainingLabCourtProjectionV1.CourtToServeBoard(
+                    _courtBoardRect, _controller.Draft.BallPosition);
+                ball.style.left = point.x;
+                ball.style.top = point.y;
+                ball.Add(new Label("球"));
+                ball.RegisterCallback<PointerDownEvent>(OnTokenPointerDown);
+                _tokenLayer.Add(ball);
+            }
+
+            foreach (var fault in _controller.PositionFaultPreview)
+            {
+                var required = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtBoardRect, fault.RequiredAheadOrLeft.FootProjection);
+                var violating = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtBoardRect, fault.ViolatingBehindOrRight.FootProjection);
+                AddBoardLine(_faultLayer, required, violating, "fault-relation");
+                var correction = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtBoardRect,
+                    TrainingLabCourtProjectionV1.ShortestLegalCorrection(fault));
+                AddBoardLine(_faultLayer, violating, correction, "fault-arrow");
+                var arrow = new Label("→") { pickingMode = PickingMode.Ignore };
+                arrow.AddToClassList("fault-arrow-head");
+                arrow.style.left = correction.x - 5f;
+                arrow.style.top = correction.y - 9f;
+                _faultLayer.Add(arrow);
+            }
+        }
+
+        private void RenderRuler(VisualElement ruler, bool horizontal)
+        {
+            if (ruler == null) return;
+            ruler.Clear();
+            var track = new VisualElement();
+            track.AddToClassList("ruler-track");
+            ruler.Add(track);
+            var count = horizontal ? 19 : 10;
+            for (var index = 0; index < count; index++)
+            {
+                var fraction = count == 1 ? 0f : index / (float)(count - 1);
+                var tick = new VisualElement();
+                tick.AddToClassList("ruler-tick");
+                if (horizontal) tick.style.left = fraction * _courtBoardRect.width;
+                else tick.style.top = (1f - fraction) * _courtBoardRect.height;
+                ruler.Add(tick);
+                var label = new Label(horizontal
+                    ? (index <= 9 ? (9 - index).ToString() : (index - 9).ToString())
+                    : index.ToString());
+                label.AddToClassList("ruler-label");
+                if (horizontal)
+                {
+                    label.style.left = fraction * _courtBoardRect.width - 8f;
+                    if (index == 9) label.text = "0 网";
+                }
+                else
+                {
+                    label.style.top = (1f - fraction) * _courtBoardRect.height - 5f;
+                }
+                ruler.Add(label);
+            }
+        }
+
+        private static void AddBoardLine(VisualElement parent, Vector2 from,
+            Vector2 to, string className)
+        {
+            var line = new VisualElement { pickingMode = PickingMode.Ignore };
+            line.AddToClassList(className);
+            var delta = to - from;
+            var length = Mathf.Max(2f, delta.magnitude);
+            line.style.width = length;
+            line.style.height = 2f;
+            line.style.left = (from.x + to.x) * .5f - length * .5f;
+            line.style.top = (from.y + to.y) * .5f - 1f;
+            line.style.rotate = new Rotate(new Angle(
+                Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg,
+                AngleUnit.Degree));
+            parent.Add(line);
+        }
+
+        private Dictionary<string, int> BuildRotationSlots()
+        {
+            var slots = new Dictionary<string, int>(StringComparer.Ordinal);
+            for (var index = 0; index < _controller.Draft.HomeRotation.Count; index++)
+                slots[_controller.Draft.HomeRotation[index].Value] = index + 1;
+            for (var index = 0; index < _controller.Draft.AwayRotation.Count; index++)
+                slots[_controller.Draft.AwayRotation[index].Value] = index + 1;
+            return slots;
+        }
+
+        private PlayerSnapshotV4 FindPlayer(string id)
+        {
+            return _controller.Draft.Context.Home.Players
+                .Concat(_controller.Draft.Context.Away.Players)
+                .FirstOrDefault(value => value.PlayerId.Value == id);
         }
 
         private void RenderSelectedObject()
@@ -526,6 +841,136 @@ namespace Volleyball.Presentation.TrainingLab
             }
         }
 
+        private void RenderContextualInspector()
+        {
+            var step = _controller.CurrentStep;
+            SetContextVisible(_rotationContext, step == TrainingLabStepV1.Rotation);
+            SetContextVisible(_positioningContext,
+                step == TrainingLabStepV1.Positioning);
+            SetContextVisible(_serveContext, step == TrainingLabStepV1.ServeBall);
+            SetContextVisible(_validationContext,
+                step == TrainingLabStepV1.Validation);
+            SetContextVisible(_runningContext, step == TrainingLabStepV1.Running);
+
+            var positionHost = _root.Q<VisualElement>(
+                step == TrainingLabStepV1.ServeBall
+                    ? "position-input-host-serve"
+                    : "position-input-host-positioning");
+            if (positionHost != null && _positionInputs.parent != positionHost)
+                positionHost.Add(_positionInputs);
+
+            _inspectorTitle.text = InspectorTitle(step);
+            _inspectorSummary.text = InspectorSummary(step);
+            _serveSetupBlock.text = _controller.CanEnterServeSetup
+                ? "站位合法。下一步：设置发球球。"
+                : _controller.ServeSetupBlockReason;
+            _serveSetupBlock.EnableInClassList("has-block",
+                !_controller.CanEnterServeSetup);
+            _serveToolSummary.text = ServeToolSummary(_controller.ServeTool);
+            _validationSummary.text = _controller.Validation.IsValid
+                ? "当前草稿可冻结；运行将再次执行权威站位判定。"
+                : "修复下列问题后才能冻结并运行。";
+            _runningSummary.text = "发球方 " +
+                _controller.Draft.FirstServingSide + " · 触球 " +
+                (_controller.VisibleEvidence?.Timeline.Count(value =>
+                    value.Kind == TrainingTimelineEventKindV1.ContactAccepted) ?? 0) +
+                " · " + (_controller.PositionFaultPreview.Count == 0
+                    ? "裁判：站位合法"
+                    : "裁判：位置错误 " +
+                      _controller.PositionFaultPreview.Count);
+            RenderRotationIssues();
+            RenderFaultSummary();
+        }
+
+        private static void SetContextVisible(VisualElement context, bool visible)
+        {
+            if (context == null) return;
+            context.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            context.EnableInClassList("active-context", visible);
+        }
+
+        private void RenderRotationIssues()
+        {
+            _rotationIssues.Clear();
+            var issues = _controller.Validation.Issues.Where(issue =>
+                issue.Code == TrainingScenarioIssueCodesV1.InvalidRotationMembership)
+                .ToArray();
+            if (issues.Length == 0)
+            {
+                _rotationIssues.Add(new Label(_controller.Draft.RotationLocked
+                    ? "轮转已锁定；重新编辑会使当前摆位重新进入编辑流程。"
+                    : "请确认双方各有六名且不重复的轮转位次。"));
+                return;
+            }
+
+            foreach (var issue in issues)
+            {
+                var label = new Label(issue.Message);
+                label.AddToClassList("fault-card");
+                _rotationIssues.Add(label);
+            }
+        }
+
+        private void RenderFaultSummary()
+        {
+            _faultSummary.Clear();
+            var faults = _controller.PositionFaultPreview;
+            if (faults.Count == 0)
+            {
+                _faultSummary.Add(new Label("即时裁判：当前站位合法。"));
+                return;
+            }
+
+            foreach (var fault in faults)
+            {
+                var required = FindPlayer(fault.RequiredAheadOrLeft.PlayerId.Value);
+                var violating = FindPlayer(fault.ViolatingBehindOrRight.PlayerId.Value);
+                var text = fault.Side + " 的 " +
+                    fault.RequiredAheadOrLeft.Slot + " 号位 " +
+                    (required?.DisplayName ?? fault.RequiredAheadOrLeft.PlayerId.Value) +
+                    " 与 " + fault.ViolatingBehindOrRight.Slot + " 号位 " +
+                    (violating?.DisplayName ?? fault.ViolatingBehindOrRight.PlayerId.Value) +
+                    " 违反 " + fault.Rule + "；将后者拖向蓝色箭头即可修正。";
+                var card = new Label(text);
+                card.AddToClassList("fault-card");
+                _faultSummary.Add(card);
+            }
+        }
+
+        private static string InspectorTitle(TrainingLabStepV1 step)
+        {
+            return step switch
+            {
+                TrainingLabStepV1.Rotation => "步骤 1 · 轮转",
+                TrainingLabStepV1.Positioning => "步骤 2 · 摆位",
+                TrainingLabStepV1.ServeBall => "步骤 3 · 发球球",
+                TrainingLabStepV1.Validation => "步骤 4 · 校验",
+                _ => "步骤 5 · 运行"
+            };
+        }
+
+        private static string InspectorSummary(TrainingLabStepV1 step)
+        {
+            return step switch
+            {
+                TrainingLabStepV1.Rotation => "先确定法律位次；画布暂不允许拖动球员。",
+                TrainingLabStepV1.Positioning => "在中间画布拖动 12 名球员，红色关系必须全部消除。",
+                TrainingLabStepV1.ServeBall => "仅编辑发球前球的位置和初速度。",
+                TrainingLabStepV1.Validation => "冻结输入并检查训练起点是否可运行。",
+                _ => "正式回合已锁定；底部控制台提供完整运行证据。"
+            };
+        }
+
+        private static string ServeToolSummary(TrainingServeToolV1 tool)
+        {
+            return tool switch
+            {
+                TrainingServeToolV1.AdjustVelocity => "当前工具：调整速度。红色速度箭头与 VX/VY/VZ 可编辑。",
+                TrainingServeToolV1.ViewTrajectory => "当前工具：查看轨迹。画布只读，不改变发球球。",
+                _ => "当前工具：移动球。黄色球只能位于当前发球方己方底线后。"
+            };
+        }
+
         private void RenderTimeline()
         {
             if (_timeline == null || _controller == null) return;
@@ -557,8 +1002,12 @@ namespace Volleyball.Presentation.TrainingLab
         {
             var state = _controller.State;
             var editable = !_controller.EditingLocked;
-            _editorControls.SetEnabled(editable);
-            _validate.SetEnabled(editable);
+            _contextualInspector.SetEnabled(editable);
+            _save.SetEnabled(_controller.LocalScenario != null &&
+                _controller.IsDirty && editable);
+            _returnToHub.SetEnabled(
+                state != TrainingScenarioLabStateV1.Running &&
+                state != TrainingScenarioLabStateV1.Paused);
             _run.SetEnabled(
                 editable && _controller.Validation.IsValid);
             _pause.SetEnabled(
@@ -776,19 +1225,22 @@ namespace Volleyball.Presentation.TrainingLab
             _previewRoot = null;
         }
 
-        private void OnPointerDown(PointerDownEvent value)
+        private void OnTokenPointerDown(PointerDownEvent value)
         {
-            if (_controller.EditingLocked || _worldCamera == null ||
-                _controller.CurrentStep == TrainingLabStepV1.Rotation) return;
-            var ray = ScreenRay(value.position);
-            if (!Physics.Raycast(ray, out var hit, 100f)) return;
-            var marker =
-                hit.collider.GetComponent<TrainingLabPreviewMarkerV1>();
-            if (marker == null) return;
+            if (_controller.EditingLocked ||
+                _controller.CurrentStep == TrainingLabStepV1.Rotation)
+                return;
+            var token = value.currentTarget as VisualElement;
+            var id = token?.userData as string;
+            if (string.IsNullOrWhiteSpace(id)) return;
+            if (id == "ball" && (_controller.CurrentStep !=
+                    TrainingLabStepV1.ServeBall ||
+                _controller.ServeTool != TrainingServeToolV1.MoveBall))
+                return;
             _dragPointer = value.pointerId;
-            _dragObjectId = marker.ObjectId;
-            _controller.SelectObject(_dragObjectId, "position");
-            _viewport.CapturePointer(value.pointerId);
+            _dragObjectId = id;
+            _controller.SelectObject(id, "position");
+            _tacticalBoard.CapturePointer(value.pointerId);
             value.StopPropagation();
         }
 
@@ -796,24 +1248,28 @@ namespace Volleyball.Presentation.TrainingLab
         {
             if (_dragPointer != value.pointerId ||
                 string.IsNullOrWhiteSpace(_dragObjectId) ||
-                !_viewport.HasPointerCapture(value.pointerId))
+                !_tacticalBoard.HasPointerCapture(value.pointerId))
                 return;
-            var plane = new Plane(Vector3.up, Vector3.zero);
-            var ray = ScreenRay(value.position);
-            if (!plane.Raycast(ray, out var distance)) return;
-            var point = ray.GetPoint(distance);
+            var point = _courtSurface.WorldToLocal(value.position);
             if (_dragObjectId == "ball")
             {
                 if (_controller.ServeTool != TrainingServeToolV1.MoveBall) return;
                 var current = _controller.Draft.BallPosition;
                 _controller.SetBallPosition(
-                    new SimVector3(point.x, current.Y, point.z));
+                    TrainingLabCourtProjectionV1.ServeBoardToCourtPosition(
+                        _courtBoardRect, point, current.Y,
+                        _controller.Draft.FirstServingSide));
             }
             else
             {
+                if (!_courtBoardRect.Contains(point)) return;
+                var side = _controller.Draft.Context.Home.Players.Any(player =>
+                    player.PlayerId.Value == _dragObjectId)
+                    ? TeamSide.Home : TeamSide.Away;
                 _controller.SetPlayerPosition(
                     new StablePlayerId(_dragObjectId),
-                    new SimVector3(point.x, 0f, point.z));
+                    TrainingLabCourtProjectionV1.BoardToPlayerPosition(
+                        _courtBoardRect, point, side));
             }
             value.StopPropagation();
         }
@@ -821,19 +1277,11 @@ namespace Volleyball.Presentation.TrainingLab
         private void OnPointerUp(PointerUpEvent value)
         {
             if (_dragPointer != value.pointerId) return;
-            if (_viewport.HasPointerCapture(value.pointerId))
-                _viewport.ReleasePointer(value.pointerId);
+            if (_tacticalBoard.HasPointerCapture(value.pointerId))
+                _tacticalBoard.ReleasePointer(value.pointerId);
             _dragPointer = -1;
             _dragObjectId = null;
             value.StopPropagation();
-        }
-
-        private Ray ScreenRay(Vector2 panelPosition)
-        {
-            return _worldCamera.ScreenPointToRay(new Vector3(
-                panelPosition.x,
-                Screen.height - panelPosition.y,
-                0f));
         }
 
         private void OnKeyDown(KeyDownEvent value)
@@ -882,6 +1330,19 @@ namespace Volleyball.Presentation.TrainingLab
             else if (_controller.State ==
                      TrainingScenarioLabStateV1.Paused)
                 _controller.Resume();
+        }
+
+        private void TrySelectServeTool(TrainingServeToolV1 tool)
+        {
+            try
+            {
+                _controller.SelectServeTool(tool);
+            }
+            catch (InvalidOperationException exception)
+            {
+                _feedback.text = exception.Message;
+                _viewportHint.text = "发球设置已锁定：先修正全部站位错误";
+            }
         }
 
         private void ApplyPosition()

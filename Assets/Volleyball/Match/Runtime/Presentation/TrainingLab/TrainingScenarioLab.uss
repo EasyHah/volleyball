@@ -5,6 +5,33 @@
     color: rgb(226, 235, 240);
 }
 
+.scenario-hub {
+    flex-grow: 1;
+    min-height: 0;
+    padding: 28px 36px;
+    background-color: rgb(9, 21, 28);
+}
+.hub-header { min-height: 64px; flex-direction: row; align-items: center; }
+.hub-scroll { flex-grow: 1; min-height: 0; margin-top: 18px; }
+.hub-section-title { margin-top: 18px; margin-bottom: 10px; font-size: 18px; -unity-font-style: bold; color: rgb(229, 245, 245); }
+.scenario-card-grid { flex-direction: row; flex-wrap: wrap; }
+.scenario-card {
+    width: 292px;
+    min-height: 126px;
+    margin-right: 14px;
+    margin-bottom: 14px;
+    padding: 14px;
+    background-color: rgb(17, 39, 49);
+    border-width: 1px;
+    border-color: rgb(47, 83, 94);
+    border-radius: 5px;
+}
+.scenario-card-title { font-size: 15px; -unity-font-style: bold; color: rgb(234, 246, 246); }
+.scenario-card-detail { flex-grow: 1; margin-top: 7px; color: rgb(139, 174, 181); white-space: normal; }
+.scenario-card Button { align-self: flex-start; margin-top: 10px; }
+.hub-empty { min-height: 48px; color: rgb(126, 155, 163); }
+.workbench-shell { display: none; flex-grow: 1; min-height: 0; overflow: hidden; }
+
 .top-bar {
     height: 58px;
     flex-direction: row;
@@ -35,10 +62,18 @@
 .workbench-steps Button.active-step { background-color: rgb(35, 134, 102); border-bottom-width: 2px; border-bottom-color: rgb(248, 199, 77); }
 .monitor-label { flex-grow: 1; margin-left: 10px; color: rgb(242, 210, 122); font-size: 11px; white-space: normal; }
 
-.workspace { flex-grow: 1; flex-direction: row; min-height: 360px; }
+.workspace { flex-grow: 1; flex-direction: row; min-height: 0; overflow: hidden; }
+.workbench-content { min-height: 0; }
 .panel { background-color: rgba(12, 27, 36, 0.97); }
-.left-panel { width: 274px; padding: 14px; border-right-width: 1px; border-right-color: rgb(42, 72, 83); }
-.right-panel { width: 370px; padding: 14px; border-left-width: 1px; border-left-color: rgb(42, 72, 83); }
+.right-panel { width: 344px; min-width: 344px; min-height: 0; padding: 14px; border-left-width: 1px; border-left-color: rgb(42, 72, 83); overflow: hidden; }
+.context-scroll { flex-grow: 1; min-height: 0; margin-top: 8px; }
+.step-context { display: none; padding-bottom: 12px; }
+.step-context.active-context { display: flex; }
+.advanced-settings { margin-top: 10px; padding-top: 8px; border-top-width: 1px; border-top-color: rgb(42, 72, 83); }
+.advanced-settings .unity-foldout__content { padding-left: 4px; }
+.step-action-hint { margin-top: 8px; padding: 8px; color: rgb(242, 210, 122); background-color: rgb(20, 48, 57); white-space: normal; }
+.fault-summary { margin-top: 8px; }
+.fault-card { margin-bottom: 6px; padding: 8px; color: rgb(255, 210, 198); background-color: rgb(84, 42, 39); border-left-width: 3px; border-left-color: rgb(231, 102, 84); white-space: normal; }
 .panel-title { font-size: 17px; -unity-font-style: bold; color: rgb(229, 245, 245); }
 .panel-hint { margin-top: 3px; margin-bottom: 10px; font-size: 11px; color: rgb(131, 159, 168); white-space: normal; }
 .section-title { margin-top: 13px; margin-bottom: 6px; font-size: 14px; -unity-font-style: bold; color: rgb(104, 198, 202); }
@@ -61,9 +96,103 @@
 
 .world-viewport {
     flex-grow: 1;
+    min-width: 640px;
     padding: 12px;
     background-color: rgba(5, 13, 17, 0.10);
 }
+.tactical-board {
+    position: relative;
+    flex-grow: 1;
+    min-height: 300px;
+    margin-top: 8px;
+    background-color: rgb(17, 31, 37);
+    border-width: 1px;
+    border-color: rgb(58, 85, 89);
+    overflow: hidden;
+}
+.court-surface {
+    position: absolute;
+    background-color: rgb(27, 116, 104);
+    border-width: 2px;
+    border-color: rgb(225, 238, 219);
+    overflow: hidden;
+}
+.court-zone { position: absolute; top: 0; bottom: 0; width: 50%; }
+.court-home { left: 0; background-color: rgb(29, 117, 107); }
+.court-away { right: 0; background-color: rgb(34, 126, 113); }
+.court-line { position: absolute; background-color: rgba(236, 244, 224, 0.92); }
+.court-center-line { left: 50%; top: 0; bottom: 0; width: 2px; margin-left: -1px; }
+.court-home-three-meter { left: 33.333%; top: 0; bottom: 0; width: 2px; margin-left: -1px; opacity: .92; }
+.court-away-three-meter { left: 66.667%; top: 0; bottom: 0; width: 2px; margin-left: -1px; opacity: .92; }
+.court-net {
+    position: absolute;
+    left: 50%;
+    top: -1px;
+    bottom: -1px;
+    width: 5px;
+    margin-left: -2px;
+    background-color: rgb(28, 39, 42);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-color: rgb(245, 203, 92);
+}
+.net-label {
+    position: absolute;
+    left: 7px;
+    top: 50%;
+    color: rgb(246, 215, 123);
+    font-size: 10px;
+    -unity-text-align: middle-left;
+    white-space: nowrap;
+}
+.team-court-label {
+    position: absolute;
+    top: 8px;
+    color: rgba(240, 252, 237, .86);
+    font-size: 11px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+}
+.team-home-label { left: 12px; }
+.team-away-label { right: 12px; }
+.tactical-token-layer, .position-fault-layer { position: absolute; left: 0; right: 0; top: 0; bottom: 0; }
+.tactical-token {
+    position: absolute;
+    width: 46px;
+    height: 46px;
+    margin-left: -23px;
+    margin-top: -23px;
+    border-radius: 23px;
+    border-width: 2px;
+    border-color: rgb(225, 244, 244);
+    background-color: rgb(35, 112, 205);
+    -unity-text-align: middle-center;
+    color: rgb(248, 252, 250);
+    -unity-font-style: bold;
+    font-size: 11px;
+}
+.tactical-token.away-token { background-color: rgb(210, 91, 57); }
+.tactical-token.ball-token { width: 28px; height: 28px; margin-left: -14px; margin-top: -14px; border-radius: 14px; background-color: rgb(246, 201, 72); color: rgb(41, 37, 19); border-color: rgb(255, 244, 184); }
+.tactical-token.selected-token { border-color: rgb(255, 224, 95); border-width: 3px; }
+.tactical-token.fault-token { background-color: rgb(183, 47, 46); border-color: rgb(255, 185, 151); }
+.token-label { position: absolute; left: 50px; top: 10px; min-width: 90px; color: rgb(239, 249, 245); font-size: 11px; white-space: nowrap; }
+.token-label.away-label { left: auto; right: 50px; -unity-text-align: middle-right; }
+.fault-relation { position: absolute; background-color: rgb(241, 80, 67); opacity: .9; }
+.fault-arrow { position: absolute; background-color: rgb(92, 185, 255); opacity: .95; }
+.fault-arrow-head { position: absolute; color: rgb(92, 185, 255); font-size: 16px; -unity-font-style: bold; }
+.ruler { position: absolute; color: rgb(184, 214, 210); font-size: 10px; }
+.horizontal-ruler { height: 25px; bottom: 6px; }
+.vertical-ruler { width: 28px; }
+.ruler-track { position: absolute; background-color: rgb(115, 160, 157); }
+.horizontal-ruler .ruler-track { left: 0; right: 0; top: 7px; height: 1px; }
+.vertical-ruler .ruler-track { left: 15px; top: 0; bottom: 0; width: 1px; }
+.ruler-tick { position: absolute; background-color: rgb(115, 160, 157); }
+.horizontal-ruler .ruler-tick { top: 3px; width: 1px; height: 8px; }
+.vertical-ruler .ruler-tick { left: 11px; width: 8px; height: 1px; }
+.ruler-label { position: absolute; color: rgb(184, 214, 210); font-size: 9px; white-space: nowrap; }
+.horizontal-ruler .ruler-label { top: 12px; -unity-text-align: middle-center; }
+.vertical-ruler .ruler-label { left: 0; width: 11px; top: -5px; -unity-text-align: middle-right; }
+.board-mode-label { position: absolute; right: 10px; top: 8px; color: rgb(145, 184, 180); font-size: 10px; }
 .world-chip-row { flex-direction: row; align-items: center; }
 .world-chip {
     padding: 6px 10px;
@@ -75,6 +204,10 @@
 .world-help { margin-left: 8px; color: rgb(226, 235, 240); background-color: rgba(6, 20, 26, 0.70); padding: 5px 8px; border-radius: 8px; }
 .world-spacer { flex-grow: 1; }
 .rules-overlay {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    max-width: 46%;
     padding: 8px 10px;
     background-color: rgba(6, 20, 26, 0.82);
     border-radius: 5px;
@@ -123,14 +256,16 @@
 
 .compact-row { flex-direction: row; margin-top: 8px; }
 .bottom-console {
-    height: 178px;
-    padding: 10px 18px 14px 18px;
+    height: 58px;
+    min-height: 58px;
+    padding: 9px 18px;
     background-color: rgba(8, 19, 26, 0.98);
     border-top-width: 1px;
     border-top-color: rgb(47, 82, 94);
 }
 .run-toolbar { height: 40px; flex-direction: row; align-items: center; }
-.evidence-row { flex-grow: 1; flex-direction: row; }
+.bottom-action-bar { flex-shrink: 0; overflow: hidden; }
+.evidence-row { display: none; }
 .evidence-summary { width: 215px; padding: 5px 12px 5px 0; }
 .comparison-label { margin-top: 8px; color: rgb(242, 196, 93); -unity-font-style: bold; white-space: normal; }
 .feedback-label { margin-top: 8px; color: rgb(231, 119, 104); white-space: normal; font-size: 11px; }

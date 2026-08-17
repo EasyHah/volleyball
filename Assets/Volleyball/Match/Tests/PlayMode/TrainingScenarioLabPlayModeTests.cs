@@ -59,6 +59,126 @@ namespace Volleyball.PlayModeTests
         }
 
         [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator ContextualInspector_ChangesWithEachWorkbenchStepAt1920x1080()
+        {
+            var originalWidth = Screen.width;
+            var originalHeight = Screen.height;
+            Screen.SetResolution(1920, 1080, false);
+            try
+            {
+                yield return SceneManager.LoadSceneAsync(SceneName, LoadSceneMode.Single);
+                yield return null;
+
+                var view = Object.FindFirstObjectByType<TrainingScenarioLabView>();
+                var controller = view.Controller;
+                var root = view.GetComponent<UIDocument>().rootVisualElement;
+                view.ShowWorkbench(controller.SelectedEntryKey);
+                yield return null;
+                var scroll = root.Q<ScrollView>("context-scroll");
+
+                Assert.That(scroll, Is.Not.Null);
+                controller.ReopenRotation();
+                yield return null;
+                var inspector = root.Q<VisualElement>("contextual-inspector");
+                Assert.That(scroll.resolvedStyle.height, Is.GreaterThan(0f));
+                Assert.That(scroll.resolvedStyle.height,
+                    Is.LessThanOrEqualTo(inspector.resolvedStyle.height));
+                Assert.That(root.Q("context-rotation").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("context-positioning").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.None));
+
+                controller.ConfirmRotation();
+                yield return null;
+                Assert.That(root.Q("context-positioning").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("context-rotation").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.None));
+
+                controller.SelectServeTool(TrainingServeToolV1.MoveBall);
+                yield return null;
+                Assert.That(root.Q("context-serve-ball").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+
+                controller.GoToValidation();
+                yield return null;
+                Assert.That(root.Q("context-validation").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+
+                Assert.That(controller.Run(), Is.True);
+                yield return null;
+                Assert.That(root.Q("context-running").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("timeline-list"), Is.Not.Null);
+            }
+            finally
+            {
+                Screen.SetResolution(originalWidth, originalHeight, false);
+            }
+        }
+
+        [UnityTest]
+        [Timeout(60000)]
+        public IEnumerator WorkbenchRegions_DoNotOverlapAt1920x1080()
+        {
+            var originalWidth = Screen.width;
+            var originalHeight = Screen.height;
+            Screen.SetResolution(1920, 1080, false);
+            try
+            {
+                yield return SceneManager.LoadSceneAsync(
+                    SceneName, LoadSceneMode.Single);
+                yield return null;
+                var view = Object.FindFirstObjectByType<
+                    TrainingScenarioLabView>();
+                var root = view.GetComponent<UIDocument>()
+                    .rootVisualElement;
+                Assert.That(root.Q("scenario-hub").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("workbench-shell").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.None));
+                Assert.That(root.Q("standard-scenarios").childCount,
+                    Is.GreaterThan(0));
+
+                view.ShowWorkbench(view.Controller.SelectedEntryKey);
+                yield return null;
+                yield return null;
+                Assert.That(root.Q("scenario-hub").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.None));
+                Assert.That(root.Q("workbench-shell").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+
+                var board = root.Q<VisualElement>("world-viewport");
+                var inspector = root.Q<VisualElement>(
+                    "contextual-inspector");
+                var actions = root.Q<VisualElement>("bottom-action-bar");
+                var context = root.Q<ScrollView>("context-scroll");
+
+                Assert.That(board.worldBound.width, Is.GreaterThan(0f));
+                Assert.That(board.worldBound.height, Is.GreaterThan(0f));
+                Assert.That(inspector.worldBound.width, Is.GreaterThan(0f));
+                Assert.That(inspector.worldBound.height, Is.GreaterThan(0f));
+                Assert.That(actions.worldBound.width, Is.GreaterThan(0f));
+                Assert.That(actions.worldBound.height, Is.GreaterThan(0f));
+                Assert.That(board.worldBound.Overlaps(inspector.worldBound),
+                    Is.False);
+                Assert.That(board.worldBound.Overlaps(actions.worldBound),
+                    Is.False);
+                Assert.That(inspector.worldBound.Overlaps(actions.worldBound),
+                    Is.False);
+                Assert.That(inspector.worldBound.Contains(
+                    context.worldBound.min), Is.True);
+                Assert.That(inspector.worldBound.Contains(
+                    context.worldBound.max), Is.True);
+            }
+            finally
+            {
+                Screen.SetResolution(originalWidth, originalHeight, false);
+            }
+        }
+
+        [UnityTest]
         [Timeout(90000)]
         public IEnumerator RunPauseStepResetAndRerun_KeepOneFormalWorld()
         {
@@ -146,6 +266,7 @@ namespace Volleyball.PlayModeTests
                 controller.State,
                 Is.EqualTo(TrainingScenarioLabStateV1.Completed));
         }
+
 
         private static void AssertFormalWorld()
         {

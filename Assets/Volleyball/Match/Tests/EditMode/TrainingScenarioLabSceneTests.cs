@@ -49,15 +49,36 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
-        public void VisualTree_ContainsAllFourCommandAreasAndLifecycleActions()
+        public void VisualTree_UsesScenarioHubAndCanvasFirstWorkbench()
         {
             var tree = AssetDatabase.LoadAssetAtPath<VisualTreeAsset>(
                 TreePath);
             var root = tree.CloneTree();
 
-            Assert.That(root.Q("scenario-list"), Is.Not.Null);
-            Assert.That(root.Q("world-viewport"), Is.Not.Null);
-            Assert.That(root.Q("editor-controls"), Is.Not.Null);
+            Assert.That(root.Q("scenario-hub"), Is.Not.Null);
+            Assert.That(root.Q("continue-scenarios"), Is.Not.Null);
+            Assert.That(root.Q("standard-scenarios"), Is.Not.Null);
+            Assert.That(root.Q<Button>("hub-new-from-standard-button"),
+                Is.Not.Null);
+            Assert.That(root.Q("workbench-shell"), Is.Not.Null);
+            Assert.That(root.Q("stage-rail"), Is.Not.Null);
+            Assert.That(root.Q("workbench-content"), Is.Not.Null);
+            Assert.That(root.Q("contextual-inspector"), Is.Not.Null);
+            Assert.That(root.Q("context-scroll"), Is.Not.Null);
+            Assert.That(root.Q("bottom-action-bar"), Is.Not.Null);
+            Assert.That(root.Q<Button>("save-button"), Is.Not.Null);
+            Assert.That(root.Q<Button>("return-to-hub-button"), Is.Not.Null);
+            Assert.That(root.Q<Button>("more-button"), Is.Not.Null);
+            Assert.That(root.Q("advanced-settings"), Is.Not.Null);
+            Assert.That(root.Q("context-rotation"), Is.Not.Null);
+            Assert.That(root.Q("context-positioning"), Is.Not.Null);
+            Assert.That(root.Q("context-serve-ball"), Is.Not.Null);
+            Assert.That(root.Q("context-validation"), Is.Not.Null);
+            Assert.That(root.Q("context-running"), Is.Not.Null);
+            Assert.That(root.Q("left-panel"), Is.Null);
+            Assert.That(root.Q("editor-controls"), Is.Null);
+            Assert.That(root.Q<Button>("validate-button"), Is.Null);
+            Assert.That(root.Q<Button>("context-validate-button"), Is.Null);
             Assert.That(root.Q("timeline-list"), Is.Not.Null);
             Assert.That(root.Q<Button>("run-button"), Is.Not.Null);
             Assert.That(root.Q<Button>("pause-button"), Is.Not.Null);
