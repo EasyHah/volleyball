@@ -393,6 +393,7 @@ namespace Volleyball.Presentation
                 var agent = playerObject.AddComponent<PrototypePlayerAgent>();
                 agent.Initialize(new PlayerId(team, role, index), player.PlayerId, color, player.JerseyNumber.ToString());
                 agent.SetAbility(PlayerAbilityProfile.FromV5(player.Derived));
+                agent.ApplyV5Presentation(player.Bases.HeightMillimeters);
                 agent.SetCourtHalfLength(Configuration.CourtHalfLength);
                 agents.Add(agent);
             }

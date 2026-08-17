@@ -153,6 +153,11 @@
                     <ui:DropdownField name="last-actor" label="最后合法触球者" class="field" />
 
                     <ui:Label text="管理员测试属性（仅本训练情景）" class="section-title" />
+                    <ui:VisualElement name="selected-player-overrides" class="selected-player-overrides">
+                        <ui:Label name="override-player-identity" text="选择一名球员" class="selection-label" />
+                        <ui:VisualElement name="v5-override-grid" class="v5-override-grid" />
+                        <ui:Button name="reset-player-overrides-button" text="重置该球员全部覆盖" class="secondary" />
+                    </ui:VisualElement>
                     <ui:VisualElement name="attribute-table" class="attribute-table" />
                     <ui:Label text="自由观察机位" class="section-title" />
                     <ui:VisualElement class="compact-row">

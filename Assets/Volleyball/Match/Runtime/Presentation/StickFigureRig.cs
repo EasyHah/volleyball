@@ -8,6 +8,7 @@ namespace Volleyball.Presentation
 {
     public sealed class StickFigureRig : MonoBehaviour
     {
+        private const float ReferenceBodyHeightMeters = 1.9f;
         private readonly Dictionary<string, Transform> _joints = new Dictionary<string, Transform>();
         private readonly Dictionary<StickFigurePose, Dictionary<string, Vector3>> _poses =
             new Dictionary<StickFigurePose, Dictionary<string, Vector3>>();
@@ -29,6 +30,19 @@ namespace Volleyball.Presentation
         public bool HasJoint(string jointName)
         {
             return jointName != null && _joints.ContainsKey(jointName);
+        }
+
+        public float BodyHeightMeters { get; private set; } =
+            ReferenceBodyHeightMeters;
+
+        public void SetBodyHeightMeters(float heightMeters)
+        {
+            if (float.IsNaN(heightMeters) || float.IsInfinity(heightMeters) ||
+                heightMeters <= 0f)
+                throw new ArgumentOutOfRangeException(nameof(heightMeters));
+            BodyHeightMeters = heightMeters;
+            transform.localScale = new Vector3(1f,
+                heightMeters / ReferenceBodyHeightMeters, 1f);
         }
 
         public Transform GetJoint(string jointName)

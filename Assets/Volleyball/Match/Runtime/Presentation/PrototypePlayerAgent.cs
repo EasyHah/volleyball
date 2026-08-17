@@ -150,6 +150,28 @@ namespace Volleyball.Presentation
             Ability = ability;
         }
 
+        public float VisualBodyHeightMeters =>
+            Rig == null ? 0f : Rig.BodyHeightMeters;
+
+        public void ApplyV5Presentation(int heightMillimeters)
+        {
+            if (heightMillimeters < 1400 || heightMillimeters > 2300)
+                throw new ArgumentOutOfRangeException(
+                    nameof(heightMillimeters));
+            _presentation.SetBodyHeightMeters(heightMillimeters / 1000f);
+        }
+
+        public SetContactHand PreferredContactHand(TechniqueAction action)
+        {
+            return action == TechniqueAction.Attack ||
+                   action == TechniqueAction.Serve
+                ? Ability.Snapshot.DominantHand ==
+                  Volleyball.Shared.Contracts.DominantHandV5.Left
+                    ? SetContactHand.Left
+                    : SetContactHand.Right
+                : SetContactHand.Both;
+        }
+
         public void SetCourtHalfLength(float courtHalfLength)
         {
             if (float.IsNaN(courtHalfLength) || float.IsInfinity(courtHalfLength) || courtHalfLength <= 0f)

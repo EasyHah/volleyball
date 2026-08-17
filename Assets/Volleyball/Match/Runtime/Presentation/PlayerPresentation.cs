@@ -16,6 +16,11 @@ namespace Volleyball.Presentation
 
         public StickFigureRig Rig { get; }
 
+        public void SetBodyHeightMeters(float heightMeters)
+        {
+            Rig.SetBodyHeightMeters(heightMeters);
+        }
+
         public void ApplyPose(TechniqueAction action, SetTechniqueStyle setStyle, float normalizedBlend)
         {
             Rig.SetPose(ContactPoseFor(action, setStyle), normalizedBlend);

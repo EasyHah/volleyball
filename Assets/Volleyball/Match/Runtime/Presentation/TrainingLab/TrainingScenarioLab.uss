@@ -243,6 +243,11 @@
 .vector-field { flex-grow: 1; margin-right: 5px; }
 .selection-label { color: rgb(242, 196, 93); }
 .rotation-list, .attribute-table, .bookmark-list { margin-top: 4px; padding: 5px; background-color: rgb(9, 23, 30); border-width: 1px; border-color: rgb(42, 76, 87); }
+.selected-player-overrides { margin-top: 4px; padding: 8px; background-color: rgb(9, 23, 30); border-width: 1px; border-color: rgb(42, 76, 87); }
+.v5-override-grid { margin-top: 6px; }
+.v5-override-row { min-height: 34px; flex-direction: row; align-items: center; }
+.v5-override-row.explicit-override { border-left-width: 3px; border-left-color: rgb(242, 196, 93); background-color: rgb(24, 48, 57); }
+.v5-override-row Label { flex-grow: 1; white-space: normal; }
 .rotation-board { flex-grow: 1; min-height: 0; flex-direction: row; align-items: center; justify-content: center; }
 .rotation-team-board { width: 46%; max-width: 520px; margin: 12px; padding: 16px; background-color: rgb(11, 28, 36); border-width: 1px; border-color: rgb(48, 85, 96); border-radius: 5px; }
 .rotation-team-title { margin-bottom: 5px; color: rgb(104, 198, 202); -unity-font-style: bold; }

@@ -1685,6 +1685,7 @@ namespace Volleyball.Presentation
                 player.SetAbility(PlayerAbilityProfile.FromV5(
                     Volleyball.Shared.Contracts.MatchAttributeDerivationV5.Derive(
                         bases, hand)));
+                player.ApplyV5Presentation(bases.HeightMillimeters);
             }
         }
 

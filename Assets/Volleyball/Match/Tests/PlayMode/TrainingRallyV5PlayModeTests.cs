@@ -114,5 +114,67 @@ namespace Volleyball.PlayModeTests
                 Object.DestroyImmediate(host);
             }
         }
+
+        [UnityTest]
+        [Timeout(30000)]
+        public IEnumerator AttributeOverride_ChangesRuntimeAbilityRigAndContactHandOnly()
+        {
+            var host = new GameObject("TrainingRallyV5OverrideTest");
+            try
+            {
+                var context = FormalSixVsSixRallyBootstrap
+                    .CreateDefaultFormalContextV5();
+                var contextJson = ContractJson.SerializeV5(context);
+                var draft = MatchSetupDraftV1.CreateDefault(
+                    context, TeamSide.Home);
+                var basePlayer = context.Home.RotationOrder.First(value =>
+                    value.DominantHand == DominantHandV5.Right);
+                var playerId = basePlayer.PlayerId;
+                var value = new TrainingPlayerAttributeOverrideV2();
+                value.Set(TrainingPlayerAttributeFieldV2.Height, 2300);
+                value.Set(TrainingPlayerAttributeFieldV2.Jump, 10000);
+                value.Set(TrainingPlayerAttributeFieldV2.Attack, 10000);
+                value.Set(TrainingPlayerAttributeFieldV2.Block, 10000);
+                value.SetDominantHand(DominantHandV5.Left);
+                var expected = MatchAttributeDerivationV5.Derive(
+                    value.ApplyTo(basePlayer.Bases), DominantHandV5.Left);
+                draft.AttributeOverrides.Add(playerId, value);
+                var snapshot = new MatchSetupEditorV1(draft).Freeze();
+
+                FormalSixVsSixRallyBootstrap.InitializeTrainingRallyV5(
+                    host.transform, new TrainingRallyStartV5(snapshot));
+                yield return new WaitForSeconds(.6f);
+
+                var runtimePlayer = host
+                    .GetComponentsInChildren<PrototypePlayerAgent>()
+                    .Single(item => item.StableId.Equals(playerId));
+                Assert.That(runtimePlayer.Ability.Snapshot
+                        .AttackContactHeightMeters,
+                    Is.EqualTo(expected.AttackReachMillimeters / 1000f)
+                        .Within(.001f));
+                Assert.That(runtimePlayer.Ability.Snapshot
+                        .BlockReachHeightMeters,
+                    Is.EqualTo(expected.BlockReachMillimeters / 1000f)
+                        .Within(.001f));
+                Assert.That(runtimePlayer.Ability.Snapshot.Fingerprint,
+                    Is.EqualTo(expected.ResultFingerprint));
+                Assert.That(runtimePlayer.VisualBodyHeightMeters,
+                    Is.EqualTo(2.3f).Within(.001f));
+                Assert.That(runtimePlayer.PreferredContactHand(
+                        Volleyball.Domain.Players.TechniqueAction.Attack),
+                    Is.EqualTo(SetContactHand.Left));
+                Assert.That(runtimePlayer.PreferredContactHand(
+                        Volleyball.Domain.Players.TechniqueAction.Serve),
+                    Is.EqualTo(SetContactHand.Left));
+                Assert.That(ContractJson.SerializeV5(context),
+                    Is.EqualTo(contextJson));
+                Assert.That(basePlayer.DominantHand, Is.Not.EqualTo(
+                    runtimePlayer.Ability.Snapshot.DominantHand));
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+            }
+        }
     }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
+using UnityEngine.UIElements;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.PreServe;
@@ -358,6 +359,84 @@ namespace Volleyball.EditModeTests
             Assert.That(preview.Close(), Is.EqualTo(TrainingServeViewV1.Side));
             Assert.That(new MatchSetupEditorV1(setup).Freeze().SetupHash,
                 Is.EqualTo(frozen.SetupHash));
+        }
+
+        [Test]
+        public void V5AdministratorOverrides_EditClearResetFreezeAndReedit()
+        {
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            var player = setup.HomeRotation[0];
+            var baseJson = ContractJson.SerializeV5(setup.BaseContext);
+            var initialHash = new MatchSetupEditorV1(setup).Freeze().SetupHash;
+            foreach (TrainingPlayerAttributeFieldV2 field in Enum.GetValues(
+                         typeof(TrainingPlayerAttributeFieldV2)))
+            {
+                if (field == TrainingPlayerAttributeFieldV2.DominantHand)
+                    continue;
+                controller.SetPlayerAttributeOverride(player, field,
+                    field == TrainingPlayerAttributeFieldV2.Height
+                        ? 2210
+                        : 8765);
+            }
+            controller.SetPlayerDominantHandOverride(player,
+                DominantHandV5.Left);
+
+            var effective = controller.EffectiveBases(player);
+            Assert.That(effective.Strength, Is.EqualTo(8765));
+            Assert.That(effective.HeightMillimeters, Is.EqualTo(2210));
+            Assert.That(effective.Jump, Is.EqualTo(8765));
+            Assert.That(effective.Movement, Is.EqualTo(8765));
+            Assert.That(effective.Reaction, Is.EqualTo(8765));
+            Assert.That(effective.Coordination, Is.EqualTo(8765));
+            Assert.That(effective.Attack, Is.EqualTo(8765));
+            Assert.That(effective.Defense, Is.EqualTo(8765));
+            Assert.That(effective.CourtIq, Is.EqualTo(8765));
+            Assert.That(effective.Block, Is.EqualTo(8765));
+            Assert.That(effective.Serve, Is.EqualTo(8765));
+            Assert.That(effective.Set, Is.EqualTo(8765));
+            Assert.That(controller.EffectiveDominantHand(player),
+                Is.EqualTo(DominantHandV5.Left));
+            Assert.That(new MatchSetupEditorV1(setup).Freeze().SetupHash,
+                Is.Not.EqualTo(initialHash));
+
+            controller.ClearPlayerAttributeOverride(player,
+                TrainingPlayerAttributeFieldV2.Attack);
+            Assert.That(setup.AttributeOverrides[player].Attack, Is.Null);
+            controller.ResetPlayerAttributeOverrides(player);
+            Assert.That(setup.AttributeOverrides.ContainsKey(player), Is.False);
+            Assert.That(new MatchSetupEditorV1(setup).Freeze().SetupHash,
+                Is.EqualTo(initialHash));
+            controller.SetPlayerAttributeOverride(player,
+                TrainingPlayerAttributeFieldV2.Attack, 4321);
+            Assert.That(controller.EffectiveBases(player).Attack,
+                Is.EqualTo(4321));
+            Assert.That(ContractJson.SerializeV5(setup.BaseContext),
+                Is.EqualTo(baseJson));
+        }
+
+        [Test]
+        public void V5OverrideInspector_RendersAndWritesAllCanonicalFields()
+        {
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            var player = setup.HomeRotation[0];
+            var grid = new VisualElement();
+
+            TrainingLabV5OverrideInspectorV2.Render(
+                grid, controller, player);
+
+            Assert.That(grid.childCount, Is.EqualTo(13));
+            var attack = grid.Q<IntegerField>("v5-override-attack-input");
+            Assert.That(attack, Is.Not.Null);
+            controller.SetPlayerAttributeOverride(player,
+                TrainingPlayerAttributeFieldV2.Attack, 9123);
+            Assert.That(controller.EffectiveBases(player).Attack,
+                Is.EqualTo(9123));
+            TrainingLabV5OverrideInspectorV2.Render(
+                grid, controller, player);
+            Assert.That(grid.Q("v5-override-attack")
+                .ClassListContains("explicit-override"), Is.True);
         }
 
         private static TrainingScenarioDraftStoreV1 Store()

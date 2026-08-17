@@ -245,6 +245,63 @@ namespace Volleyball.Presentation.TrainingLab
             return points;
         }
 
+        public void SetPlayerAttributeOverride(PlayerId playerId,
+            TrainingPlayerAttributeFieldV2 field, int value)
+        {
+            var item = OverrideFor(playerId, true);
+            item.Set(field, value);
+            Changed?.Invoke();
+        }
+
+        public void SetPlayerDominantHandOverride(PlayerId playerId,
+            DominantHandV5 hand)
+        {
+            var item = OverrideFor(playerId, true);
+            item.SetDominantHand(hand);
+            Changed?.Invoke();
+        }
+
+        public void ClearPlayerAttributeOverride(PlayerId playerId,
+            TrainingPlayerAttributeFieldV2 field)
+        {
+            var item = OverrideFor(playerId, false);
+            if (item == null) return;
+            item.Clear(field);
+            RemoveEmptyOverride(playerId, item);
+            Changed?.Invoke();
+        }
+
+        public void ResetPlayerAttributeOverrides(PlayerId playerId)
+        {
+            if (!MatchSetup.AttributeOverrides.Remove(playerId)) return;
+            Changed?.Invoke();
+        }
+
+        public CareerBaseAttributesV5 EffectiveBases(PlayerId playerId)
+        {
+            var player = SnapshotFor(playerId);
+            var item = OverrideFor(playerId, false);
+            return item == null ? player.Bases : item.ApplyTo(player.Bases);
+        }
+
+        public DominantHandV5 EffectiveDominantHand(PlayerId playerId)
+        {
+            var player = SnapshotFor(playerId);
+            return OverrideFor(playerId, false)?.DominantHand ??
+                   player.DominantHand;
+        }
+
+        public PlayerSnapshotV5 BasePlayer(PlayerId playerId)
+        {
+            return SnapshotFor(playerId);
+        }
+
+        public TrainingPlayerAttributeOverrideV2 ExplicitOverride(
+            PlayerId playerId)
+        {
+            return OverrideFor(playerId, false);
+        }
+
         public void SelectObject(PlayerId playerId)
         {
             SelectedObjectId = string.IsNullOrWhiteSpace(playerId.Value)
@@ -321,6 +378,35 @@ namespace Volleyball.Presentation.TrainingLab
                     value.PlayerId.Equals(playerId))) return TeamSide.Home;
             if (MatchSetup.BaseContext.Away.RotationOrder.Any(value =>
                     value.PlayerId.Equals(playerId))) return TeamSide.Away;
+            throw new ArgumentException(
+                "Player is not a member of the V5 Match setup.",
+                nameof(playerId));
+        }
+
+        private TrainingPlayerAttributeOverrideV2 OverrideFor(
+            PlayerId playerId, bool create)
+        {
+            SnapshotFor(playerId);
+            if (MatchSetup.AttributeOverrides.TryGetValue(playerId,
+                    out var item)) return item;
+            if (!create) return null;
+            item = new TrainingPlayerAttributeOverrideV2();
+            MatchSetup.AttributeOverrides.Add(playerId, item);
+            return item;
+        }
+
+        private void RemoveEmptyOverride(PlayerId playerId,
+            TrainingPlayerAttributeOverrideV2 item)
+        {
+            if (!item.HasAny) MatchSetup.AttributeOverrides.Remove(playerId);
+        }
+
+        private PlayerSnapshotV5 SnapshotFor(PlayerId playerId)
+        {
+            foreach (var player in MatchSetup.BaseContext.Home.RotationOrder)
+                if (player.PlayerId.Equals(playerId)) return player;
+            foreach (var player in MatchSetup.BaseContext.Away.RotationOrder)
+                if (player.PlayerId.Equals(playerId)) return player;
             throw new ArgumentException(
                 "Player is not a member of the V5 Match setup.",
                 nameof(playerId));
