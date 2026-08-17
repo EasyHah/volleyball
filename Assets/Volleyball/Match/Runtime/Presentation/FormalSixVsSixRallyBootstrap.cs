@@ -397,6 +397,80 @@ namespace Volleyball.Presentation
                 rulesVersion: RulesVersions.FullRallyV3);
         }
 
+        public static MatchContextV5 CreateDefaultFormalContextV5()
+        {
+            return MatchContextV5.Create(
+                Guid.Parse("77777777-2222-7777-2222-777777777777"),
+                7351,
+                CreateTeamV5("formal-v5-home", "Blue", TeamSide.Home, "home"),
+                CreateTeamV5("formal-v5-away", "Orange", TeamSide.Away, "away"),
+                FormalPhysicsConfigurationHash,
+                CreateFormalTrajectoryPredictionProviderConfigurationV5(),
+                rulesVersion: RulesVersions.FullRallyV3);
+        }
+
+        private static Volleyball.Shared.Contracts.TeamSnapshotV5 CreateTeamV5(
+            string id,
+            string name,
+            TeamSide side,
+            string prefix)
+        {
+            return new Volleyball.Shared.Contracts.TeamSnapshotV5(
+                new Volleyball.Shared.Contracts.TeamId(id),
+                name,
+                side,
+                new[]
+                {
+                    CreatePlayerV5(prefix + "-opposite", "Opposite", 1,
+                        PlayerPosition.Opposite),
+                    CreatePlayerV5(prefix + "-outside-a", "Outside A", 2,
+                        PlayerPosition.OutsideHitter),
+                    CreatePlayerV5(prefix + "-middle", "Middle", 3,
+                        PlayerPosition.MiddleBlocker),
+                    CreatePlayerV5(prefix + "-setter", "Setter", 4,
+                        PlayerPosition.Setter),
+                    CreatePlayerV5(prefix + "-outside-b", "Outside B", 5,
+                        PlayerPosition.OutsideHitter),
+                    CreatePlayerV5(prefix + "-libero", "Libero", 6,
+                        PlayerPosition.Libero)
+                });
+        }
+
+        private static Volleyball.Shared.Contracts.PlayerSnapshotV5 CreatePlayerV5(
+            string id,
+            string name,
+            int number,
+            PlayerPosition position)
+        {
+            return new Volleyball.Shared.Contracts.PlayerSnapshotV5(
+                new StablePlayerId(id),
+                name,
+                number,
+                position,
+                Volleyball.Shared.Contracts.DominantHandV5.Right,
+                BasesForV5(position));
+        }
+
+        private static Volleyball.Shared.Contracts.CareerBaseAttributesV5 BasesForV5(
+            PlayerPosition position)
+        {
+            return position switch
+            {
+                PlayerPosition.Setter => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    6200, 1910, 7200, 9000, 9300, 9300, 7100, 7800, 9400, 6900, 7900, 9500),
+                PlayerPosition.Libero => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    5000, 1840, 6500, 9500, 9600, 9400, 4800, 9700, 9200, 3500, 6900, 8000),
+                PlayerPosition.MiddleBlocker => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    8500, 2040, 9500, 7900, 8800, 8500, 8900, 7300, 8500, 9700, 6800, 6300),
+                PlayerPosition.Opposite => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    9000, 2000, 9300, 8500, 8700, 8700, 9600, 7200, 8500, 9000, 9000, 5900),
+                PlayerPosition.OutsideHitter => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    8200, 1960, 9000, 9000, 9000, 9000, 9200, 8800, 8900, 8300, 8500, 7400),
+                _ => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    7000, 1900, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000)
+            };
+        }
+
         private static TeamSnapshotV4 CreateTeam(
             string id,
             string name,
