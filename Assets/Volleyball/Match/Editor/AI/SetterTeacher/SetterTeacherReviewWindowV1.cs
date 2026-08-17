@@ -148,9 +148,7 @@ namespace Volleyball.Editor.AI.SetterTeacher
 
         private static SetterTargetSnapshotV1[] FindSnapshots()
         {
-            var view = FindFirstObjectByType<TrainingScenarioLabView>();
-            return view?.VisibleEvidence?.SetterTargets?.ToArray() ??
-                   Array.Empty<SetterTargetSnapshotV1>();
+            return Array.Empty<SetterTargetSnapshotV1>();
         }
     }
 }

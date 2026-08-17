@@ -388,7 +388,11 @@ namespace Volleyball.Presentation
                 playerObject.transform.SetParent(host, false);
                 var rotationPosition = ((index - initialRotationOffset + snapshot.RotationOrder.Count) %
                     snapshot.RotationOrder.Count) + 1;
-                playerObject.transform.localPosition = Configuration.PositionFor(snapshot.Side, rotationPosition);
+                var position = Configuration.PositionFor(snapshot.Side,
+                    rotationPosition);
+                if (snapshot.Side == TeamSide.Away)
+                    position.x = -position.x;
+                playerObject.transform.localPosition = position;
                 if (team == TeamId.Orange) playerObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 var agent = playerObject.AddComponent<PrototypePlayerAgent>();
                 agent.Initialize(new PlayerId(team, role, index), player.PlayerId, color, player.JerseyNumber.ToString());

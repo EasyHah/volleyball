@@ -13,21 +13,25 @@
 正式比赛共用的严格排球位置错误判定。轮转位次先编辑并确认锁定，之后才能拖拽实际站位；位置错误在发球
 触球瞬间裁决，违规队立即失回合、对手得一分，且不得启动正常物理、AI 或触球链路。
 
-TrainingLab 管理员覆盖仅作用于本训练情景的 Match 测试数值能力、身高与惯用手。训练室还须提供受限制的
-发球球位置/速度设置、自由镜头书签、持续回合监视器及五步工作台。V5 result/replay 必须记录与
-context/result/replay hash 绑定的可验证位置错误事实；Career 仅消费 Match 结论而不重算位置。
+TrainingLab 管理员覆盖仅作用于本训练情景的 V5 Match 测试数值能力、身高与惯用手。训练室还须提供受限制的
+发球球位置/速度设置、自由镜头书签、持续回合监视器及分页面工作台。正式 V5 result/replay 必须记录与
+context/result/replay hash 绑定的可验证位置错误事实；Career 仅消费 Match 结论而不重算位置。TrainingLab
+运行复用原生 V5 authority/AI/物理/裁判，但只生成训练专用单回合结果，不生成正式 V5 result/replay。
 
 ## 已授权边界
 
-- Match 域纯规则、正式 V5 发球接触路径、TrainingLab 数据/UI/场景接线和 Replay recorder。
-- Shared V5 context/result/replay 合同、ContractJson、Career V5 恢复/消费边界及必要 Bootstrap 接线。
+- Match 域纯规则、正式 V5 发球接触路径、TrainingLab V5 数据/UI/场景接线、训练专用单回合结果和原生
+  V5 训练启动边界。
+- 已有 Shared V5 context/result/replay 合同、ContractJson、Career V5 恢复/消费边界只允许为既有正式
+  V5 位置错误证据做缺陷修复；TrainingLab 新数据不得扩展或进入这些合同。
 - 相关程序集、测试、Windows x64 IL2CPP Development 构建与 Player 验收记录。
 
 ## 非目标
 
-- V4 的规则、存档、结果、Replay、恢复和行为完全不变。
+- V4 Career、正式 V4、3v3 兼容场景的规则、存档、结果、Replay、恢复和行为完全不变。
 - 不允许任意回合中插球；发球球只能位于当前发球方己方底线后。
-- 训练室覆盖、镜头或编辑器审核数据不得流入 Career、V5 正式 context 或正式比赛。
+- 训练室覆盖、镜头、启动快照、训练结果或编辑器审核数据不得流入 Career、V5 正式 context/result/replay
+  或正式比赛。
 - 不提供位置错误容差或绕过判罚的用户开关；相等投影合法，只有严格反转违法。
 - 不编辑姓名、号码、注册职业或 Career 权威属性。
 
@@ -38,10 +42,32 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 “不支持的 V5 证据版本，请放弃此待处理比赛并新建比赛”路径拒绝，保留原始工件供诊断。回滚方式是回退
 本阶段分支；回退后的程序同样拒绝该新版本，而不是试图降级解释。
 
+## 统一 TrainingLab / V5 决策（2026-08-17）
+
+- `docs/superpowers/specs/2026-08-08-training-lab-unified-workbench-design.md` 是 TrainingLab UX、数据边界和
+  运行语义的权威设计；对应 unified implementation plan 是当前唯一可执行 TrainingLab 计划。
+- 世界原点为场中心。Home 队伍局部 `(lateral, depth)` 映射为世界 `(lateral, -depth)`，Away 映射为
+  `(-lateral, depth)`；等价阵型关于场中心旋转 180 度，不关于球网镜像。默认摆位、编辑投影、修正箭头和
+  发球触球位置错误判定必须共用该变换。
+- 摆位只在俯视图编辑。发球俯视编辑 X/Z 与 VX/VZ，侧视编辑 Z/Y 与 VZ/VY，两者同步一份六轴状态；
+  3D 预览只允许观察和镜头书签，不得修改球员、球或速度。
+- 进入预检时自动验证并冻结唯一 `MatchSetupSnapshotV1`；不保留独立 `校验` 按钮或第二套 UI 校验状态。
+- 管理员覆盖使用 V5 的 Strength、Height、Jump、Movement、Reaction、Coordination、Attack、Defense、
+  Court IQ、Block、Serve、Set 与 `DominantHandV5`。覆盖必须实际影响训练运行时能力、身高/接触几何和
+  惯用手接触选择，并支持单字段清除与单球员恢复。
+- TrainingLab 从 V4 context、属性推导、startup、eligibility 和 evidence 路径迁移到原生 V5 回合核心。
+  所有 TrainingLab 运行统一在一个回合结束后停止并产生 `TrainingRallyOutcomeV1`；不等待完整局、不生成
+  `MatchResultV5`、`MatchReplayV5` 或 Career report。
+- 内置 V1/V4 TrainingLab 资产重建为 V2/V5 格式；本地 V1 文件显式显示为不支持并保留原字节，禁止
+  静默转换或默认字段读取。
+
 ## 验收条件
 
-- TrainingLab 完成轮转锁定、站位拖拽、角色/位次标识、受限发球设置、三正交编辑、镜头书签、管理员
-  覆盖隔离、预检和运行时位置错误闭环。
+- TrainingLab 完成轮转锁定、场中心对称站位、角色/位次标识、俯视/侧视发球编辑、只读 3D、镜头书签、
+  V5 管理员覆盖、自动预检、原生 V5 单回合和运行时位置错误闭环；整页必须按已确认设计稿重构，不能以替换中间场地而保留旧右侧
+  堆叠表单作为完成标准。右栏必须是按当前步骤变化、限高可滚动的上下文检查器与属性面板。
+- 训练室生产路径不再引用 V4 context、属性、startup、eligibility 或 evidence；V4 Career/正式/3v3 回归
+  保持不变。
 - 纯规则覆盖 Home/Away、相等合法、每条前后/左右关系、并发错误、输入拒绝及稳定排序。
 - V5 仅在发球触球前裁决，违规回合零触球且只计一次对手得分；result/replay/context 证据可确定性绑定，
   Career 不重算。
@@ -52,6 +78,8 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 ## 依赖资料
 
 - `AGENTS.md`
+- `docs/superpowers/specs/2026-08-08-training-lab-unified-workbench-design.md`
+- `docs/superpowers/plans/2026-08-08-training-lab-unified-workbench-implementation-plan.md`
 - `docs/superpowers/specs/2026-08-01-training-lineup-position-fault-v5-ui-design.md`
 - `docs/superpowers/plans/2026-08-01-training-lineup-position-fault-v5-implementation-plan.md`
 - `docs/handoffs/deferred/2026-08-01-career-match-v5-windows-validation.md`
@@ -78,3 +106,37 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
   而非 `BlockToolRecovery`。两项均不在本次 V5 契约改动路径，须在最终自动验收前单独稳定复现并处理。
 - 当前仍待：上述 V4 回归调查、1920x1080 macOS Editor 人工闭环，以及本计划新增 TrainingLab 的 Windows
   x64 IL2CPP Player 验收。handoff 保持 `Status: active`，不得宣称阶段完成。
+
+## 设计实现偏差（2026-08-07）
+
+- 当前 2D 场地投影、站位门禁和发球带已接入，但右侧仍沿用旧版全量堆叠表单，未实现设计稿中的分步
+  上下文检查器、信息层级和限高滚动结构。因此该 UI 只能标记为“交互底层已实现”，不得标记为设计稿
+  已实现或进入视觉验收。
+- 后续 UI 工作必须先重构整页信息架构：中间栏只承载主编辑画布；右栏只显示当前步骤所需的状态、错误、
+  精确输入和下一步动作；跨步骤的低频设置收纳，不得重新堆回右侧。完成后以 1920x1080 实际截图逐项
+  对照设计稿验收，确认无重叠、无遮挡、无溢出后，才可继续扩展 3D/侧视/轨迹等交互。
+
+## 统一工作台实施检查点（2026-08-17）
+
+- unified implementation plan Task 0--9 代码已实现：V2/V5 数据边界、本地持久化、分步工作台、队伍局部
+  坐标、V5 覆盖、自动 preflight、原生 V5 单 rally 与 `TrainingRallyOutcomeV1` 已接通；V1 本地资产按
+  稳定诊断拒绝并保留原字节。
+- 独立复核收口后的新鲜门禁：TrainingLab focused EditMode `76/76`、TrainingLab PlayMode `3/3`、
+  完整 EditMode `1624/1624`、V5 Career PlayMode `8/8`、3v3 隔离复跑 `1/1`。证据为
+  `TrainingLab-Unified-Final-EditMode-4.xml`、`TrainingLab-Unified-Final-PlayMode-4.xml`、
+  `TrainingLab-Unified-Complete-EditMode-4.xml`、`TrainingLab-Unified-V5-Career-PlayMode-3.xml` 与
+  `TrainingLab-Unified-3v3-PlayMode-2.xml`；`git diff --check` 通过。
+- 独立复核发现的 stale preflight、恢复数据边界、V2 模板实际加载、俯视/侧视轨迹与精确编辑、只读 3D
+  书签均已修复并纳入上述 focused 门禁。Unity `-nographics` 对离屏 Camera 的原生崩溃通过仅在 Null
+  graphics device 下禁用实际绘制解决，GUI/Player 路径不受影响。
+- V2 场景、工作台、controller 和 runtime 的生产图不含旧 V1/V4 startup/evidence。旧 V1 runtime 类型
+  仅保留为隔离的直接兼容测试夹具，不由 V2 场景或本地目录进入；公共位置错误 API 的默认 frame 恢复为
+  legacy，V5 Match setup/director 显式使用 team-local point-symmetric frame。
+- macOS Editor 已验收情景库、轮转、摆位、位置错误聚焦、发球俯视/侧视及只读 3D。只读 3D 使用独立
+  RenderTexture，显示球场、球网、12 名球员与发球球，不向 Match setup 写回。现有人工截图为编辑器
+  窗口 `1338x745`；`1920x1080` 由 PlayMode 布局门禁覆盖，但仍需按计划补足同分辨率人工截图证据。
+- Windows build 已真实执行并因当前 Unity 安装仅含 `MacStandaloneSupport` 而失败为 unsupported target；
+  仍需在安装 Windows Build Support (IL2CPP) 的环境完成 x64 Development Build 与实体 Player 验收。
+- macOS 锁屏后已通过正常退出 Unity 解除工程锁并完成自动回归；自动预检、单 rally 结果和 dirty-leave
+  的 08--10 截图仍未补齐。handoff 因 Windows 与剩余人工验收保持 `Status: active`，当前状态为
+  “已自动验证 / 待人工验收”，不得称完成。

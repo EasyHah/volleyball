@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UIElements;
+using Volleyball.Match.Domain.PreServe;
 using Volleyball.Presentation;
 using Volleyball.Presentation.TrainingLab;
 
@@ -59,6 +60,32 @@ namespace Volleyball.PlayModeTests
                     Is.EqualTo(6));
                 controller.ConfirmRotation();
                 controller.ContinueToServeSetup();
+                controller.SetServeTool(TrainingServeToolV1.ViewTrajectory);
+                yield return null;
+                Assert.That(root.Q("serve-top-trajectory-layer").childCount,
+                    Is.GreaterThan(0));
+                controller.SetServeView(TrainingServeViewV1.Side);
+                yield return null;
+                Assert.That(root.Q("serve-side-board").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("serve-side-trajectory-layer").childCount,
+                    Is.GreaterThan(0));
+                var beforePreview = new MatchSetupEditorV1(
+                    controller.MatchSetup).Freeze().SetupHash;
+                view.OpenReadonly3dPreview();
+                yield return null;
+                Assert.That(root.Q("preview-3d-modal").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                var preview = GameObject.Find(
+                    "TrainingLabReadonly3DPreviewV5");
+                Assert.That(preview, Is.Not.Null);
+                Assert.That(preview.GetComponentsInChildren<Renderer>(),
+                    Has.Length.GreaterThanOrEqualTo(13));
+                Assert.That(preview.GetComponentInChildren<Camera>()
+                    .targetTexture, Is.Not.Null);
+                view.CloseReadonly3dPreview();
+                Assert.That(new MatchSetupEditorV1(controller.MatchSetup)
+                    .Freeze().SetupHash, Is.EqualTo(beforePreview));
                 Assert.That(controller.EnterPreflight(), Is.True);
                 yield return null;
                 Assert.That(root.Q<Label>("hash-label").text,

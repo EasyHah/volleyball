@@ -1,7 +1,7 @@
 # CHG-20260804-001：训练室阵容与 V5 位置错误接线
 
 - 日期：2026-08-04
-- 状态：已实现，自动验收待处理 V4 PlayMode 回归
+- 状态：已自动验证，待 Windows 与剩余人工验收
 - 负责人：Career / Match collaborator
 - 影响模块：Match / Shared / Career / Bootstrap / TrainingLab / Replay / Tests / Docs
 - 交互级别：跨模块（重点）
@@ -27,9 +27,41 @@
 - `git diff --check`：通过。
 - Career V5 runner 使用固定 `Time.captureDeltaTime = 1/60s`，避免 headless 帧率导致测试预算漂移；原值在用例结束后恢复。
 
+## 统一 TrainingLab V5 工作台增量（2026-08-17）
+
+- 已将 TrainingLab 的生产入口、工作台、冻结快照、启动与单回合结果切换为原生 V5 路径。运行复用正式
+  V5 authority、AI、物理与裁判回调，在首个 rally 结束边界产生 `TrainingRallyOutcomeV1`，不产生
+  `MatchResultV5`，也不接入 Replay 或 Career。
+- 新 V2 本地情景明确拒绝 V1 字节且不执行静默迁移；保存、覆盖、失败恢复、identity/hash、dirty leave
+  已由 focused tests 覆盖。V5 管理员覆盖包含 12 项整数能力、身高与 `DominantHandV5`，冻结后实际写入
+  agent 能力与接触几何，不修改 `MatchContextV5`。
+- Home/Away 摆位、UI 投影与 V5 发球前位置错误比较统一采用场中心 180 度队伍局部坐标；V4 validator
+  显式保留旧共享横轴，V4 Career、正式 V4 与 3v3 生产语义未迁移。
+- 独立复核后的新鲜自动验证：TrainingLab focused EditMode `76/76`，TrainingLab PlayMode `3/3`，
+  完整 EditMode `1624/1624`，V5 Career PlayMode `8/8`，3v3 隔离复跑 `1/1`。结果文件分别为
+  `TestResults/TrainingLab-Unified-Final-EditMode-4.xml`、
+  `TestResults/TrainingLab-Unified-Final-PlayMode-4.xml`、
+  `TestResults/TrainingLab-Unified-Complete-EditMode-4.xml`、
+  `TestResults/TrainingLab-Unified-V5-Career-PlayMode-3.xml` 与
+  `TestResults/TrainingLab-Unified-3v3-PlayMode-2.xml`。
+- 独立复核收口补齐：setup 变更会使旧 preflight 失效；Match 边界拒绝恢复出的越界站位、非法发球带、
+  反向或超速发球；六个内置模板从实际 V2 Resources 加载并具有各自语义；俯视/侧视速度与轨迹、精确
+  输入、只读 3D 书签已接线。`-nographics` 下禁用离屏 Camera 实际绘制以规避 Unity 原生渲染崩溃，
+  GUI/Player 仍启用 RenderTexture 预览。
+- V2 场景、工作台、controller 与 runtime 的生产图不引用旧 V1/V4 startup/evidence；旧 V1 直接运行
+  夹具仅作为隔离兼容代码保留，不能由 V2 场景或本地目录进入。位置错误公共 API 默认坐标保持 legacy，
+  V5 Match setup 与正式 V5 director 均显式选择 team-local point-symmetric frame。
+- macOS Editor 已人工覆盖情景库、轮转、摆位、位置错误聚焦、发球俯视/侧视和只读 3D；截图保存在
+  `TestResults/TrainingLab/VisualAcceptance/2026-08-17/01-07-*.png`。编辑器窗口截图为
+  `1338x745`；另有 PlayMode `1920x1080` 无重叠自动布局门禁，不能将前者冒充为 1920x1080 截图。
+- Windows x64 IL2CPP Development Build 已执行但环境不支持该目标：本机 Unity 仅安装
+  `MacStandaloneSupport`，日志为 `TestResults/TrainingLab-Unified-Windows-Build.log`。因此 Windows
+  Player 构建和实体 Windows x64 人工验收仍待具备 Windows Build Support 的环境执行，阶段不得标记完成。
+
 ## 待人工验收与风险
 
-- 尚未在本会话执行 1920x1080 macOS Editor 的完整训练室手工流程。
+- 尚未补齐计划要求的 `08-preflight.png`、`09-running-result.png`、`10-unsaved-leave.png`，且现有
+  01--07 截图为 `1338x745`，因此 1920x1080 macOS Editor 完整手工流程仍待验收。
 - 尚未在 Windows Player 中执行本计划新增 TrainingLab 的 IL2CPP 构建、输入、渲染及 pending 恢复验收；现有
   V5 Windows IL2CPP 构建记录保留在 `9a3897e` 对应改动文档中。
 - 回滚方式：回退本里程碑分支；新 V5 位置错误证据版本继续按 handoff 规则拒绝旧 pending/result/replay。

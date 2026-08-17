@@ -634,7 +634,8 @@ namespace Volleyball.Presentation.TrainingLab
                     .Select(value => new TrainingPlayerPoseV1(value.PlayerId,
                         value.Position, value.Forward, value.Pose)).ToArray();
                 var faults = PositionFaultEvaluatorV1.Evaluate(
-                    CreateServeStart(draft, poses).CreatePositionSlots());
+                    CreateServeStart(draft, poses).CreatePositionSlots(),
+                    PositionFaultCoordinateFrameV1.LegacySharedWorldLateral);
                 foreach (var fault in faults)
                 {
                     Add(issues, TrainingScenarioIssueCodesV1.PositionFault,

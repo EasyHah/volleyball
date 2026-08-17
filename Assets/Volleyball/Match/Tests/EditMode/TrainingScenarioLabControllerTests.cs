@@ -471,6 +471,49 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void V5RestoredValidationPage_RecreatesAutomaticPreflight()
+        {
+            var setup = V5Setup();
+            setup.RotationLocked = true;
+            var local = TrainingLabLocalScenarioV2.Create("restored-validation",
+                "Restored Validation", setup, "Validation", "Top",
+                "MoveBall", "ball");
+            using var controller = new TrainingLabWorkbenchControllerV2(
+                new TrainingLabLocalScenarioRepositoryV2(Path.Combine(
+                    Path.GetTempPath(), "training-v5-preflight-" +
+                    Guid.NewGuid().ToString("N"))), local);
+
+            Assert.That(controller.CurrentStep,
+                Is.EqualTo(TrainingLabStepV1.Validation));
+            Assert.That(controller.State,
+                Is.EqualTo(TrainingScenarioLabStateV1.Ready));
+            Assert.That(controller.PreflightSnapshot, Is.Not.Null);
+        }
+
+        [Test]
+        public void V5EditAfterPreflight_InvalidatesAndRefreezesBeforeRun()
+        {
+            var runtime = new FakeV5Runtime();
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup,
+                runtime);
+            controller.ConfirmRotation();
+            controller.ContinueToServeSetup();
+            Assert.That(controller.EnterPreflight(), Is.True);
+            var original = controller.PreflightSnapshot;
+
+            controller.SetPlayerAttributeOverride(setup.HomeRotation[0],
+                TrainingPlayerAttributeFieldV2.Attack, 1234);
+
+            Assert.That(controller.PreflightSnapshot, Is.Null);
+            Assert.That(controller.CurrentStep,
+                Is.EqualTo(TrainingLabStepV1.ServeBall));
+            Assert.That(controller.Run(), Is.True);
+            Assert.That(runtime.Starts.Single().SetupHash,
+                Is.Not.EqualTo(original.SetupHash));
+        }
+
+        [Test]
         public void V5InvalidAutomaticPreflight_DoesNotCreateRuntime()
         {
             var runtime = new FakeV5Runtime();

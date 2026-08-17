@@ -119,6 +119,27 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void BuiltInV2Templates_CreateTheirNamedMatchSetupSemantics()
+        {
+            Assert.That(TrainingScenarioCatalogV2.CreateSetup("home-serve")
+                .FirstServingSide, Is.EqualTo(TeamSide.Home));
+            Assert.That(TrainingScenarioCatalogV2.CreateSetup("away-serve")
+                .FirstServingSide, Is.EqualTo(TeamSide.Away));
+            Assert.That(new MatchSetupEditorV1(TrainingScenarioCatalogV2
+                    .CreateSetup("position-fault-home"))
+                .EvaluatePositionFaults().Any(value =>
+                    value.Side == TeamSide.Home), Is.True);
+            Assert.That(new MatchSetupEditorV1(TrainingScenarioCatalogV2
+                    .CreateSetup("position-fault-away"))
+                .EvaluatePositionFaults().Any(value =>
+                    value.Side == TeamSide.Away), Is.True);
+            var overridden = TrainingScenarioCatalogV2.CreateSetup(
+                "attribute-override");
+            Assert.That(overridden.AttributeOverrides[
+                overridden.HomeRotation[0]].Attack, Is.EqualTo(9000));
+        }
+
+        [Test]
         public void V2ProductionBoundary_HasNoV4TrainingDependencies()
         {
             var project = Directory.GetParent(Application.dataPath).FullName;
@@ -129,13 +150,18 @@ namespace Volleyball.EditModeTests
                 "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioPresetV2.cs",
                 "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioCatalogV2.cs",
                 "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioCanonicalizerV2.cs",
-                "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioVersionGateV2.cs"
+                "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioVersionGateV2.cs",
+                "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingLabWorkbenchControllerV2.cs",
+                "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingRallySimulationControllerV5.cs",
+                "Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioLabView.cs"
             };
             var forbidden = new[]
             {
                 "MatchContextV4", "DominantHandV4", "PhysicalBaseAttributesV4",
                 "TechnicalBaseAttributesV4", "MatchAttributeDerivationV4",
-                "InitializeV4", "OnCourtLineupRulesV3", "TrainingRunEvidenceV1"
+                "InitializeV4", "OnCourtLineupRulesV3", "TrainingRunEvidenceV1",
+                "TrainingScenarioDraftV1", "TrainingScenarioRuntimeAdapterV1",
+                "TrainingSimulationControllerV1", "TrainingScenarioStartupV1"
             };
 
             foreach (var path in paths)

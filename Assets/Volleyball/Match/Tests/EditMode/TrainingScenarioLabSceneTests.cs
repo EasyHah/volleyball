@@ -70,6 +70,8 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q<Button>("return-to-hub-button"), Is.Not.Null);
             Assert.That(root.Q<Button>("more-button"), Is.Not.Null);
             Assert.That(root.Q("advanced-settings"), Is.Not.Null);
+            Assert.That(root.Q<TextField>("display-name"), Is.Not.Null);
+            Assert.That(root.Q<Label>("match-seed-label"), Is.Not.Null);
             Assert.That(root.Q("context-rotation"), Is.Not.Null);
             Assert.That(root.Q("rotation-board"), Is.Not.Null);
             Assert.That(root.Q("rotation-home-grid"), Is.Not.Null);
@@ -82,6 +84,10 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q<Button>("serve-3d-preview-button"), Is.Not.Null);
             Assert.That(root.Q("serve-side-board"), Is.Not.Null);
             Assert.That(root.Q("preview-3d-modal"), Is.Not.Null);
+            Assert.That(root.Q("preview-3d-viewport"), Is.Not.Null);
+            Assert.That(root.Q<Button>("preview-bookmark-save-button"),
+                Is.Not.Null);
+            Assert.That(root.Q("preview-bookmark-list"), Is.Not.Null);
             Assert.That(root.Q("context-validation"), Is.Not.Null);
             Assert.That(root.Q("context-running"), Is.Not.Null);
             Assert.That(root.Q("left-panel"), Is.Null);
@@ -93,11 +99,8 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q<Button>("pause-button"), Is.Not.Null);
             Assert.That(root.Q<Button>("step-button"), Is.Not.Null);
             Assert.That(root.Q<Button>("rerun-button"), Is.Not.Null);
-            Assert.That(root.Q<Button>("export-button"), Is.Not.Null);
-            Assert.That(root.Q<Button>("review-setter-button"), Is.Not.Null);
-            Assert.That(
-                root.Q<Button>("review-setter-button").tooltip,
-                Does.Contain("Editor"));
+            Assert.That(root.Q<Button>("export-button"), Is.Null);
+            Assert.That(root.Q<Button>("review-setter-button"), Is.Null);
         }
 
         [Test]

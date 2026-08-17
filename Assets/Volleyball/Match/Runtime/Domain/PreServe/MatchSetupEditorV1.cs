@@ -9,6 +9,7 @@ namespace Volleyball.Match.Domain.PreServe
 {
     public sealed class MatchSetupEditorV1
     {
+        private const float MaximumServeLaunchSpeedMetersPerSecond = 40f;
         private readonly MatchSetupDraftV1 _draft;
 
         public MatchSetupEditorV1(MatchSetupDraftV1 draft)
@@ -80,7 +81,8 @@ namespace Volleyball.Match.Domain.PreServe
             var slots = new List<ServePositionSlotV1>(12);
             AddSlots(slots, TeamSide.Home, _draft.HomeRotation);
             AddSlots(slots, TeamSide.Away, _draft.AwayRotation);
-            return PositionFaultEvaluatorV1.Evaluate(slots);
+            return PositionFaultEvaluatorV1.Evaluate(slots,
+                PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric);
         }
 
         public SimVector3 ShortestLegalCorrection(PositionFaultV1 fault)
@@ -117,14 +119,44 @@ namespace Volleyball.Match.Domain.PreServe
                     "A Match setup requires exactly twelve unique player poses.");
             foreach (var player in _draft.Players)
             {
+                var side = SideFor(player.PlayerId);
                 if (!player.Position.IsFinite ||
                     player.Position.X < -FormalCourtGeometryV1.HalfWidthMeters ||
-                    player.Position.X > FormalCourtGeometryV1.HalfWidthMeters)
+                    player.Position.X > FormalCourtGeometryV1.HalfWidthMeters ||
+                    Math.Abs(player.Position.Y) > 0.00001f ||
+                    player.Position.Z < -FormalCourtGeometryV1.HalfLengthMeters ||
+                    player.Position.Z > FormalCourtGeometryV1.HalfLengthMeters ||
+                    (side == TeamSide.Home && player.Position.Z > 0f) ||
+                    (side == TeamSide.Away && player.Position.Z < 0f))
                     throw new InvalidOperationException("A player pose is outside the formal court.");
-                SideFor(player.PlayerId);
             }
             if (!_draft.BallPosition.IsFinite || !_draft.BallVelocity.IsFinite)
                 throw new InvalidOperationException("Ball state must be finite.");
+            var minimumDepth = _draft.FirstServingSide == TeamSide.Home
+                ? -FormalCourtGeometryV1.HalfLengthMeters -
+                  FormalCourtGeometryV1.ServeBandDepthMeters
+                : FormalCourtGeometryV1.HalfLengthMeters;
+            var maximumDepth = _draft.FirstServingSide == TeamSide.Home
+                ? -FormalCourtGeometryV1.HalfLengthMeters
+                : FormalCourtGeometryV1.HalfLengthMeters +
+                  FormalCourtGeometryV1.ServeBandDepthMeters;
+            if (_draft.BallPosition.X < -FormalCourtGeometryV1.HalfWidthMeters ||
+                _draft.BallPosition.X > FormalCourtGeometryV1.HalfWidthMeters ||
+                _draft.BallPosition.Y < FormalCourtGeometryV1.BallRadiusMeters ||
+                _draft.BallPosition.Z < minimumDepth ||
+                _draft.BallPosition.Z > maximumDepth)
+                throw new InvalidOperationException(
+                    "The serve ball must be inside the current server's legal three-metre band.");
+            var towardOpponent = _draft.FirstServingSide == TeamSide.Home
+                ? _draft.BallVelocity.Z
+                : -_draft.BallVelocity.Z;
+            if (towardOpponent <= 0f)
+                throw new InvalidOperationException(
+                    "The serve velocity must travel toward the opponent.");
+            if (_draft.BallVelocity.Magnitude >
+                MaximumServeLaunchSpeedMetersPerSecond)
+                throw new InvalidOperationException(
+                    "The serve launch speed exceeds the supported 40 m/s maximum.");
             foreach (var pair in _draft.AttributeOverrides)
             {
                 SideFor(pair.Key);

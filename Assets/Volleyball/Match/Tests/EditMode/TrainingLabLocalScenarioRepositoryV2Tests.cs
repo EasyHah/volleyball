@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using NUnit.Framework;
 using Volleyball.Domain.Simulation;
@@ -101,6 +102,27 @@ namespace Volleyball.EditModeTests
                 Throws.TypeOf<InvalidOperationException>()
                     .With.Message.Contains("不支持"));
             Assert.That(File.ReadAllBytes(path), Is.EqualTo(bytes));
+        }
+
+        [Test]
+        public void List_ShowsSavedV2AndUnavailableV1WithoutMutatingBytes()
+        {
+            var repository = Repository();
+            repository.Save(Local("supported"));
+            var legacyPath = Path.Combine(repository.Root, "legacy.json");
+            var legacyBytes = Encoding.UTF8.GetBytes(
+                "{\"formatVersion\":1,\"scenarioId\":\"training-v1/legacy\"}");
+            File.WriteAllBytes(legacyPath, legacyBytes);
+
+            var entries = repository.List();
+
+            Assert.That(entries, Has.Count.EqualTo(2));
+            Assert.That(entries.Single(value => value.LocalId == "supported")
+                .IsAvailable, Is.True);
+            var legacy = entries.Single(value => value.LocalId == "legacy");
+            Assert.That(legacy.IsAvailable, Is.False);
+            Assert.That(legacy.Diagnostic, Does.Contain("不支持"));
+            Assert.That(File.ReadAllBytes(legacyPath), Is.EqualTo(legacyBytes));
         }
 
         [Test]

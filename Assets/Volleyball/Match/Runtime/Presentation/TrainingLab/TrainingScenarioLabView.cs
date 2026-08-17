@@ -1,2280 +1,1172 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.UIElements;
-using Volleyball.AI;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
 using Volleyball.Match.Domain.PreServe;
 using Volleyball.Shared.Contracts;
-using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
 
 namespace Volleyball.Presentation.TrainingLab
 {
-    public sealed class TrainingLabPreviewMarkerV1 : MonoBehaviour
-    {
-        public string ObjectId { get; private set; }
-
-        public void Initialize(string objectId)
-        {
-            ObjectId = string.IsNullOrWhiteSpace(objectId)
-                ? throw new ArgumentException("Preview object ID is required.")
-                : objectId;
-        }
-    }
-
     [DisallowMultipleComponent]
     [RequireComponent(typeof(UIDocument))]
     public sealed class TrainingScenarioLabView : MonoBehaviour
     {
-        public TrainingRunEvidenceV1 VisibleEvidence =>
-            _controller?.VisibleEvidence;
-        private readonly Dictionary<string, TrainingLabPreviewMarkerV1>
-            _markers =
-                new Dictionary<string, TrainingLabPreviewMarkerV1>(
-                    StringComparer.Ordinal);
         private UIDocument _document;
-        private TrainingScenarioLabController _controller;
-        private TrainingSimulationControllerV1 _simulation;
-        private TrainingLabWorkbenchControllerV2 _v5Controller;
-        private TrainingRallySimulationControllerV5 _v5Runtime;
-        private TrainingLabLocalScenarioRepositoryV2 _v5Repository;
+        private TrainingLabWorkbenchControllerV2 _controller;
+        private TrainingRallySimulationControllerV5 _runtime;
+        private TrainingLabLocalScenarioRepositoryV2 _repository;
         private Transform _worldHost;
+        private Camera _backgroundCamera;
         private GameObject _previewRoot;
-        private LineRenderer _trajectory;
-        private Camera _worldCamera;
-        private VisualElement _root;
-        private VisualElement _scenarioHub;
-        private VisualElement _continueScenarios;
-        private VisualElement _standardScenarios;
-        private VisualElement _workbenchShell;
-        private VisualElement _issues;
-        private VisualElement _timeline;
-        private VisualElement _viewport;
-        private VisualElement _tacticalBoard;
-        private VisualElement _courtSurface;
-        private VisualElement _tokenLayer;
-        private VisualElement _faultLayer;
-        private VisualElement _horizontalRuler;
-        private VisualElement _verticalRuler;
-        private VisualElement _contextualInspector;
-        private VisualElement _rotationContext;
-        private VisualElement _positioningContext;
-        private VisualElement _serveContext;
-        private VisualElement _validationContext;
-        private VisualElement _runningContext;
-        private VisualElement _positionInputs;
-        private VisualElement _rotationIssues;
-        private VisualElement _faultSummary;
-        private VisualElement _rotationBoard;
-        private VisualElement _homeRotationGrid;
-        private VisualElement _awayRotationGrid;
-        private VisualElement _serveViewSelector;
-        private VisualElement _serveSideBoard;
-        private VisualElement _preview3dModal;
-        private VisualElement _leaveModal;
-        private Label _leaveMessage;
-        private VisualElement _attributeTable;
+        private Camera _previewCamera;
+        private RenderTexture _previewTexture;
+        private readonly Dictionary<string, Transform> _previewMarkers =
+            new Dictionary<string, Transform>(StringComparer.Ordinal);
+        private readonly HashSet<PlayerId> _previewHomePlayers =
+            new HashSet<PlayerId>();
+        private readonly Dictionary<string, PreviewCameraBookmark> _bookmarks =
+            new Dictionary<string, PreviewCameraBookmark>(StringComparer.Ordinal);
+        private VisualElement _root, _hub, _workbench, _standard, _recent;
+        private VisualElement _rotationBoard, _homeRotation, _awayRotation;
+        private VisualElement _board, _court, _tokens, _faults;
+        private VisualElement _horizontalRuler, _verticalRuler;
+        private VisualElement _serveSelector, _serveSide, _preview3d;
+        private VisualElement _topTrajectory, _sideTrajectory;
+        private VisualElement _preview3dViewport;
         private VisualElement _bookmarkList;
-        private Label _state;
-        private Label _hash;
-        private Label _rules;
-        private Label _selection;
-        private Label _comparison;
-        private Label _feedback;
-        private Label _monitor;
-        private Label _viewportHint;
-        private Label _inspectorTitle;
-        private Label _inspectorSummary;
-        private Label _serveSetupBlock;
-        private Label _serveToolSummary;
-        private Label _validationSummary;
-        private Label _runningSummary;
+        private VisualElement _leaveModal, _timeline;
+        private Label _state, _hash, _rules, _feedback, _selection;
+        private Label _inspectorTitle, _inspectorSummary, _serveBlock;
+        private Label _serveToolSummary, _preflightSummary, _runningSummary;
+        private Label _leaveMessage;
+        private Label _seedLabel;
         private TextField _displayName;
-        private IntegerField _seed;
-        private DropdownField _recipe;
-        private DropdownField _sourceTeam;
-        private DropdownField _lastActor;
-        private DropdownField _homeSet;
-        private DropdownField _homeSpike;
-        private DropdownField _awaySet;
-        private DropdownField _awaySpike;
-        private FloatField _positionX;
-        private FloatField _positionY;
-        private FloatField _positionZ;
-        private FloatField _velocityX;
-        private FloatField _velocityY;
-        private FloatField _velocityZ;
-        private Button _save;
-        private Button _returnToHub;
-        private Button _run;
-        private Button _pause;
-        private Button _step;
-        private Button _rerun;
-        private Button _returnToEdit;
-        private Button _export;
-        private Button _reviewSetter;
         private TextField _bookmarkName;
+        private FloatField _positionX, _positionY, _positionZ;
+        private FloatField _servePositionX, _servePositionY, _servePositionZ;
+        private FloatField _velocityX, _velocityY, _velocityZ;
+        private Button _save, _returnHub, _run, _pause, _step, _rerun;
+        private Button _returnEdit;
+        private Rect _courtRect;
+        private float _courtLeft, _courtTop;
         private bool _rendering;
-        private bool _showingScenarioHub = true;
-        private TrainingServeViewV1 _serveView = TrainingServeViewV1.Top;
-        private TrainingServeViewV1 _returnServeView =
-            TrainingServeViewV1.Top;
-        private bool _ownsController;
-        private bool _initialized;
-        private int _dragPointer = -1;
+        private bool _showingHub = true;
         private string _dragObjectId;
         private TeamSide? _rotationDragSide;
         private int _rotationDragSlot;
-        private Rect _courtBoardRect;
-        private Font _runtimeFont;
+        private int _previewPointer = -1;
+        private Vector2 _previewPointerPosition;
+        private float _previewYaw = 32f;
+        private float _previewPitch = 28f;
+        private float _previewDistance = 22f;
 
-        public TrainingScenarioLabController Controller => _controller;
-        public TrainingLabWorkbenchControllerV2 V5Controller => _v5Controller;
+        // Compatibility probe only. The scene no longer owns a legacy controller.
+        public object Controller => null;
+        public TrainingLabWorkbenchControllerV2 V5Controller => _controller;
 
-        public void Bind(TrainingScenarioLabController controller)
-        {
-            if (controller == null)
-                throw new ArgumentNullException(nameof(controller));
-            if (_controller != null)
-                _controller.Changed -= Render;
-            if (_ownsController)
-                _controller?.Dispose();
-            _controller = controller;
-            _ownsController = false;
-            if (isActiveAndEnabled)
-            {
-                _controller.Changed += Render;
-                EnsureDocument();
-                Render();
-            }
-        }
-
-        private void Awake()
-        {
-            _document = GetComponent<UIDocument>();
-        }
+        private void Awake() => _document = GetComponent<UIDocument>();
 
         private void OnEnable()
         {
-            EnsureDocument();
-            if (_controller == null && _v5Controller == null)
-            {
-                var host = new GameObject("TrainingWorldHostV5");
-                host.transform.SetParent(transform, false);
-                _worldHost = host.transform;
-                _v5Runtime = new TrainingRallySimulationControllerV5(
-                    _worldHost);
-                var template = TrainingScenarioCatalogV2.Create(
-                    "standard-rotation");
-                _v5Repository = new TrainingLabLocalScenarioRepositoryV2();
-                var setup = MatchSetupDraftV1.CreateDefault(template.Context,
-                    TeamSide.Home);
-                var local = TrainingLabLocalScenarioV2.Create(
-                    "training-" + Guid.NewGuid().ToString("N"),
-                    template.DisplayName, setup,
-                    TrainingLabStepV1.Rotation.ToString(),
-                    TrainingServeViewV1.Top.ToString(),
-                    TrainingServeToolV1.MoveBall.ToString(), "ball");
-                _v5Controller = new TrainingLabWorkbenchControllerV2(
-                    _v5Repository, local, _v5Runtime);
-                _ownsController = true;
-            }
-
-            if (_controller != null)
-            {
-                _controller.Changed -= Render;
-                _controller.Changed += Render;
-            }
-            if (_v5Controller != null)
-            {
-                _v5Controller.Changed -= Render;
-                _v5Controller.Changed += Render;
-            }
+            InitializeVisualTree();
+            EnsureBackgroundCamera();
+            if (_controller == null) OpenTemplate("standard-rotation", false);
+            _controller.Changed -= Render;
+            _controller.Changed += Render;
             Render();
         }
 
         private void OnDisable()
         {
-            if (_controller != null)
-                _controller.Changed -= Render;
-            if (_v5Controller != null)
-                _v5Controller.Changed -= Render;
+            if (_controller != null) _controller.Changed -= Render;
         }
 
-        private void EnsureDocument()
+        private void OnDestroy()
         {
-            if (_initialized) return;
-            _document = _document != null
-                ? _document
-                : GetComponent<UIDocument>();
-            _root = _document.rootVisualElement;
-            _scenarioHub = _root.Q<VisualElement>("scenario-hub");
-            _continueScenarios = _root.Q<VisualElement>("continue-scenarios");
-            _standardScenarios = _root.Q<VisualElement>("standard-scenarios");
-            _workbenchShell = _root.Q<VisualElement>("workbench-shell");
-            _issues = _root.Q<VisualElement>("issue-list");
-            _timeline = _root.Q<VisualElement>("timeline-list");
-            _viewport = _root.Q<VisualElement>("world-viewport");
-            _tacticalBoard = _root.Q<VisualElement>("tactical-board");
-            _courtSurface = _root.Q<VisualElement>("court-surface");
-            _tokenLayer = _root.Q<VisualElement>("tactical-token-layer");
-            _faultLayer = _root.Q<VisualElement>("position-fault-layer");
-            _horizontalRuler = _root.Q<VisualElement>("horizontal-ruler");
-            _verticalRuler = _root.Q<VisualElement>("vertical-ruler");
-            _contextualInspector = _root.Q<VisualElement>("contextual-inspector");
-            _rotationContext = _root.Q<VisualElement>("context-rotation");
-            _positioningContext = _root.Q<VisualElement>("context-positioning");
-            _serveContext = _root.Q<VisualElement>("context-serve-ball");
-            _validationContext = _root.Q<VisualElement>("context-validation");
-            _runningContext = _root.Q<VisualElement>("context-running");
-            _rotationIssues = _root.Q<VisualElement>("rotation-issues");
-            _faultSummary = _root.Q<VisualElement>("position-fault-summary");
-            _rotationBoard = _root.Q<VisualElement>("rotation-board");
-            _homeRotationGrid = _root.Q<VisualElement>("rotation-home-grid");
-            _awayRotationGrid = _root.Q<VisualElement>("rotation-away-grid");
-            _serveViewSelector = _root.Q<VisualElement>(
-                "serve-view-selector");
-            _serveSideBoard = _root.Q<VisualElement>("serve-side-board");
-            _preview3dModal = _root.Q<VisualElement>("preview-3d-modal");
-            _leaveModal = _root.Q<VisualElement>("unsaved-leave-modal");
-            _leaveMessage = _root.Q<Label>("leave-message");
-            _attributeTable = _root.Q<VisualElement>("attribute-table");
-            _bookmarkList = _root.Q<VisualElement>("bookmark-list");
+            if (_controller != null) _controller.Changed -= Render;
+            _controller?.Dispose();
+            _runtime?.Dispose();
+            if (_backgroundCamera != null)
+                Destroy(_backgroundCamera.gameObject);
+            DestroyReadonly3dPreview();
+        }
+
+        private void EnsureBackgroundCamera()
+        {
+            if (_backgroundCamera != null) return;
+            var cameraObject = new GameObject("TrainingLabBackgroundCamera");
+            cameraObject.transform.SetParent(transform, false);
+            cameraObject.tag = "MainCamera";
+            _backgroundCamera = cameraObject.AddComponent<Camera>();
+            _backgroundCamera.enabled = true;
+            _backgroundCamera.clearFlags = CameraClearFlags.SolidColor;
+            _backgroundCamera.backgroundColor = new Color32(5, 17, 24, 255);
+            _backgroundCamera.cullingMask = 0;
+            _backgroundCamera.depth = -100f;
+        }
+
+        private void InitializeVisualTree()
+        {
+            if (_root != null) return;
+            _root = (_document ?? GetComponent<UIDocument>()).rootVisualElement;
+            _hub = _root.Q("scenario-hub");
+            _workbench = _root.Q("workbench-shell");
+            _standard = _root.Q("standard-scenarios");
+            _recent = _root.Q("continue-scenarios");
+            _rotationBoard = _root.Q("rotation-board");
+            _homeRotation = _root.Q("rotation-home-grid");
+            _awayRotation = _root.Q("rotation-away-grid");
+            _board = _root.Q("tactical-board");
+            _court = _root.Q("court-surface");
+            _tokens = _root.Q("tactical-token-layer");
+            _faults = _root.Q("position-fault-layer");
+            _horizontalRuler = _root.Q("horizontal-ruler");
+            _verticalRuler = _root.Q("vertical-ruler");
+            _serveSelector = _root.Q("serve-view-selector");
+            _serveSide = _root.Q("serve-side-board");
+            _topTrajectory = _root.Q("serve-top-trajectory-layer");
+            _sideTrajectory = _root.Q("serve-side-trajectory-layer");
+            _preview3d = _root.Q("preview-3d-modal");
+            _preview3dViewport = _root.Q("preview-3d-viewport");
+            _bookmarkList = _root.Q("preview-bookmark-list");
+            _leaveModal = _root.Q("unsaved-leave-modal");
+            _timeline = _root.Q("timeline-list");
             _state = _root.Q<Label>("state-label");
             _hash = _root.Q<Label>("hash-label");
             _rules = _root.Q<Label>("rules-label");
-            _selection = _root.Q<Label>("selection-label");
-            _comparison = _root.Q<Label>("comparison-label");
             _feedback = _root.Q<Label>("feedback-label");
-            _monitor = _root.Q<Label>("monitor-label");
-            _viewportHint = _root.Q<Label>("viewport-hint");
+            _selection = _root.Q<Label>("selection-label");
             _inspectorTitle = _root.Q<Label>("inspector-title");
             _inspectorSummary = _root.Q<Label>("inspector-summary");
-            _serveSetupBlock = _root.Q<Label>("serve-setup-block");
+            _serveBlock = _root.Q<Label>("serve-setup-block");
             _serveToolSummary = _root.Q<Label>("serve-tool-summary");
-            _validationSummary = _root.Q<Label>("validation-summary");
+            _preflightSummary = _root.Q<Label>("validation-summary");
             _runningSummary = _root.Q<Label>("running-summary");
+            _leaveMessage = _root.Q<Label>("leave-message");
+            _seedLabel = _root.Q<Label>("match-seed-label");
             _displayName = _root.Q<TextField>("display-name");
-            _seed = _root.Q<IntegerField>("match-seed");
-            _recipe = _root.Q<DropdownField>("start-recipe");
-            _sourceTeam = _root.Q<DropdownField>("source-team");
-            _lastActor = _root.Q<DropdownField>("last-actor");
-            _homeSet = _root.Q<DropdownField>("home-set-route");
-            _homeSpike = _root.Q<DropdownField>("home-spike-route");
-            _awaySet = _root.Q<DropdownField>("away-set-route");
-            _awaySpike = _root.Q<DropdownField>("away-spike-route");
-            CreatePositionInputs();
+            _bookmarkName = _root.Q<TextField>("preview-bookmark-name");
             _velocityX = _root.Q<FloatField>("velocity-x");
             _velocityY = _root.Q<FloatField>("velocity-y");
             _velocityZ = _root.Q<FloatField>("velocity-z");
+            _velocityX.label = "VX";
+            _velocityY.label = "VY";
+            _velocityZ.label = "VZ";
             _save = _root.Q<Button>("save-button");
-            _returnToHub = _root.Q<Button>("return-to-hub-button");
+            _returnHub = _root.Q<Button>("return-to-hub-button");
             _run = _root.Q<Button>("run-button");
             _pause = _root.Q<Button>("pause-button");
             _step = _root.Q<Button>("step-button");
             _rerun = _root.Q<Button>("rerun-button");
-            _returnToEdit = _root.Q<Button>("edit-button");
-            _export = _root.Q<Button>("export-button");
-            _reviewSetter = _root.Q<Button>("review-setter-button");
-            _bookmarkName = _root.Q<TextField>("bookmark-name");
-
-            ConfigureChoices();
-            RegisterUiEvents();
-            TryApplyChineseSystemFont(_root);
-            _root.schedule.Execute(RenderTimeline).Every(200);
-            _initialized = true;
+            _returnEdit = _root.Q<Button>("edit-button");
+            CreatePositionFields();
+            RegisterEvents();
         }
 
-        private void ConfigureChoices()
+        private void CreatePositionFields()
         {
-            _recipe.choices = Enum.GetNames(typeof(RallyStartRecipeV3)).ToList();
-            _sourceTeam.choices = Enum.GetNames(typeof(TeamSide)).ToList();
-            var setRoutes = Enum.GetNames(typeof(SetRoute)).ToList();
-            var spikeRoutes = Enum.GetNames(typeof(SpikeRoute)).ToList();
-            _homeSet.choices = setRoutes;
-            _awaySet.choices = setRoutes;
-            _homeSpike.choices = spikeRoutes;
-            _awaySpike.choices = spikeRoutes;
-        }
-
-        private void CreatePositionInputs()
-        {
-            var host = _root.Q<VisualElement>("position-input-host-positioning");
-            _positionInputs = new VisualElement { name = "position-inputs" };
-            var label = new Label("位置 XYZ");
-            label.AddToClassList("mini-label");
-            _positionInputs.Add(label);
-            var row = new VisualElement();
+            var row = new VisualElement { name = "position-inputs" };
             row.AddToClassList("vector-row");
-            _positionX = new FloatField { name = "position-x" };
-            _positionY = new FloatField { name = "position-y" };
-            _positionZ = new FloatField { name = "position-z" };
-            _positionX.AddToClassList("vector-field");
-            _positionY.AddToClassList("vector-field");
-            _positionZ.AddToClassList("vector-field");
-            row.Add(_positionX);
-            row.Add(_positionY);
-            row.Add(_positionZ);
-            _positionInputs.Add(row);
-            host.Add(_positionInputs);
+            _positionX = new FloatField("X") { name = "position-x" };
+            _positionY = new FloatField("Y") { name = "position-y" };
+            _positionZ = new FloatField("Z") { name = "position-z" };
+            _positionY.style.display = DisplayStyle.None;
+            foreach (var field in new[] { _positionX, _positionY, _positionZ })
+            {
+                field.AddToClassList("vector-field");
+                row.Add(field);
+                field.RegisterValueChangedCallback(_ => ApplyExactPosition());
+            }
+            _root.Q("position-input-host-positioning").Add(row);
+
+            var serveRow = new VisualElement { name = "serve-position-inputs" };
+            serveRow.AddToClassList("vector-row");
+            _servePositionX = new FloatField("X") { name = "serve-position-x" };
+            _servePositionY = new FloatField("Y") { name = "serve-position-y" };
+            _servePositionZ = new FloatField("Z") { name = "serve-position-z" };
+            foreach (var field in new[]
+                     { _servePositionX, _servePositionY, _servePositionZ })
+            {
+                field.AddToClassList("vector-field");
+                serveRow.Add(field);
+                field.RegisterValueChangedCallback(_ =>
+                    ApplyExactServePosition());
+            }
+            _root.Q("position-input-host-serve").Add(serveRow);
         }
 
-        private void RegisterUiEvents()
+        private void RegisterEvents()
         {
             _root.Q<Button>("hub-new-from-standard-button").clicked += () =>
-            {
-                if (_v5Controller != null)
-                    ShowWorkbench("builtin:standard-rotation");
-                else
-                {
-                    _controller.NewDraft();
-                    ShowWorkbench(_controller.SelectedEntryKey);
-                }
-            };
-            _save.clicked += SaveLocalScenario;
-            _returnToHub.clicked += ShowScenarioHub;
+                ShowWorkbench("builtin:standard-rotation");
+            _save.clicked += () => _controller.SaveCurrentLocalScenario();
+            _returnHub.clicked += ShowScenarioHub;
             _root.Q<Button>("more-button").clicked += () =>
             {
-                var advanced = _root.Q<Foldout>("advanced-settings");
-                advanced.value = !advanced.value;
+                var foldout = _root.Q<Foldout>("advanced-settings");
+                foldout.value = !foldout.value;
             };
-            _run.clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.Run();
-                else _controller.Run();
-            };
+            _root.Q<Button>("confirm-rotation-button").clicked += () =>
+                _controller.ConfirmRotation();
+            _root.Q<Button>("reopen-rotation-button").clicked += () =>
+                _controller.ReopenRotation();
+            _root.Q<Button>("positioning-next-button").clicked += () =>
+                _controller.ContinueToServeSetup();
+            _root.Q<Button>("serve-next-button").clicked += () =>
+                _controller.EnterPreflight();
+            _root.Q<Button>("context-run-button").clicked += StartRun;
+            _run.clicked += StartRun;
             _pause.clicked += TogglePause;
-            _step.clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.StepRuntime();
-                else _controller.Step();
-            };
-            _rerun.clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.RerunSameSnapshot();
-                else _controller.RerunSameSeed();
-            };
-            _returnToEdit.clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.ReturnToEditing();
-                else _controller.ReturnToEditing();
-            };
-            _export.clicked += ExportEvidence;
-            _reviewSetter.clicked += OpenSetterReview;
-            _root.Q<Button>("confirm-rotation-button").clicked += ConfirmRotation;
-            _root.Q<Button>("reopen-rotation-button").clicked += ReopenRotation;
-            _root.Q<Button>("step-rotation").clicked += ReopenRotation;
+            _step.clicked += () => _controller.StepRuntime();
+            _rerun.clicked += () => _controller.RerunSameSnapshot();
+            _returnEdit.clicked += () => _controller.ReturnToEditing();
+            _root.Q<Button>("step-rotation").clicked += () =>
+                _controller.ReopenRotation();
             _root.Q<Button>("step-positioning").clicked += () =>
             {
-                if (_v5Controller != null)
-                {
-                    if (_v5Controller.MatchSetup.RotationLocked &&
-                        _v5Controller.CurrentStep == TrainingLabStepV1.Rotation)
-                        _v5Controller.ConfirmRotation();
-                }
-                else if (_controller.Draft.RotationLocked)
-                    _controller.GoToPositioning();
+                if (!_controller.MatchSetup.RotationLocked)
+                    _controller.ConfirmRotation();
             };
             _root.Q<Button>("step-serve").clicked += () =>
             {
-                if (_v5Controller != null)
-                    _v5Controller.ContinueToServeSetup();
-                else TrySelectServeTool(TrainingServeToolV1.MoveBall);
+                if (_controller.CurrentStep == TrainingLabStepV1.Positioning &&
+                    _controller.CanEnterServeSetup)
+                    _controller.ContinueToServeSetup();
             };
             _root.Q<Button>("step-validation").clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.EnterPreflight();
-                else _controller.GoToValidation();
-            };
-            _root.Q<Button>("positioning-next-button").clicked += () =>
-            {
-                if (_v5Controller != null)
-                    _v5Controller.ContinueToServeSetup();
-                else TrySelectServeTool(TrainingServeToolV1.MoveBall);
-            };
-            _root.Q<Button>("serve-next-button").clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.EnterPreflight();
-                else _controller.GoToValidation();
-            };
-            _root.Q<Button>("context-run-button").clicked += () =>
-            {
-                if (_v5Controller != null) _v5Controller.Run();
-                else _controller.Run();
-            };
-            _root.Q<Button>("tool-move-ball").clicked += () => TrySelectServeTool(TrainingServeToolV1.MoveBall);
-            _root.Q<Button>("tool-velocity").clicked += () => TrySelectServeTool(TrainingServeToolV1.AdjustVelocity);
-            _root.Q<Button>("tool-trajectory").clicked += () => TrySelectServeTool(TrainingServeToolV1.ViewTrajectory);
+                _controller.EnterPreflight();
+            _root.Q<Button>("tool-move-ball").clicked += () =>
+                _controller.SetServeTool(TrainingServeToolV1.MoveBall);
+            _root.Q<Button>("tool-velocity").clicked += () =>
+                _controller.SetServeTool(TrainingServeToolV1.AdjustVelocity);
+            _root.Q<Button>("tool-trajectory").clicked += () =>
+                _controller.SetServeTool(TrainingServeToolV1.ViewTrajectory);
             _root.Q<Button>("serve-top-view-button").clicked += () =>
-                ShowServeView(TrainingServeViewV1.Top);
+                _controller.SetServeView(TrainingServeViewV1.Top);
             _root.Q<Button>("serve-side-view-button").clicked += () =>
-                ShowServeView(TrainingServeViewV1.Side);
-            _root.Q<Button>("serve-3d-preview-button").clicked +=
-                OpenReadonly3dPreview;
-            _root.Q<Button>("preview-3d-close-button").clicked +=
-                CloseReadonly3dPreview;
-            _root.Q<Button>("leave-save-button").clicked += () =>
-                ResolveV5Leave(TrainingLabLeaveDecisionV1.Save);
-            _root.Q<Button>("leave-discard-button").clicked += () =>
-                ResolveV5Leave(TrainingLabLeaveDecisionV1.Discard);
-            _root.Q<Button>("leave-cancel-button").clicked += () =>
-                ResolveV5Leave(TrainingLabLeaveDecisionV1.Cancel);
+                _controller.SetServeView(TrainingServeViewV1.Side);
+            _root.Q<Button>("serve-3d-preview-button").clicked += () =>
+                OpenReadonly3dPreview();
+            _root.Q<Button>("preview-3d-close-button").clicked += () =>
+                CloseReadonly3dPreview();
             _root.Q<Button>("preview-3d-reset-button").clicked += () =>
+                ResetReadonly3dCamera();
+            _root.Q<Button>("preview-bookmark-save-button").clicked +=
+                SavePreviewBookmark;
+            _displayName.RegisterValueChangedCallback(evt =>
             {
-                if (_worldCamera == null) return;
-                _worldCamera.transform.position = new Vector3(0f, 13f, -16f);
-                _worldCamera.transform.LookAt(Vector3.zero);
-            };
-            _root.Q<Button>("save-bookmark-button").clicked += SaveCurrentCameraBookmark;
-
-            _displayName.RegisterValueChangedCallback(value =>
-            {
-                if (!_rendering && _controller != null)
-                    _controller.SetDisplayName(value.newValue);
-            });
-            _seed.RegisterValueChangedCallback(value =>
-            {
-                if (!_rendering && _controller != null)
-                    _controller.SetMatchSeed(value.newValue);
-            });
-            _recipe.RegisterValueChangedCallback(_ => ApplyRallyStart());
-            _sourceTeam.RegisterValueChangedCallback(_ => ApplyRallyStart());
-            _lastActor.RegisterValueChangedCallback(_ => ApplyRallyStart());
-            _homeSet.RegisterValueChangedCallback(_ => ApplyTactics(
-                TeamSide.Home,
-                _homeSet,
-                _homeSpike));
-            _homeSpike.RegisterValueChangedCallback(_ => ApplyTactics(
-                TeamSide.Home,
-                _homeSet,
-                _homeSpike));
-            _awaySet.RegisterValueChangedCallback(_ => ApplyTactics(
-                TeamSide.Away,
-                _awaySet,
-                _awaySpike));
-            _awaySpike.RegisterValueChangedCallback(_ => ApplyTactics(
-                TeamSide.Away,
-                _awaySet,
-                _awaySpike));
-            _positionX.RegisterValueChangedCallback(_ => ApplyPosition());
-            _positionY.RegisterValueChangedCallback(_ => ApplyPosition());
-            _positionZ.RegisterValueChangedCallback(_ => ApplyPosition());
-            _velocityX.RegisterValueChangedCallback(_ => ApplyVelocity());
-            _velocityY.RegisterValueChangedCallback(_ => ApplyVelocity());
-            _velocityZ.RegisterValueChangedCallback(_ => ApplyVelocity());
-
-            _tacticalBoard.RegisterCallback<PointerMoveEvent>(OnPointerMove);
-            _tacticalBoard.RegisterCallback<PointerUpEvent>(OnPointerUp);
-            _tacticalBoard.RegisterCallback<GeometryChangedEvent>(_ =>
-            {
-                LayoutTacticalBoard();
-                if (_v5Controller != null)
-                    RenderV5TacticalBoard();
-                else if (_controller != null)
-                    RenderTacticalBoard();
-            });
-            _root.RegisterCallback<KeyDownEvent>(OnKeyDown);
-        }
-
-        private void Render()
-        {
-            if (!_initialized) return;
-            if (_v5Controller != null)
-            {
-                RenderV5();
-                return;
-            }
-            if (_controller == null) return;
-            _rendering = true;
-            try
-            {
-                RenderScenarioHub();
-                RenderScreenMode();
-                var draft = _controller.Draft;
-                _state.text = StateText(_controller.State);
-                _state.EnableInClassList(
-                    "state-error",
-                    _controller.State == TrainingScenarioLabStateV1.Faulted);
-                _hash.text = _controller.ReadyScenario == null
-                    ? "HASH · 待校验"
-                    : "HASH · " +
-                      _controller.ReadyScenario.ContentHash.Substring(0, 16);
-                _rules.text = _controller.DerivedRuleSummary();
-                _comparison.text = _controller.RunComparisonSummary;
-                _feedback.text = _controller.FailureMessage;
-                _displayName.SetValueWithoutNotify(draft.DisplayName);
-                _seed.SetValueWithoutNotify(draft.Context?.Seed ?? 0);
-                _recipe.SetValueWithoutNotify(draft.StartRecipe.ToString());
-                _sourceTeam.SetValueWithoutNotify(draft.SourceTeam.ToString());
-                _lastActor.choices = new[] { "无" }
-                    .Concat(draft.Players
-                        .Where(value => value != null)
-                        .Select(value => value.PlayerId.Value)
-                        .OrderBy(value => value, StringComparer.Ordinal))
-                    .ToList();
-                _lastActor.SetValueWithoutNotify(
-                    draft.LastLegalActor?.Value ?? "无");
-                SetTacticValues();
-                RenderSelectedObject();
-                RenderRotationAndAttributes();
-                RenderIssues();
-                RenderContextualInspector();
-                RenderTimeline();
-                RenderControls();
-                LayoutTacticalBoard();
-                RenderTacticalBoard();
-                SyncWorld();
-            }
-            finally
-            {
-                _rendering = false;
-            }
-        }
-
-        private void RenderV5()
-        {
-            _rendering = true;
-            try
-            {
-                RenderScenarioHub();
-                RenderScreenMode();
-                var setup = _v5Controller.MatchSetup;
-                _state.text = StateText(_v5Controller.State);
-                _hash.text = _v5Controller.PreflightSnapshot == null
-                    ? "HASH · 自动预检待执行"
-                    : "HASH · " + _v5Controller.PreflightSnapshot.SetupHash
-                        .Substring(0, 16);
-                _rules.text = "原生 V5 · 单回合 · 发球方 " +
-                    setup.FirstServingSide;
-                _feedback.text = string.IsNullOrWhiteSpace(
-                    _v5Controller.RuntimeError)
-                    ? _v5Controller.PreflightError
-                    : _v5Controller.RuntimeError;
-                _displayName.SetValueWithoutNotify("V5 本地训练情景");
-                _seed.SetValueWithoutNotify(setup.BaseContext.Seed);
-                _positionX.SetValueWithoutNotify(
-                    SelectedV5Position().X);
-                _positionY.SetValueWithoutNotify(
-                    SelectedV5Position().Y);
-                _positionZ.SetValueWithoutNotify(
-                    SelectedV5Position().Z);
-                _velocityX.SetValueWithoutNotify(setup.BallVelocity.X);
-                _velocityY.SetValueWithoutNotify(setup.BallVelocity.Y);
-                _velocityZ.SetValueWithoutNotify(setup.BallVelocity.Z);
-                RenderV5Rotation();
-                RenderV5Context();
-                LayoutTacticalBoard();
-                RenderV5TacticalBoard();
-                RenderV5Overrides();
-                RenderV5Outcome();
-                RenderV5Controls();
-            }
-            finally
-            {
-                _rendering = false;
-            }
-        }
-
-        private void RenderV5Rotation()
-        {
-            _homeRotationGrid.Clear();
-            _awayRotationGrid.Clear();
-            foreach (var side in new[] { TeamSide.Home, TeamSide.Away })
-            {
-                var rotation = side == TeamSide.Home
-                    ? _v5Controller.MatchSetup.HomeRotation
-                    : _v5Controller.MatchSetup.AwayRotation;
-                var grid = side == TeamSide.Home
-                    ? _homeRotationGrid : _awayRotationGrid;
-                for (var index = 0; index < rotation.Count; index++)
+                if (_rendering || _controller.EditingLocked) return;
+                var value = evt.newValue?.Trim();
+                if (string.IsNullOrWhiteSpace(value))
                 {
-                    var player = FindV5Player(rotation[index]);
-                    var slot = index + 1;
-                    var card = new VisualElement
-                    {
-                        name = "rotation-card-" + side + "-" + slot,
-                        userData = player.PlayerId.Value
-                    };
-                    card.AddToClassList("rotation-card");
-                    var slotLabel = new Label(slot + " 号位");
-                    slotLabel.AddToClassList("rotation-card-slot");
-                    card.Add(slotLabel);
-                    var name = new Label(player.DisplayName);
-                    name.AddToClassList("rotation-card-name");
-                    card.Add(name);
-                    var role = new Label(PositionName(player.Position));
-                    role.AddToClassList("rotation-card-role");
-                    card.Add(role);
-                    card.SetEnabled(!_v5Controller.MatchSetup.RotationLocked &&
-                        !_v5Controller.EditingLocked);
-                    card.RegisterCallback<PointerDownEvent>(_ =>
-                    {
-                        _rotationDragSide = side;
-                        _rotationDragSlot = slot;
-                    });
-                    card.RegisterCallback<PointerUpEvent>(_ =>
-                    {
-                        _v5Controller.TryDropRotationCard(side,
-                            _rotationDragSlot, side, slot);
-                        _rotationDragSide = null;
-                    });
-                    grid.Add(card);
+                    _feedback.text = "情景名称不能为空。";
+                    _displayName.SetValueWithoutNotify(
+                        _controller.LocalScenario.DisplayName);
+                    return;
                 }
-            }
-        }
-
-        private void RenderV5Context()
-        {
-            var step = _v5Controller.CurrentStep;
-            var serve = step == TrainingLabStepV1.ServeBall;
-            _rotationBoard.style.display = step == TrainingLabStepV1.Rotation
-                ? DisplayStyle.Flex : DisplayStyle.None;
-            _serveViewSelector.style.display = serve
-                ? DisplayStyle.Flex : DisplayStyle.None;
-            _tacticalBoard.style.display = step == TrainingLabStepV1.Rotation ||
-                                           (serve && _serveView ==
-                                               TrainingServeViewV1.Side)
-                ? DisplayStyle.None : DisplayStyle.Flex;
-            _serveSideBoard.style.display = serve && _serveView ==
-                TrainingServeViewV1.Side
-                ? DisplayStyle.Flex : DisplayStyle.None;
-            SetContextVisible(_rotationContext,
-                step == TrainingLabStepV1.Rotation);
-            SetContextVisible(_positioningContext,
-                step == TrainingLabStepV1.Positioning);
-            SetContextVisible(_serveContext, serve);
-            SetContextVisible(_validationContext,
-                step == TrainingLabStepV1.Validation);
-            SetContextVisible(_runningContext,
-                step == TrainingLabStepV1.Running);
-            _inspectorTitle.text = InspectorTitle(step);
-            _inspectorSummary.text = InspectorSummary(step);
-            _serveSetupBlock.text = _v5Controller.CanEnterServeSetup
-                ? "站位合法。下一步：设置发球球。"
-                : _v5Controller.ServeSetupBlockReason;
-            _root.Q<Button>("positioning-next-button").SetEnabled(
-                _v5Controller.CanEnterServeSetup);
-            _validationSummary.text = _v5Controller.PreflightSnapshot == null
-                ? "自动预检未通过：" + _v5Controller.PreflightError
-                : "自动预检通过 · " +
-                  _v5Controller.PreflightSnapshot.SetupHash.Substring(0, 16);
-            if (serve && _serveView == TrainingServeViewV1.Side)
-                RenderV5ServeSideBoard();
-        }
-
-        private void RenderV5TacticalBoard()
-        {
-            if (_courtBoardRect.width < 10f) return;
-            _tokenLayer.Clear();
-            _faultLayer.Clear();
-            RenderRuler(_horizontalRuler, true);
-            RenderRuler(_verticalRuler, false);
-            RenderSelectedV5PlayerRulerPoints();
-            var home = new HashSet<string>(_v5Controller.MatchSetup
-                .BaseContext.Home.RotationOrder.Select(value =>
-                    value.PlayerId.Value), StringComparer.Ordinal);
-            foreach (var pose in _v5Controller.MatchSetup.Players)
+                _controller.LocalScenario.DisplayName = value;
+                Render();
+            });
+            _preview3dViewport.RegisterCallback<PointerDownEvent>(
+                OnPreviewPointerDown);
+            _preview3dViewport.RegisterCallback<PointerMoveEvent>(
+                OnPreviewPointerMove);
+            _preview3dViewport.RegisterCallback<PointerUpEvent>(
+                OnPreviewPointerUp);
+            _preview3dViewport.RegisterCallback<WheelEvent>(OnPreviewWheel);
+            _root.Q<Button>("reset-player-overrides-button").clicked += () =>
             {
-                var player = FindV5Player(pose.PlayerId);
-                var token = new VisualElement
-                {
-                    userData = pose.PlayerId.Value
-                };
-                token.AddToClassList("tactical-token");
-                token.AddToClassList(home.Contains(pose.PlayerId.Value)
-                    ? "home-token" : "away-token");
-                if (_v5Controller.SelectedObjectId == pose.PlayerId.Value)
-                    token.AddToClassList("selected-token");
-                if (_v5Controller.PositionFaults.Any(fault =>
-                        fault.RequiredAheadOrLeft.PlayerId.Equals(pose.PlayerId) ||
-                        fault.ViolatingBehindOrRight.PlayerId.Equals(pose.PlayerId)))
-                    token.AddToClassList("fault-token");
-                var point = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect, pose.Position);
-                token.style.left = point.x;
-                token.style.top = point.y;
-                token.Add(new Label(player.DisplayName));
-                token.RegisterCallback<PointerDownEvent>(OnTokenPointerDown);
-                _tokenLayer.Add(token);
-            }
-            var ball = new VisualElement { userData = "ball" };
-            ball.AddToClassList("tactical-token");
-            ball.AddToClassList("ball-token");
-            var ballPoint = TrainingLabCourtProjectionV1.CourtToServeBoard(
-                _courtBoardRect, _v5Controller.MatchSetup.BallPosition);
-            ball.style.left = ballPoint.x;
-            ball.style.top = ballPoint.y;
-            ball.Add(new Label("球"));
-            ball.RegisterCallback<PointerDownEvent>(OnTokenPointerDown);
-            _tokenLayer.Add(ball);
-            foreach (var fault in _v5Controller.PositionFaults)
+                if (TrySelectedPlayer(out var id))
+                    _controller.ResetPlayerAttributeOverrides(id);
+            };
+            _root.Q<Button>("leave-save-button").clicked += () =>
+                ResolveLeave(TrainingLabLeaveDecisionV1.Save);
+            _root.Q<Button>("leave-discard-button").clicked += () =>
+                ResolveLeave(TrainingLabLeaveDecisionV1.Discard);
+            _root.Q<Button>("leave-cancel-button").clicked += () =>
+                ResolveLeave(TrainingLabLeaveDecisionV1.Cancel);
+            _velocityX.RegisterValueChangedCallback(_ => ApplyExactVelocity());
+            _velocityY.RegisterValueChangedCallback(_ => ApplyExactVelocity());
+            _velocityZ.RegisterValueChangedCallback(_ => ApplyExactVelocity());
+            _root.Q("serve-side-ball").RegisterCallback<PointerDownEvent>(_ =>
+                _dragObjectId = "ball");
+            _root.Q("serve-side-velocity-endpoint")
+                .RegisterCallback<PointerDownEvent>(_ =>
+                    _dragObjectId = "velocity");
+            _serveSide.RegisterCallback<PointerMoveEvent>(OnSidePointerMove);
+            _serveSide.RegisterCallback<PointerUpEvent>(_ =>
+                _dragObjectId = null);
+            _serveSide.RegisterCallback<GeometryChangedEvent>(_ =>
             {
-                var required = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect, fault.RequiredAheadOrLeft.FootProjection);
-                var violating = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect, fault.ViolatingBehindOrRight.FootProjection);
-                AddBoardLine(_faultLayer, required, violating, "fault-relation");
-                var correction = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect,
-                    TrainingLabCourtProjectionV1.ShortestLegalCorrection(fault));
-                AddBoardLine(_faultLayer, violating, correction, "fault-arrow");
-            }
-        }
-
-        private void RenderSelectedV5PlayerRulerPoints()
-        {
-            if (_v5Controller.CurrentStep != TrainingLabStepV1.Positioning)
-                return;
-            var selected = _v5Controller.MatchSetup.Players.FirstOrDefault(value =>
-                value.PlayerId.Value == _v5Controller.SelectedObjectId);
-            if (selected == null) return;
-            AddSelectedPlayerRulerPoints(selected.PlayerId.Value,
-                selected.Position);
-        }
-
-        private void RenderV5Overrides()
-        {
-            var player = _v5Controller.MatchSetup.Players.FirstOrDefault(value =>
-                value.PlayerId.Value == _v5Controller.SelectedObjectId);
-            var grid = _root.Q<VisualElement>("v5-override-grid");
-            if (player == null)
+                if (_controller.CurrentStep == TrainingLabStepV1.ServeBall &&
+                    _controller.ActiveServeView == TrainingServeViewV1.Side)
+                    RenderServeSide();
+            });
+            _board.RegisterCallback<GeometryChangedEvent>(_ =>
             {
-                grid.Clear();
-                _root.Q<Label>("override-player-identity").text =
-                    "选择一名球员";
-                return;
-            }
-            var snapshot = FindV5Player(player.PlayerId);
-            _root.Q<Label>("override-player-identity").text =
-                snapshot.DisplayName + " · #" + snapshot.JerseyNumber +
-                " · " + PositionName(snapshot.Position);
-            TrainingLabV5OverrideInspectorV2.Render(grid,
-                _v5Controller, player.PlayerId);
-        }
-
-        private void RenderV5Outcome()
-        {
-            _timeline.Clear();
-            var outcome = _v5Controller.Outcome;
-            if (outcome == null)
-            {
-                _timeline.Add(new Label("单回合结束后显示 V5 训练结果。"));
-                return;
-            }
-            _runningSummary.text = outcome.WinningSide + " · " +
-                outcome.HomeScoreDelta + ":" + outcome.AwayScoreDelta +
-                " · " + outcome.CompletionReason + " · 触球 " +
-                outcome.TouchCount + " · " + outcome.OutcomeHash.Substring(0, 12);
-            foreach (var entry in outcome.Timeline)
-                _timeline.Add(new Label(entry.Sequence + " · " + entry.Kind +
-                    " · " + entry.Detail));
-        }
-
-        private void RenderV5Controls()
-        {
-            var state = _v5Controller.State;
-            var editing = !_v5Controller.EditingLocked;
-            _save.SetEnabled(editing && _v5Controller.IsDirty);
-            _returnToHub.SetEnabled(editing);
-            _run.SetEnabled(state == TrainingScenarioLabStateV1.Ready);
-            _pause.SetEnabled(state == TrainingScenarioLabStateV1.Running ||
-                              state == TrainingScenarioLabStateV1.Paused);
-            _pause.text = state == TrainingScenarioLabStateV1.Paused
-                ? "继续" : "暂停";
-            _step.SetEnabled(state == TrainingScenarioLabStateV1.Paused);
-            _rerun.SetEnabled(state == TrainingScenarioLabStateV1.Completed);
-            _returnToEdit.SetEnabled(state == TrainingScenarioLabStateV1.Completed ||
-                                     state == TrainingScenarioLabStateV1.Faulted);
-            _export.SetEnabled(false);
-            _reviewSetter.SetEnabled(false);
-        }
-
-        private SimVector3 SelectedV5Position()
-        {
-            if (_v5Controller.SelectedObjectId == "ball")
-                return _v5Controller.MatchSetup.BallPosition;
-            return _v5Controller.MatchSetup.Players.FirstOrDefault(value =>
-                       value.PlayerId.Value == _v5Controller.SelectedObjectId)
-                   ?.Position ?? SimVector3.Zero;
-        }
-
-        private PlayerSnapshotV5 FindV5Player(StablePlayerId playerId)
-        {
-            return _v5Controller.MatchSetup.BaseContext.Home.RotationOrder
-                .Concat(_v5Controller.MatchSetup.BaseContext.Away.RotationOrder)
-                .Single(value => value.PlayerId.Equals(playerId));
-        }
-
-        private void RenderV5ServeSideBoard()
-        {
-            var width = _serveSideBoard.contentRect.width;
-            var height = _serveSideBoard.contentRect.height;
-            if (width < 10f || height < 10f) return;
-            var ball = _root.Q<VisualElement>("serve-side-ball");
-            var endpoint = _root.Q<VisualElement>(
-                "serve-side-velocity-endpoint");
-            var position = _v5Controller.MatchSetup.BallPosition;
-            var velocity = _v5Controller.MatchSetup.BallVelocity;
-            var x = Mathf.Lerp(width * .05f, width * .95f,
-                Mathf.InverseLerp(-12f, 12f, position.Z));
-            var y = Mathf.Lerp(height * .82f, height * .08f,
-                Mathf.InverseLerp(0f, 5f, position.Y));
-            ball.style.left = x - 12f;
-            ball.style.top = y - 12f;
-            endpoint.style.left = x + velocity.Z * 6f - 8f;
-            endpoint.style.top = y - velocity.Y * 6f - 8f;
+                LayoutCourt();
+                RenderCourt();
+            });
+            _board.RegisterCallback<PointerMoveEvent>(OnBoardPointerMove);
+            _board.RegisterCallback<PointerUpEvent>(_ => _dragObjectId = null);
         }
 
         public void ShowWorkbench(string entryKey)
         {
-            if (_controller != null && !string.IsNullOrWhiteSpace(entryKey) &&
-                !string.Equals(entryKey, _controller.SelectedEntryKey,
-                    StringComparison.Ordinal))
-                _controller.SelectDraftEntry(entryKey);
-            _showingScenarioHub = false;
-            RenderScreenMode();
+            _showingHub = false;
+            Render();
         }
 
         public void ShowScenarioHub()
         {
-            if (_v5Controller != null)
+            var request = _controller.RequestLeaveToHub();
+            if (request.IsBlocked) { _feedback.text = request.Message; return; }
+            if (request.RequiresDecision)
             {
-                var request = _v5Controller.RequestLeaveToHub();
-                if (request.IsBlocked)
-                {
-                    _feedback.text = request.Message;
-                    return;
-                }
-                if (request.RequiresDecision)
-                {
-                    _leaveMessage.text = request.Message;
-                    _leaveModal.style.display = DisplayStyle.Flex;
-                    return;
-                }
-            }
-            NavigateToScenarioHub();
-        }
-
-        private void NavigateToScenarioHub()
-        {
-            _showingScenarioHub = true;
-            RenderScenarioHub();
-            RenderScreenMode();
-        }
-
-        private void SaveLocalScenario()
-        {
-            if (_v5Controller != null)
-            {
-                _v5Controller.SaveCurrentLocalScenario();
+                _leaveMessage.text = request.Message;
+                _leaveModal.style.display = DisplayStyle.Flex;
                 return;
             }
-            if (_controller == null || _controller.LocalScenario == null) return;
-            _controller.SaveCurrentLocalScenario();
+            NavigateHub();
         }
 
-        private void ResolveV5Leave(TrainingLabLeaveDecisionV1 decision)
+        private void ResolveLeave(TrainingLabLeaveDecisionV1 decision)
         {
-            if (_v5Controller == null) return;
             try
             {
-                var resolved = _v5Controller.ResolveLeave(decision);
+                var result = _controller.ResolveLeave(decision);
                 _leaveModal.style.display = DisplayStyle.None;
-                if (resolved.CanLeave && resolved.ToHub)
-                    NavigateToScenarioHub();
+                if (result.CanLeave) NavigateHub();
             }
-            catch (Exception exception)
-            {
-                _leaveMessage.text = exception.Message;
-            }
+            catch (Exception exception) { _leaveMessage.text = exception.Message; }
         }
 
-        private void RenderScenarioHub()
+        private void NavigateHub() { _showingHub = true; Render(); }
+
+        private void OpenTemplate(string id, bool showWorkbench)
         {
-            if (_continueScenarios == null || _standardScenarios == null)
-                return;
-            _continueScenarios.Clear();
-            _standardScenarios.Clear();
-            if (_v5Controller != null)
+            DestroyReadonly3dPreview();
+            _controller?.Dispose();
+            _runtime?.Dispose();
+            if (_worldHost == null)
             {
-                foreach (var id in TrainingScenarioCatalogV2.ScenarioIds)
-                {
-                    var template = TrainingScenarioCatalogV2.Create(id);
-                    var card = CreateScenarioCard(template.DisplayName,
-                        "原生 V5 标准模板", "打开", () =>
-                        ShowWorkbench("builtin:" + id));
-                    _standardScenarios.Add(card);
-                }
-                var empty = new Label("尚无已保存的本地情景。打开标准情景即可开始。");
-                empty.AddToClassList("hub-empty");
-                _continueScenarios.Add(empty);
-                return;
+                var host = new GameObject("TrainingWorldHostV5");
+                host.transform.SetParent(transform, false);
+                _worldHost = host.transform;
             }
-            foreach (var entry in _controller.Entries)
+            _runtime = new TrainingRallySimulationControllerV5(_worldHost);
+            _repository ??= new TrainingLabLocalScenarioRepositoryV2();
+            var template = TrainingScenarioCatalogV2.Create(id);
+            var local = TrainingLabLocalScenarioV2.Create(
+                "training-" + Guid.NewGuid().ToString("N"),
+                template.DisplayName,
+                TrainingScenarioCatalogV2.CreateSetup(id),
+                TrainingLabStepV1.Rotation.ToString(), "Top", "MoveBall", "ball");
+            _controller = new TrainingLabWorkbenchControllerV2(
+                _repository, local, _runtime);
+            RestorePreviewBookmarks();
+            _showingHub = !showWorkbench;
+        }
+
+        private void Render()
+        {
+            if (_root == null || _controller == null) return;
+            _rendering = true;
+            try
             {
-                var captured = entry.Key;
+                _hub.style.display = _showingHub ? DisplayStyle.Flex : DisplayStyle.None;
+                _workbench.style.display = _showingHub ? DisplayStyle.None : DisplayStyle.Flex;
+                RenderHub();
+                if (_showingHub) return;
+                _state.text = StateText(_controller.State);
+                _hash.text = _controller.PreflightSnapshot == null
+                    ? "HASH · 自动预检待执行"
+                    : "HASH · " + _controller.PreflightSnapshot.SetupHash.Substring(0, 16);
+                _rules.text = "原生 V5 · 单回合 · 发球方 " +
+                    _controller.MatchSetup.FirstServingSide;
+                _displayName.SetValueWithoutNotify(
+                    _controller.LocalScenario.DisplayName);
+                _displayName.SetEnabled(!_controller.EditingLocked);
+                _seedLabel.text = "seed · " +
+                    _controller.MatchSetup.BaseContext.Seed;
+                _feedback.text = string.IsNullOrWhiteSpace(_controller.RuntimeError)
+                    ? _controller.PreflightError : _controller.RuntimeError;
+                var selected = SelectedPosition();
+                _positionX.SetValueWithoutNotify(selected.X);
+                _positionY.SetValueWithoutNotify(selected.Y);
+                _positionZ.SetValueWithoutNotify(selected.Z);
+                var ballPosition = _controller.MatchSetup.BallPosition;
+                _servePositionX.SetValueWithoutNotify(ballPosition.X);
+                _servePositionY.SetValueWithoutNotify(ballPosition.Y);
+                _servePositionZ.SetValueWithoutNotify(ballPosition.Z);
+                var velocity = _controller.MatchSetup.BallVelocity;
+                _velocityX.SetValueWithoutNotify(velocity.X);
+                _velocityY.SetValueWithoutNotify(velocity.Y);
+                _velocityZ.SetValueWithoutNotify(velocity.Z);
+                RenderRotation();
+                RenderContext();
+                LayoutCourt();
+                RenderCourt();
+                RenderOverrides();
+                RenderOutcome();
+                RenderControls();
+                if (_preview3d.style.display == DisplayStyle.Flex)
+                    UpdateReadonly3dPreview();
+            }
+            finally { _rendering = false; }
+        }
+
+        private void RenderHub()
+        {
+            _standard.Clear();
+            _recent.Clear();
+            foreach (var id in TrainingScenarioCatalogV2.ScenarioIds)
+            {
+                var captured = id;
+                var template = TrainingScenarioCatalogV2.Create(id);
                 var card = new VisualElement();
                 card.AddToClassList("scenario-card");
-                var title = new Label(entry.DisplayName);
-                title.AddToClassList("scenario-card-title");
-                card.Add(title);
-                var detail = new Label(entry.IsBuiltIn
-                    ? "只读标准模板 · 打开后创建本地工作副本"
-                    : "本地工作副本");
-                detail.AddToClassList("scenario-card-detail");
-                card.Add(detail);
-                var button = new Button(() => ShowWorkbench(captured))
+                card.Add(new Label(template.DisplayName));
+                card.Add(new Label("原生 V5 标准模板"));
+                card.Add(new Button(() =>
                 {
-                    text = entry.IsBuiltIn ? "打开" : "继续编辑"
-                };
-                button.SetEnabled(!_controller.EditingLocked);
-                card.Add(button);
-                (entry.IsBuiltIn ? _standardScenarios : _continueScenarios)
-                    .Add(card);
+                    _controller.Changed -= Render;
+                    OpenTemplate(captured, true);
+                    _controller.Changed += Render;
+                    Render();
+                }) { text = "打开" });
+                _standard.Add(card);
             }
-            if (_continueScenarios.childCount == 0)
+            var locals = _repository.List();
+            foreach (var entry in locals)
             {
-                var empty = new Label("尚无已保存的本地情景。打开标准情景即可开始。");
-                empty.AddToClassList("hub-empty");
-                _continueScenarios.Add(empty);
+                var card = new VisualElement();
+                card.AddToClassList("scenario-card");
+                card.Add(new Label(entry.DisplayName));
+                card.Add(new Label(entry.IsAvailable
+                    ? "本地 V2 情景"
+                    : entry.Diagnostic));
+                if (entry.IsAvailable)
+                {
+                    var localId = entry.LocalId;
+                    card.Add(new Button(() => OpenLocal(localId))
+                    { text = "继续编辑" });
+                }
+                _recent.Add(card);
+            }
+            if (locals.Count == 0)
+                _recent.Add(new Label(
+                    "尚无已保存的本地情景。打开标准情景即可开始。"));
+        }
+
+        private void OpenLocal(string localId)
+        {
+            DestroyReadonly3dPreview();
+            _controller.Changed -= Render;
+            _controller.Dispose();
+            _runtime.Dispose();
+            _runtime = new TrainingRallySimulationControllerV5(_worldHost);
+            _controller = new TrainingLabWorkbenchControllerV2(_repository,
+                _repository.Load(localId), _runtime, true);
+            RestorePreviewBookmarks();
+            _controller.Changed += Render;
+            _showingHub = false;
+            Render();
+        }
+
+        private void RenderRotation()
+        {
+            _homeRotation.Clear();
+            _awayRotation.Clear();
+            RenderRotationSide(TeamSide.Home, _homeRotation,
+                _controller.MatchSetup.HomeRotation);
+            RenderRotationSide(TeamSide.Away, _awayRotation,
+                _controller.MatchSetup.AwayRotation);
+        }
+
+        private void RenderRotationSide(TeamSide side, VisualElement grid,
+            IReadOnlyList<PlayerId> rotation)
+        {
+            for (var index = 0; index < rotation.Count; index++)
+            {
+                var slot = index + 1;
+                var player = Player(rotation[index]);
+                var card = new VisualElement();
+                card.AddToClassList("rotation-card");
+                card.Add(new Label(slot + "号位"));
+                card.Add(new Label(player.DisplayName + " · " + player.Position));
+                card.RegisterCallback<PointerDownEvent>(_ =>
+                { _rotationDragSide = side; _rotationDragSlot = slot; });
+                card.RegisterCallback<PointerUpEvent>(_ =>
+                {
+                    if (_rotationDragSide.HasValue)
+                        _controller.TryDropRotationCard(_rotationDragSide.Value,
+                            _rotationDragSlot, side, slot);
+                    _rotationDragSide = null;
+                });
+                grid.Add(card);
             }
         }
 
-        private static VisualElement CreateScenarioCard(string titleText,
-            string detailText, string actionText, Action action)
+        private void RenderContext()
         {
-            var card = new VisualElement();
-            card.AddToClassList("scenario-card");
-            var title = new Label(titleText);
-            title.AddToClassList("scenario-card-title");
-            card.Add(title);
-            var detail = new Label(detailText);
-            detail.AddToClassList("scenario-card-detail");
-            card.Add(detail);
-            card.Add(new Button(action) { text = actionText });
-            return card;
+            var step = _controller.CurrentStep;
+            SetVisible("context-rotation", step == TrainingLabStepV1.Rotation);
+            SetVisible("context-positioning", step == TrainingLabStepV1.Positioning);
+            SetVisible("context-serve-ball", step == TrainingLabStepV1.ServeBall);
+            SetVisible("context-validation", step == TrainingLabStepV1.Validation);
+            SetVisible("context-running", step == TrainingLabStepV1.Running);
+            _rotationBoard.style.display = step == TrainingLabStepV1.Rotation
+                ? DisplayStyle.Flex : DisplayStyle.None;
+            _board.style.display = step == TrainingLabStepV1.Rotation
+                ? DisplayStyle.None : DisplayStyle.Flex;
+            var serve = step == TrainingLabStepV1.ServeBall;
+            _serveSelector.style.display = serve ? DisplayStyle.Flex : DisplayStyle.None;
+            _serveSide.style.display = serve &&
+                _controller.ActiveServeView == TrainingServeViewV1.Side
+                ? DisplayStyle.Flex : DisplayStyle.None;
+            _inspectorTitle.text = StepText(step);
+            _inspectorSummary.text = step == TrainingLabStepV1.Validation
+                ? "进入本页即自动校验并冻结。" : string.Empty;
+            _selection.text = _controller.SelectedObjectId;
+            _serveBlock.text = _controller.CanEnterServeSetup
+                ? "站位合法。下一步：设置发球球。"
+                : _controller.ServeSetupBlockReason;
+            _serveToolSummary.text = _controller.ServeTool.ToString();
+            var selectedPlayer = TrySelectedPlayer(out _);
+            _positionX.SetEnabled(step == TrainingLabStepV1.Positioning &&
+                                  selectedPlayer);
+            _positionZ.SetEnabled(step == TrainingLabStepV1.Positioning &&
+                                  selectedPlayer);
+            var moveBall = serve && _controller.ServeTool ==
+                TrainingServeToolV1.MoveBall;
+            var top = _controller.ActiveServeView == TrainingServeViewV1.Top;
+            _servePositionX.SetEnabled(moveBall && top);
+            _servePositionY.SetEnabled(moveBall && !top);
+            _servePositionZ.SetEnabled(moveBall);
+            var velocity = serve && _controller.ServeTool ==
+                TrainingServeToolV1.AdjustVelocity;
+            _velocityX.SetEnabled(velocity && top);
+            _velocityY.SetEnabled(velocity && !top);
+            _velocityZ.SetEnabled(velocity);
+            _preflightSummary.text = _controller.PreflightSnapshot == null
+                ? "自动预检未通过：" + _controller.PreflightError
+                : "自动预检通过 · " +
+                  _controller.PreflightSnapshot.SetupHash.Substring(0, 16);
+            _root.Q<Button>("positioning-next-button").SetEnabled(
+                _controller.CanEnterServeSetup);
+            if (serve && _controller.ActiveServeView == TrainingServeViewV1.Side)
+                RenderServeSide();
         }
 
-        private void RenderScreenMode()
+        private void LayoutCourt()
         {
-            if (_scenarioHub == null || _workbenchShell == null) return;
-            _scenarioHub.style.display = _showingScenarioHub
-                ? DisplayStyle.Flex
-                : DisplayStyle.None;
-            _workbenchShell.style.display = _showingScenarioHub
-                ? DisplayStyle.None
-                : DisplayStyle.Flex;
-        }
-
-        private void LayoutTacticalBoard()
-        {
-            if (_tacticalBoard == null || _courtSurface == null)
-                return;
-            var width = _tacticalBoard.contentRect.width;
-            var height = _tacticalBoard.contentRect.height;
-            if (width < 10f || height < 10f)
-                return;
-
-            var maxWidth = Mathf.Max(80f, width - 154f);
-            var maxHeight = Mathf.Max(80f, height - 72f);
-            var courtWidth = Mathf.Min(maxWidth, maxHeight * 2f);
+            var width = _board.contentRect.width;
+            var height = _board.contentRect.height;
+            if (width < 10f || height < 10f) return;
+            var courtWidth = Mathf.Min(Mathf.Max(80f, width - 154f),
+                Mathf.Max(80f, height - 72f) * 2f);
             var courtHeight = courtWidth * .5f;
             var left = Mathf.Max(76f, (width - courtWidth) * .5f);
             var top = Mathf.Max(28f, (height - courtHeight - 30f) * .5f);
-
-            _courtSurface.style.left = left;
-            _courtSurface.style.top = top;
-            _courtSurface.style.width = courtWidth;
-            _courtSurface.style.height = courtHeight;
+            _courtLeft = left;
+            _courtTop = top;
+            _court.style.left = left; _court.style.top = top;
+            _court.style.width = courtWidth; _court.style.height = courtHeight;
             _horizontalRuler.style.left = left;
             _horizontalRuler.style.top = top + courtHeight + 8f;
             _horizontalRuler.style.width = courtWidth;
-            _verticalRuler.style.left = left - 31f;
-            _verticalRuler.style.top = top;
+            _verticalRuler.style.left = left - 31f; _verticalRuler.style.top = top;
             _verticalRuler.style.height = courtHeight;
-            _courtBoardRect = new Rect(0f, 0f, courtWidth, courtHeight);
+            _courtRect = new Rect(0f, 0f, courtWidth, courtHeight);
         }
 
-        private void RenderTacticalBoard()
+        private void RenderCourt()
         {
-            if (_courtSurface == null || _tokenLayer == null ||
-                _courtBoardRect.width < 10f)
-                return;
-
-            _tokenLayer.Clear();
-            _faultLayer.Clear();
-            RenderRuler(_horizontalRuler, true);
-            RenderRuler(_verticalRuler, false);
-            RenderSelectedPlayerRulerPoints();
-
-            var homeIds = new HashSet<string>(
-                _controller.Draft.Context.Home.Players.Select(value => value.PlayerId.Value),
-                StringComparer.Ordinal);
-            var slots = BuildRotationSlots();
-            foreach (var pose in _controller.Draft.Players)
+            if (_courtRect.width < 10f) return;
+            _tokens.Clear(); _faults.Clear();
+            _topTrajectory.Clear();
+            var home = new HashSet<PlayerId>(_controller.MatchSetup.HomeRotation);
+            foreach (var pose in _controller.MatchSetup.Players)
             {
-                if (pose == null || !pose.Position.IsFinite)
-                    continue;
-                var player = FindPlayer(pose.PlayerId.Value);
-                var token = new VisualElement { userData = pose.PlayerId.Value };
+                var id = pose.PlayerId;
+                var token = new VisualElement { userData = id.Value };
                 token.AddToClassList("tactical-token");
-                token.AddToClassList(homeIds.Contains(pose.PlayerId.Value)
-                    ? "home-token" : "away-token");
-                if (_controller.SelectedObjectId == pose.PlayerId.Value)
+                token.AddToClassList(home.Contains(id) ? "home-token" : "away-token");
+                if (_controller.SelectedObjectId == id.Value)
                     token.AddToClassList("selected-token");
-                if (_controller.PositionFaultPreview.Any(fault =>
-                        fault.RequiredAheadOrLeft.PlayerId.Value == pose.PlayerId.Value ||
-                        fault.ViolatingBehindOrRight.PlayerId.Value == pose.PlayerId.Value))
+                if (_controller.PositionFaults.Any(f =>
+                        f.RequiredAheadOrLeft.PlayerId.Equals(id) ||
+                        f.ViolatingBehindOrRight.PlayerId.Equals(id)))
                     token.AddToClassList("fault-token");
-                var boardPoint = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect, pose.Position);
-                token.style.left = boardPoint.x;
-                token.style.top = boardPoint.y;
-                var slotText = slots.TryGetValue(pose.PlayerId.Value, out var slot)
-                    ? slot + "号位"
-                    : "未锁定位次";
-                token.Add(new Label(slotText));
-                var label = new Label(player == null
-                    ? pose.PlayerId.Value
-                    : player.DisplayName + " · " + PositionName(player.Position));
-                label.AddToClassList("token-label");
-                if (!homeIds.Contains(pose.PlayerId.Value))
-                    label.AddToClassList("away-label");
-                token.Add(label);
-                token.RegisterCallback<PointerDownEvent>(OnTokenPointerDown);
-                _tokenLayer.Add(token);
+                var point = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtRect, pose.Position);
+                token.style.left = point.x; token.style.top = point.y;
+                token.Add(new Label(Player(id).DisplayName));
+                token.RegisterCallback<PointerDownEvent>(_ =>
+                { _controller.SelectObject(id); _dragObjectId = id.Value; });
+                _tokens.Add(token);
             }
-
-            if (_controller.Draft.BallPosition.IsFinite)
+            _board.Q("training-ball-token")?.RemoveFromHierarchy();
+            _board.Q("training-velocity-endpoint")?.RemoveFromHierarchy();
+            var ball = new VisualElement
             {
-                var ball = new VisualElement { userData = "ball" };
-                ball.AddToClassList("tactical-token");
-                ball.AddToClassList("ball-token");
-                if (_controller.SelectedObjectId == "ball")
-                    ball.AddToClassList("selected-token");
-                var point = TrainingLabCourtProjectionV1.CourtToServeBoard(
-                    _courtBoardRect, _controller.Draft.BallPosition);
-                ball.style.left = point.x;
-                ball.style.top = point.y;
-                ball.Add(new Label("球"));
-                ball.RegisterCallback<PointerDownEvent>(OnTokenPointerDown);
-                _tokenLayer.Add(ball);
+                name = "training-ball-token",
+                userData = "ball"
+            };
+            ball.AddToClassList("tactical-token"); ball.AddToClassList("ball-token");
+            var ballPoint = TrainingLabCourtProjectionV1.CourtToServeBoard(
+                _courtRect, _controller.MatchSetup.BallPosition);
+            ball.style.left = _courtLeft + ballPoint.x;
+            ball.style.top = _courtTop + ballPoint.y;
+            ball.Add(new Label("球"));
+            ball.RegisterCallback<PointerDownEvent>(_ => _dragObjectId = "ball");
+            _board.Add(ball);
+            if (_controller.CurrentStep == TrainingLabStepV1.ServeBall &&
+                _controller.ActiveServeView == TrainingServeViewV1.Top)
+            {
+                var velocityEndpoint = new VisualElement
+                {
+                    name = "training-velocity-endpoint",
+                    userData = "velocity"
+                };
+                velocityEndpoint.AddToClassList("serve-velocity-endpoint");
+                var velocity = _controller.MatchSetup.BallVelocity;
+                var endpoint = TrainingLabCourtProjectionV1.CourtToServeBoard(
+                    _courtRect, new SimVector3(
+                        _controller.MatchSetup.BallPosition.X + velocity.X * .15f,
+                        _controller.MatchSetup.BallPosition.Y,
+                        _controller.MatchSetup.BallPosition.Z + velocity.Z * .15f));
+                velocityEndpoint.style.left = _courtLeft + endpoint.x - 8f;
+                velocityEndpoint.style.top = _courtTop + endpoint.y - 8f;
+                velocityEndpoint.RegisterCallback<PointerDownEvent>(_ =>
+                    _dragObjectId = "velocity");
+                _board.Add(velocityEndpoint);
+                if (_controller.ServeTool == TrainingServeToolV1.ViewTrajectory)
+                    RenderTopTrajectory();
             }
-
-            foreach (var fault in _controller.PositionFaultPreview)
+            foreach (var fault in _controller.PositionFaults)
             {
-                var required = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect, fault.RequiredAheadOrLeft.FootProjection);
-                var violating = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect, fault.ViolatingBehindOrRight.FootProjection);
-                AddBoardLine(_faultLayer, required, violating, "fault-relation");
-                var correction = TrainingLabCourtProjectionV1.CourtToBoard(
-                    _courtBoardRect,
+                var from = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtRect, fault.ViolatingBehindOrRight.FootProjection);
+                var to = TrainingLabCourtProjectionV1.CourtToBoard(_courtRect,
                     TrainingLabCourtProjectionV1.ShortestLegalCorrection(fault));
-                AddBoardLine(_faultLayer, violating, correction, "fault-arrow");
-                var arrow = new Label("→") { pickingMode = PickingMode.Ignore };
-                arrow.AddToClassList("fault-arrow-head");
-                arrow.style.left = correction.x - 5f;
-                arrow.style.top = correction.y - 9f;
-                _faultLayer.Add(arrow);
+                var line = new VisualElement();
+                line.AddToClassList("fault-arrow");
+                var delta = to - from;
+                line.style.left = from.x; line.style.top = from.y;
+                line.style.width = delta.magnitude;
+                line.style.rotate = new Rotate(Mathf.Atan2(delta.y, delta.x) *
+                                               Mathf.Rad2Deg);
+                _faults.Add(line);
             }
         }
 
-        private void RenderSelectedPlayerRulerPoints()
+        private void RenderOverrides()
         {
-            if (_controller.CurrentStep != TrainingLabStepV1.Positioning)
-                return;
-            var selected = _controller.Draft.Players.FirstOrDefault(value =>
-                value != null && value.PlayerId.Value ==
-                _controller.SelectedObjectId);
-            if (selected == null) return;
-            AddSelectedPlayerRulerPoints(selected.PlayerId.Value,
-                selected.Position);
-        }
-
-        private void AddSelectedPlayerRulerPoints(string playerId,
-            SimVector3 position)
-        {
-            var point = TrainingLabCourtProjectionV1.CourtToBoard(
-                _courtBoardRect, position);
-            var depth = new VisualElement
+            var grid = _root.Q("v5-override-grid");
+            if (!TrySelectedPlayer(out var id))
             {
-                name = "selected-player-depth-ruler-point",
-                userData = playerId + "|depth"
-            };
-            depth.AddToClassList("selected-ruler-point");
-            depth.style.left = point.x;
-            depth.style.top = 7f;
-            _horizontalRuler.Add(depth);
-            var lateral = new VisualElement
-            {
-                name = "selected-player-lateral-ruler-point",
-                userData = playerId + "|lateral"
-            };
-            lateral.AddToClassList("selected-ruler-point");
-            lateral.style.left = 15f;
-            lateral.style.top = point.y;
-            _verticalRuler.Add(lateral);
-        }
-
-        private void RenderRuler(VisualElement ruler, bool horizontal)
-        {
-            if (ruler == null) return;
-            ruler.Clear();
-            var track = new VisualElement();
-            track.AddToClassList("ruler-track");
-            ruler.Add(track);
-            var count = horizontal ? 19 : 10;
-            for (var index = 0; index < count; index++)
-            {
-                var fraction = count == 1 ? 0f : index / (float)(count - 1);
-                var tick = new VisualElement();
-                tick.AddToClassList("ruler-tick");
-                if (horizontal) tick.style.left = fraction * _courtBoardRect.width;
-                else tick.style.top = (1f - fraction) * _courtBoardRect.height;
-                ruler.Add(tick);
-                var label = new Label(horizontal
-                    ? (index <= 9 ? (9 - index).ToString() : (index - 9).ToString())
-                    : index.ToString());
-                label.AddToClassList("ruler-label");
-                if (horizontal)
-                {
-                    label.style.left = fraction * _courtBoardRect.width - 8f;
-                    if (index == 9) label.text = "0 网";
-                }
-                else
-                {
-                    label.style.top = (1f - fraction) * _courtBoardRect.height - 5f;
-                }
-                ruler.Add(label);
-            }
-        }
-
-        private static void AddBoardLine(VisualElement parent, Vector2 from,
-            Vector2 to, string className)
-        {
-            var line = new VisualElement { pickingMode = PickingMode.Ignore };
-            line.AddToClassList(className);
-            var delta = to - from;
-            var length = Mathf.Max(2f, delta.magnitude);
-            line.style.width = length;
-            line.style.height = 2f;
-            line.style.left = (from.x + to.x) * .5f - length * .5f;
-            line.style.top = (from.y + to.y) * .5f - 1f;
-            line.style.rotate = new Rotate(new Angle(
-                Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg,
-                AngleUnit.Degree));
-            parent.Add(line);
-        }
-
-        private Dictionary<string, int> BuildRotationSlots()
-        {
-            var slots = new Dictionary<string, int>(StringComparer.Ordinal);
-            for (var index = 0; index < _controller.Draft.HomeRotation.Count; index++)
-                slots[_controller.Draft.HomeRotation[index].Value] = index + 1;
-            for (var index = 0; index < _controller.Draft.AwayRotation.Count; index++)
-                slots[_controller.Draft.AwayRotation[index].Value] = index + 1;
-            return slots;
-        }
-
-        private PlayerSnapshotV4 FindPlayer(string id)
-        {
-            return _controller.Draft.Context.Home.Players
-                .Concat(_controller.Draft.Context.Away.Players)
-                .FirstOrDefault(value => value.PlayerId.Value == id);
-        }
-
-        private void RenderSelectedObject()
-        {
-            var draft = _controller.Draft;
-            var id = _controller.SelectedObjectId;
-            var isBall = id == "ball";
-            var player = isBall
-                ? null
-                : draft.Players.FirstOrDefault(value =>
-                    value != null && value.PlayerId.Value == id);
-            var position = isBall
-                ? draft.BallPosition
-                : player?.Position ?? SimVector3.Zero;
-            _selection.text = isBall
-                ? "球 · 位置与线速度"
-                : player == null
-                    ? "未选择对象"
-                    : "球员 · " + player.PlayerId.Value;
-            _positionX.SetValueWithoutNotify(position.X);
-            _positionY.SetValueWithoutNotify(position.Y);
-            _positionZ.SetValueWithoutNotify(position.Z);
-            _velocityX.SetValueWithoutNotify(draft.BallVelocity.X);
-            _velocityY.SetValueWithoutNotify(draft.BallVelocity.Y);
-            _velocityZ.SetValueWithoutNotify(draft.BallVelocity.Z);
-            var canEditVelocity = isBall && !_controller.EditingLocked;
-            _velocityX.SetEnabled(canEditVelocity);
-            _velocityY.SetEnabled(canEditVelocity);
-            _velocityZ.SetEnabled(canEditVelocity);
-        }
-
-        private void RenderRotationAndAttributes()
-        {
-            _homeRotationGrid.Clear();
-            _awayRotationGrid.Clear();
-            foreach (var side in new[] { TeamSide.Home, TeamSide.Away })
-            {
-                var rotation = side == TeamSide.Home
-                    ? _controller.Draft.HomeRotation
-                    : _controller.Draft.AwayRotation;
-                var teamPlayers = (side == TeamSide.Home
-                        ? _controller.Draft.Context.Home.Players
-                        : _controller.Draft.Context.Away.Players)
-                    .ToArray();
-                var grid = side == TeamSide.Home
-                    ? _homeRotationGrid
-                    : _awayRotationGrid;
-                for (var index = 0; index < rotation.Count; index++)
-                {
-                    var slot = index + 1;
-                    var selected = teamPlayers.Single(value =>
-                        value.PlayerId.Equals(rotation[index]));
-                    grid.Add(CreateRotationCard(selected, side, slot));
-                }
-            }
-
-            _attributeTable.Clear();
-            foreach (var player in _controller.Draft.Context.Home.Players.Concat(_controller.Draft.Context.Away.Players))
-            {
-                var row = new VisualElement();
-                row.AddToClassList("attribute-row");
-                row.Add(new Label(player.DisplayName + " · " + PositionName(player.Position)));
-                var height = new IntegerField { value = _controller.Draft.AttributeOverrides.TryGetValue(player.PlayerId, out var value) ? value.HeightMillimeters : Mathf.RoundToInt(player.Physical.HeightMeters * 1000f) };
-                var hand = new DropdownField(new List<string> { "Left", "Right" }, (_controller.Draft.AttributeOverrides.TryGetValue(player.PlayerId, out value) ? value.DominantHand : player.DominantHand).ToString());
-                height.SetEnabled(!_controller.EditingLocked && _controller.Draft.AccessLevel == TrainingScenarioAccessLevelV1.Developer);
-                hand.SetEnabled(height.enabledSelf);
-                height.RegisterValueChangedCallback(change => SetOverride(player, change.newValue, hand.value));
-                hand.RegisterValueChangedCallback(change => SetOverride(player, height.value, change.newValue));
-                row.Add(height);
-                row.Add(hand);
-                _attributeTable.Add(row);
-            }
-
-            _bookmarkList.Clear();
-            foreach (var bookmark in _controller.Draft.CameraBookmarks)
-            {
-                var target = bookmark;
-                var button = new Button(() => ApplyCameraBookmark(target))
-                {
-                    text = bookmark.Name + " · " + (bookmark.Orthographic ? "正交" : "自由") + "视角"
-                };
-                button.AddToClassList("bookmark-row");
-                _bookmarkList.Add(button);
-            }
-        }
-
-        private VisualElement CreateRotationCard(
-            PlayerSnapshotV4 player,
-            TeamSide side,
-            int slot)
-        {
-            var card = new VisualElement
-            {
-                name = "rotation-card-" + side + "-" + slot,
-                userData = player.PlayerId.Value
-            };
-            card.AddToClassList("rotation-card");
-            var slotLabel = new Label(slot + " 号位");
-            slotLabel.AddToClassList("rotation-card-slot");
-            card.Add(slotLabel);
-            var name = new Label(player.DisplayName);
-            name.AddToClassList("rotation-card-name");
-            card.Add(name);
-            var role = new Label(PositionName(player.Position));
-            role.AddToClassList("rotation-card-role");
-            card.Add(role);
-            card.SetEnabled(!_controller.EditingLocked &&
-                !_controller.Draft.RotationLocked);
-            card.RegisterCallback<PointerDownEvent>(_ =>
-            {
-                _rotationDragSide = side;
-                _rotationDragSlot = slot;
-            });
-            card.RegisterCallback<PointerUpEvent>(_ =>
-            {
-                if (!_rotationDragSide.HasValue ||
-                    _rotationDragSide.Value != side)
-                {
-                    _rotationDragSide = null;
-                    return;
-                }
-                var rotation = (side == TeamSide.Home
-                        ? _controller.Draft.HomeRotation
-                        : _controller.Draft.AwayRotation)
-                    .ToArray();
-                (rotation[_rotationDragSlot - 1], rotation[slot - 1]) =
-                    (rotation[slot - 1], rotation[_rotationDragSlot - 1]);
-                _rotationDragSide = null;
-                _controller.SetRotation(side, rotation);
-            });
-            return card;
-        }
-
-        private static string RotationChoice(PlayerSnapshotV4 player)
-        {
-            return player.JerseyNumber + " · " + player.DisplayName +
-                " · " + PositionName(player.Position);
-        }
-
-        private void SaveCurrentCameraBookmark()
-        {
-            if (_worldCamera == null)
-            {
-                _feedback.text = "预览场地尚未就绪，无法保存机位。";
+                grid.Clear();
+                _root.Q<Label>("override-player-identity").text = "选择一名球员";
                 return;
             }
-
-            var position = _worldCamera.transform.position;
-            var forward = _worldCamera.transform.forward;
-            _controller.SaveCameraBookmark(
-                _bookmarkName.value,
-                new SimVector3(position.x, position.y, position.z),
-                new SimVector3(forward.x, forward.y, forward.z),
-                _worldCamera.orthographicSize,
-                _worldCamera.orthographic);
+            var player = Player(id);
+            _root.Q<Label>("override-player-identity").text =
+                player.DisplayName + " · #" + player.JerseyNumber;
+            TrainingLabV5OverrideInspectorV2.Render(grid, _controller, id);
         }
 
-        private void ApplyCameraBookmark(TrainingCameraBookmarkV1 bookmark)
+        private void RenderOutcome()
         {
-            if (_worldCamera == null) return;
-            _worldCamera.transform.position = ToUnity(bookmark.Position);
-            _worldCamera.transform.forward = ToUnity(bookmark.Forward);
-            _worldCamera.orthographic = bookmark.Orthographic;
-            _worldCamera.orthographicSize = bookmark.OrthographicSize;
-        }
-
-        private void SetOverride(PlayerSnapshotV4 player, int height, string hand)
-        {
-            if (_rendering) return;
-            _controller.SetTrainingAttributeOverride(player.PlayerId,
-                new TrainingPlayerAttributeOverrideV1(height,
-                    Enum.Parse<DominantHandV4>(hand), player.Physical, player.Technical));
-        }
-
-        private static string PositionName(PlayerPosition position)
-        {
-            return position switch
-            {
-                PlayerPosition.Setter => "二传",
-                PlayerPosition.OutsideHitter => "主攻",
-                PlayerPosition.MiddleBlocker => "副攻",
-                PlayerPosition.Opposite => "接应",
-                PlayerPosition.Libero => "自由人",
-                _ => "防守"
-            };
-        }
-
-        private void RenderIssues()
-        {
-            _issues.Clear();
-            if (_controller.Validation.Issues.Count == 0)
-            {
-                _issues.Add(new Label("校验通过：12 人、球、规则起点与权威配方合法。")
-                {
-                    name = "validation-ok"
-                });
-                return;
-            }
-
-            for (var index = 0;
-                 index < _controller.Validation.Issues.Count;
-                 index++)
-            {
-                var issue = _controller.Validation.Issues[index];
-                var captured = index;
-                var button = new Button(() => _controller.FocusIssue(captured))
-                {
-                    text = issue.Code + "\n" +
-                           issue.PropertyPath + " · " + issue.Message
-                };
-                button.AddToClassList("issue-button");
-                _issues.Add(button);
-            }
-        }
-
-        private void RenderContextualInspector()
-        {
-            var step = _controller.CurrentStep;
-            _rotationBoard.style.display = step == TrainingLabStepV1.Rotation
-                ? DisplayStyle.Flex
-                : DisplayStyle.None;
-            var serve = step == TrainingLabStepV1.ServeBall;
-            _serveViewSelector.style.display = serve
-                ? DisplayStyle.Flex
-                : DisplayStyle.None;
-            _tacticalBoard.style.display = step == TrainingLabStepV1.Rotation ||
-                                           (serve && _serveView ==
-                                               TrainingServeViewV1.Side)
-                ? DisplayStyle.None
-                : DisplayStyle.Flex;
-            _serveSideBoard.style.display = serve && _serveView ==
-                TrainingServeViewV1.Side
-                ? DisplayStyle.Flex
-                : DisplayStyle.None;
-            _root.Q<Button>("serve-top-view-button").EnableInClassList(
-                "active-step", _serveView == TrainingServeViewV1.Top);
-            _root.Q<Button>("serve-side-view-button").EnableInClassList(
-                "active-step", _serveView == TrainingServeViewV1.Side);
-            if (serve && _serveView == TrainingServeViewV1.Side)
-                RenderServeSideBoard();
-            SetContextVisible(_rotationContext, step == TrainingLabStepV1.Rotation);
-            SetContextVisible(_positioningContext,
-                step == TrainingLabStepV1.Positioning);
-            SetContextVisible(_serveContext, step == TrainingLabStepV1.ServeBall);
-            SetContextVisible(_validationContext,
-                step == TrainingLabStepV1.Validation);
-            SetContextVisible(_runningContext, step == TrainingLabStepV1.Running);
-
-            var positionHost = _root.Q<VisualElement>(
-                step == TrainingLabStepV1.ServeBall
-                    ? "position-input-host-serve"
-                    : "position-input-host-positioning");
-            if (positionHost != null && _positionInputs.parent != positionHost)
-                positionHost.Add(_positionInputs);
-
-            _inspectorTitle.text = InspectorTitle(step);
-            _inspectorSummary.text = InspectorSummary(step);
-            _serveSetupBlock.text = _controller.CanEnterServeSetup
-                ? "站位合法。下一步：设置发球球。"
-                : _controller.ServeSetupBlockReason;
-            _serveSetupBlock.EnableInClassList("has-block",
-                !_controller.CanEnterServeSetup);
-            _serveToolSummary.text = ServeToolSummary(_controller.ServeTool);
-            _validationSummary.text = _controller.Validation.IsValid
-                ? "当前草稿可冻结；运行将再次执行权威站位判定。"
-                : "修复下列问题后才能冻结并运行。";
-            _runningSummary.text = "发球方 " +
-                _controller.Draft.FirstServingSide + " · 触球 " +
-                (_controller.VisibleEvidence?.Timeline.Count(value =>
-                    value.Kind == TrainingTimelineEventKindV1.ContactAccepted) ?? 0) +
-                " · " + (_controller.PositionFaultPreview.Count == 0
-                    ? "裁判：站位合法"
-                    : "裁判：位置错误 " +
-                      _controller.PositionFaultPreview.Count);
-            RenderRotationIssues();
-            RenderFaultSummary();
-        }
-
-        private void RenderServeSideBoard()
-        {
-            var width = _serveSideBoard.contentRect.width;
-            var height = _serveSideBoard.contentRect.height;
-            if (width < 10f || height < 10f) return;
-            var ball = _root.Q<VisualElement>("serve-side-ball");
-            var endpoint = _root.Q<VisualElement>(
-                "serve-side-velocity-endpoint");
-            var position = _controller.Draft.BallPosition;
-            var velocity = _controller.Draft.BallVelocity;
-            var ballX = Mathf.Lerp(width * .05f, width * .95f,
-                Mathf.InverseLerp(-12f, 12f, position.Z));
-            var ballY = Mathf.Lerp(height * .82f, height * .08f,
-                Mathf.InverseLerp(0f, 5f, position.Y));
-            ball.style.left = ballX - 12f;
-            ball.style.top = ballY - 12f;
-            endpoint.style.left = ballX + velocity.Z * 6f - 8f;
-            endpoint.style.top = ballY - velocity.Y * 6f - 8f;
-            ball.SetEnabled(_controller.ServeTool ==
-                TrainingServeToolV1.MoveBall);
-            endpoint.SetEnabled(_controller.ServeTool ==
-                TrainingServeToolV1.AdjustVelocity);
-        }
-
-        private static void SetContextVisible(VisualElement context, bool visible)
-        {
-            if (context == null) return;
-            context.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
-            context.EnableInClassList("active-context", visible);
-        }
-
-        private void RenderRotationIssues()
-        {
-            _rotationIssues.Clear();
-            var issues = _controller.Validation.Issues.Where(issue =>
-                issue.Code == TrainingScenarioIssueCodesV1.InvalidRotationMembership)
-                .ToArray();
-            if (issues.Length == 0)
-            {
-                _rotationIssues.Add(new Label(_controller.Draft.RotationLocked
-                    ? "轮转已锁定；重新编辑会使当前摆位重新进入编辑流程。"
-                    : "请确认双方各有六名且不重复的轮转位次。"));
-                return;
-            }
-
-            foreach (var issue in issues)
-            {
-                var label = new Label(issue.Message);
-                label.AddToClassList("fault-card");
-                _rotationIssues.Add(label);
-            }
-        }
-
-        private void RenderFaultSummary()
-        {
-            _faultSummary.Clear();
-            var faults = _controller.PositionFaultPreview;
-            if (faults.Count == 0)
-            {
-                _faultSummary.Add(new Label("即时裁判：当前站位合法。"));
-                return;
-            }
-
-            foreach (var fault in faults)
-            {
-                var required = FindPlayer(fault.RequiredAheadOrLeft.PlayerId.Value);
-                var violating = FindPlayer(fault.ViolatingBehindOrRight.PlayerId.Value);
-                var text = fault.Side + " 的 " +
-                    fault.RequiredAheadOrLeft.Slot + " 号位 " +
-                    (required?.DisplayName ?? fault.RequiredAheadOrLeft.PlayerId.Value) +
-                    " 与 " + fault.ViolatingBehindOrRight.Slot + " 号位 " +
-                    (violating?.DisplayName ?? fault.ViolatingBehindOrRight.PlayerId.Value) +
-                    " 违反 " + fault.Rule + "；将后者拖向蓝色箭头即可修正。";
-                var focusedPlayerId =
-                    fault.ViolatingBehindOrRight.PlayerId.Value;
-                var card = new Button(() => _controller.SelectObject(
-                    focusedPlayerId, "position"))
-                {
-                    text = text,
-                    name = "position-fault-focus-" + focusedPlayerId
-                };
-                card.AddToClassList("fault-card");
-                _faultSummary.Add(card);
-            }
-        }
-
-        private static string InspectorTitle(TrainingLabStepV1 step)
-        {
-            return step switch
-            {
-                TrainingLabStepV1.Rotation => "步骤 1 · 轮转",
-                TrainingLabStepV1.Positioning => "步骤 2 · 摆位",
-                TrainingLabStepV1.ServeBall => "步骤 3 · 发球球",
-                TrainingLabStepV1.Validation => "步骤 4 · 自动预检",
-                _ => "步骤 5 · 运行"
-            };
-        }
-
-        private static string InspectorSummary(TrainingLabStepV1 step)
-        {
-            return step switch
-            {
-                TrainingLabStepV1.Rotation => "先确定法律位次；画布暂不允许拖动球员。",
-                TrainingLabStepV1.Positioning => "在中间画布拖动 12 名球员，红色关系必须全部消除。",
-                TrainingLabStepV1.ServeBall => "仅编辑发球前球的位置和初速度。",
-                TrainingLabStepV1.Validation => "进入页面即冻结一次输入并检查能否运行。",
-                _ => "正式回合已锁定；底部控制台提供完整运行证据。"
-            };
-        }
-
-        private static string ServeToolSummary(TrainingServeToolV1 tool)
-        {
-            return tool switch
-            {
-                TrainingServeToolV1.AdjustVelocity => "当前工具：调整速度。红色速度箭头与 VX/VY/VZ 可编辑。",
-                TrainingServeToolV1.ViewTrajectory => "当前工具：查看轨迹。画布只读，不改变发球球。",
-                _ => "当前工具：移动球。黄色球只能位于当前发球方己方底线后。"
-            };
-        }
-
-        private void RenderTimeline()
-        {
-            if (_timeline == null || _controller == null) return;
-            var evidence = _controller.VisibleEvidence;
             _timeline.Clear();
-            if (evidence == null || evidence.Timeline.Count == 0)
-            {
-                _timeline.Add(new Label("运行后将在这里显示权威事件。"));
-                return;
-            }
-
-            foreach (var item in evidence.Timeline.TakeLast(80))
-            {
-                var row = new Label(
-                    item.Sequence.ToString("000") + "  " +
-                    item.SimulationTimeSeconds.ToString(
-                        "0.000",
-                        CultureInfo.InvariantCulture) + "s  " +
-                    item.Kind + "  " + item.Summary);
-                row.AddToClassList("timeline-row");
-                if (item.Decision != null)
-                    row.tooltip = "snapshot " +
-                                  item.Decision.SnapshotHash;
-                _timeline.Add(row);
-            }
+            var outcome = _controller.Outcome;
+            if (outcome == null)
+            { _timeline.Add(new Label("单回合结束后显示 V5 训练结果。")); return; }
+            _runningSummary.text = outcome.WinningSide + " · " +
+                outcome.HomeScoreDelta + ":" + outcome.AwayScoreDelta + " · " +
+                outcome.CompletionReason + " · 触球 " + outcome.TouchCount +
+                " · seed " + outcome.Seed + " · " +
+                outcome.SetupHash.Substring(0, 12) + "/" +
+                outcome.OutcomeHash.Substring(0, 12);
+            foreach (var entry in outcome.Timeline)
+                _timeline.Add(new Label(entry.Sequence + " · " + entry.Kind +
+                                        " · " + entry.Detail));
         }
 
         private void RenderControls()
         {
             var state = _controller.State;
             var editable = !_controller.EditingLocked;
-            _contextualInspector.SetEnabled(editable);
-            _save.SetEnabled(_controller.LocalScenario != null &&
-                _controller.IsDirty && editable);
-            _returnToHub.SetEnabled(
-                state != TrainingScenarioLabStateV1.Running &&
-                state != TrainingScenarioLabStateV1.Paused);
-            _run.SetEnabled(
-                editable && _controller.Validation.IsValid);
-            _pause.SetEnabled(
-                state == TrainingScenarioLabStateV1.Running ||
-                state == TrainingScenarioLabStateV1.Paused);
-            _pause.text = state == TrainingScenarioLabStateV1.Paused
-                ? "继续"
-                : "暂停";
-            _step.SetEnabled(
-                state == TrainingScenarioLabStateV1.Paused);
-            _rerun.SetEnabled(
-                state == TrainingScenarioLabStateV1.Completed);
-            _returnToEdit.SetEnabled(
-                state == TrainingScenarioLabStateV1.Completed ||
-                state == TrainingScenarioLabStateV1.Faulted);
-            _export.SetEnabled(
-                _controller.VisibleEvidence?.Decisions.Count > 0);
-            _reviewSetter.SetEnabled(
-                _controller.VisibleEvidence?.SetterTargets.Count > 0);
-            _monitor.text = "阶段 " + _controller.CurrentStep + " · 发球方 " +
-                _controller.Draft.FirstServingSide + " · 触球 " +
-                (_controller.VisibleEvidence?.Timeline.Count(value => value.Kind == TrainingTimelineEventKindV1.ContactAccepted) ?? 0) +
-                " · 裁判 " + (_controller.PositionFaultPreview.Count == 0 ? "站位合法" : "位置错误 " + _controller.PositionFaultPreview.Count);
-            _viewportHint.text = _controller.CurrentStep == TrainingLabStepV1.Rotation
-                ? "步骤 1：确认轮转位次后才能拖动摆位"
-                : _controller.ServeTool == TrainingServeToolV1.AdjustVelocity
-                    ? "速度工具：拖动红色速度箭头或精确填写 VX/VY/VZ"
-                    : _controller.ServeTool == TrainingServeToolV1.ViewTrajectory
-                        ? "轨迹工具：只读预览"
-                        : "摆位：球员头顶显示职业与锁定的 1-6 位次";
-            foreach (var step in Enum.GetValues(typeof(TrainingLabStepV1)).Cast<TrainingLabStepV1>())
-                _root.Q<Button>("step-" + step.ToString().ToLowerInvariant())?.EnableInClassList("active-step", _controller.CurrentStep == step);
+            _save.SetEnabled(editable && _controller.IsDirty);
+            _returnHub.SetEnabled(editable);
+            _run.SetEnabled(state == TrainingScenarioLabStateV1.Ready);
+            _pause.SetEnabled(state == TrainingScenarioLabStateV1.Running ||
+                              state == TrainingScenarioLabStateV1.Paused);
+            _pause.text = state == TrainingScenarioLabStateV1.Paused ? "继续" : "暂停";
+            _step.SetEnabled(state == TrainingScenarioLabStateV1.Paused);
+            _rerun.SetEnabled(state == TrainingScenarioLabStateV1.Completed);
+            _returnEdit.SetEnabled(state == TrainingScenarioLabStateV1.Completed ||
+                                   state == TrainingScenarioLabStateV1.Faulted);
         }
 
-        private void SyncWorld()
+        private void RenderServeSide()
         {
-            var preview = _controller.State ==
-                          TrainingScenarioLabStateV1.Editing ||
-                          _controller.State ==
-                          TrainingScenarioLabStateV1.Validating ||
-                          _controller.State ==
-                          TrainingScenarioLabStateV1.Ready;
-            if (!preview)
-            {
-                DestroyPreview();
-                return;
-            }
-
-            if (_worldHost == null)
-            {
-                var existing = transform.Find("TrainingWorldHostV1");
-                _worldHost = existing != null
-                    ? existing
-                    : new GameObject("TrainingWorldHostV1").transform;
-                if (_worldHost.parent == null)
-                    _worldHost.SetParent(transform, false);
-            }
-
-            if (_previewRoot == null ||
-                _markers.Count != _controller.Draft.Players.Count + 1)
-            {
-                BuildPreview();
-            }
-
-            UpdatePreview();
+            var width = _serveSide.contentRect.width;
+            var height = _serveSide.contentRect.height;
+            if (width < 10f || height < 10f) return;
+            var p = _controller.MatchSetup.BallPosition;
+            var v = _controller.MatchSetup.BallVelocity;
+            var x = Mathf.Lerp(width * .05f, width * .95f,
+                Mathf.InverseLerp(-12f, 12f, p.Z));
+            var y = Mathf.Lerp(height * .82f, height * .08f,
+                Mathf.InverseLerp(0f, 5f, p.Y));
+            var ball = _root.Q("serve-side-ball");
+            var endpoint = _root.Q("serve-side-velocity-endpoint");
+            ball.style.left = x - 12f; ball.style.top = y - 12f;
+            endpoint.style.left = x + v.Z * 6f - 8f;
+            endpoint.style.top = y - v.Y * 6f - 8f;
+            _sideTrajectory.Clear();
+            if (_controller.ServeTool == TrainingServeToolV1.ViewTrajectory)
+                RenderSideTrajectory(width, height);
         }
 
-        private void BuildPreview()
+        private void RenderTopTrajectory()
         {
-            DestroyPreview();
-            _previewRoot = new GameObject("TrainingPreviewRootV1");
-            _previewRoot.transform.SetParent(_worldHost, false);
-            CourtBuilder.Build(
-                _previewRoot.transform,
-                CourtBuilder.FormalHalfLength);
-            _worldCamera = _previewRoot.GetComponentInChildren<Camera>();
-            CreateMarker("ball", PrimitiveType.Sphere, Color.yellow);
-            var homeIds = new HashSet<string>(
-                _controller.Draft.Context.Home.Players.Select(value =>
-                    value.PlayerId.Value),
-                StringComparer.Ordinal);
-            foreach (var pose in _controller.Draft.Players)
+            var points = _controller.PredictTrajectory();
+            for (var index = 0; index < points.Count; index += 6)
             {
-                CreateMarker(
-                    pose.PlayerId.Value,
-                    PrimitiveType.Capsule,
-                    homeIds.Contains(pose.PlayerId.Value)
-                        ? new Color(.12f, .45f, .95f)
-                        : new Color(.95f, .32f, .18f));
+                var point = TrainingLabCourtProjectionV1.CourtToServeBoard(
+                    _courtRect, points[index]);
+                AddTrajectoryDot(_topTrajectory, _courtLeft + point.x,
+                    _courtTop + point.y);
             }
-
-            var trajectoryObject = new GameObject("TrajectoryPreviewV1");
-            trajectoryObject.transform.SetParent(_previewRoot.transform, false);
-            _trajectory = trajectoryObject.AddComponent<LineRenderer>();
-            _trajectory.widthMultiplier = .035f;
-            _trajectory.useWorldSpace = false;
-            _trajectory.material = new Material(
-                Shader.Find("Sprites/Default"));
-            _trajectory.startColor = new Color(1f, .85f, .2f, .9f);
-            _trajectory.endColor = new Color(1f, .35f, .15f, .2f);
         }
 
-        private void CreateMarker(
-            string id,
-            PrimitiveType primitive,
-            Color color)
+        private void RenderSideTrajectory(float width, float height)
         {
-            var markerObject = GameObject.CreatePrimitive(primitive);
-            markerObject.name = id == "ball"
-                ? "PreviewBall"
-                : "PreviewPlayer-" + id;
-            markerObject.transform.SetParent(_previewRoot.transform, false);
-            markerObject.transform.localScale = id == "ball"
-                ? Vector3.one * (SimulatedBall.DefaultRadius * 2f)
-                : new Vector3(.42f, .72f, .42f);
-            var marker = markerObject.AddComponent<TrainingLabPreviewMarkerV1>();
-            marker.Initialize(id);
-            markerObject.GetComponent<Renderer>().material.color = color;
-            _markers.Add(id, marker);
+            var points = _controller.PredictTrajectory();
+            for (var index = 0; index < points.Count; index += 6)
+            {
+                var point = points[index];
+                AddTrajectoryDot(_sideTrajectory,
+                    Mathf.Lerp(width * .05f, width * .95f,
+                        Mathf.InverseLerp(-12f, 12f, point.Z)),
+                    Mathf.Lerp(height * .82f, height * .08f,
+                        Mathf.InverseLerp(0f, 5f, point.Y)));
+            }
         }
 
-        private void UpdatePreview()
+        private static void AddTrajectoryDot(VisualElement layer, float x,
+            float y)
         {
-            var draft = _controller.Draft;
-            if (draft.BallPosition.IsFinite &&
-                _markers.TryGetValue("ball", out var ball))
-                ball.transform.localPosition = ToUnity(draft.BallPosition);
-            foreach (var pose in draft.Players)
-            {
-                if (pose == null ||
-                    !pose.Position.IsFinite ||
-                    !pose.Forward.IsFinite)
-                    continue;
-                if (!_markers.TryGetValue(
-                        pose.PlayerId.Value,
-                        out var marker))
-                    continue;
-                marker.transform.localPosition =
-                    ToUnity(pose.Position) + Vector3.up * .72f;
-                marker.transform.forward = ToUnity(pose.Forward);
-            }
-
-            foreach (var pair in _markers)
-            {
-                var selected = pair.Key == _controller.SelectedObjectId;
-                var hasIssue = _controller.Validation.Issues.Any(value =>
-                    value.ObjectId == pair.Key ||
-                    (pair.Key == "ball" &&
-                     value.PropertyPath.StartsWith(
-                         "ball",
-                         StringComparison.Ordinal)));
-                var color = hasIssue
-                    ? new Color(1f, .16f, .12f)
-                    : selected
-                        ? new Color(1f, .8f, .15f)
-                        : pair.Key == "ball"
-                            ? Color.yellow
-                            : DefaultPlayerColor(pair.Key);
-                pair.Value.GetComponent<Renderer>().material.color = color;
-            }
-
-            UpdateTrajectory();
+            var dot = new VisualElement();
+            dot.AddToClassList("trajectory-dot");
+            dot.style.left = x - 2.5f;
+            dot.style.top = y - 2.5f;
+            layer.Add(dot);
         }
 
-        private Color DefaultPlayerColor(string id)
+        private void OnBoardPointerMove(PointerMoveEvent evt)
         {
-            return _controller.Draft.Context.Home.Players.Any(value =>
-                value.PlayerId.Value == id)
-                ? new Color(.12f, .45f, .95f)
-                : new Color(.95f, .32f, .18f);
-        }
-
-        private void UpdateTrajectory()
-        {
-            if (_trajectory == null) return;
-            var draft = _controller.Draft;
-            if (!draft.BallPosition.IsFinite ||
-                !draft.BallVelocity.IsFinite)
-            {
-                _trajectory.positionCount = 0;
-                return;
-            }
-
-            var state = new BallState(
-                draft.BallPosition,
-                draft.BallVelocity,
-                SimulatedBall.DefaultRadius);
-            var parameters = new BallSimulationParameters(-9.8f, .9995f);
-            var points = new List<Vector3> { ToUnity(state.Position) };
-            for (var step = 0; step < 180; step++)
-            {
-                BallIntegrator.Step(
-                    state,
-                    SimulatedBall.DefaultFixedStep,
-                    parameters);
-                points.Add(ToUnity(state.Position));
-                if (state.Position.Y <= SimulatedBall.DefaultRadius)
-                    break;
-            }
-
-            _trajectory.positionCount = points.Count;
-            _trajectory.SetPositions(points.ToArray());
-        }
-
-        private void DestroyPreview()
-        {
-            _markers.Clear();
-            _trajectory = null;
-            _worldCamera = null;
-            if (_previewRoot == null) return;
-            if (Application.isPlaying)
-                Destroy(_previewRoot);
-            else
-                DestroyImmediate(_previewRoot);
-            _previewRoot = null;
-        }
-
-        private void OnTokenPointerDown(PointerDownEvent value)
-        {
-            if (_v5Controller != null)
-            {
-                if (_v5Controller.EditingLocked ||
-                    _v5Controller.CurrentStep == TrainingLabStepV1.Rotation)
-                    return;
-                var v5Token = value.currentTarget as VisualElement;
-                var v5Id = v5Token?.userData as string;
-                if (string.IsNullOrWhiteSpace(v5Id)) return;
-                if (v5Id == "ball" &&
-                    (_v5Controller.CurrentStep != TrainingLabStepV1.ServeBall ||
-                     _v5Controller.ServeTool != TrainingServeToolV1.MoveBall ||
-                     _serveView != TrainingServeViewV1.Top)) return;
-                if (v5Id != "ball" && _v5Controller.CurrentStep !=
-                    TrainingLabStepV1.Positioning) return;
-                _dragPointer = value.pointerId;
-                _dragObjectId = v5Id;
-                if (v5Id != "ball")
-                    _v5Controller.SelectObject(new StablePlayerId(v5Id));
-                _tacticalBoard.CapturePointer(value.pointerId);
-                value.StopPropagation();
-                return;
-            }
-            if (_controller.EditingLocked ||
-                _controller.CurrentStep == TrainingLabStepV1.Rotation)
-                return;
-            var token = value.currentTarget as VisualElement;
-            var id = token?.userData as string;
-            if (string.IsNullOrWhiteSpace(id)) return;
-            if (id == "ball" && (_controller.CurrentStep !=
-                    TrainingLabStepV1.ServeBall ||
-                _controller.ServeTool != TrainingServeToolV1.MoveBall ||
-                _serveView != TrainingServeViewV1.Top))
-                return;
-            if (id != "ball" && _controller.CurrentStep !=
-                TrainingLabStepV1.Positioning)
-                return;
-            _dragPointer = value.pointerId;
-            _dragObjectId = id;
-            _controller.SelectObject(id, "position");
-            _tacticalBoard.CapturePointer(value.pointerId);
-            value.StopPropagation();
-        }
-
-        private void OnPointerMove(PointerMoveEvent value)
-        {
-            if (_dragPointer != value.pointerId ||
-                string.IsNullOrWhiteSpace(_dragObjectId) ||
-                !_tacticalBoard.HasPointerCapture(value.pointerId))
-                return;
-            var point = _courtSurface.WorldToLocal(value.position);
-            if (_v5Controller != null)
-            {
-                if (_dragObjectId == "ball")
-                {
-                    var current = _v5Controller.MatchSetup.BallPosition;
-                    var projected = TrainingLabCourtProjectionV1
-                        .ServeBoardToCourtPosition(_courtBoardRect, point,
-                            current.Y,
-                            _v5Controller.MatchSetup.FirstServingSide);
-                    _v5Controller.TrySetBallFromTop(projected.X, projected.Z);
-                }
-                else if (_courtBoardRect.Contains(point))
-                {
-                    _v5Controller.SetPlayerPositionFromCourt(
-                        new StablePlayerId(_dragObjectId),
-                        _courtBoardRect, point);
-                }
-                value.StopPropagation();
-                return;
-            }
+            if (string.IsNullOrWhiteSpace(_dragObjectId) ||
+                _controller.EditingLocked) return;
+            var point = _court.WorldToLocal(evt.position);
             if (_dragObjectId == "ball")
             {
-                if (_controller.ServeTool != TrainingServeToolV1.MoveBall) return;
-                var current = _controller.Draft.BallPosition;
-                _controller.SetBallPosition(
-                    TrainingLabCourtProjectionV1.ServeBoardToCourtPosition(
-                        _courtBoardRect, point, current.Y,
-                        _controller.Draft.FirstServingSide));
+                if (_controller.CurrentStep != TrainingLabStepV1.ServeBall ||
+                    _controller.ActiveServeView != TrainingServeViewV1.Top ||
+                    _controller.ServeTool != TrainingServeToolV1.MoveBall) return;
+                var next = TrainingLabCourtProjectionV1.ServeBoardToCourtPosition(
+                    _courtRect, point, _controller.MatchSetup.BallPosition.Y,
+                    _controller.MatchSetup.FirstServingSide);
+                _controller.TrySetBallFromTop(next.X, next.Z);
             }
+            else if (_dragObjectId == "velocity" &&
+                     _controller.CurrentStep == TrainingLabStepV1.ServeBall &&
+                     _controller.ActiveServeView == TrainingServeViewV1.Top &&
+                     _controller.ServeTool ==
+                     TrainingServeToolV1.AdjustVelocity)
+            {
+                var ball = TrainingLabCourtProjectionV1.CourtToServeBoard(
+                    _courtRect, _controller.MatchSetup.BallPosition);
+                var depthPixelsPerMeter = _courtRect.width /
+                                          (CourtBuilder.FormalHalfLength * 2f);
+                var lateralPixelsPerMeter = _courtRect.height /
+                                            (CourtBuilder.HalfWidth * 2f);
+                _controller.TrySetVelocityFromTop(
+                    -(point.y - ball.y) / lateralPixelsPerMeter / .15f,
+                    (point.x - ball.x) / depthPixelsPerMeter / .15f);
+            }
+            else if (_controller.CurrentStep == TrainingLabStepV1.Positioning)
+                _controller.SetPlayerPositionFromCourt(new PlayerId(_dragObjectId),
+                    _courtRect, point);
+        }
+
+        private void ApplyExactPosition()
+        {
+            if (_rendering || _controller.EditingLocked) return;
+            var value = new SimVector3(_positionX.value, _positionY.value,
+                _positionZ.value);
+            if (_controller.SelectedObjectId != "ball" &&
+                _controller.CurrentStep == TrainingLabStepV1.Positioning)
+                _controller.SetPlayerPosition(new PlayerId(
+                    _controller.SelectedObjectId), value);
+        }
+
+        private void ApplyExactServePosition()
+        {
+            if (_rendering || _controller.EditingLocked ||
+                _controller.CurrentStep != TrainingLabStepV1.ServeBall ||
+                _controller.ServeTool != TrainingServeToolV1.MoveBall) return;
+            if (_controller.ActiveServeView == TrainingServeViewV1.Top)
+                _controller.TrySetBallFromTop(_servePositionX.value,
+                    _servePositionZ.value);
             else
-            {
-                if (!_courtBoardRect.Contains(point)) return;
-                var side = _controller.Draft.Context.Home.Players.Any(player =>
-                    player.PlayerId.Value == _dragObjectId)
-                    ? TeamSide.Home : TeamSide.Away;
-                _controller.SetPlayerPosition(
-                    new StablePlayerId(_dragObjectId),
-                    TrainingLabCourtProjectionV1.BoardToPlayerPosition(
-                        _courtBoardRect, point, side));
-            }
-            value.StopPropagation();
+                _controller.TrySetBallFromSide(_servePositionZ.value,
+                    _servePositionY.value);
         }
 
-        private void OnPointerUp(PointerUpEvent value)
+        private void ApplyExactVelocity()
         {
-            if (_dragPointer != value.pointerId) return;
-            if (_tacticalBoard.HasPointerCapture(value.pointerId))
-                _tacticalBoard.ReleasePointer(value.pointerId);
-            _dragPointer = -1;
-            _dragObjectId = null;
-            value.StopPropagation();
+            if (_rendering || _controller.EditingLocked ||
+                _controller.CurrentStep != TrainingLabStepV1.ServeBall ||
+                _controller.ServeTool != TrainingServeToolV1.AdjustVelocity) return;
+            if (_controller.ActiveServeView == TrainingServeViewV1.Top)
+                _controller.TrySetVelocityFromTop(_velocityX.value,
+                    _velocityZ.value);
+            else
+                _controller.TrySetVelocityFromSide(_velocityZ.value,
+                    _velocityY.value);
         }
 
-        public void ShowServeView(TrainingServeViewV1 view)
+        private void OnSidePointerMove(PointerMoveEvent evt)
         {
-            if (!Enum.IsDefined(typeof(TrainingServeViewV1), view))
-                throw new ArgumentOutOfRangeException(nameof(view));
-            _serveView = view;
-            if (_v5Controller != null && _v5Controller.CurrentStep ==
-                TrainingLabStepV1.ServeBall)
-                _v5Controller.SetServeView(view);
-            if (_v5Controller != null) RenderV5Context();
-            else RenderContextualInspector();
-        }
-
-        public void OpenReadonly3dPreview()
-        {
-            var step = _v5Controller != null
-                ? _v5Controller.CurrentStep
-                : _controller.CurrentStep;
-            if (step != TrainingLabStepV1.ServeBall)
+            if (string.IsNullOrWhiteSpace(_dragObjectId) ||
+                _controller.EditingLocked ||
+                _controller.CurrentStep != TrainingLabStepV1.ServeBall ||
+                _controller.ActiveServeView != TrainingServeViewV1.Side)
                 return;
-            _returnServeView = _serveView;
-            _preview3dModal.style.display = DisplayStyle.Flex;
+            var point = _serveSide.WorldToLocal(evt.position);
+            var width = _serveSide.contentRect.width;
+            var height = _serveSide.contentRect.height;
+            if (width < 10f || height < 10f) return;
+            var z = Mathf.Lerp(-12f, 12f,
+                Mathf.InverseLerp(width * .05f, width * .95f, point.x));
+            var y = Mathf.Lerp(5f, 0f,
+                Mathf.InverseLerp(height * .08f, height * .82f, point.y));
+            if (_dragObjectId == "ball" && _controller.ServeTool ==
+                TrainingServeToolV1.MoveBall)
+                _controller.TrySetBallFromSide(z, y);
+            else if (_dragObjectId == "velocity" && _controller.ServeTool ==
+                     TrainingServeToolV1.AdjustVelocity)
+            {
+                var ball = _controller.MatchSetup.BallPosition;
+                var ballX = Mathf.Lerp(width * .05f, width * .95f,
+                    Mathf.InverseLerp(-12f, 12f, ball.Z));
+                var ballY = Mathf.Lerp(height * .82f, height * .08f,
+                    Mathf.InverseLerp(0f, 5f, ball.Y));
+                _controller.TrySetVelocityFromSide(
+                    (point.x - ballX) / 6f,
+                    (ballY - point.y) / 6f);
+            }
         }
 
-        public void CloseReadonly3dPreview()
+        private void StartRun()
         {
-            _preview3dModal.style.display = DisplayStyle.None;
-            _serveView = _returnServeView;
-            if (_v5Controller != null) RenderV5Context();
-            else RenderContextualInspector();
-        }
-
-        private void OnKeyDown(KeyDownEvent value)
-        {
-            try
-            {
-                if (_v5Controller != null)
-                {
-                    switch (value.keyCode)
-                    {
-                        case KeyCode.P:
-                            TogglePause();
-                            value.StopPropagation();
-                            break;
-                        case KeyCode.Period:
-                            if (_v5Controller.State ==
-                                TrainingScenarioLabStateV1.Paused)
-                                _v5Controller.StepRuntime();
-                            value.StopPropagation();
-                            break;
-                        case KeyCode.R:
-                            if (_v5Controller.State ==
-                                TrainingScenarioLabStateV1.Completed)
-                                _v5Controller.RerunSameSnapshot();
-                            value.StopPropagation();
-                            break;
-                        case KeyCode.Escape:
-                            if (_v5Controller.State ==
-                                    TrainingScenarioLabStateV1.Completed ||
-                                _v5Controller.State ==
-                                    TrainingScenarioLabStateV1.Faulted)
-                                _v5Controller.ReturnToEditing();
-                            value.StopPropagation();
-                            break;
-                    }
-                    return;
-                }
-                switch (value.keyCode)
-                {
-                    case KeyCode.P:
-                    case KeyCode.Space:
-                        TogglePause();
-                        value.StopPropagation();
-                        break;
-                    case KeyCode.Period:
-                        if (_controller.State ==
-                            TrainingScenarioLabStateV1.Paused)
-                            _controller.Step();
-                        value.StopPropagation();
-                        break;
-                    case KeyCode.R:
-                        if (_controller.State ==
-                            TrainingScenarioLabStateV1.Completed)
-                            _controller.RerunSameSeed();
-                        value.StopPropagation();
-                        break;
-                    case KeyCode.Escape:
-                        if (_controller.State ==
-                                TrainingScenarioLabStateV1.Completed ||
-                            _controller.State ==
-                                TrainingScenarioLabStateV1.Faulted)
-                            _controller.ReturnToEditing();
-                        value.StopPropagation();
-                        break;
-                }
-            }
-            catch (InvalidOperationException)
-            {
-                // A key may arrive on the exact frame the formal run resolves.
-            }
+            if (_controller.PreflightSnapshot == null &&
+                !_controller.EnterPreflight()) return;
+            _controller.Run();
         }
 
         private void TogglePause()
         {
-            if (_v5Controller != null)
-            {
-                if (_v5Controller.State == TrainingScenarioLabStateV1.Running)
-                    _v5Controller.Pause();
-                else if (_v5Controller.State ==
-                         TrainingScenarioLabStateV1.Paused)
-                    _v5Controller.Resume();
-                return;
-            }
             if (_controller.State == TrainingScenarioLabStateV1.Running)
                 _controller.Pause();
-            else if (_controller.State ==
-                     TrainingScenarioLabStateV1.Paused)
+            else if (_controller.State == TrainingScenarioLabStateV1.Paused)
                 _controller.Resume();
         }
 
-        private void TrySelectServeTool(TrainingServeToolV1 tool)
+        public void OpenReadonly3dPreview()
         {
-            try
+            if (_controller.CurrentStep != TrainingLabStepV1.ServeBall)
+                return;
+            EnsureReadonly3dPreview();
+            _previewCamera.enabled = SystemInfo.graphicsDeviceType !=
+                UnityEngine.Rendering.GraphicsDeviceType.Null;
+            UpdateReadonly3dPreview();
+            _preview3d.style.display = DisplayStyle.Flex;
+        }
+
+        public void CloseReadonly3dPreview()
+        {
+            _preview3d.style.display = DisplayStyle.None;
+            if (_previewCamera != null) _previewCamera.enabled = false;
+        }
+
+        private void EnsureReadonly3dPreview()
+        {
+            if (_previewRoot != null) return;
+            _previewRoot = new GameObject("TrainingLabReadonly3DPreviewV5");
+            _previewRoot.transform.SetParent(transform, false);
+            _previewRoot.transform.position = new Vector3(1000f, 0f, 1000f);
+            CourtBuilder.Build(_previewRoot.transform,
+                CourtBuilder.FormalHalfLength);
+            _previewCamera = _previewRoot.GetComponentInChildren<Camera>();
+            _previewCamera.tag = "Untagged";
+            _previewCamera.orthographic = false;
+            _previewCamera.fieldOfView = 48f;
+            _previewCamera.nearClipPlane = .1f;
+            _previewCamera.farClipPlane = 80f;
+            _previewTexture = new RenderTexture(1024, 576, 24,
+                RenderTextureFormat.ARGB32)
             {
-                if (_v5Controller != null)
-                    _v5Controller.SetServeTool(tool);
-                else
-                    _controller.SelectServeTool(tool);
-            }
-            catch (InvalidOperationException exception)
+                name = "TrainingLabReadonly3DPreviewTextureV5",
+                antiAliasing = 2
+            };
+            _previewTexture.Create();
+            _previewCamera.targetTexture = _previewTexture;
+            _preview3dViewport.style.backgroundImage =
+                new StyleBackground(Background.FromRenderTexture(
+                    _previewTexture));
+            CreatePreviewMarker("ball", PrimitiveType.Sphere, Color.yellow,
+                Vector3.one * .22f);
+            var home = new HashSet<PlayerId>(
+                _controller.MatchSetup.HomeRotation);
+            _previewHomePlayers.Clear();
+            _previewHomePlayers.UnionWith(home);
+            foreach (var pose in _controller.MatchSetup.Players)
+                CreatePreviewMarker(pose.PlayerId.Value,
+                    PrimitiveType.Capsule,
+                    home.Contains(pose.PlayerId)
+                        ? new Color(.12f, .45f, .95f)
+                        : new Color(.95f, .32f, .18f),
+                    new Vector3(.42f, .72f, .42f));
+            ResetReadonly3dCamera();
+        }
+
+        private void CreatePreviewMarker(string id, PrimitiveType primitive,
+            Color color, Vector3 scale)
+        {
+            var marker = GameObject.CreatePrimitive(primitive);
+            marker.name = id == "ball" ? "PreviewBallV5" :
+                "PreviewPlayerV5-" + id;
+            marker.transform.SetParent(_previewRoot.transform, false);
+            marker.transform.localScale = scale;
+            var collider = marker.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            var properties = new MaterialPropertyBlock();
+            properties.SetColor("_Color", color);
+            properties.SetColor("_BaseColor", color);
+            marker.GetComponent<Renderer>().SetPropertyBlock(properties);
+            _previewMarkers.Add(id, marker.transform);
+        }
+
+        private void UpdateReadonly3dPreview()
+        {
+            if (_previewRoot == null) return;
+            var ball = _controller.MatchSetup.BallPosition;
+            if (_previewMarkers.TryGetValue("ball", out var ballMarker))
+                ballMarker.localPosition = ToUnity(ball);
+            foreach (var pose in _controller.MatchSetup.Players)
             {
-                _feedback.text = exception.Message;
-                _viewportHint.text = "发球设置已锁定：先修正全部站位错误";
+                if (!_previewMarkers.TryGetValue(pose.PlayerId.Value,
+                        out var marker)) continue;
+                marker.localPosition = ToUnity(pose.Position) +
+                                       Vector3.up * .72f;
+                marker.forward = _previewHomePlayers.Contains(pose.PlayerId)
+                    ? Vector3.forward
+                    : Vector3.back;
             }
         }
 
-        private void ApplyPosition()
+        private void ResetReadonly3dCamera()
         {
-            if (_rendering) return;
-            var position = new SimVector3(
-                _positionX.value,
-                _positionY.value,
-                _positionZ.value);
-            if (_v5Controller != null)
+            if (_previewCamera == null) return;
+            _previewYaw = 32f;
+            _previewPitch = 28f;
+            _previewDistance = 22f;
+            UpdatePreviewCameraTransform();
+        }
+
+        private void UpdatePreviewCameraTransform()
+        {
+            if (_previewCamera == null) return;
+            var rotation = Quaternion.Euler(_previewPitch, _previewYaw, 0f);
+            _previewCamera.transform.localPosition =
+                rotation * (Vector3.back * _previewDistance) +
+                Vector3.up * .75f;
+            _previewCamera.transform.LookAt(
+                _previewRoot.transform.TransformPoint(
+                    new Vector3(0f, .75f, 0f)));
+        }
+
+        private void OnPreviewPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0) return;
+            _previewPointer = evt.pointerId;
+            _previewPointerPosition = new Vector2(evt.position.x, evt.position.y);
+            _preview3dViewport.CapturePointer(evt.pointerId);
+            evt.StopPropagation();
+        }
+
+        private void OnPreviewPointerMove(PointerMoveEvent evt)
+        {
+            if (evt.pointerId != _previewPointer) return;
+            var current = new Vector2(evt.position.x, evt.position.y);
+            var delta = current - _previewPointerPosition;
+            _previewPointerPosition = current;
+            _previewYaw += delta.x * .25f;
+            _previewPitch = Mathf.Clamp(_previewPitch - delta.y * .25f,
+                8f, 78f);
+            UpdatePreviewCameraTransform();
+            evt.StopPropagation();
+        }
+
+        private void OnPreviewPointerUp(PointerUpEvent evt)
+        {
+            if (evt.pointerId != _previewPointer) return;
+            if (_preview3dViewport.HasPointerCapture(evt.pointerId))
+                _preview3dViewport.ReleasePointer(evt.pointerId);
+            _previewPointer = -1;
+            evt.StopPropagation();
+        }
+
+        private void OnPreviewWheel(WheelEvent evt)
+        {
+            _previewDistance = Mathf.Clamp(
+                _previewDistance + evt.delta.y * .02f, 8f, 36f);
+            UpdatePreviewCameraTransform();
+            evt.StopPropagation();
+        }
+
+        private void SavePreviewBookmark()
+        {
+            var name = _bookmarkName.value?.Trim();
+            if (string.IsNullOrWhiteSpace(name)) return;
+            _bookmarks[name] = new PreviewCameraBookmark(_previewYaw,
+                _previewPitch, _previewDistance);
+            PersistPreviewBookmarks();
+            RenderPreviewBookmarks();
+            Render();
+        }
+
+        private void RenderPreviewBookmarks()
+        {
+            _bookmarkList.Clear();
+            foreach (var pair in _bookmarks.OrderBy(value => value.Key,
+                         StringComparer.Ordinal))
             {
-                if (_v5Controller.EditingLocked) return;
-                if (_v5Controller.SelectedObjectId == "ball")
-                    _v5Controller.TrySetExactBallPosition(position);
-                else if (!string.IsNullOrWhiteSpace(
-                             _v5Controller.SelectedObjectId))
-                    _v5Controller.SetPlayerPosition(
-                        new StablePlayerId(_v5Controller.SelectedObjectId),
-                        position);
-                return;
+                var bookmark = pair.Value;
+                var button = new Button(() =>
+                {
+                    _previewYaw = bookmark.Yaw;
+                    _previewPitch = bookmark.Pitch;
+                    _previewDistance = bookmark.Distance;
+                    UpdatePreviewCameraTransform();
+                }) { text = pair.Key };
+                _bookmarkList.Add(button);
             }
-            if (_controller.EditingLocked) return;
+        }
+
+        private void DestroyReadonly3dPreview()
+        {
+            if (_previewCamera != null) _previewCamera.targetTexture = null;
+            if (_preview3dViewport != null)
+                _preview3dViewport.style.backgroundImage = StyleKeyword.None;
+            if (_previewTexture != null)
+            {
+                _previewTexture.Release();
+                Destroy(_previewTexture);
+            }
+            if (_previewRoot != null) Destroy(_previewRoot);
+            _previewMarkers.Clear();
+            _previewHomePlayers.Clear();
+            _previewTexture = null;
+            _previewCamera = null;
+            _previewRoot = null;
+        }
+
+        private void PersistPreviewBookmarks()
+        {
+            var file = new PreviewBookmarkFile();
+            foreach (var pair in _bookmarks.OrderBy(value => value.Key,
+                         StringComparer.Ordinal))
+                file.items.Add(new PreviewBookmarkData
+                {
+                    name = pair.Key,
+                    yaw = pair.Value.Yaw,
+                    pitch = pair.Value.Pitch,
+                    distance = pair.Value.Distance
+                });
+            _controller.LocalScenario.BookmarksJson = JsonUtility.ToJson(file);
+        }
+
+        private void RestorePreviewBookmarks()
+        {
+            _bookmarks.Clear();
+            var json = _controller?.LocalScenario?.BookmarksJson;
+            if (!string.IsNullOrWhiteSpace(json) && json.StartsWith("{",
+                    StringComparison.Ordinal))
+            {
+                try
+                {
+                    var file = JsonUtility.FromJson<PreviewBookmarkFile>(json);
+                    if (file?.items != null)
+                        foreach (var item in file.items)
+                            if (item != null &&
+                                !string.IsNullOrWhiteSpace(item.name))
+                                _bookmarks[item.name] = new PreviewCameraBookmark(
+                                    item.yaw, item.pitch, item.distance);
+                }
+                catch (ArgumentException)
+                {
+                    // The repository preserves opaque bookmark bytes. A malformed
+                    // optional UI payload must not make the scenario unavailable.
+                }
+            }
+            if (_bookmarkList != null) RenderPreviewBookmarks();
+        }
+
+        private static Vector3 ToUnity(SimVector3 value) =>
+            new Vector3(value.X, value.Y, value.Z);
+
+        private PlayerSnapshotV5 Player(PlayerId id) =>
+            _controller.MatchSetup.BaseContext.Home.RotationOrder
+                .Concat(_controller.MatchSetup.BaseContext.Away.RotationOrder)
+                .Single(value => value.PlayerId.Equals(id));
+
+        private bool TrySelectedPlayer(out PlayerId id)
+        {
+            id = default;
+            if (_controller.SelectedObjectId == "ball" ||
+                string.IsNullOrWhiteSpace(_controller.SelectedObjectId)) return false;
+            id = new PlayerId(_controller.SelectedObjectId);
+            var selected = id;
+            return _controller.MatchSetup.Players.Any(p =>
+                p.PlayerId.Equals(selected));
+        }
+
+        private SimVector3 SelectedPosition()
+        {
             if (_controller.SelectedObjectId == "ball")
-            {
-                _controller.SetBallPosition(position);
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(_controller.SelectedObjectId))
-                _controller.SetPlayerPosition(
-                    new StablePlayerId(_controller.SelectedObjectId),
-                    position);
+                return _controller.MatchSetup.BallPosition;
+            return _controller.MatchSetup.Players.FirstOrDefault(p =>
+                       p.PlayerId.Value == _controller.SelectedObjectId)
+                   ?.Position ?? SimVector3.Zero;
         }
 
-        private void ApplyVelocity()
-        {
-            if (_rendering) return;
-            if (_v5Controller != null)
-            {
-                if (_v5Controller.EditingLocked ||
-                    _v5Controller.SelectedObjectId != "ball") return;
-                _v5Controller.TrySetExactBallVelocity(new SimVector3(
-                    _velocityX.value, _velocityY.value, _velocityZ.value));
-                return;
-            }
-            if (
-                _controller.EditingLocked ||
-                _controller.SelectedObjectId != "ball")
-                return;
-            _controller.SetBallVelocity(new SimVector3(
-                _velocityX.value,
-                _velocityY.value,
-                _velocityZ.value));
-        }
+        private void SetVisible(string name, bool visible) =>
+            _root.Q(name).style.display = visible
+                ? DisplayStyle.Flex : DisplayStyle.None;
 
-        private void ConfirmRotation()
-        {
-            if (_v5Controller != null) _v5Controller.ConfirmRotation();
-            else _controller.ConfirmRotation();
-        }
-
-        private void ReopenRotation()
-        {
-            if (_v5Controller != null) _v5Controller.ReopenRotation();
-            else _controller.ReopenRotation();
-        }
-
-        private void ApplyRallyStart()
-        {
-            if (_rendering || _controller.EditingLocked) return;
-            var lastActor = _lastActor.value == "无"
-                ? (StablePlayerId?)null
-                : new StablePlayerId(_lastActor.value);
-            _controller.SetRallyStart(
-                Enum.Parse<RallyStartRecipeV3>(_recipe.value),
-                Enum.Parse<TeamSide>(_sourceTeam.value),
-                lastActor);
-        }
-
-        private void ApplyTactics(
-            TeamSide side,
-            DropdownField set,
-            DropdownField spike)
-        {
-            if (_rendering || _controller.EditingLocked) return;
-            _controller.SetTacticRoutes(
-                side,
-                Enum.Parse<SetRoute>(set.value),
-                Enum.Parse<SpikeRoute>(spike.value));
-        }
-
-        private void SetTacticValues()
-        {
-            _homeSet.SetValueWithoutNotify(
-                _controller.Draft.HomeTactics.SetRoute.ToString());
-            _homeSpike.SetValueWithoutNotify(
-                _controller.Draft.HomeTactics.SpikeRoute.ToString());
-            _awaySet.SetValueWithoutNotify(
-                _controller.Draft.AwayTactics.SetRoute.ToString());
-            _awaySpike.SetValueWithoutNotify(
-                _controller.Draft.AwayTactics.SpikeRoute.ToString());
-        }
-
-        private void ExportEvidence()
-        {
-#if UNITY_EDITOR
-            var evidence = _controller.VisibleEvidence;
-            if (evidence == null || evidence.Decisions.Count == 0) return;
-            try
-            {
-                var type = AppDomain.CurrentDomain.GetAssemblies()
-                    .First(value =>
-                        value.GetName().Name ==
-                        "Volleyball.Match.Editor")
-                    .GetType(
-                        "Volleyball.Editor." +
-                        "TrainingDecisionSnapshotExporterV1",
-                        true);
-                var path = (string)type
-                    .GetMethod(
-                        "Export",
-                        BindingFlags.Public | BindingFlags.Static)
-                    .Invoke(null, new object[] { evidence, null });
-                _feedback.text = "已导出 · " + path;
-            }
-            catch (Exception exception)
-            {
-                _feedback.text = "导出失败 · " + exception.Message;
-            }
-#else
-            _feedback.text = "Player 只显示快照摘要，不写数据集文件。";
-#endif
-        }
-
-        private void OpenSetterReview()
-        {
-#if UNITY_EDITOR
-            var snapshot = _controller.VisibleEvidence?.SetterTargets
-                .LastOrDefault();
-            if (snapshot == null) return;
-            try
-            {
-                var editorAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                    .FirstOrDefault(value => value.GetName().Name ==
-                        "Volleyball.Match.AI.Editor");
-                var type = editorAssembly?.GetType(
-                    "Volleyball.Editor.AI.SetterTeacher." +
-                    "SetterTeacherReviewWindowV1");
-                type?.GetMethod(
-                    "OpenForSnapshot",
-                    BindingFlags.Public | BindingFlags.Static)
-                    ?.Invoke(null, new object[] { snapshot.SnapshotHash });
-                if (type == null)
-                    throw new InvalidOperationException(
-                        "Setter teacher review editor tools are unavailable.");
-            }
-            catch (Exception exception)
-            {
-                _feedback.text = "无法打开二传审核 · " + exception.Message;
-            }
-#else
-            _feedback.text = "二传审核只在 Unity Editor 训练室中可用。";
-#endif
-        }
-
-        private void TryApplyChineseSystemFont(VisualElement root)
-        {
-            try
-            {
-                _runtimeFont = Font.CreateDynamicFontFromOSFont(
-                    new[]
-                    {
-                        "PingFang SC",
-                        "Microsoft YaHei UI",
-                        "Microsoft YaHei",
-                        "Noto Sans CJK SC"
-                    },
-                    16);
-                if (_runtimeFont != null)
-                    root.style.unityFont = _runtimeFont;
-            }
-            catch (Exception)
-            {
-                _runtimeFont = null;
-            }
-        }
-
-        private static Vector3 ToUnity(SimVector3 value)
-        {
-            return new Vector3(value.X, value.Y, value.Z);
-        }
-
-        private static string StateText(
-            TrainingScenarioLabStateV1 state)
-        {
-            return state switch
+        private static string StateText(TrainingScenarioLabStateV1 state) =>
+            state switch
             {
                 TrainingScenarioLabStateV1.Editing => "编辑中",
-                TrainingScenarioLabStateV1.Validating => "校验中",
                 TrainingScenarioLabStateV1.Ready => "已就绪",
                 TrainingScenarioLabStateV1.Running => "正式运行中",
                 TrainingScenarioLabStateV1.Paused => "已暂停",
@@ -2282,24 +1174,46 @@ namespace Volleyball.Presentation.TrainingLab
                 TrainingScenarioLabStateV1.Faulted => "运行异常",
                 _ => state.ToString()
             };
+
+        private static string StepText(TrainingLabStepV1 step) => step switch
+        {
+            TrainingLabStepV1.Rotation => "轮转",
+            TrainingLabStepV1.Positioning => "摆位",
+            TrainingLabStepV1.ServeBall => "发球球",
+            TrainingLabStepV1.Validation => "自动预检",
+            TrainingLabStepV1.Running => "运行结果",
+            _ => step.ToString()
+        };
+
+        private readonly struct PreviewCameraBookmark
+        {
+            public PreviewCameraBookmark(float yaw, float pitch,
+                float distance)
+            {
+                Yaw = yaw;
+                Pitch = pitch;
+                Distance = distance;
+            }
+
+            public float Yaw { get; }
+            public float Pitch { get; }
+            public float Distance { get; }
         }
 
-        private void OnDestroy()
+        [Serializable]
+        private sealed class PreviewBookmarkFile
         {
-            DestroyPreview();
-            if (_controller != null)
-                _controller.Changed -= Render;
-            if (_v5Controller != null)
-                _v5Controller.Changed -= Render;
-            if (_ownsController)
-            {
-                _controller?.Dispose();
-                _simulation?.Dispose();
-                _v5Controller?.Dispose();
-                _v5Runtime?.Dispose();
-            }
-            if (_runtimeFont != null)
-                Destroy(_runtimeFont);
+            public List<PreviewBookmarkData> items =
+                new List<PreviewBookmarkData>();
+        }
+
+        [Serializable]
+        private sealed class PreviewBookmarkData
+        {
+            public string name;
+            public float yaw;
+            public float pitch;
+            public float distance;
         }
     }
 }

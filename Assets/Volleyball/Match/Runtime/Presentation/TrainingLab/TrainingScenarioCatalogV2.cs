@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
+using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.PreServe;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Presentation.TrainingLab
@@ -21,16 +24,45 @@ namespace Volleyball.Presentation.TrainingLab
             if (string.IsNullOrWhiteSpace(scenarioId) ||
                 !Contains(scenarioId))
                 throw new ArgumentOutOfRangeException(nameof(scenarioId));
-            var context = FormalSixVsSixRallyBootstrap.CreateDefaultFormalContextV5();
-            var id = TrainingScenarioTemplateV2.ScenarioIdPrefix + scenarioId;
-            var displayName = DisplayName(scenarioId);
-            return new TrainingScenarioTemplateV2(
-                id,
-                displayName,
-                "project-catalog-v2",
-                context,
-                TrainingScenarioCanonicalizerV2.ComputeTemplateHash(
-                    id, displayName, context));
+            var preset = Resources.Load<TrainingScenarioPresetV2>(
+                "TrainingScenariosV2/" + scenarioId);
+            if (preset == null)
+                throw new InvalidOperationException(
+                    "Missing built-in V2 training scenario: " + scenarioId);
+            return preset.ToDefinition();
+        }
+
+        public static MatchSetupDraftV1 CreateSetup(string scenarioId)
+        {
+            var template = Create(scenarioId);
+            var servingSide = string.Equals(scenarioId, "away-serve",
+                StringComparison.Ordinal) || string.Equals(scenarioId,
+                "position-fault-away", StringComparison.Ordinal)
+                ? TeamSide.Away
+                : TeamSide.Home;
+            var setup = MatchSetupDraftV1.CreateDefault(template.Context,
+                servingSide);
+            var editor = new MatchSetupEditorV1(setup);
+            if (string.Equals(scenarioId, "position-fault-home",
+                    StringComparison.Ordinal))
+                editor.SetPlayerPosition(setup.HomeRotation[3],
+                    TrainingTeamCourtTransformV1.ToWorld(TeamSide.Home,
+                        new SimVector3(-3f, 0f, 7f)));
+            else if (string.Equals(scenarioId, "position-fault-away",
+                         StringComparison.Ordinal))
+                editor.SetPlayerPosition(setup.AwayRotation[3],
+                    TrainingTeamCourtTransformV1.ToWorld(TeamSide.Away,
+                        new SimVector3(-3f, 0f, 7f)));
+            else if (string.Equals(scenarioId, "attribute-override",
+                         StringComparison.Ordinal))
+            {
+                var value = new TrainingPlayerAttributeOverrideV2();
+                value.Set(TrainingPlayerAttributeFieldV2.Attack, 9000);
+                value.Set(TrainingPlayerAttributeFieldV2.Height, 2100);
+                value.SetDominantHand(DominantHandV5.Left);
+                setup.AttributeOverrides.Add(setup.HomeRotation[0], value);
+            }
+            return setup;
         }
 
         private static bool Contains(string value)
@@ -40,18 +72,5 @@ namespace Volleyball.Presentation.TrainingLab
             return false;
         }
 
-        private static string DisplayName(string id)
-        {
-            return id switch
-            {
-                "standard-rotation" => "标准轮转",
-                "home-serve" => "主队发球",
-                "away-serve" => "客队发球",
-                "position-fault-home" => "主队位置错误",
-                "position-fault-away" => "客队位置错误",
-                "attribute-override" => "V5 属性覆盖",
-                _ => throw new ArgumentOutOfRangeException(nameof(id))
-            };
-        }
     }
 }

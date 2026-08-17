@@ -6805,9 +6805,14 @@ namespace Volleyball.Presentation
                         var winner = _set.HomeScore > _set.AwayScore
                             ? _matchContextV5.Home.TeamId
                             : _matchContextV5.Away.TeamId;
+                        var canonicalFaults = _v5PositionFaults
+                            .OrderBy(value => value.RallyNumber)
+                            .ThenBy(value => value.Rule,
+                                StringComparer.Ordinal)
+                            .ToArray();
                         ResultV5 = MatchResultV5.Create(_matchContextV5, winner,
                             _set.HomeScore, _set.AwayScore,
-                            _set.HomeScore + _set.AwayScore, _v5PositionFaults);
+                            _set.HomeScore + _set.AwayScore, canonicalFaults);
                     }
                 }
                 else
@@ -7175,7 +7180,11 @@ namespace Volleyball.Presentation
             if (_configuration.RosterSize == 6)
             {
                 var rotationPosition = _set.RotationPositionFor(StableId(player));
-                return _configuration.PositionFor(ToSide(player.Team), rotationPosition);
+                var side = ToSide(player.Team);
+                var target = _configuration.PositionFor(side, rotationPosition);
+                if (_matchContextV5 != null && side == TeamSide.Away)
+                    target.x = -target.x;
+                return target;
             }
 
             var tactic = TacticFor(player.Team);

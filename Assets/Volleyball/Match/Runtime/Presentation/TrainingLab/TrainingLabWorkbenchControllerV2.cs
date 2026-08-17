@@ -58,6 +58,7 @@ namespace Volleyball.Presentation.TrainingLab
             _localScenario = localScenario;
             _hasSavedLocalScenario = hasSavedCopy;
             RestoreUiState(localScenario);
+            RestoreAutomaticPreflight();
             _savedPersistenceFingerprint = hasSavedCopy
                 ? PersistenceFingerprint()
                 : string.Empty;
@@ -166,6 +167,7 @@ namespace Volleyball.Presentation.TrainingLab
             EnsureRotationEditable();
             _editor.ExchangeRotation(sourceSide, sourceSlot,
                 targetSlot.Value);
+            InvalidatePreflight();
             Changed?.Invoke();
             return true;
         }
@@ -177,6 +179,7 @@ namespace Volleyball.Presentation.TrainingLab
         {
             EnsureRotationEditable();
             _editor.ExchangeRotation(side, firstSlot, secondSlot);
+            InvalidatePreflight();
             Changed?.Invoke();
         }
 
@@ -191,6 +194,8 @@ namespace Volleyball.Presentation.TrainingLab
 
         public void ReopenRotation()
         {
+            EnsureNotRunning();
+            InvalidatePreflight();
             MatchSetup.RotationLocked = false;
             CurrentStep = TrainingLabStepV1.Rotation;
             Changed?.Invoke();
@@ -201,6 +206,7 @@ namespace Volleyball.Presentation.TrainingLab
         {
             EnsurePositioning();
             var result = _editor.SetPlayerPosition(playerId, position);
+            InvalidatePreflight();
             SelectedObjectId = playerId.Value;
             FocusedPlayerIds = new[] { playerId };
             Changed?.Invoke();
@@ -343,6 +349,7 @@ namespace Volleyball.Presentation.TrainingLab
             MatchSetup.FirstServingSide = side;
             _editor.SetBallPosition(new SimVector3(previous.X, previous.Y,
                 -previous.Z));
+            InvalidatePreflight();
             Changed?.Invoke();
         }
 
@@ -371,6 +378,7 @@ namespace Volleyball.Presentation.TrainingLab
             EnsureNotRunning();
             var item = OverrideFor(playerId, true);
             item.Set(field, value);
+            InvalidatePreflight();
             Changed?.Invoke();
         }
 
@@ -380,6 +388,7 @@ namespace Volleyball.Presentation.TrainingLab
             EnsureNotRunning();
             var item = OverrideFor(playerId, true);
             item.SetDominantHand(hand);
+            InvalidatePreflight();
             Changed?.Invoke();
         }
 
@@ -391,6 +400,7 @@ namespace Volleyball.Presentation.TrainingLab
             if (item == null) return;
             item.Clear(field);
             RemoveEmptyOverride(playerId, item);
+            InvalidatePreflight();
             Changed?.Invoke();
         }
 
@@ -398,6 +408,7 @@ namespace Volleyball.Presentation.TrainingLab
         {
             EnsureNotRunning();
             if (!MatchSetup.AttributeOverrides.Remove(playerId)) return;
+            InvalidatePreflight();
             Changed?.Invoke();
         }
 
@@ -598,7 +609,25 @@ namespace Volleyball.Presentation.TrainingLab
             RuntimeError = string.Empty;
             PreflightError = string.Empty;
             State = TrainingScenarioLabStateV1.Editing;
+            RestoreAutomaticPreflight();
             _savedPersistenceFingerprint = PersistenceFingerprint();
+        }
+
+        private void RestoreAutomaticPreflight()
+        {
+            if (CurrentStep != TrainingLabStepV1.Validation) return;
+            try
+            {
+                PreflightSnapshot = _editor.Freeze();
+                State = TrainingScenarioLabStateV1.Ready;
+            }
+            catch (Exception exception) when (exception is ArgumentException ||
+                                              exception is InvalidOperationException)
+            {
+                PreflightSnapshot = null;
+                PreflightError = exception.Message;
+                State = TrainingScenarioLabStateV1.Editing;
+            }
         }
 
         private void RestoreUiState(TrainingLabLocalScenarioV2 local)
@@ -659,6 +688,10 @@ namespace Volleyball.Presentation.TrainingLab
                 nameof(TrainingLabWorkbenchControllerV2));
             if (EditingLocked) throw new InvalidOperationException(
                 "The frozen V5 training runtime cannot be edited.");
+            if (State == TrainingScenarioLabStateV1.Completed ||
+                State == TrainingScenarioLabStateV1.Faulted)
+                throw new InvalidOperationException(
+                    "Return to editing before changing the Match setup.");
         }
 
         private void OnRuntimeCompleted(TrainingRallyOutcomeV1 outcome)
@@ -709,6 +742,7 @@ namespace Volleyball.Presentation.TrainingLab
             try
             {
                 edit();
+                InvalidatePreflight();
                 LastEditFailure = string.Empty;
                 Changed?.Invoke();
                 return true;
@@ -728,6 +762,17 @@ namespace Volleyball.Presentation.TrainingLab
         {
             return MatchSetup.Players.Single(value =>
                 value.PlayerId.Equals(playerId));
+        }
+
+        private void InvalidatePreflight()
+        {
+            PreflightSnapshot = null;
+            RunSnapshot = null;
+            PreflightError = string.Empty;
+            if (State == TrainingScenarioLabStateV1.Ready)
+                State = TrainingScenarioLabStateV1.Editing;
+            if (CurrentStep == TrainingLabStepV1.Validation)
+                CurrentStep = TrainingLabStepV1.ServeBall;
         }
 
         private TeamSide SideFor(PlayerId playerId)

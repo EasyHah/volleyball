@@ -11,13 +11,26 @@ namespace Volleyball.EditModeTests
     public sealed class PositionFaultEvaluatorV1Tests
     {
         [Test]
+        public void Evaluate_DefaultPreservesLegacySharedWorldLateralFrame()
+        {
+            var slots = AllLegalSlots();
+
+            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots)
+                    .Select(value => (value.Side, value.Rule)),
+                Is.EqualTo(PositionFaultEvaluatorV1.Evaluate(slots,
+                        PositionFaultCoordinateFrameV1.LegacySharedWorldLateral)
+                    .Select(value => (value.Side, value.Rule))));
+        }
+
+        [Test]
         public void Evaluate_EqualFootProjectionsAreLegal()
         {
             var slots = AllLegalSlots();
             slots[3] = Slot(TeamSide.Home, 4, -3f, -2f);
             slots[4] = Slot(TeamSide.Home, 5, -3f, -2f);
 
-            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots), Is.Empty);
+            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots,
+                PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric), Is.Empty);
         }
 
         [TestCase(TeamSide.Home, 4, -7f, PositionFaultRuleV1.Slot4BehindSlot5)]
@@ -33,7 +46,8 @@ namespace Volleyball.EditModeTests
             var index = slots.FindIndex(value => value.Side == side && value.Slot == slot);
             slots[index] = Slot(side, slot, slots[index].FootProjection.X, z);
 
-            var fault = PositionFaultEvaluatorV1.Evaluate(slots).Single();
+            var fault = PositionFaultEvaluatorV1.Evaluate(slots,
+                PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric).Single();
             Assert.That(fault.Rule, Is.EqualTo(expected));
             Assert.That(fault.Side, Is.EqualTo(side));
         }
@@ -49,7 +63,9 @@ namespace Volleyball.EditModeTests
             var index = slots.FindIndex(value => value.Slot == slot);
             slots[index] = Slot(TeamSide.Home, slot, x, slots[index].FootProjection.Z);
 
-            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots).Single().Rule,
+            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots,
+                    PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric)
+                .Single().Rule,
                 Is.EqualTo(expected));
         }
 
@@ -61,7 +77,9 @@ namespace Volleyball.EditModeTests
             Replace(slots, TeamSide.Home, 3, 4f, -7f);
             Replace(slots, TeamSide.Away, 2, -3f, 7f);
 
-            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots).Select(value => value.Rule),
+            Assert.That(PositionFaultEvaluatorV1.Evaluate(slots,
+                    PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric)
+                .Select(value => value.Rule),
                 Is.EqualTo(new[]
                 {
                     PositionFaultRuleV1.Slot4BehindSlot5,
@@ -76,7 +94,8 @@ namespace Volleyball.EditModeTests
         {
             var slots = AllLegalSlots();
             slots[1] = Slot(TeamSide.Home, 1, 3f, -6f, "home-duplicate");
-            Assert.That(() => PositionFaultEvaluatorV1.Evaluate(slots),
+            Assert.That(() => PositionFaultEvaluatorV1.Evaluate(slots,
+                    PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric),
                 Throws.ArgumentException.With.Message.Contains("unique position slots"));
 
             Assert.That(() => new ServePositionSlotV1(TeamSide.Home, 1,

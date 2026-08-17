@@ -1,10 +1,31 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Volleyball.Presentation.TrainingLab
 {
+    public sealed class TrainingLabLocalScenarioCatalogEntryV2
+    {
+        internal TrainingLabLocalScenarioCatalogEntryV2(string localId,
+            string displayName, TrainingLabLocalScenarioV2 scenario,
+            string diagnostic)
+        {
+            LocalId = localId;
+            DisplayName = displayName;
+            Scenario = scenario;
+            Diagnostic = diagnostic ?? string.Empty;
+        }
+
+        public string LocalId { get; }
+        public string DisplayName { get; }
+        public TrainingLabLocalScenarioV2 Scenario { get; }
+        public string Diagnostic { get; }
+        public bool IsAvailable => Scenario != null;
+    }
+
     public interface ITrainingLabFileReplacementV2
     {
         void Replace(string temporaryPath, string destinationPath);
@@ -115,6 +136,38 @@ namespace Volleyball.Presentation.TrainingLab
         {
             return TrainingScenarioVersionGateV2.Inspect(
                 File.ReadAllBytes(PathFor(localId)));
+        }
+
+        public IReadOnlyList<TrainingLabLocalScenarioCatalogEntryV2> List()
+        {
+            if (!Directory.Exists(_root))
+                return Array.Empty<TrainingLabLocalScenarioCatalogEntryV2>();
+            var entries = new List<TrainingLabLocalScenarioCatalogEntryV2>();
+            foreach (var path in Directory.GetFiles(_root, "*.json")
+                         .OrderBy(value => value, StringComparer.Ordinal))
+            {
+                var localId = Path.GetFileNameWithoutExtension(path);
+                var bytes = File.ReadAllBytes(path);
+                var inspection = TrainingScenarioVersionGateV2.Inspect(bytes);
+                if (!inspection.IsSupported)
+                {
+                    entries.Add(new TrainingLabLocalScenarioCatalogEntryV2(
+                        localId, localId, null, inspection.Diagnostic));
+                    continue;
+                }
+                try
+                {
+                    var local = Load(localId);
+                    entries.Add(new TrainingLabLocalScenarioCatalogEntryV2(
+                        localId, local.DisplayName, local, string.Empty));
+                }
+                catch (Exception exception)
+                {
+                    entries.Add(new TrainingLabLocalScenarioCatalogEntryV2(
+                        localId, localId, null, exception.Message));
+                }
+            }
+            return entries;
         }
 
         private string PathFor(string localId)

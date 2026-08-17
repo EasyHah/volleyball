@@ -73,6 +73,7 @@
                         <ui:Label text="HOME" class="team-court-label team-home-label" picking-mode="Ignore" />
                         <ui:Label text="AWAY" class="team-court-label team-away-label" picking-mode="Ignore" />
                     </ui:VisualElement>
+                    <ui:VisualElement name="serve-top-trajectory-layer" class="trajectory-layer" picking-mode="Ignore" />
                     <ui:VisualElement name="horizontal-ruler" class="ruler horizontal-ruler" picking-mode="Ignore" />
                     <ui:VisualElement name="vertical-ruler" class="ruler vertical-ruler" picking-mode="Ignore" />
                     <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
@@ -83,6 +84,7 @@
                     <ui:VisualElement class="side-net" />
                     <ui:VisualElement class="side-end-line" />
                     <ui:VisualElement class="side-height-ruler" />
+                    <ui:VisualElement name="serve-side-trajectory-layer" class="trajectory-layer" picking-mode="Ignore" />
                     <ui:VisualElement name="serve-side-ball" class="serve-side-ball" />
                     <ui:VisualElement name="serve-side-velocity-endpoint" class="serve-velocity-endpoint" />
                 </ui:VisualElement>
@@ -145,32 +147,15 @@
 
                     <ui:Foldout name="advanced-settings" text="高级设置（低频）" value="false" class="advanced-settings">
                         <ui:VisualElement name="advanced-settings-content">
-                            <ui:Label text="情景与规则" class="section-title" />
+                    <ui:Label text="情景" class="section-title" />
                     <ui:TextField name="display-name" label="名称" class="field" />
-                    <ui:IntegerField name="match-seed" label="matchSeed" class="field" />
-                    <ui:DropdownField name="start-recipe" label="语义起点" class="field" />
-                    <ui:DropdownField name="source-team" label="来源队伍" class="field" />
-                    <ui:DropdownField name="last-actor" label="最后合法触球者" class="field" />
-
+                    <ui:Label name="match-seed-label" class="mini-label" />
                     <ui:Label text="管理员测试属性（仅本训练情景）" class="section-title" />
                     <ui:VisualElement name="selected-player-overrides" class="selected-player-overrides">
                         <ui:Label name="override-player-identity" text="选择一名球员" class="selection-label" />
                         <ui:VisualElement name="v5-override-grid" class="v5-override-grid" />
                         <ui:Button name="reset-player-overrides-button" text="重置该球员全部覆盖" class="secondary" />
                     </ui:VisualElement>
-                    <ui:VisualElement name="attribute-table" class="attribute-table" />
-                    <ui:Label text="自由观察机位" class="section-title" />
-                    <ui:VisualElement class="compact-row">
-                        <ui:TextField name="bookmark-name" value="机位 1" class="bookmark-name" />
-                        <ui:Button name="save-bookmark-button" text="保存当前机位" />
-                    </ui:VisualElement>
-                    <ui:VisualElement name="bookmark-list" class="bookmark-list" />
-                    <ui:Label text="Home 战术" class="section-title" />
-                    <ui:DropdownField name="home-set-route" label="二传路线" class="field" />
-                    <ui:DropdownField name="home-spike-route" label="进攻路线" class="field" />
-                    <ui:Label text="Away 战术" class="section-title" />
-                    <ui:DropdownField name="away-set-route" label="二传路线" class="field" />
-                    <ui:DropdownField name="away-spike-route" label="进攻路线" class="field" />
                         </ui:VisualElement>
                     </ui:Foldout>
                 </ui:ScrollView>
@@ -184,8 +169,6 @@
                 <ui:Button name="step-button" text="单步 1/120s" />
                 <ui:Button name="rerun-button" text="同 seed 重跑" />
                 <ui:Button name="edit-button" text="返回编辑" />
-                <ui:Button name="export-button" text="导出决策快照" class="secondary" />
-                <ui:Button name="review-setter-button" text="审核二传" class="secondary" tooltip="在 Unity Editor 中审核最新 Gate I 攻手目标快照" />
             </ui:VisualElement>
             <ui:VisualElement class="evidence-row">
                 <ui:VisualElement class="evidence-summary">
@@ -202,9 +185,12 @@
                 <ui:Label text="仅可旋转、缩放与管理机位；Match setup 不可编辑。" class="panel-hint" />
                 <ui:VisualElement name="preview-3d-viewport" class="preview-3d-viewport" />
                 <ui:VisualElement class="compact-row">
+                    <ui:TextField name="preview-bookmark-name" value="机位 1" class="bookmark-name" />
+                    <ui:Button name="preview-bookmark-save-button" text="保存机位" />
                     <ui:Button name="preview-3d-reset-button" text="重置机位" />
                     <ui:Button name="preview-3d-close-button" text="关闭" class="primary" />
                 </ui:VisualElement>
+                <ui:VisualElement name="preview-bookmark-list" class="bookmark-list" />
             </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="unsaved-leave-modal" class="leave-modal">

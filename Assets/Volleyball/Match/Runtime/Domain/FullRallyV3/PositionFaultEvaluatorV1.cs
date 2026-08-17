@@ -80,7 +80,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public static IReadOnlyList<PositionFaultV1> Evaluate(
             IReadOnlyList<ServePositionSlotV1> slots,
             PositionFaultCoordinateFrameV1 coordinateFrame =
-                PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric)
+                PositionFaultCoordinateFrameV1.LegacySharedWorldLateral)
         {
             if (slots == null) throw new ArgumentNullException(nameof(slots));
             if (slots.Count != 12)
