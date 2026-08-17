@@ -284,7 +284,8 @@ namespace Volleyball.Presentation
 
     public sealed class SimulatedBall : MonoBehaviour
     {
-        public const float DefaultRadius = 0.12f;
+        public const float DefaultRadius =
+            Volleyball.Match.Domain.PreServe.FormalCourtGeometryV1.BallRadiusMeters;
         public const float DefaultFixedStep = 1f / 120f;
 
         [SerializeField]

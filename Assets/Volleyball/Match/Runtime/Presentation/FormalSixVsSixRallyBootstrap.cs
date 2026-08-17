@@ -5,6 +5,7 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Match.Domain.PreServe;
 using Volleyball.Presentation.TrainingLab;
 using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
 using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
@@ -151,6 +152,33 @@ namespace Volleyball.Presentation
                 initialServeArrivalVerticalSpeed: null,
                 initialServeTargetDepthOffsetMeters: null,
                 trainingScenario: scenario);
+        }
+
+        public static FormalSixVsSixRallyDirector InitializeTrainingRallyV5(
+            Transform host,
+            TrainingRallyStartV5 start)
+        {
+            if (host == null) throw new ArgumentNullException(nameof(host));
+            if (start == null) throw new ArgumentNullException(nameof(start));
+            Application.targetFrameRate = 60;
+            CourtBuilder.Build(host, Configuration.CourtHalfLength);
+            var ball = CreateBall(host);
+            var agents = CreateRosterV5(host, start.Setup.BaseContext, 0, 0);
+            var director = host.gameObject.AddComponent<FormalSixVsSixRallyDirector>();
+            director.ConfigureTrainingRallyV5(start);
+            director.InitializeV5(
+                ball,
+                agents,
+                start.Setup.BaseContext,
+                ScoreDisplay.Create(host),
+                configuration: Configuration,
+                firstServingSide: start.Setup.FirstServingSide);
+            director.ConfigureV3Rules(V3RulesMode.Authority);
+            var rosterDisplay = host.gameObject.AddComponent<MatchRosterDisplay>();
+            rosterDisplay.Initialize(director, agents);
+            var camera = host.gameObject.AddComponent<RallyCameraController>();
+            camera.Initialize(ball);
+            return director;
         }
 
         private static FormalSixVsSixRallyDirector Initialize(

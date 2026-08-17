@@ -59,7 +59,7 @@ namespace Volleyball.EditModeTests
             var slots = AllLegalSlots();
             Replace(slots, TeamSide.Home, 4, -3f, -7f);
             Replace(slots, TeamSide.Home, 3, 4f, -7f);
-            Replace(slots, TeamSide.Away, 2, 3f, 7f);
+            Replace(slots, TeamSide.Away, 2, -3f, 7f);
 
             Assert.That(PositionFaultEvaluatorV1.Evaluate(slots).Select(value => value.Rule),
                 Is.EqualTo(new[]
@@ -87,11 +87,15 @@ namespace Volleyball.EditModeTests
         private static List<ServePositionSlotV1> LegalSlots(TeamSide side)
         {
             var sign = side == TeamSide.Home ? -1f : 1f;
+            var lateralSign = side == TeamSide.Home ? 1f : -1f;
             return new List<ServePositionSlotV1>
             {
-                Slot(side, 1, 3f, 6f * sign), Slot(side, 2, 3f, 2f * sign),
-                Slot(side, 3, 0f, 2f * sign), Slot(side, 4, -3f, 2f * sign),
-                Slot(side, 5, -3f, 6f * sign), Slot(side, 6, 0f, 6f * sign)
+                Slot(side, 1, 3f * lateralSign, 6f * sign),
+                Slot(side, 2, 3f * lateralSign, 2f * sign),
+                Slot(side, 3, 0f, 2f * sign),
+                Slot(side, 4, -3f * lateralSign, 2f * sign),
+                Slot(side, 5, -3f * lateralSign, 6f * sign),
+                Slot(side, 6, 0f, 6f * sign)
             };
         }
 

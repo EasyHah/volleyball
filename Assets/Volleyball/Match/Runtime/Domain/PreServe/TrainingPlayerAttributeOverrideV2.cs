@@ -137,5 +137,44 @@ namespace Volleyball.Match.Domain.PreServe
                 Serve ?? source.Serve,
                 Setting ?? source.Set);
         }
+
+        public TrainingPlayerAttributeOverrideV2 DeepCopy()
+        {
+            var copy = new TrainingPlayerAttributeOverrideV2();
+            foreach (TrainingPlayerAttributeFieldV2 field in
+                     Enum.GetValues(typeof(TrainingPlayerAttributeFieldV2)))
+            {
+                if (field == TrainingPlayerAttributeFieldV2.DominantHand)
+                {
+                    if (DominantHand.HasValue)
+                        copy.SetDominantHand(DominantHand.Value);
+                    continue;
+                }
+
+                var value = ValueFor(field);
+                if (value.HasValue) copy.Set(field, value.Value);
+            }
+            return copy;
+        }
+
+        internal int? ValueFor(TrainingPlayerAttributeFieldV2 field)
+        {
+            return field switch
+            {
+                TrainingPlayerAttributeFieldV2.Strength => Strength,
+                TrainingPlayerAttributeFieldV2.Height => HeightMillimeters,
+                TrainingPlayerAttributeFieldV2.Jump => Jump,
+                TrainingPlayerAttributeFieldV2.Movement => Movement,
+                TrainingPlayerAttributeFieldV2.Reaction => Reaction,
+                TrainingPlayerAttributeFieldV2.Coordination => Coordination,
+                TrainingPlayerAttributeFieldV2.Attack => Attack,
+                TrainingPlayerAttributeFieldV2.Defense => Defense,
+                TrainingPlayerAttributeFieldV2.CourtIq => CourtIq,
+                TrainingPlayerAttributeFieldV2.Block => Block,
+                TrainingPlayerAttributeFieldV2.Serve => Serve,
+                TrainingPlayerAttributeFieldV2.Set => Setting,
+                _ => null
+            };
+        }
     }
 }

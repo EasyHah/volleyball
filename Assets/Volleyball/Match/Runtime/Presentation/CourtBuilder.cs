@@ -1,14 +1,15 @@
 using System;
 using UnityEngine;
+using Volleyball.Match.Domain.PreServe;
 
 namespace Volleyball.Presentation
 {
     public static class CourtBuilder
     {
-        public const float HalfWidth = 4.5f;
+        public const float HalfWidth = FormalCourtGeometryV1.HalfWidthMeters;
         public const float HalfLength = 7.5f;
-        public const float FormalHalfLength = 9f;
-        public const float NetHeight = 2.43f;
+        public const float FormalHalfLength = FormalCourtGeometryV1.HalfLengthMeters;
+        public const float NetHeight = FormalCourtGeometryV1.NetHeightMeters;
 
         private static readonly Color FloorColor = new Color(0.36f, 0.76f, 0.94f);
         private static readonly Color CourtColor = new Color(0.93f, 0.71f, 0.4f);

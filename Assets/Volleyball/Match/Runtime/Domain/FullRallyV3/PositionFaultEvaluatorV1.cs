@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.PreServe;
 using Volleyball.Shared.Contracts;
 
 namespace Volleyball.Match.Domain.FullRallyV3
@@ -15,6 +16,12 @@ namespace Volleyball.Match.Domain.FullRallyV3
         Slot3RightOfSlot2 = 4,
         Slot5RightOfSlot6 = 5,
         Slot6RightOfSlot1 = 6
+    }
+
+    public enum PositionFaultCoordinateFrameV1
+    {
+        TeamLocalPointSymmetric = 0,
+        LegacySharedWorldLateral = 1
     }
 
     // Frozen foot projection of one player at the instant a serve is contacted.
@@ -71,7 +78,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
         private const float ProjectionComparisonEpsilon = 0.00001f;
 
         public static IReadOnlyList<PositionFaultV1> Evaluate(
-            IReadOnlyList<ServePositionSlotV1> slots)
+            IReadOnlyList<ServePositionSlotV1> slots,
+            PositionFaultCoordinateFrameV1 coordinateFrame =
+                PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric)
         {
             if (slots == null) throw new ArgumentNullException(nameof(slots));
             if (slots.Count != 12)
@@ -81,8 +90,11 @@ namespace Volleyball.Match.Domain.FullRallyV3
             var home = ValidateAndIndex(slots, TeamSide.Home);
             var away = ValidateAndIndex(slots, TeamSide.Away);
             var faults = new List<PositionFaultV1>();
-            AddFaults(faults, TeamSide.Home, home);
-            AddFaults(faults, TeamSide.Away, away);
+            if (!Enum.IsDefined(typeof(PositionFaultCoordinateFrameV1),
+                    coordinateFrame))
+                throw new ArgumentOutOfRangeException(nameof(coordinateFrame));
+            AddFaults(faults, TeamSide.Home, home, coordinateFrame);
+            AddFaults(faults, TeamSide.Away, away, coordinateFrame);
             return new ReadOnlyCollection<PositionFaultV1>(faults);
         }
 
@@ -116,18 +128,23 @@ namespace Volleyball.Match.Domain.FullRallyV3
         }
 
         private static void AddFaults(ICollection<PositionFaultV1> faults,
-            TeamSide side, ServePositionSlotV1[] slots)
+            TeamSide side, ServePositionSlotV1[] slots,
+            PositionFaultCoordinateFrameV1 coordinateFrame)
         {
             // A front-row player must be closer to the net than its paired back-row player.
             AddDepthFault(faults, side, PositionFaultRuleV1.Slot4BehindSlot5, slots[4], slots[5]);
             AddDepthFault(faults, side, PositionFaultRuleV1.Slot3BehindSlot6, slots[3], slots[6]);
             AddDepthFault(faults, side, PositionFaultRuleV1.Slot2BehindSlot1, slots[2], slots[1]);
 
-            // X is the shared court-left/right axis for both teams' frozen court projections.
-            AddLateralFault(faults, side, PositionFaultRuleV1.Slot4RightOfSlot3, slots[4], slots[3]);
-            AddLateralFault(faults, side, PositionFaultRuleV1.Slot3RightOfSlot2, slots[3], slots[2]);
-            AddLateralFault(faults, side, PositionFaultRuleV1.Slot5RightOfSlot6, slots[5], slots[6]);
-            AddLateralFault(faults, side, PositionFaultRuleV1.Slot6RightOfSlot1, slots[6], slots[1]);
+            // Lateral order is evaluated in the team's net-facing local frame.
+            AddLateralFault(faults, side, coordinateFrame,
+                PositionFaultRuleV1.Slot4RightOfSlot3, slots[4], slots[3]);
+            AddLateralFault(faults, side, coordinateFrame,
+                PositionFaultRuleV1.Slot3RightOfSlot2, slots[3], slots[2]);
+            AddLateralFault(faults, side, coordinateFrame,
+                PositionFaultRuleV1.Slot5RightOfSlot6, slots[5], slots[6]);
+            AddLateralFault(faults, side, coordinateFrame,
+                PositionFaultRuleV1.Slot6RightOfSlot1, slots[6], slots[1]);
         }
 
         private static void AddDepthFault(ICollection<PositionFaultV1> faults,
@@ -143,10 +160,21 @@ namespace Volleyball.Match.Domain.FullRallyV3
         }
 
         private static void AddLateralFault(ICollection<PositionFaultV1> faults,
-            TeamSide side, PositionFaultRuleV1 rule, ServePositionSlotV1 left,
+            TeamSide side, PositionFaultCoordinateFrameV1 coordinateFrame,
+            PositionFaultRuleV1 rule, ServePositionSlotV1 left,
             ServePositionSlotV1 right)
         {
-            if (left.FootProjection.X > right.FootProjection.X + ProjectionComparisonEpsilon)
+            var leftLocal = coordinateFrame ==
+                PositionFaultCoordinateFrameV1.LegacySharedWorldLateral
+                ? left.FootProjection.X
+                : TrainingTeamCourtTransformV1.ToLocal(
+                    side, left.FootProjection).X;
+            var rightLocal = coordinateFrame ==
+                PositionFaultCoordinateFrameV1.LegacySharedWorldLateral
+                ? right.FootProjection.X
+                : TrainingTeamCourtTransformV1.ToLocal(
+                    side, right.FootProjection).X;
+            if (leftLocal > rightLocal + ProjectionComparisonEpsilon)
                 faults.Add(new PositionFaultV1(side, rule, left, right));
         }
     }

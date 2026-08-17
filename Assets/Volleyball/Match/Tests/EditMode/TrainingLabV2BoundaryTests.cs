@@ -145,5 +145,30 @@ namespace Volleyball.EditModeTests
                     Assert.That(source, Does.Not.Contain(token), path + ": " + token);
             }
         }
+
+        [Test]
+        public void TrainingSetupAndOutcomeTypes_DoNotEnterSharedOrCareerArtifacts()
+        {
+            var project = Directory.GetParent(Application.dataPath).FullName;
+            var roots = new[]
+            {
+                "Assets/Volleyball/Shared/Runtime",
+                "Assets/Volleyball/Career/Runtime"
+            };
+            var forbidden = new[]
+            {
+                "MatchSetupDraftV1", "MatchSetupSnapshotV1",
+                "TrainingRallyStartV5", "TrainingRallyOutcomeV1",
+                "TrainingPlayerAttributeOverrideV2"
+            };
+            foreach (var root in roots)
+            foreach (var path in Directory.GetFiles(Path.Combine(project, root),
+                         "*.cs", SearchOption.AllDirectories))
+            {
+                var source = File.ReadAllText(path);
+                foreach (var token in forbidden)
+                    Assert.That(source, Does.Not.Contain(token), path + ": " + token);
+            }
+        }
     }
 }
