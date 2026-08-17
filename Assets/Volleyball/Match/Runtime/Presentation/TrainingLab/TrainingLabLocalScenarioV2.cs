@@ -1,4 +1,6 @@
 using System;
+using System.Security.Cryptography;
+using System.Text;
 using UnityEngine;
 using Volleyball.Match.Domain.PreServe;
 
@@ -60,7 +62,7 @@ namespace Volleyball.Presentation.TrainingLab
         public string SelectedObjectId { get; set; }
         public string BookmarksJson { get; set; }
         public string MatchSetupHash =>
-            new MatchSetupEditorV1(MatchSetup).Freeze().SetupHash;
+            ComputeMatchSetupHash(MatchSetup);
 
         public static TrainingLabLocalScenarioV2 Create(
             string localId,
@@ -105,7 +107,7 @@ namespace Volleyball.Presentation.TrainingLab
                 throw new InvalidOperationException(
                     "Unsupported TrainingLab local scenario version.");
             var setup = MatchSetupJsonV1.Deserialize(file.matchSetupJson);
-            var actualHash = new MatchSetupEditorV1(setup).Freeze().SetupHash;
+            var actualHash = ComputeMatchSetupHash(setup);
             if (!string.Equals(actualHash, file.matchSetupHash,
                     StringComparison.Ordinal))
                 throw new InvalidOperationException(
@@ -121,6 +123,16 @@ namespace Volleyball.Presentation.TrainingLab
             return string.IsNullOrWhiteSpace(value)
                 ? throw new ArgumentException(name + " is required.", name)
                 : value;
+        }
+
+        private static string ComputeMatchSetupHash(MatchSetupDraftV1 setup)
+        {
+            using var sha256 = SHA256.Create();
+            var bytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(
+                MatchSetupJsonV1.Serialize(setup)));
+            var output = new StringBuilder(bytes.Length * 2);
+            foreach (var value in bytes) output.Append(value.ToString("x2"));
+            return output.ToString();
         }
     }
 }

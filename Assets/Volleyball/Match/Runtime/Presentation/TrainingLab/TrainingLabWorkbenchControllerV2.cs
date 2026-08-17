@@ -16,23 +16,58 @@ namespace Volleyball.Presentation.TrainingLab
     /// translated into Match-owned editor commands here; UI never mutates a
     /// rotation list directly.
     /// </summary>
-    public sealed class TrainingLabWorkbenchControllerV2
+    public sealed class TrainingLabWorkbenchControllerV2 : IDisposable
     {
-        private readonly MatchSetupEditorV1 _editor;
+        private MatchSetupEditorV1 _editor;
+        private readonly ITrainingRallySimulationControllerV5 _runtime;
+        private readonly TrainingLabLocalScenarioRepositoryV2 _localRepository;
+        private TrainingLabLocalScenarioV2 _localScenario;
+        private string _savedPersistenceFingerprint = string.Empty;
+        private bool _hasSavedLocalScenario;
+        private bool _pendingLeaveToHub;
+        private string _pendingSwitchEntryKey;
+        private bool _disposed;
 
-        public TrainingLabWorkbenchControllerV2(MatchSetupDraftV1 setup)
+        public TrainingLabWorkbenchControllerV2(MatchSetupDraftV1 setup,
+            ITrainingRallySimulationControllerV5 runtime = null)
         {
             MatchSetup = setup ?? throw new ArgumentNullException(nameof(setup));
             _editor = new MatchSetupEditorV1(setup);
+            _runtime = runtime;
+            if (_runtime != null)
+            {
+                _runtime.Completed += OnRuntimeCompleted;
+                _runtime.Faulted += OnRuntimeFaulted;
+            }
             CurrentStep = setup.RotationLocked
                 ? TrainingLabStepV1.Positioning
                 : TrainingLabStepV1.Rotation;
             SelectedObjectId = "ball";
         }
 
+        public TrainingLabWorkbenchControllerV2(
+            TrainingLabLocalScenarioRepositoryV2 repository,
+            TrainingLabLocalScenarioV2 localScenario,
+            ITrainingRallySimulationControllerV5 runtime = null,
+            bool hasSavedCopy = false)
+            : this(localScenario?.MatchSetup ?? throw new ArgumentNullException(
+                nameof(localScenario)), runtime)
+        {
+            _localRepository = repository ?? throw new ArgumentNullException(
+                nameof(repository));
+            _localScenario = localScenario;
+            _hasSavedLocalScenario = hasSavedCopy;
+            RestoreUiState(localScenario);
+            _savedPersistenceFingerprint = hasSavedCopy
+                ? PersistenceFingerprint()
+                : string.Empty;
+        }
+
         public event Action Changed;
 
-        public MatchSetupDraftV1 MatchSetup { get; }
+        public MatchSetupDraftV1 MatchSetup { get; private set; }
+        public TrainingScenarioLabStateV1 State { get; private set; } =
+            TrainingScenarioLabStateV1.Editing;
         public TrainingLabStepV1 CurrentStep { get; private set; }
         public string SelectedObjectId { get; private set; }
         public IReadOnlyList<PlayerId> FocusedPlayerIds { get; private set; } =
@@ -51,6 +86,73 @@ namespace Volleyball.Presentation.TrainingLab
         public TrainingServeToolV1 ServeTool { get; private set; } =
             TrainingServeToolV1.MoveBall;
         public string LastEditFailure { get; private set; } = string.Empty;
+        public MatchSetupSnapshotV1 PreflightSnapshot { get; private set; }
+        public MatchSetupSnapshotV1 RunSnapshot { get; private set; }
+        public TrainingRallyOutcomeV1 Outcome { get; private set; }
+        public string PreflightError { get; private set; } = string.Empty;
+        public string RuntimeError { get; private set; } = string.Empty;
+        public bool EditingLocked => State == TrainingScenarioLabStateV1.Running ||
+            State == TrainingScenarioLabStateV1.Paused;
+        public TrainingLabLocalScenarioV2 LocalScenario => _localScenario;
+        public bool IsDirty => _localScenario != null &&
+            (!_hasSavedLocalScenario || !string.Equals(
+                PersistenceFingerprint(), _savedPersistenceFingerprint,
+                StringComparison.Ordinal));
+
+        public void SaveCurrentLocalScenario()
+        {
+            EnsureLocalScenario();
+            SyncLocalUiState();
+            _localRepository.Save(_localScenario);
+            _hasSavedLocalScenario = true;
+            _savedPersistenceFingerprint = PersistenceFingerprint();
+            Changed?.Invoke();
+        }
+
+        public TrainingLabLeaveRequestV1 RequestLeaveToHub()
+        {
+            return RequestLeave(true, null);
+        }
+
+        public TrainingLabLeaveRequestV1 RequestSwitch(string entryKey)
+        {
+            if (string.IsNullOrWhiteSpace(entryKey))
+                throw new ArgumentException("Entry key is required.",
+                    nameof(entryKey));
+            return RequestLeave(false, entryKey);
+        }
+
+        public TrainingLabLeaveRequestV1 ResolveLeave(
+            TrainingLabLeaveDecisionV1 decision)
+        {
+            EnsureLocalScenario();
+            if (!_pendingLeaveToHub &&
+                string.IsNullOrWhiteSpace(_pendingSwitchEntryKey))
+                throw new InvalidOperationException(
+                    "There is no pending TrainingLab leave request.");
+            var toHub = _pendingLeaveToHub;
+            var target = _pendingSwitchEntryKey;
+            if (decision == TrainingLabLeaveDecisionV1.Cancel)
+            {
+                ClearPendingLeave();
+                return LeaveRequest(false, false, false, toHub, target,
+                    "Leave cancelled.");
+            }
+            if (decision == TrainingLabLeaveDecisionV1.Save)
+                SaveCurrentLocalScenario();
+            else if (decision == TrainingLabLeaveDecisionV1.Discard)
+            {
+                if (_hasSavedLocalScenario)
+                    RestoreLocalScenario(_localRepository.Load(
+                        _localScenario.LocalId));
+            }
+            else
+                throw new ArgumentOutOfRangeException(nameof(decision));
+            ClearPendingLeave();
+            Changed?.Invoke();
+            return LeaveRequest(true, false, false, toHub, target,
+                string.Empty);
+        }
 
         public bool TryDropRotationCard(
             TeamSide sourceSide,
@@ -213,6 +315,24 @@ namespace Volleyball.Presentation.TrainingLab
                 MatchSetup.BallVelocity.X, vy, vz)));
         }
 
+        public bool TrySetExactBallPosition(SimVector3 position)
+        {
+            EnsureServeSetup();
+            if (ServeTool != TrainingServeToolV1.MoveBall)
+                throw new InvalidOperationException(
+                    "Select Move Ball before editing exact position fields.");
+            return TryEdit(() => _editor.SetBallPosition(position));
+        }
+
+        public bool TrySetExactBallVelocity(SimVector3 velocity)
+        {
+            EnsureServeSetup();
+            if (ServeTool != TrainingServeToolV1.AdjustVelocity)
+                throw new InvalidOperationException(
+                    "Select Adjust Velocity before editing exact velocity fields.");
+            return TryEdit(() => _editor.SetBallVelocity(velocity));
+        }
+
         public void SetFirstServingSide(TeamSide side)
         {
             if (!Enum.IsDefined(typeof(TeamSide), side))
@@ -248,6 +368,7 @@ namespace Volleyball.Presentation.TrainingLab
         public void SetPlayerAttributeOverride(PlayerId playerId,
             TrainingPlayerAttributeFieldV2 field, int value)
         {
+            EnsureNotRunning();
             var item = OverrideFor(playerId, true);
             item.Set(field, value);
             Changed?.Invoke();
@@ -256,6 +377,7 @@ namespace Volleyball.Presentation.TrainingLab
         public void SetPlayerDominantHandOverride(PlayerId playerId,
             DominantHandV5 hand)
         {
+            EnsureNotRunning();
             var item = OverrideFor(playerId, true);
             item.SetDominantHand(hand);
             Changed?.Invoke();
@@ -264,6 +386,7 @@ namespace Volleyball.Presentation.TrainingLab
         public void ClearPlayerAttributeOverride(PlayerId playerId,
             TrainingPlayerAttributeFieldV2 field)
         {
+            EnsureNotRunning();
             var item = OverrideFor(playerId, false);
             if (item == null) return;
             item.Clear(field);
@@ -273,6 +396,7 @@ namespace Volleyball.Presentation.TrainingLab
 
         public void ResetPlayerAttributeOverrides(PlayerId playerId)
         {
+            EnsureNotRunning();
             if (!MatchSetup.AttributeOverrides.Remove(playerId)) return;
             Changed?.Invoke();
         }
@@ -302,6 +426,118 @@ namespace Volleyball.Presentation.TrainingLab
             return OverrideFor(playerId, false);
         }
 
+        public bool EnterPreflight()
+        {
+            EnsureNotRunning();
+            CurrentStep = TrainingLabStepV1.Validation;
+            PreflightSnapshot = null;
+            PreflightError = string.Empty;
+            try
+            {
+                PreflightSnapshot = _editor.Freeze();
+                State = TrainingScenarioLabStateV1.Ready;
+                Changed?.Invoke();
+                return true;
+            }
+            catch (Exception exception) when (exception is ArgumentException ||
+                                              exception is InvalidOperationException)
+            {
+                PreflightError = exception.Message;
+                State = TrainingScenarioLabStateV1.Editing;
+                Changed?.Invoke();
+                return false;
+            }
+        }
+
+        public bool Run()
+        {
+            if (_runtime == null) throw new InvalidOperationException(
+                "No native V5 training runtime is bound.");
+            if (PreflightSnapshot == null && !EnterPreflight()) return false;
+            if (State != TrainingScenarioLabStateV1.Ready)
+                throw new InvalidOperationException(
+                    "A valid automatic preflight is required before Run.");
+            Outcome = null;
+            RuntimeError = string.Empty;
+            RunSnapshot = PreflightSnapshot;
+            _runtime.Start(RunSnapshot);
+            State = TrainingScenarioLabStateV1.Running;
+            CurrentStep = TrainingLabStepV1.Running;
+            Changed?.Invoke();
+            return true;
+        }
+
+        public void Pause()
+        {
+            if (State != TrainingScenarioLabStateV1.Running)
+                throw new InvalidOperationException(
+                    "Only a running V5 training rally can be paused.");
+            _runtime.Pause();
+            State = TrainingScenarioLabStateV1.Paused;
+            Changed?.Invoke();
+        }
+
+        public void Resume()
+        {
+            if (State != TrainingScenarioLabStateV1.Paused)
+                throw new InvalidOperationException(
+                    "Only a paused V5 training rally can resume.");
+            _runtime.Resume();
+            State = TrainingScenarioLabStateV1.Running;
+            Changed?.Invoke();
+        }
+
+        public void StepRuntime()
+        {
+            if (State != TrainingScenarioLabStateV1.Paused)
+                throw new InvalidOperationException(
+                    "Single-step requires a paused V5 training rally.");
+            _runtime.Step();
+        }
+
+        public void RerunSameSnapshot()
+        {
+            if (State != TrainingScenarioLabStateV1.Completed ||
+                RunSnapshot == null)
+                throw new InvalidOperationException(
+                    "A completed frozen V5 rally is required for rerun.");
+            _runtime.Reset();
+            Outcome = null;
+            RuntimeError = string.Empty;
+            _runtime.Start(RunSnapshot);
+            State = TrainingScenarioLabStateV1.Running;
+            CurrentStep = TrainingLabStepV1.Running;
+            Changed?.Invoke();
+        }
+
+        public void ReturnToEditing()
+        {
+            if (State == TrainingScenarioLabStateV1.Running ||
+                State == TrainingScenarioLabStateV1.Paused)
+                throw new InvalidOperationException(
+                    "Stop the active V5 training rally before editing.");
+            _runtime?.Reset();
+            Outcome = null;
+            RuntimeError = string.Empty;
+            PreflightSnapshot = null;
+            RunSnapshot = null;
+            State = TrainingScenarioLabStateV1.Editing;
+            CurrentStep = TrainingLabStepV1.ServeBall;
+            Changed?.Invoke();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            if (_runtime != null)
+            {
+                _runtime.Completed -= OnRuntimeCompleted;
+                _runtime.Faulted -= OnRuntimeFaulted;
+                _runtime.Reset();
+            }
+            _disposed = true;
+        }
+
         public void SelectObject(PlayerId playerId)
         {
             SelectedObjectId = string.IsNullOrWhiteSpace(playerId.Value)
@@ -311,12 +547,134 @@ namespace Volleyball.Presentation.TrainingLab
             Changed?.Invoke();
         }
 
+        private TrainingLabLeaveRequestV1 RequestLeave(bool toHub,
+            string targetEntryKey)
+        {
+            EnsureLocalScenario();
+            if (EditingLocked)
+            {
+                ClearPendingLeave();
+                return LeaveRequest(false, false, true, toHub,
+                    targetEntryKey,
+                    "Stop the active V5 training rally before leaving.");
+            }
+            if (!IsDirty)
+                return LeaveRequest(true, false, false, toHub,
+                    targetEntryKey, string.Empty);
+            _pendingLeaveToHub = toHub;
+            _pendingSwitchEntryKey = targetEntryKey;
+            return LeaveRequest(false, true, false, toHub,
+                targetEntryKey,
+                "The local training scenario has unsaved changes.");
+        }
+
+        private void EnsureLocalScenario()
+        {
+            if (_disposed) throw new ObjectDisposedException(
+                nameof(TrainingLabWorkbenchControllerV2));
+            if (_localRepository == null || _localScenario == null)
+                throw new InvalidOperationException(
+                    "No native V5 local scenario is open.");
+        }
+
+        private void SyncLocalUiState()
+        {
+            _localScenario.MatchSetup = MatchSetup;
+            _localScenario.ActiveStep = CurrentStep.ToString();
+            _localScenario.ActiveView = ActiveServeView.ToString();
+            _localScenario.ActiveTool = ServeTool.ToString();
+            _localScenario.SelectedObjectId = SelectedObjectId;
+        }
+
+        private void RestoreLocalScenario(TrainingLabLocalScenarioV2 local)
+        {
+            _localScenario = local ?? throw new ArgumentNullException(nameof(local));
+            MatchSetup = local.MatchSetup;
+            _editor = new MatchSetupEditorV1(MatchSetup);
+            RestoreUiState(local);
+            PreflightSnapshot = null;
+            RunSnapshot = null;
+            Outcome = null;
+            RuntimeError = string.Empty;
+            PreflightError = string.Empty;
+            State = TrainingScenarioLabStateV1.Editing;
+            _savedPersistenceFingerprint = PersistenceFingerprint();
+        }
+
+        private void RestoreUiState(TrainingLabLocalScenarioV2 local)
+        {
+            if (!Enum.TryParse(local.ActiveStep, out TrainingLabStepV1 step))
+                step = MatchSetup.RotationLocked
+                    ? TrainingLabStepV1.Positioning
+                    : TrainingLabStepV1.Rotation;
+            if (!Enum.TryParse(local.ActiveView, out TrainingServeViewV1 view))
+                view = TrainingServeViewV1.Top;
+            if (!Enum.TryParse(local.ActiveTool, out TrainingServeToolV1 tool))
+                tool = TrainingServeToolV1.MoveBall;
+            CurrentStep = step;
+            ActiveServeView = view;
+            ServeTool = tool;
+            SelectedObjectId = string.IsNullOrWhiteSpace(local.SelectedObjectId)
+                ? "ball"
+                : local.SelectedObjectId;
+        }
+
+        private string PersistenceFingerprint()
+        {
+            return string.Join("\n",
+                MatchSetupJsonV1.Serialize(MatchSetup),
+                _localScenario.DisplayName ?? string.Empty,
+                CurrentStep.ToString(),
+                ActiveServeView.ToString(),
+                ServeTool.ToString(),
+                SelectedObjectId ?? string.Empty,
+                _localScenario.BookmarksJson ?? string.Empty);
+        }
+
+        private void ClearPendingLeave()
+        {
+            _pendingLeaveToHub = false;
+            _pendingSwitchEntryKey = null;
+        }
+
+        private static TrainingLabLeaveRequestV1 LeaveRequest(bool canLeave,
+            bool requiresDecision, bool isBlocked, bool toHub,
+            string targetEntryKey, string message)
+        {
+            return new TrainingLabLeaveRequestV1(canLeave,
+                requiresDecision, isBlocked, toHub, targetEntryKey, message);
+        }
+
         private void EnsureRotationEditable()
         {
             if (MatchSetup.RotationLocked ||
                 CurrentStep != TrainingLabStepV1.Rotation)
                 throw new InvalidOperationException(
                     "Reopen the rotation page before changing Match slots.");
+        }
+
+        private void EnsureNotRunning()
+        {
+            if (_disposed) throw new ObjectDisposedException(
+                nameof(TrainingLabWorkbenchControllerV2));
+            if (EditingLocked) throw new InvalidOperationException(
+                "The frozen V5 training runtime cannot be edited.");
+        }
+
+        private void OnRuntimeCompleted(TrainingRallyOutcomeV1 outcome)
+        {
+            Outcome = outcome ?? throw new ArgumentNullException(nameof(outcome));
+            State = TrainingScenarioLabStateV1.Completed;
+            Changed?.Invoke();
+        }
+
+        private void OnRuntimeFaulted(string message)
+        {
+            RuntimeError = string.IsNullOrWhiteSpace(message)
+                ? "Native V5 training runtime faulted."
+                : message;
+            State = TrainingScenarioLabStateV1.Faulted;
+            Changed?.Invoke();
         }
 
         private void EnsurePositioning()

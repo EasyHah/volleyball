@@ -33,7 +33,7 @@
             <ui:Button name="step-rotation" text="1 轮转" />
             <ui:Button name="step-positioning" text="2 摆位" />
             <ui:Button name="step-serve" text="3 发球球" />
-            <ui:Button name="step-validation" text="4 校验" />
+            <ui:Button name="step-validation" text="4 自动预检" />
             <ui:Button name="step-running" text="5 运行" />
             <ui:Label name="monitor-label" class="monitor-label" />
         </ui:VisualElement>
@@ -131,7 +131,7 @@
                     </ui:VisualElement>
 
                     <ui:VisualElement name="context-validation" class="step-context">
-                        <ui:Label text="冻结校验" class="section-title" />
+                        <ui:Label text="自动预检" class="section-title" />
                         <ui:Label name="validation-summary" class="step-action-hint" />
                         <ui:VisualElement name="issue-list" class="issue-list" />
                         <ui:Button name="context-run-button" text="运行正式回合" class="primary" />
@@ -204,6 +204,17 @@
                 <ui:VisualElement class="compact-row">
                     <ui:Button name="preview-3d-reset-button" text="重置机位" />
                     <ui:Button name="preview-3d-close-button" text="关闭" class="primary" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="unsaved-leave-modal" class="leave-modal">
+            <ui:VisualElement class="leave-dialog">
+                <ui:Label text="尚未保存" class="panel-title" />
+                <ui:Label name="leave-message" text="当前训练情景有未保存的更改。" class="panel-hint" />
+                <ui:VisualElement class="compact-row">
+                    <ui:Button name="leave-save-button" text="保存并离开" class="primary" />
+                    <ui:Button name="leave-discard-button" text="放弃更改" />
+                    <ui:Button name="leave-cancel-button" text="取消" class="secondary" />
                 </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>

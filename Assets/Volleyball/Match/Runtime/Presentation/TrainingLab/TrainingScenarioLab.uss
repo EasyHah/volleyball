@@ -110,6 +110,8 @@
 .serve-side-ball { position: absolute; width: 24px; height: 24px; border-radius: 12px; background-color: rgb(246, 201, 72); border-width: 2px; border-color: rgb(255, 244, 184); }
 .serve-velocity-endpoint { position: absolute; width: 16px; height: 16px; border-radius: 8px; background-color: rgb(235, 79, 61); border-width: 2px; border-color: rgb(255, 188, 171); }
 .preview-3d-modal { display: none; position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; background-color: rgba(3, 9, 12, .82); }
+.leave-modal { display: none; position: absolute; left: 0; right: 0; top: 0; bottom: 0; align-items: center; justify-content: center; background-color: rgba(3, 9, 12, .82); }
+.leave-dialog { width: 440px; padding: 24px; background-color: rgb(19, 29, 34); border-left-width: 1px; border-right-width: 1px; border-top-width: 1px; border-bottom-width: 1px; border-left-color: rgb(72, 96, 104); border-right-color: rgb(72, 96, 104); border-top-color: rgb(72, 96, 104); border-bottom-color: rgb(72, 96, 104); }
 .preview-3d-dialog { width: 72%; height: 76%; min-width: 720px; min-height: 520px; padding: 18px; background-color: rgb(12, 27, 36); border-width: 1px; border-color: rgb(68, 111, 123); border-radius: 6px; }
 .preview-3d-viewport { flex-grow: 1; min-height: 0; background-color: rgb(6, 15, 20); border-width: 1px; border-color: rgb(42, 76, 87); }
 .tactical-board {

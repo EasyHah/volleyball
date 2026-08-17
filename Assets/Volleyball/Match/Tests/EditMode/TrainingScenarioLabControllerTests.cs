@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine.UIElements;
@@ -439,6 +440,100 @@ namespace Volleyball.EditModeTests
                 .ClassListContains("explicit-override"), Is.True);
         }
 
+        [Test]
+        public void V5AutomaticPreflight_PassesExactFrozenSnapshotAndRerunsIt()
+        {
+            var runtime = new FakeV5Runtime();
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(
+                setup, runtime);
+            controller.ConfirmRotation();
+            controller.ContinueToServeSetup();
+
+            Assert.That(controller.EnterPreflight(), Is.True);
+            var frozen = controller.PreflightSnapshot;
+            Assert.That(frozen, Is.Not.Null);
+            Assert.That(controller.Run(), Is.True);
+            Assert.That(runtime.Starts, Has.Count.EqualTo(1));
+            Assert.That(runtime.Starts[0], Is.SameAs(frozen));
+            Assert.That(controller.RunSnapshot, Is.SameAs(frozen));
+            Assert.That(() => controller.SetPlayerAttributeOverride(
+                    setup.HomeRotation[0],
+                    TrainingPlayerAttributeFieldV2.Attack, 1000),
+                Throws.InvalidOperationException);
+
+            runtime.Complete(frozen);
+            Assert.That(controller.State,
+                Is.EqualTo(TrainingScenarioLabStateV1.Completed));
+            controller.RerunSameSnapshot();
+            Assert.That(runtime.Starts, Has.Count.EqualTo(2));
+            Assert.That(runtime.Starts[1], Is.SameAs(frozen));
+        }
+
+        [Test]
+        public void V5InvalidAutomaticPreflight_DoesNotCreateRuntime()
+        {
+            var runtime = new FakeV5Runtime();
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(
+                setup, runtime);
+            setup.HomeRotation.RemoveAt(0);
+
+            Assert.That(controller.EnterPreflight(), Is.False);
+            Assert.That(controller.PreflightSnapshot, Is.Null);
+            Assert.That(controller.PreflightError, Is.Not.Empty);
+            Assert.That(runtime.Starts, Is.Empty);
+        }
+
+        [Test]
+        public void V5DirtyLeave_SaveDiscardCancelAndRunningBlockUseLocalDto()
+        {
+            var root = Path.Combine(Path.GetTempPath(),
+                "training-v5-leave-" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                var repository = new TrainingLabLocalScenarioRepositoryV2(root);
+                var setup = V5Setup();
+                var local = TrainingLabLocalScenarioV2.Create("local-v5",
+                    "Local V5", setup, "Rotation", "Top", "MoveBall",
+                    "ball");
+                var runtime = new FakeV5Runtime();
+                using var controller = new TrainingLabWorkbenchControllerV2(
+                    repository, local, runtime);
+
+                Assert.That(controller.IsDirty, Is.True);
+                Assert.That(controller.RequestLeaveToHub().RequiresDecision,
+                    Is.True);
+                Assert.That(controller.ResolveLeave(
+                    TrainingLabLeaveDecisionV1.Cancel).CanLeave, Is.False);
+                controller.RequestLeaveToHub();
+                Assert.That(controller.ResolveLeave(
+                    TrainingLabLeaveDecisionV1.Save).CanLeave, Is.True);
+                Assert.That(controller.IsDirty, Is.False);
+
+                var savedHash = repository.Load("local-v5").MatchSetupHash;
+                controller.ConfirmRotation();
+                Assert.That(controller.IsDirty, Is.True);
+                controller.RequestLeaveToHub();
+                controller.ResolveLeave(TrainingLabLeaveDecisionV1.Discard);
+                Assert.That(controller.IsDirty, Is.False);
+                Assert.That(controller.LocalScenario.MatchSetupHash,
+                    Is.EqualTo(savedHash));
+
+                controller.ConfirmRotation();
+                controller.ContinueToServeSetup();
+                Assert.That(controller.EnterPreflight(), Is.True);
+                Assert.That(controller.Run(), Is.True);
+                var blocked = controller.RequestLeaveToHub();
+                Assert.That(blocked.IsBlocked, Is.True);
+                Assert.That(blocked.RequiresDecision, Is.False);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
         private static TrainingScenarioDraftStoreV1 Store()
         {
             return new TrainingScenarioDraftStoreV1(
@@ -553,6 +648,45 @@ namespace Volleyball.EditModeTests
             {
                 Faulted?.Invoke(message);
             }
+        }
+
+        private sealed class FakeV5Runtime :
+            ITrainingRallySimulationControllerV5
+        {
+            public event Action<TrainingRallyOutcomeV1> Completed;
+            public event Action<string> Faulted;
+            public readonly List<MatchSetupSnapshotV1> Starts =
+                new List<MatchSetupSnapshotV1>();
+            public bool HasRuntime { get; private set; }
+            public bool IsPaused { get; private set; }
+            public MatchSetupSnapshotV1 StartedSnapshot { get; private set; }
+
+            public void Start(MatchSetupSnapshotV1 snapshot)
+            {
+                Starts.Add(snapshot);
+                StartedSnapshot = snapshot;
+                HasRuntime = true;
+                IsPaused = false;
+            }
+
+            public void Pause() => IsPaused = true;
+            public void Resume() => IsPaused = false;
+            public void Step() { }
+            public void Reset()
+            {
+                HasRuntime = false;
+                IsPaused = false;
+                StartedSnapshot = null;
+            }
+
+            public void Complete(MatchSetupSnapshotV1 snapshot)
+            {
+                Completed?.Invoke(new TrainingRallyOutcomeV1(
+                    new TrainingRallyStartV5(snapshot), TeamSide.Home,
+                    1, 0, "test", 1, null, null));
+            }
+
+            public void Fail(string message) => Faulted?.Invoke(message);
         }
     }
 }
