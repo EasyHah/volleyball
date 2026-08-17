@@ -88,12 +88,20 @@ namespace Volleyball.PlayModeTests
                     Is.EqualTo(DisplayStyle.Flex));
                 Assert.That(root.Q("context-positioning").resolvedStyle.display,
                     Is.EqualTo(DisplayStyle.None));
+                Assert.That(root.Q("rotation-board").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("rotation-home-grid").childCount,
+                    Is.EqualTo(6));
+                Assert.That(root.Q("rotation-away-grid").childCount,
+                    Is.EqualTo(6));
 
                 controller.ConfirmRotation();
                 yield return null;
                 Assert.That(root.Q("context-positioning").resolvedStyle.display,
                     Is.EqualTo(DisplayStyle.Flex));
                 Assert.That(root.Q("context-rotation").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.None));
+                Assert.That(root.Q("rotation-board").resolvedStyle.display,
                     Is.EqualTo(DisplayStyle.None));
 
                 controller.SelectServeTool(TrainingServeToolV1.MoveBall);

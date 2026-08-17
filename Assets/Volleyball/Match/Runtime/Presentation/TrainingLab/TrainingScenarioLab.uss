@@ -230,6 +230,24 @@
 .vector-field { flex-grow: 1; margin-right: 5px; }
 .selection-label { color: rgb(242, 196, 93); }
 .rotation-list, .attribute-table, .bookmark-list { margin-top: 4px; padding: 5px; background-color: rgb(9, 23, 30); border-width: 1px; border-color: rgb(42, 76, 87); }
+.rotation-board { flex-grow: 1; min-height: 0; flex-direction: row; align-items: center; justify-content: center; }
+.rotation-team-board { width: 46%; max-width: 520px; margin: 12px; padding: 16px; background-color: rgb(11, 28, 36); border-width: 1px; border-color: rgb(48, 85, 96); border-radius: 5px; }
+.rotation-team-title { margin-bottom: 5px; color: rgb(104, 198, 202); -unity-font-style: bold; }
+.rotation-card-grid { flex-direction: row; flex-wrap: wrap; }
+.rotation-card {
+    width: 48%;
+    min-height: 82px;
+    margin-right: 2%;
+    margin-bottom: 6px;
+    padding: 7px;
+    background-color: rgb(23, 51, 61);
+    border-width: 1px;
+    border-color: rgb(61, 101, 112);
+    border-radius: 4px;
+}
+.rotation-card-slot { color: rgb(242, 196, 93); -unity-font-style: bold; }
+.rotation-card-name { margin-top: 3px; color: rgb(234, 246, 246); -unity-font-style: bold; white-space: normal; }
+.rotation-card-role { margin-top: 2px; color: rgb(139, 174, 181); font-size: 10px; }
 .rotation-row, .attribute-row, .bookmark-row { flex-direction: row; align-items: center; min-height: 25px; color: rgb(195, 218, 221); font-size: 11px; }
 .rotation-row Label { flex-grow: 1; }
 .rotation-row DropdownField { width: 220px; }

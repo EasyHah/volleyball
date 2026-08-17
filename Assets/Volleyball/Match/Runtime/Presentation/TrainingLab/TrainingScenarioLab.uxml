@@ -43,6 +43,16 @@
                 <ui:VisualElement class="world-chip-row" picking-mode="Ignore">
                     <ui:Label name="viewport-hint" text="先确认轮转，再拖动球员摆位" class="world-chip" />
                 </ui:VisualElement>
+                <ui:VisualElement name="rotation-board" class="rotation-board">
+                    <ui:VisualElement class="rotation-team-board home-rotation-board">
+                        <ui:Label text="HOME · 面向球网" class="rotation-team-title" />
+                        <ui:VisualElement name="rotation-home-grid" class="rotation-card-grid" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="rotation-team-board away-rotation-board">
+                        <ui:Label text="AWAY · 面向球网" class="rotation-team-title" />
+                        <ui:VisualElement name="rotation-away-grid" class="rotation-card-grid" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
                 <ui:VisualElement name="tactical-board" class="tactical-board">
                     <ui:VisualElement name="court-surface" class="court-surface">
                         <ui:VisualElement class="court-zone court-home" picking-mode="Ignore" />
@@ -71,8 +81,7 @@
                 <ui:ScrollView name="context-scroll" class="context-scroll">
                     <ui:VisualElement name="context-rotation" class="step-context">
                         <ui:Label text="轮转位次" class="section-title" />
-                        <ui:Label text="确认后锁定 1–6 位次，才能进入实际摆位。" class="mini-label" />
-                        <ui:VisualElement name="rotation-list" class="rotation-list" />
+                        <ui:Label text="面向球网：右后为 1 号位，逆时针编号，中后为 6 号位。" class="mini-label" />
                         <ui:VisualElement class="compact-row">
                             <ui:Button name="confirm-rotation-button" text="确认并锁定位次" />
                             <ui:Button name="reopen-rotation-button" text="重新编辑轮转" class="secondary" />

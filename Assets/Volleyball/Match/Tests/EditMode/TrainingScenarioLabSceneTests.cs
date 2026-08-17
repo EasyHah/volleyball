@@ -71,6 +71,9 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q<Button>("more-button"), Is.Not.Null);
             Assert.That(root.Q("advanced-settings"), Is.Not.Null);
             Assert.That(root.Q("context-rotation"), Is.Not.Null);
+            Assert.That(root.Q("rotation-board"), Is.Not.Null);
+            Assert.That(root.Q("rotation-home-grid"), Is.Not.Null);
+            Assert.That(root.Q("rotation-away-grid"), Is.Not.Null);
             Assert.That(root.Q("context-positioning"), Is.Not.Null);
             Assert.That(root.Q("context-serve-ball"), Is.Not.Null);
             Assert.That(root.Q("context-validation"), Is.Not.Null);

@@ -65,7 +65,9 @@ namespace Volleyball.Presentation.TrainingLab
         private VisualElement _positionInputs;
         private VisualElement _rotationIssues;
         private VisualElement _faultSummary;
-        private VisualElement _rotationList;
+        private VisualElement _rotationBoard;
+        private VisualElement _homeRotationGrid;
+        private VisualElement _awayRotationGrid;
         private VisualElement _attributeTable;
         private VisualElement _bookmarkList;
         private Label _state;
@@ -113,6 +115,8 @@ namespace Volleyball.Presentation.TrainingLab
         private bool _initialized;
         private int _dragPointer = -1;
         private string _dragObjectId;
+        private TeamSide? _rotationDragSide;
+        private int _rotationDragSlot;
         private Rect _courtBoardRect;
         private Font _runtimeFont;
 
@@ -196,7 +200,9 @@ namespace Volleyball.Presentation.TrainingLab
             _runningContext = _root.Q<VisualElement>("context-running");
             _rotationIssues = _root.Q<VisualElement>("rotation-issues");
             _faultSummary = _root.Q<VisualElement>("position-fault-summary");
-            _rotationList = _root.Q<VisualElement>("rotation-list");
+            _rotationBoard = _root.Q<VisualElement>("rotation-board");
+            _homeRotationGrid = _root.Q<VisualElement>("rotation-home-grid");
+            _awayRotationGrid = _root.Q<VisualElement>("rotation-away-grid");
             _attributeTable = _root.Q<VisualElement>("attribute-table");
             _bookmarkList = _root.Q<VisualElement>("bookmark-list");
             _state = _root.Q<Label>("state-label");
@@ -691,7 +697,8 @@ namespace Volleyball.Presentation.TrainingLab
 
         private void RenderRotationAndAttributes()
         {
-            _rotationList.Clear();
+            _homeRotationGrid.Clear();
+            _awayRotationGrid.Clear();
             foreach (var side in new[] { TeamSide.Home, TeamSide.Away })
             {
                 var rotation = side == TeamSide.Home
@@ -700,32 +707,16 @@ namespace Volleyball.Presentation.TrainingLab
                 var teamPlayers = (side == TeamSide.Home
                         ? _controller.Draft.Context.Home.Players
                         : _controller.Draft.Context.Away.Players)
-                    .OrderBy(value => value.JerseyNumber)
-                    .ThenBy(value => value.PlayerId.Value, StringComparer.Ordinal)
                     .ToArray();
-                var choices = teamPlayers.Select(RotationChoice).ToList();
+                var grid = side == TeamSide.Home
+                    ? _homeRotationGrid
+                    : _awayRotationGrid;
                 for (var index = 0; index < rotation.Count; index++)
                 {
-                    var slot = index;
+                    var slot = index + 1;
                     var selected = teamPlayers.Single(value =>
-                        value.PlayerId.Equals(rotation[slot]));
-                    var row = new VisualElement { name = "rotation-" + side + "-" + (slot + 1) };
-                    row.AddToClassList("rotation-row");
-                    row.Add(new Label(side + " " + (slot + 1)));
-                    var picker = new DropdownField(choices, RotationChoice(selected));
-                    picker.SetEnabled(!_controller.EditingLocked &&
-                        !_controller.Draft.RotationLocked);
-                    picker.RegisterValueChangedCallback(change =>
-                    {
-                        if (_rendering) return;
-                        var selectedIndex = choices.IndexOf(change.newValue);
-                        if (selectedIndex < 0) return;
-                        var updated = rotation.ToArray();
-                        updated[slot] = teamPlayers[selectedIndex].PlayerId;
-                        _controller.SetRotation(side, updated);
-                    });
-                    row.Add(picker);
-                    _rotationList.Add(row);
+                        value.PlayerId.Equals(rotation[index]));
+                    grid.Add(CreateRotationCard(selected, side, slot));
                 }
             }
 
@@ -757,6 +748,53 @@ namespace Volleyball.Presentation.TrainingLab
                 button.AddToClassList("bookmark-row");
                 _bookmarkList.Add(button);
             }
+        }
+
+        private VisualElement CreateRotationCard(
+            PlayerSnapshotV4 player,
+            TeamSide side,
+            int slot)
+        {
+            var card = new VisualElement
+            {
+                name = "rotation-card-" + side + "-" + slot,
+                userData = player.PlayerId.Value
+            };
+            card.AddToClassList("rotation-card");
+            var slotLabel = new Label(slot + " 号位");
+            slotLabel.AddToClassList("rotation-card-slot");
+            card.Add(slotLabel);
+            var name = new Label(player.DisplayName);
+            name.AddToClassList("rotation-card-name");
+            card.Add(name);
+            var role = new Label(PositionName(player.Position));
+            role.AddToClassList("rotation-card-role");
+            card.Add(role);
+            card.SetEnabled(!_controller.EditingLocked &&
+                !_controller.Draft.RotationLocked);
+            card.RegisterCallback<PointerDownEvent>(_ =>
+            {
+                _rotationDragSide = side;
+                _rotationDragSlot = slot;
+            });
+            card.RegisterCallback<PointerUpEvent>(_ =>
+            {
+                if (!_rotationDragSide.HasValue ||
+                    _rotationDragSide.Value != side)
+                {
+                    _rotationDragSide = null;
+                    return;
+                }
+                var rotation = (side == TeamSide.Home
+                        ? _controller.Draft.HomeRotation
+                        : _controller.Draft.AwayRotation)
+                    .ToArray();
+                (rotation[_rotationDragSlot - 1], rotation[slot - 1]) =
+                    (rotation[slot - 1], rotation[_rotationDragSlot - 1]);
+                _rotationDragSide = null;
+                _controller.SetRotation(side, rotation);
+            });
+            return card;
         }
 
         private static string RotationChoice(PlayerSnapshotV4 player)
@@ -844,6 +882,12 @@ namespace Volleyball.Presentation.TrainingLab
         private void RenderContextualInspector()
         {
             var step = _controller.CurrentStep;
+            _rotationBoard.style.display = step == TrainingLabStepV1.Rotation
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            _tacticalBoard.style.display = step == TrainingLabStepV1.Rotation
+                ? DisplayStyle.None
+                : DisplayStyle.Flex;
             SetContextVisible(_rotationContext, step == TrainingLabStepV1.Rotation);
             SetContextVisible(_positioningContext,
                 step == TrainingLabStepV1.Positioning);

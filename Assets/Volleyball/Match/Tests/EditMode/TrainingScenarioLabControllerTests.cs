@@ -1,9 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
+using Volleyball.Match.Domain.PreServe;
+using Volleyball.Presentation;
 using Volleyball.Presentation.TrainingLab;
+using Volleyball.Shared.Contracts;
 
 namespace Volleyball.EditModeTests
 {
@@ -88,6 +92,39 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void PositionFault_BlocksOnlyEntryIntoServeSetup()
+        {
+            using var controller = new TrainingScenarioLabController(
+                Store(), new FakeSimulation());
+            var slotFour = controller.Draft.HomeRotation[3];
+            controller.SetPlayerPosition(slotFour,
+                new SimVector3(-3f, 0f, -7f));
+
+            Assert.That(controller.PositionFaultPreview, Is.Not.Empty);
+            Assert.That(controller.CanEnterServeSetup, Is.False);
+            Assert.That(() => controller.SelectServeTool(
+                    TrainingServeToolV1.MoveBall),
+                Throws.InvalidOperationException.With.Message.Contains(
+                    "position fault"));
+
+            controller.ResetDraft();
+
+            Assert.That(controller.CanEnterServeSetup, Is.True);
+        }
+
+        [Test]
+        public void ServeSetup_ClampsTheBallToTheCurrentServingBand()
+        {
+            using var controller = new TrainingScenarioLabController(
+                Store(), new FakeSimulation());
+            controller.SelectServeTool(TrainingServeToolV1.MoveBall);
+            controller.SetBallPosition(new SimVector3(8f, 2f, 4f));
+
+            Assert.That(controller.Draft.BallPosition,
+                Is.EqualTo(new SimVector3(4.5f, 2f, -9f)));
+        }
+
+        [Test]
         public void CameraBookmarks_StoreTheCurrentFreeCameraWithoutChangingMatchContext()
         {
             using var controller = new TrainingScenarioLabController(Store(), new FakeSimulation());
@@ -149,6 +186,58 @@ namespace Volleyball.EditModeTests
                 Is.EqualTo("同 seed 双跑一致"));
         }
 
+        [Test]
+        public void V5RotationDrop_SwapsOnlyCardsFromTheSameTeam()
+        {
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            var homeBefore = setup.HomeRotation.ToArray();
+            var awayBefore = setup.AwayRotation.ToArray();
+
+            Assert.That(controller.TryDropRotationCard(
+                TeamSide.Home, 1, TeamSide.Home, 4), Is.True);
+            Assert.That(setup.HomeRotation[0], Is.EqualTo(homeBefore[3]));
+            Assert.That(setup.HomeRotation[3], Is.EqualTo(homeBefore[0]));
+
+            var afterSwap = setup.HomeRotation.ToArray();
+            Assert.That(controller.TryDropRotationCard(
+                TeamSide.Home, 1, TeamSide.Away, 1), Is.False);
+            Assert.That(controller.TryDropRotationCard(
+                TeamSide.Home, 1, null, null), Is.False);
+            Assert.That(setup.HomeRotation, Is.EqualTo(afterSwap));
+            Assert.That(setup.AwayRotation, Is.EqualTo(awayBefore));
+        }
+
+        [Test]
+        public void V5RotationConfirmAndReopen_PreservePosesAndRecomputeFaults()
+        {
+            var setup = V5Setup();
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            var player = setup.HomeRotation[3];
+            var editor = new MatchSetupEditorV1(setup);
+            var moved = editor.SetPlayerPosition(player,
+                new SimVector3(-3.5f, 0f, -7f));
+
+            controller.ConfirmRotation();
+            Assert.That(setup.RotationLocked, Is.True);
+            Assert.That(controller.CurrentStep,
+                Is.EqualTo(TrainingLabStepV1.Positioning));
+            Assert.That(controller.PositionFaults, Is.Not.Empty);
+
+            controller.ReopenRotation();
+            Assert.That(setup.RotationLocked, Is.False);
+            Assert.That(controller.CurrentStep,
+                Is.EqualTo(TrainingLabStepV1.Rotation));
+            Assert.That(setup.Players.Single(value =>
+                value.PlayerId.Equals(player)).Position, Is.EqualTo(moved));
+
+            controller.ConfirmRotation();
+            Assert.That(controller.PositionFaults, Is.Not.Empty);
+            Assert.That(() => controller.ExchangeRotation(
+                    TeamSide.Home, 1, 2),
+                Throws.InvalidOperationException);
+        }
+
         private static TrainingScenarioDraftStoreV1 Store()
         {
             return new TrainingScenarioDraftStoreV1(
@@ -161,6 +250,13 @@ namespace Volleyball.EditModeTests
                         TrainingScenarioCatalogV1.CreateDraft(
                             TrainingScenarioCatalogV1.ThirdTouchNetCross)
                 });
+        }
+
+        private static MatchSetupDraftV1 V5Setup()
+        {
+            return MatchSetupDraftV1.CreateDefault(
+                FormalSixVsSixRallyBootstrap.CreateDefaultFormalContextV5(),
+                TeamSide.Home);
         }
 
         private static int IndexOf(
@@ -186,7 +282,7 @@ namespace Volleyball.EditModeTests
                 Array.Empty<DecisionSnapshotV1>(),
                 Array.Empty<SetterTargetSnapshotV1>(),
                 true,
-                TeamId.Blue,
+                Volleyball.Domain.Prototype.TeamId.Blue,
                 "test-resolution");
         }
 
