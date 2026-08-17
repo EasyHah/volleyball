@@ -115,6 +115,28 @@ namespace Volleyball.PlayModeTests
                 yield return null;
                 Assert.That(root.Q("context-serve-ball").resolvedStyle.display,
                     Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("serve-view-selector").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                var ballBefore3d = controller.Draft.BallPosition;
+                var velocityBefore3d = controller.Draft.BallVelocity;
+                view.ShowServeView(TrainingServeViewV1.Side);
+                yield return null;
+                Assert.That(root.Q("serve-side-board").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                Assert.That(root.Q("tactical-board").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.None));
+                view.OpenReadonly3dPreview();
+                yield return null;
+                Assert.That(root.Q("preview-3d-modal").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
+                view.CloseReadonly3dPreview();
+                yield return null;
+                Assert.That(controller.Draft.BallPosition,
+                    Is.EqualTo(ballBefore3d));
+                Assert.That(controller.Draft.BallVelocity,
+                    Is.EqualTo(velocityBefore3d));
+                Assert.That(root.Q("serve-side-board").resolvedStyle.display,
+                    Is.EqualTo(DisplayStyle.Flex));
 
                 controller.GoToValidation();
                 yield return null;

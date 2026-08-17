@@ -68,6 +68,9 @@ namespace Volleyball.Presentation.TrainingLab
         private VisualElement _rotationBoard;
         private VisualElement _homeRotationGrid;
         private VisualElement _awayRotationGrid;
+        private VisualElement _serveViewSelector;
+        private VisualElement _serveSideBoard;
+        private VisualElement _preview3dModal;
         private VisualElement _attributeTable;
         private VisualElement _bookmarkList;
         private Label _state;
@@ -111,6 +114,9 @@ namespace Volleyball.Presentation.TrainingLab
         private TextField _bookmarkName;
         private bool _rendering;
         private bool _showingScenarioHub = true;
+        private TrainingServeViewV1 _serveView = TrainingServeViewV1.Top;
+        private TrainingServeViewV1 _returnServeView =
+            TrainingServeViewV1.Top;
         private bool _ownsController;
         private bool _initialized;
         private int _dragPointer = -1;
@@ -203,6 +209,10 @@ namespace Volleyball.Presentation.TrainingLab
             _rotationBoard = _root.Q<VisualElement>("rotation-board");
             _homeRotationGrid = _root.Q<VisualElement>("rotation-home-grid");
             _awayRotationGrid = _root.Q<VisualElement>("rotation-away-grid");
+            _serveViewSelector = _root.Q<VisualElement>(
+                "serve-view-selector");
+            _serveSideBoard = _root.Q<VisualElement>("serve-side-board");
+            _preview3dModal = _root.Q<VisualElement>("preview-3d-modal");
             _attributeTable = _root.Q<VisualElement>("attribute-table");
             _bookmarkList = _root.Q<VisualElement>("bookmark-list");
             _state = _root.Q<Label>("state-label");
@@ -321,6 +331,20 @@ namespace Volleyball.Presentation.TrainingLab
             _root.Q<Button>("tool-move-ball").clicked += () => TrySelectServeTool(TrainingServeToolV1.MoveBall);
             _root.Q<Button>("tool-velocity").clicked += () => TrySelectServeTool(TrainingServeToolV1.AdjustVelocity);
             _root.Q<Button>("tool-trajectory").clicked += () => TrySelectServeTool(TrainingServeToolV1.ViewTrajectory);
+            _root.Q<Button>("serve-top-view-button").clicked += () =>
+                ShowServeView(TrainingServeViewV1.Top);
+            _root.Q<Button>("serve-side-view-button").clicked += () =>
+                ShowServeView(TrainingServeViewV1.Side);
+            _root.Q<Button>("serve-3d-preview-button").clicked +=
+                OpenReadonly3dPreview;
+            _root.Q<Button>("preview-3d-close-button").clicked +=
+                CloseReadonly3dPreview;
+            _root.Q<Button>("preview-3d-reset-button").clicked += () =>
+            {
+                if (_worldCamera == null) return;
+                _worldCamera.transform.position = new Vector3(0f, 13f, -16f);
+                _worldCamera.transform.LookAt(Vector3.zero);
+            };
             _root.Q<Button>("save-bookmark-button").clicked += SaveCurrentCameraBookmark;
 
             _displayName.RegisterValueChangedCallback(value =>
@@ -916,9 +940,25 @@ namespace Volleyball.Presentation.TrainingLab
             _rotationBoard.style.display = step == TrainingLabStepV1.Rotation
                 ? DisplayStyle.Flex
                 : DisplayStyle.None;
-            _tacticalBoard.style.display = step == TrainingLabStepV1.Rotation
+            var serve = step == TrainingLabStepV1.ServeBall;
+            _serveViewSelector.style.display = serve
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            _tacticalBoard.style.display = step == TrainingLabStepV1.Rotation ||
+                                           (serve && _serveView ==
+                                               TrainingServeViewV1.Side)
                 ? DisplayStyle.None
                 : DisplayStyle.Flex;
+            _serveSideBoard.style.display = serve && _serveView ==
+                TrainingServeViewV1.Side
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+            _root.Q<Button>("serve-top-view-button").EnableInClassList(
+                "active-step", _serveView == TrainingServeViewV1.Top);
+            _root.Q<Button>("serve-side-view-button").EnableInClassList(
+                "active-step", _serveView == TrainingServeViewV1.Side);
+            if (serve && _serveView == TrainingServeViewV1.Side)
+                RenderServeSideBoard();
             SetContextVisible(_rotationContext, step == TrainingLabStepV1.Rotation);
             SetContextVisible(_positioningContext,
                 step == TrainingLabStepV1.Positioning);
@@ -955,6 +995,30 @@ namespace Volleyball.Presentation.TrainingLab
                       _controller.PositionFaultPreview.Count);
             RenderRotationIssues();
             RenderFaultSummary();
+        }
+
+        private void RenderServeSideBoard()
+        {
+            var width = _serveSideBoard.contentRect.width;
+            var height = _serveSideBoard.contentRect.height;
+            if (width < 10f || height < 10f) return;
+            var ball = _root.Q<VisualElement>("serve-side-ball");
+            var endpoint = _root.Q<VisualElement>(
+                "serve-side-velocity-endpoint");
+            var position = _controller.Draft.BallPosition;
+            var velocity = _controller.Draft.BallVelocity;
+            var ballX = Mathf.Lerp(width * .05f, width * .95f,
+                Mathf.InverseLerp(-12f, 12f, position.Z));
+            var ballY = Mathf.Lerp(height * .82f, height * .08f,
+                Mathf.InverseLerp(0f, 5f, position.Y));
+            ball.style.left = ballX - 12f;
+            ball.style.top = ballY - 12f;
+            endpoint.style.left = ballX + velocity.Z * 6f - 8f;
+            endpoint.style.top = ballY - velocity.Y * 6f - 8f;
+            ball.SetEnabled(_controller.ServeTool ==
+                TrainingServeToolV1.MoveBall);
+            endpoint.SetEnabled(_controller.ServeTool ==
+                TrainingServeToolV1.AdjustVelocity);
         }
 
         private static void SetContextVisible(VisualElement context, bool visible)
@@ -1317,7 +1381,11 @@ namespace Volleyball.Presentation.TrainingLab
             if (string.IsNullOrWhiteSpace(id)) return;
             if (id == "ball" && (_controller.CurrentStep !=
                     TrainingLabStepV1.ServeBall ||
-                _controller.ServeTool != TrainingServeToolV1.MoveBall))
+                _controller.ServeTool != TrainingServeToolV1.MoveBall ||
+                _serveView != TrainingServeViewV1.Top))
+                return;
+            if (id != "ball" && _controller.CurrentStep !=
+                TrainingLabStepV1.Positioning)
                 return;
             _dragPointer = value.pointerId;
             _dragObjectId = id;
@@ -1364,6 +1432,29 @@ namespace Volleyball.Presentation.TrainingLab
             _dragPointer = -1;
             _dragObjectId = null;
             value.StopPropagation();
+        }
+
+        public void ShowServeView(TrainingServeViewV1 view)
+        {
+            if (!Enum.IsDefined(typeof(TrainingServeViewV1), view))
+                throw new ArgumentOutOfRangeException(nameof(view));
+            _serveView = view;
+            RenderContextualInspector();
+        }
+
+        public void OpenReadonly3dPreview()
+        {
+            if (_controller.CurrentStep != TrainingLabStepV1.ServeBall)
+                return;
+            _returnServeView = _serveView;
+            _preview3dModal.style.display = DisplayStyle.Flex;
+        }
+
+        public void CloseReadonly3dPreview()
+        {
+            _preview3dModal.style.display = DisplayStyle.None;
+            _serveView = _returnServeView;
+            RenderContextualInspector();
         }
 
         private void OnKeyDown(KeyDownEvent value)

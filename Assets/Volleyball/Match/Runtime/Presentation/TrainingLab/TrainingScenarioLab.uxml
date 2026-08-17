@@ -43,6 +43,11 @@
                 <ui:VisualElement class="world-chip-row" picking-mode="Ignore">
                     <ui:Label name="viewport-hint" text="先确认轮转，再拖动球员摆位" class="world-chip" />
                 </ui:VisualElement>
+                <ui:VisualElement name="serve-view-selector" class="serve-view-selector">
+                    <ui:Button name="serve-top-view-button" text="俯视" />
+                    <ui:Button name="serve-side-view-button" text="侧视" />
+                    <ui:Button name="serve-3d-preview-button" text="3D 预览" class="secondary" />
+                </ui:VisualElement>
                 <ui:VisualElement name="rotation-board" class="rotation-board">
                     <ui:VisualElement class="rotation-team-board home-rotation-board">
                         <ui:Label text="HOME · 面向球网" class="rotation-team-title" />
@@ -72,6 +77,14 @@
                     <ui:VisualElement name="vertical-ruler" class="ruler vertical-ruler" picking-mode="Ignore" />
                     <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
                     <ui:Label text="2D 编辑 · 3D 预览只读" class="board-mode-label" picking-mode="Ignore" />
+                </ui:VisualElement>
+                <ui:VisualElement name="serve-side-board" class="serve-side-board">
+                    <ui:VisualElement class="side-ground" />
+                    <ui:VisualElement class="side-net" />
+                    <ui:VisualElement class="side-end-line" />
+                    <ui:VisualElement class="side-height-ruler" />
+                    <ui:VisualElement name="serve-side-ball" class="serve-side-ball" />
+                    <ui:VisualElement name="serve-side-velocity-endpoint" class="serve-velocity-endpoint" />
                 </ui:VisualElement>
             </ui:VisualElement>
 
@@ -176,6 +189,17 @@
                     <ui:Label name="feedback-label" class="feedback-label" />
                 </ui:VisualElement>
                 <ui:ScrollView name="timeline-list" class="timeline-list" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="preview-3d-modal" class="preview-3d-modal">
+            <ui:VisualElement class="preview-3d-dialog">
+                <ui:Label text="3D 只读预览" class="panel-title" />
+                <ui:Label text="仅可旋转、缩放与管理机位；Match setup 不可编辑。" class="panel-hint" />
+                <ui:VisualElement name="preview-3d-viewport" class="preview-3d-viewport" />
+                <ui:VisualElement class="compact-row">
+                    <ui:Button name="preview-3d-reset-button" text="重置机位" />
+                    <ui:Button name="preview-3d-close-button" text="关闭" class="primary" />
+                </ui:VisualElement>
             </ui:VisualElement>
         </ui:VisualElement>
         </ui:VisualElement>

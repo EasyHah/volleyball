@@ -293,6 +293,73 @@ namespace Volleyball.EditModeTests
                 Is.EqualTo(hashBefore));
         }
 
+        [Test]
+        public void V5ServeTopAndSide_EditOneSharedSixAxisDraft()
+        {
+            var setup = V5Setup();
+            var controller = EnterV5Serve(setup);
+
+            Assert.That(controller.TrySetBallFromTop(1.2f, -10.4f), Is.True);
+            controller.SetServeTool(TrainingServeToolV1.AdjustVelocity);
+            Assert.That(controller.TrySetVelocityFromTop(2.3f, 11.4f),
+                Is.True);
+            controller.SetServeView(TrainingServeViewV1.Side);
+            controller.SetServeTool(TrainingServeToolV1.MoveBall);
+            Assert.That(controller.TrySetBallFromSide(-10.6f, 2.8f), Is.True);
+            controller.SetServeTool(TrainingServeToolV1.AdjustVelocity);
+            Assert.That(controller.TrySetVelocityFromSide(12.5f, 3.6f),
+                Is.True);
+
+            Assert.That(setup.BallPosition,
+                Is.EqualTo(new SimVector3(1.2f, 2.8f, -10.6f)));
+            Assert.That(setup.BallVelocity,
+                Is.EqualTo(new SimVector3(2.3f, 3.6f, 12.5f)));
+        }
+
+        [Test]
+        public void V5ServeSideChangeMovesBandAndRejectedValueRestoresDraft()
+        {
+            var setup = V5Setup();
+            var controller = EnterV5Serve(setup);
+            controller.TrySetBallFromTop(1.1f, -10.2f);
+            controller.SetFirstServingSide(TeamSide.Away);
+
+            Assert.That(setup.BallPosition,
+                Is.EqualTo(new SimVector3(1.1f, 2.2f, 10.2f)));
+            controller.SetServeView(TrainingServeViewV1.Side);
+            var before = setup.BallPosition;
+            Assert.That(controller.TrySetBallFromSide(float.NaN, 2f),
+                Is.False);
+            Assert.That(setup.BallPosition, Is.EqualTo(before));
+            Assert.That(controller.LastEditFailure, Is.Not.Empty);
+        }
+
+        [Test]
+        public void V5TrajectoryAndReadonly3DUseFrozenMatchSetupWithoutMutation()
+        {
+            var setup = V5Setup();
+            var controller = EnterV5Serve(setup);
+            var trajectory = controller.PredictTrajectory(2);
+            var replay = new BallState(setup.BallPosition,
+                setup.BallVelocity, SimulatedBall.DefaultRadius);
+            BallIntegrator.Step(replay, SimulatedBall.DefaultFixedStep,
+                new BallSimulationParameters(-9.8f, .9995f));
+            Assert.That(trajectory[1], Is.EqualTo(replay.Position));
+
+            var frozen = new MatchSetupEditorV1(setup).Freeze();
+            var preview = new TrainingLab3DPreviewWindowV1(frozen,
+                TrainingServeViewV1.Side);
+            preview.Orbit(20f, -5f);
+            preview.Zoom(-3f);
+            preview.SaveBookmark("观察");
+            preview.ResetCamera();
+            preview.LoadBookmark("观察");
+
+            Assert.That(preview.Close(), Is.EqualTo(TrainingServeViewV1.Side));
+            Assert.That(new MatchSetupEditorV1(setup).Freeze().SetupHash,
+                Is.EqualTo(frozen.SetupHash));
+        }
+
         private static TrainingScenarioDraftStoreV1 Store()
         {
             return new TrainingScenarioDraftStoreV1(
@@ -312,6 +379,15 @@ namespace Volleyball.EditModeTests
             return MatchSetupDraftV1.CreateDefault(
                 FormalSixVsSixRallyBootstrap.CreateDefaultFormalContextV5(),
                 TeamSide.Home);
+        }
+
+        private static TrainingLabWorkbenchControllerV2 EnterV5Serve(
+            MatchSetupDraftV1 setup)
+        {
+            var controller = new TrainingLabWorkbenchControllerV2(setup);
+            controller.ConfirmRotation();
+            controller.ContinueToServeSetup();
+            return controller;
         }
 
         private static int IndexOf(
