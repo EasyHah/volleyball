@@ -183,6 +183,10 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
   因而真实物理鼠标 rotation/court/ruler drag 仍不计通过。生产拖放在 pointer capture 期间持续记录
   hit-test 目标，fresh PlayMode `9/9`（`TrainingLab-Corrective-PhysicalFollowup-PlayMode.xml`）通过，
   但自动事件不能替代该人工门禁。
+- 两个独立 Unity 进程完成真实保存/重启恢复探针：`MatchSetupHash`、`ServeBall`、`Side`、`MoveBall`
+  和选中球员全部保持；同一恢复进程还验证 malformed 拒绝、V1 拒绝且原字节不变、替换失败保留旧
+  文件且无 `.tmp`。结果为
+  `TestResults/TrainingLab/RestartAcceptance/2026-08-20/result.json`，所有探针持久化文件已清理。
 - Windows x64 IL2CPP build 再次真实执行并因本机仅有 `MacStandaloneSupport` 报 unsupported target，
   日志为 `TestResults/TrainingLab-Corrective-Windows-Build.log`。因此 handoff 保持 `Status: active`，
   当前状态为“已自动验证 / 待人工验收”，不得称完成。

@@ -93,6 +93,9 @@
 - fresh pointer follow-up PlayMode `9/9`，证据为
   `TestResults/TrainingLab-Corrective-PhysicalFollowup-PlayMode.xml`。computer-use 的坐标点击可驱动 Game
   View，但 drag 未向 Unity 发送 PointerDown/Move/Up，因此不能作为物理拖拽通过证据。
+- 两个独立 Unity 进程执行真实保存/重启恢复，`MatchSetupHash`、`ServeBall`、`Side`、`MoveBall` 和
+  选中球员全部保持；malformed 拒绝、V1 拒绝且原字节不变、替换失败保留旧文件也全部通过。证据为
+  `TestResults/TrainingLab/RestartAcceptance/2026-08-20/result.json`；探针持久化文件已清理。
 - 仍待门禁：真实物理鼠标 rotation/court/ruler drag、Serve 侧视/只读 3D 精确截图，以及安装 Windows
   Build Support (IL2CPP) 后的 Windows x64 Development Build 与 Player 验收。当前状态保持
   “已自动验证，待 Windows 与剩余人工验收”。

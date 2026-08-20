@@ -645,7 +645,7 @@ dead-end state.
 
     Capture 01-scenario-hub.png, 02-rotation.png, 03-positioning.png, 04-position-fault-focus.png, 05-serve-top.png, 06-serve-side.png, 07-serve-3d-modal.png, 08-preflight.png, 09-running-result.png and 10-unsaved-leave.png under TestResults/TrainingLab/VisualAcceptance/2026-08-17/. Reject legacy all-controls UI, overlap, clipped text, wrong court ratio, missing gate, a manual Validation control, side/3D player editing or editable 3D preview.
 
-- [ ] **Step 6: Verify a real restart and V1 rejection.**
+- [x] **Step 6: Verify a real restart and V1 rejection.**
 
     Save a V2 local copy, close Unity, reopen the scene and local card, compare Match setup hash, active page, active view/tool and selected object. Exercise malformed-file diagnostic, write failure and an untouched V1 file that remains unavailable without byte changes.
 
