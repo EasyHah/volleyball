@@ -7,9 +7,9 @@ namespace Volleyball.Match.Domain.FullRallyV3
     {
         private TouchSequenceStateV3 _state;
 
-        private RallyRulesEngineV3()
+        private RallyRulesEngineV3(TouchSequenceStateV3 initialState)
         {
-            _state = TouchSequenceStateV3.Initial;
+            _state = initialState ?? throw new ArgumentNullException(nameof(initialState));
         }
 
         public TouchSequenceStateV3 State => _state;
@@ -17,7 +17,17 @@ namespace Volleyball.Match.Domain.FullRallyV3
         public static RallyRulesEngineV3 Open(TeamSide servingTeam)
         {
             PlayerWorldSnapshotV3.RequireDefinedEnum(servingTeam, nameof(servingTeam));
-            return new RallyRulesEngineV3();
+            return new RallyRulesEngineV3(TouchSequenceStateV3.Initial);
+        }
+
+        public static RallyRulesEngineV3 Open(RallyStartStateV3 startState)
+        {
+            if (startState == null)
+            {
+                throw new ArgumentNullException(nameof(startState));
+            }
+
+            return new RallyRulesEngineV3(startState.TouchSequence);
         }
 
         public RuleTransitionV3 CanAttempt(ActualContactEventV3 contact)

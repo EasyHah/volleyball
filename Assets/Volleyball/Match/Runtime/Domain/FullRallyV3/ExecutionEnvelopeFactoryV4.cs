@@ -187,7 +187,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 case ExecutionCandidateCategoryV4.Receive:
                     var firstTouchControl =
                         attributes.ReceiveControl;
-                    var receiveMovement = attributes.AttackApproachMobility;
+                    var receiveMovement = attributes.ReceiveMovement;
                     directionControl = firstTouchControl;
                     speedControl = firstTouchControl;
                     powerCapacity = receiveMovement;
@@ -199,7 +199,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
                 case ExecutionCandidateCategoryV4.Set:
                     var placementControl = attributes.SetPlacementControl;
                     var tempoControl = attributes.SetTempoControl;
-                    var setMovement = attributes.AttackApproachMobility;
+                    var setMovement = attributes.SetMovement;
                     directionControl = placementControl;
                     speedControl = tempoControl;
                     powerCapacity = setMovement;
@@ -259,7 +259,7 @@ namespace Volleyball.Match.Domain.FullRallyV3
                     return;
                 case ExecutionCandidateCategoryV4.Defense:
                     var platformControl = attributes.DefensePlatformControl;
-                    var coverageMobility = attributes.AttackApproachMobility;
+                    var coverageMobility = attributes.DefenseCoverageMobility;
                     directionControl = platformControl;
                     speedControl = platformControl;
                     powerCapacity = coverageMobility;

@@ -128,30 +128,39 @@ namespace Volleyball.Career.PlayModeTests
             var context = CreateV5Context();
             using var cancellation = new CancellationTokenSource();
             var originalTimeScale = Time.timeScale;
+            var originalCaptureDeltaTime = Time.captureDeltaTime;
+            Time.captureDeltaTime = 1f / 60f;
             Time.timeScale = 4f;
-            var execution = runner.ExecuteWithReplayAsync(context, cancellation.Token);
-            var frames = 0;
-            while (!execution.IsCompleted && frames++ < 6500) yield return null;
-            Time.timeScale = originalTimeScale;
-            if (!execution.IsCompleted)
+            try
             {
-                cancellation.Cancel();
-                while (!execution.IsCompleted && frames++ < 7200) yield return null;
-                Assert.Fail("The V5 physical 6v6 scene did not complete within the test budget.");
-            }
+                var execution = runner.ExecuteWithReplayAsync(context, cancellation.Token);
+                var frames = 0;
+                while (!execution.IsCompleted && frames++ < 6500) yield return null;
+                if (!execution.IsCompleted)
+                {
+                    cancellation.Cancel();
+                    while (!execution.IsCompleted && frames++ < 7200) yield return null;
+                    Assert.Fail("The V5 physical 6v6 scene did not complete within the test budget.");
+                }
 
-            Assert.That(execution.IsCanceled, Is.False);
-            Assert.That(execution.IsFaulted, Is.False);
-            var outcome = execution.GetAwaiter().GetResult();
-            outcome.Result.ValidateAgainst(context);
-            Assert.That(outcome.Replay.ContextHash, Is.EqualTo(context.ContextHash));
-            Assert.That(outcome.Replay.AttributeEvidence.Count, Is.GreaterThan(0));
-            Assert.That(outcome.Replay.AttributeEvidence.All(evidence =>
-                context.Home.RotationOrder.Concat(context.Away.RotationOrder).Any(player =>
-                    player.PlayerId.Equals(evidence.PlayerId) &&
-                    player.Derived.ResultFingerprint == evidence.DerivedAttributesFingerprint)), Is.True);
-            Assert.That(SceneManager.GetSceneByName(CareerFormalSixVsSixMatchRunnerV4.FormalSceneName).isLoaded, Is.False);
-            Object.Destroy(host);
+                Assert.That(execution.IsCanceled, Is.False);
+                Assert.That(execution.IsFaulted, Is.False);
+                var outcome = execution.GetAwaiter().GetResult();
+                outcome.Result.ValidateAgainst(context);
+                Assert.That(outcome.Replay.ContextHash, Is.EqualTo(context.ContextHash));
+                Assert.That(outcome.Replay.AttributeEvidence.Count, Is.GreaterThan(0));
+                Assert.That(outcome.Replay.AttributeEvidence.All(evidence =>
+                    context.Home.RotationOrder.Concat(context.Away.RotationOrder).Any(player =>
+                        player.PlayerId.Equals(evidence.PlayerId) &&
+                        player.Derived.ResultFingerprint == evidence.DerivedAttributesFingerprint)), Is.True);
+                Assert.That(SceneManager.GetSceneByName(CareerFormalSixVsSixMatchRunnerV4.FormalSceneName).isLoaded, Is.False);
+            }
+            finally
+            {
+                Time.timeScale = originalTimeScale;
+                Time.captureDeltaTime = originalCaptureDeltaTime;
+                Object.Destroy(host);
+            }
         }
 
         [UnityTest]

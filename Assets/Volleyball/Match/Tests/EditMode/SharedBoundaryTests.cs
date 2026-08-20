@@ -50,6 +50,28 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void V4AbilityProfile_PreservesDefenseMovementAndReactionSemantics()
+        {
+            var derived = MatchAttributeDerivationV4.Derive(
+                new PhysicalBaseAttributesV4(1.90f, 2.43f, 0.80f, 0.21f, 0.31f, 0.80f),
+                new TechnicalBaseAttributesV4(0.82f, 0.83f, 0.84f, 0.85f, 0.86f,
+                    0.87f, 0.88f, 0.89f, 0.90f),
+                DominantHandV4.Right,
+                MatchAttributeDerivationConfigV4.Version1);
+
+            var profile = new PlayerAbilityProfile(derived);
+
+            Assert.That(profile.Mobility,
+                Is.EqualTo(derived.Attributes.Defense.CoverageMobility).Within(0.000001f));
+            Assert.That(profile.Reaction,
+                Is.EqualTo(derived.Attributes.Defense.Reaction).Within(0.000001f));
+            Assert.That(profile.Snapshot.ReceiveMovement,
+                Is.EqualTo(derived.Attributes.Receive.Movement).Within(0.000001f));
+            Assert.That(profile.Snapshot.SetMovement,
+                Is.EqualTo(derived.Attributes.Set.Movement).Within(0.000001f));
+        }
+
+        [Test]
         public void MatchPlayerBinding_KeepsStableCareerIdentitySeparateFromPrototypeSlot()
         {
             var snapshot = MatchV4TestFixture.CreatePlayer();

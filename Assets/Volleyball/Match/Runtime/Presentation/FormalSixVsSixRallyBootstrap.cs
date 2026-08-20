@@ -5,6 +5,8 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Match.Domain.PreServe;
+using Volleyball.Presentation.TrainingLab;
 using DominantHandV4 = Volleyball.Shared.Contracts.DominantHandV4;
 using MatchAttributeDerivationConfigV4 = Volleyball.Shared.Contracts.MatchAttributeDerivationConfigV4;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
@@ -66,6 +68,14 @@ namespace Volleyball.Presentation
                 return;
             }
 
+            var trainingScenario =
+                TrainingScenarioStartupV1.ConsumePendingScenario();
+            if (trainingScenario != null)
+            {
+                InitializeTrainingScenario(transform, trainingScenario);
+                return;
+            }
+
             var pendingContext = FormalMatchContextStartupV4.ConsumePendingContext();
             if (pendingContext != null)
             {
@@ -73,7 +83,8 @@ namespace Volleyball.Presentation
                     tactics: null, aiWeights: null, provenance: null,
                     initialServeFlightSeconds: null,
                     initialServeArrivalVerticalSpeed: null,
-                    initialServeTargetDepthOffsetMeters: null);
+                    initialServeTargetDepthOffsetMeters: null,
+                    trainingScenario: null);
                 return;
             }
 
@@ -84,7 +95,8 @@ namespace Volleyball.Presentation
                     tactics: null, aiWeights: null, provenance: null,
                     initialServeFlightSeconds: null,
                     initialServeArrivalVerticalSpeed: null,
-                    initialServeTargetDepthOffsetMeters: null);
+                    initialServeTargetDepthOffsetMeters: null,
+                    trainingScenario: null);
                 return;
             }
 
@@ -114,7 +126,59 @@ namespace Volleyball.Presentation
                     scenario.ContentHash),
                 scenario.InitialServeFlightSeconds,
                 scenario.InitialServeArrivalVerticalSpeed,
-                scenario.InitialServeTargetDepthOffsetMeters);
+                scenario.InitialServeTargetDepthOffsetMeters,
+                trainingScenario: null);
+        }
+
+        public static FormalSixVsSixRallyDirector InitializeTrainingScenario(
+            Transform host,
+            TrainingScenarioV1 scenario)
+        {
+            if (scenario == null)
+            {
+                throw new ArgumentNullException(nameof(scenario));
+            }
+
+            return Initialize(
+                host,
+                scenario.Context,
+                scenario.FirstServingSide,
+                scenario.HomeInitialRotationOffset,
+                scenario.AwayInitialRotationOffset,
+                scenario.CreateTactics(),
+                scenario.Ai.ToRuntime(),
+                provenance: null,
+                initialServeFlightSeconds: null,
+                initialServeArrivalVerticalSpeed: null,
+                initialServeTargetDepthOffsetMeters: null,
+                trainingScenario: scenario);
+        }
+
+        public static FormalSixVsSixRallyDirector InitializeTrainingRallyV5(
+            Transform host,
+            TrainingRallyStartV5 start)
+        {
+            if (host == null) throw new ArgumentNullException(nameof(host));
+            if (start == null) throw new ArgumentNullException(nameof(start));
+            Application.targetFrameRate = 60;
+            CourtBuilder.Build(host, Configuration.CourtHalfLength);
+            var ball = CreateBall(host);
+            var agents = CreateRosterV5(host, start.Setup.BaseContext, 0, 0);
+            var director = host.gameObject.AddComponent<FormalSixVsSixRallyDirector>();
+            director.ConfigureTrainingRallyV5(start);
+            director.InitializeV5(
+                ball,
+                agents,
+                start.Setup.BaseContext,
+                ScoreDisplay.Create(host),
+                configuration: Configuration,
+                firstServingSide: start.Setup.FirstServingSide);
+            director.ConfigureV3Rules(V3RulesMode.Authority);
+            var rosterDisplay = host.gameObject.AddComponent<MatchRosterDisplay>();
+            rosterDisplay.Initialize(director, agents);
+            var camera = host.gameObject.AddComponent<RallyCameraController>();
+            camera.Initialize(ball);
+            return director;
         }
 
         private static FormalSixVsSixRallyDirector Initialize(
@@ -128,7 +192,8 @@ namespace Volleyball.Presentation
             FormalMatchScenarioProvenanceV4 provenance,
             float? initialServeFlightSeconds,
             float? initialServeArrivalVerticalSpeed,
-            float? initialServeTargetDepthOffsetMeters)
+            float? initialServeTargetDepthOffsetMeters,
+            TrainingScenarioV1 trainingScenario)
         {
             if (host == null)
             {
@@ -145,7 +210,11 @@ namespace Volleyball.Presentation
                 awayInitialRotationOffset);
             var scoreDisplay = ScoreDisplay.Create(host);
             var director = host.gameObject.AddComponent<FormalSixVsSixRallyDirector>();
-            if (tactics.HasValue)
+            if (trainingScenario != null)
+            {
+                director.ConfigureTrainingStart(trainingScenario);
+            }
+            else if (tactics.HasValue)
             {
                 director.ConfigureFormalScenario(
                     tactics.Value,
@@ -319,11 +388,16 @@ namespace Volleyball.Presentation
                 playerObject.transform.SetParent(host, false);
                 var rotationPosition = ((index - initialRotationOffset + snapshot.RotationOrder.Count) %
                     snapshot.RotationOrder.Count) + 1;
-                playerObject.transform.localPosition = Configuration.PositionFor(snapshot.Side, rotationPosition);
+                var position = Configuration.PositionFor(snapshot.Side,
+                    rotationPosition);
+                if (snapshot.Side == TeamSide.Away)
+                    position.x = -position.x;
+                playerObject.transform.localPosition = position;
                 if (team == TeamId.Orange) playerObject.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
                 var agent = playerObject.AddComponent<PrototypePlayerAgent>();
                 agent.Initialize(new PlayerId(team, role, index), player.PlayerId, color, player.JerseyNumber.ToString());
                 agent.SetAbility(PlayerAbilityProfile.FromV5(player.Derived));
+                agent.ApplyV5Presentation(player.Bases.HeightMillimeters);
                 agent.SetCourtHalfLength(Configuration.CourtHalfLength);
                 agents.Add(agent);
             }
@@ -354,6 +428,80 @@ namespace Volleyball.Presentation
                 FormalPhysicsConfigurationHash,
                 CreateFormalTrajectoryPredictionProviderConfiguration(),
                 rulesVersion: RulesVersions.FullRallyV3);
+        }
+
+        public static MatchContextV5 CreateDefaultFormalContextV5()
+        {
+            return MatchContextV5.Create(
+                Guid.Parse("77777777-2222-7777-2222-777777777777"),
+                7351,
+                CreateTeamV5("formal-v5-home", "Blue", TeamSide.Home, "home"),
+                CreateTeamV5("formal-v5-away", "Orange", TeamSide.Away, "away"),
+                FormalPhysicsConfigurationHash,
+                CreateFormalTrajectoryPredictionProviderConfigurationV5(),
+                rulesVersion: RulesVersions.FullRallyV3);
+        }
+
+        private static Volleyball.Shared.Contracts.TeamSnapshotV5 CreateTeamV5(
+            string id,
+            string name,
+            TeamSide side,
+            string prefix)
+        {
+            return new Volleyball.Shared.Contracts.TeamSnapshotV5(
+                new Volleyball.Shared.Contracts.TeamId(id),
+                name,
+                side,
+                new[]
+                {
+                    CreatePlayerV5(prefix + "-opposite", "Opposite", 1,
+                        PlayerPosition.Opposite),
+                    CreatePlayerV5(prefix + "-outside-a", "Outside A", 2,
+                        PlayerPosition.OutsideHitter),
+                    CreatePlayerV5(prefix + "-middle", "Middle", 3,
+                        PlayerPosition.MiddleBlocker),
+                    CreatePlayerV5(prefix + "-setter", "Setter", 4,
+                        PlayerPosition.Setter),
+                    CreatePlayerV5(prefix + "-outside-b", "Outside B", 5,
+                        PlayerPosition.OutsideHitter),
+                    CreatePlayerV5(prefix + "-libero", "Libero", 6,
+                        PlayerPosition.Libero)
+                });
+        }
+
+        private static Volleyball.Shared.Contracts.PlayerSnapshotV5 CreatePlayerV5(
+            string id,
+            string name,
+            int number,
+            PlayerPosition position)
+        {
+            return new Volleyball.Shared.Contracts.PlayerSnapshotV5(
+                new StablePlayerId(id),
+                name,
+                number,
+                position,
+                Volleyball.Shared.Contracts.DominantHandV5.Right,
+                BasesForV5(position));
+        }
+
+        private static Volleyball.Shared.Contracts.CareerBaseAttributesV5 BasesForV5(
+            PlayerPosition position)
+        {
+            return position switch
+            {
+                PlayerPosition.Setter => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    6200, 1910, 7200, 9000, 9300, 9300, 7100, 7800, 9400, 6900, 7900, 9500),
+                PlayerPosition.Libero => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    5000, 1840, 6500, 9500, 9600, 9400, 4800, 9700, 9200, 3500, 6900, 8000),
+                PlayerPosition.MiddleBlocker => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    8500, 2040, 9500, 7900, 8800, 8500, 8900, 7300, 8500, 9700, 6800, 6300),
+                PlayerPosition.Opposite => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    9000, 2000, 9300, 8500, 8700, 8700, 9600, 7200, 8500, 9000, 9000, 5900),
+                PlayerPosition.OutsideHitter => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    8200, 1960, 9000, 9000, 9000, 9000, 9200, 8800, 8900, 8300, 8500, 7400),
+                _ => new Volleyball.Shared.Contracts.CareerBaseAttributesV5(
+                    7000, 1900, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000, 8000)
+            };
         }
 
         private static TeamSnapshotV4 CreateTeam(

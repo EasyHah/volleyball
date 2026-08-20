@@ -9,10 +9,15 @@ using Volleyball.Domain.Players;
 using Volleyball.Domain.Prototype;
 using Volleyball.Domain.Simulation;
 using Volleyball.Match.Domain.FullRallyV3;
+using Volleyball.Match.Domain.PreServe;
+using Volleyball.Presentation.TrainingLab;
 using MatchContextV4 = Volleyball.Shared.Contracts.MatchContextV4;
 using MatchContextV5 = Volleyball.Shared.Contracts.MatchContextV5;
 using MatchResultV4 = Volleyball.Shared.Contracts.MatchResultV4;
 using MatchResultV5 = Volleyball.Shared.Contracts.MatchResultV5;
+using MatchPositionFaultV5 = Volleyball.Shared.Contracts.MatchPositionFaultV5;
+using ReplayScenarioProvenanceV4 =
+    Volleyball.Shared.Contracts.ReplayScenarioProvenanceV4;
 using RulesVersions = Volleyball.Shared.Contracts.RulesVersions;
 using TeamSide = Volleyball.Shared.Contracts.TeamSide;
 using StablePlayerId = Volleyball.Shared.Contracts.PlayerId;
@@ -277,6 +282,30 @@ namespace Volleyball.Presentation
         public bool IsCritical { get; }
     }
 
+    public sealed class ReplayPositionFaultEvent
+    {
+        public ReplayPositionFaultEvent(float simulationTimeSeconds,
+            TeamSide servingSide, TeamSide violatingSide,
+            IReadOnlyList<PositionFaultV1> faults,
+            IReadOnlyList<MatchPositionFaultV5> evidence)
+        {
+            if (faults == null || faults.Count == 0 || evidence == null ||
+                (evidence.Count != 0 && evidence.Count != faults.Count))
+                throw new ArgumentException("Position-fault evidence is required.", nameof(faults));
+            SimulationTimeSeconds = simulationTimeSeconds;
+            ServingSide = servingSide;
+            ViolatingSide = violatingSide;
+            Faults = faults.ToArray();
+            Evidence = evidence.ToArray();
+        }
+
+        public float SimulationTimeSeconds { get; }
+        public TeamSide ServingSide { get; }
+        public TeamSide ViolatingSide { get; }
+        public IReadOnlyList<PositionFaultV1> Faults { get; }
+        public IReadOnlyList<MatchPositionFaultV5> Evidence { get; }
+    }
+
     public class PhysicalMatchRallyDirector : MonoBehaviour
     {
         public const float ServeArrivalVerticalSpeed = -8f;
@@ -319,6 +348,7 @@ namespace Volleyball.Presentation
         private PlayerId? _scheduledBlockPrimary;
         private float _committedGateIBlockTime = -1f;
         private bool _awaitingPostBlockCrossing;
+        private bool _trainingHistoricalAttackAuthoritySeeded;
         private TeamId? _postBlockerTeam;
         private StablePlayerId? _postBlockerActor;
         private SimVector3 _postBlockImpactCenter;
@@ -347,6 +377,9 @@ namespace Volleyball.Presentation
         private bool _lastSetWasSetter;
         private bool _forceInSystemReceiveExecution;
         private bool _serveInFlight;
+        private FlightSegmentOrigin _flightSegmentOrigin;
+        private TeamId? _flightSegmentOriginTeam;
+        private bool _effectiveNetDeflectionHandled;
         private int _tacticRevision;
         private int _aiDecisionRequestVersion;
         private int _aiRequestSequence;
@@ -354,6 +387,8 @@ namespace Volleyball.Presentation
         private FullRallyV3RulesRuntimeAdapter _v3RulesAdapter;
         private MatchContextV4 _matchContext;
         private MatchContextV5 _matchContextV5;
+        private readonly List<MatchPositionFaultV5> _v5PositionFaults =
+            new List<MatchPositionFaultV5>();
         private MatchSet _formalSet;
         private ExecutionEnvelopeV4 _lastPlannedExecutionEnvelopeV4;
         private ExecutionSampleClassificationV4 _lastExecutionSampleClassificationV4;
@@ -367,6 +402,11 @@ namespace Volleyball.Presentation
         private RallyTacticalWeights _activeTacticalWeights;
         private PhysicalRallyTactics? _initialScenarioTactics;
         private RallyTacticalWeights? _initialScenarioAiWeights;
+        private TrainingScenarioRuntimeAdapterV1 _trainingRuntime;
+        private TrainingRallyStartV5 _trainingRallyStartV5;
+        private readonly List<PositionFaultV1> _trainingPositionFaults =
+            new List<PositionFaultV1>();
+        private bool _trainingSingleRallyCompleted;
         private float _initialServeFlightSeconds =
             FormalMatchScenarioDefinitionV4.DefaultInitialServeFlightSeconds;
         private float _initialServeArrivalVerticalSpeed =
@@ -454,9 +494,76 @@ namespace Volleyball.Presentation
             _initialServeTargetDepthOffsetMeters =
                 initialServeTargetDepthOffsetMeters;
             FormalScenarioProvenance = provenance;
+            ScenarioProvenance = new ReplayScenarioProvenanceV4(
+                provenance.ScenarioId,
+                provenance.FormatVersion,
+                provenance.ContentHash);
         }
 
         public FormalMatchScenarioProvenanceV4 FormalScenarioProvenance { get; private set; }
+
+        public ReplayScenarioProvenanceV4 ScenarioProvenance { get; private set; }
+
+        public TrainingScenarioV1 TrainingScenario =>
+            _trainingRuntime?.Scenario;
+
+        public bool IsTrainingSingleRally =>
+            _trainingRuntime != null || _trainingRallyStartV5 != null;
+
+        public bool TrainingSingleRallyCompleted =>
+            _trainingSingleRallyCompleted;
+
+        public TrainingRallyStartV5 TrainingRallyStartV5 =>
+            _trainingRallyStartV5;
+
+        public TrainingRallyOutcomeV1 TrainingRallyOutcomeV1 { get; private set; }
+
+        public int CountedTeamTouches =>
+            _touchState?.CountedTeamTouches ?? 0;
+
+        public int V3CountedHits =>
+            _v3RulesAdapter?.State.CountedHits ?? 0;
+
+        public StablePlayerId? V3LastCountedActor =>
+            _v3RulesAdapter?.State.LastCountedActor;
+
+        public long CurrentAuthoritySourceSequence =>
+            _formalAuthority.CurrentSourceSequence;
+
+        public void ConfigureTrainingStart(TrainingScenarioV1 scenario)
+        {
+            if (_set != null || _rallyActive || _trainingRuntime != null ||
+                _trainingRallyStartV5 != null)
+            {
+                throw new InvalidOperationException(
+                    "Training scenario configuration must happen once before match initialization.");
+            }
+
+            if (scenario == null)
+            {
+                throw new ArgumentNullException(nameof(scenario));
+            }
+
+            _trainingRuntime = new TrainingScenarioRuntimeAdapterV1(scenario);
+            _initialScenarioTactics = scenario.CreateTactics();
+            _initialScenarioAiWeights = scenario.Ai.ToRuntime();
+            ScenarioProvenance = new ReplayScenarioProvenanceV4(
+                scenario.ScenarioId,
+                scenario.FormatVersionValue,
+                scenario.ContentHash);
+        }
+
+        public void ConfigureTrainingRallyV5(TrainingRallyStartV5 start)
+        {
+            if (_set != null || _rallyActive || _trainingRuntime != null ||
+                _trainingRallyStartV5 != null)
+                throw new InvalidOperationException(
+                    "V5 training rally configuration must happen once before initialization.");
+            _trainingRallyStartV5 = start ??
+                throw new ArgumentNullException(nameof(start));
+            TrainingRallyOutcomeV1 = null;
+            _trainingPositionFaults.Clear();
+        }
 
         public int ExecutionErrorApplications { get; private set; }
 
@@ -479,6 +586,10 @@ namespace Volleyball.Presentation
         public int ServeNetReceiveReplans { get; private set; }
 
         public float LastServeNetGroundLeadSeconds { get; private set; }
+
+        public int NetDeflectionDispatches { get; private set; }
+
+        public int SuppressedNetDeflectionDispatches { get; private set; }
 
         public int EmergencyReceiveContacts { get; private set; }
 
@@ -688,7 +799,11 @@ namespace Volleyball.Presentation
 
         public event Action<GateISetIntentReceiptV3> GateISetIntentCommitted;
 
+        public event Action<SetterTargetSnapshotV1> SetterTargetPlanned;
+
         public event Action<ReplaySimpleEvent> ReplayServeStarted;
+
+        public event Action<ReplayPositionFaultEvent> ReplayPositionFault;
 
         public event Action<ReplaySimpleEvent> ReplayNetCrossed;
 
@@ -889,8 +1004,19 @@ namespace Volleyball.Presentation
             CreateTrajectoryPredictionProviderV5(matchContext);
             _matchContext = null;
             _matchContextV5 = matchContext;
-            _formalSet = new MatchSet(matchContext.Home.RotationOrder.Select(player => player.PlayerId),
-                matchContext.Away.RotationOrder.Select(player => player.PlayerId), firstServingSide,
+            if (_trainingRallyStartV5 != null &&
+                (!string.Equals(_trainingRallyStartV5.ContextHash,
+                     matchContext.ContextHash, StringComparison.Ordinal) ||
+                 _trainingRallyStartV5.Setup.FirstServingSide != firstServingSide))
+                throw new ArgumentException(
+                    "The V5 training start does not match the initialized context.",
+                    nameof(context));
+            var homeRotation = _trainingRallyStartV5?.Setup.HomeRotation ??
+                matchContext.Home.RotationOrder.Select(player => player.PlayerId).ToArray();
+            var awayRotation = _trainingRallyStartV5?.Setup.AwayRotation ??
+                matchContext.Away.RotationOrder.Select(player => player.PlayerId).ToArray();
+            _formalSet = new MatchSet(homeRotation,
+                awayRotation, firstServingSide,
                 (configuration ?? PhysicalMatchConfiguration.FormalIndoorSixVsSix).SetRules,
                 homeInitialRotationOffset, awayInitialRotationOffset);
             InitializeCore(ball, agents, scoreDisplay, tacticalWeightSource,
@@ -968,7 +1094,12 @@ namespace Volleyball.Presentation
             _ball.EnvironmentContact += HandleEnvironmentContact;
             _ball.NetPlaneCrossed += HandleNetPlaneCrossing;
             _ball.SimulationStepped += HandleSimulationStepped;
-            StartCoroutine(StartInitialLoop(0.35f));
+            StartCoroutine(
+                _trainingRallyStartV5 != null
+                    ? StartTrainingRallyV5Loop(0.35f)
+                    : _trainingRuntime == null
+                        ? StartInitialLoop(0.35f)
+                        : StartTrainingLoop(0.35f));
         }
 
         public void ConfigureAiDecisionSource(
@@ -1252,6 +1383,7 @@ namespace Volleyball.Presentation
             {
                 pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
             }
+
         }
 
         private PhysicalRallyTactics InitialTactics()
@@ -1262,6 +1394,15 @@ namespace Volleyball.Presentation
         private IEnumerator StartInitialLoop(float delay)
         {
             _rallyActive = false;
+
+            // Establish the next rally's formation before the serve delay.  The
+            // serve-contact position check must observe the live formation, not
+            // overwrite it immediately before evaluation.
+            foreach (var pair in _players)
+            {
+                pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
+            }
+
             yield return new WaitForSeconds(delay);
 
             if (_matchContext != null)
@@ -1277,11 +1418,6 @@ namespace Volleyball.Presentation
                 _lastTrajectoryPredictionArtifactV4 = null;
             }
 
-            foreach (var pair in _players)
-            {
-                pair.Value.PrepareForTraining(TacticalRootTarget(pair.Key));
-            }
-
             var receivingTeam = FromSide(_set.ReceivingSide);
             _touchState = new RallyTouchState(receivingTeam);
             if (_v3RulesAdapter != null)
@@ -1293,33 +1429,13 @@ namespace Volleyball.Presentation
                 _lastAcceptedV3Actor = null;
                 _lastAcceptedV3Classification = null;
             }
-            _scheduledDecision = null;
-            _plannedAttackDecision = null;
-            _plannedAttackTrajectoryArtifactV4 = null;
-            if (GateIAuthorityEnabled)
+            ResetRallyTransientState();
+            _restartScheduled = false;
+
+            if (TryResolvePositionFaultAtServeContact())
             {
-                // A pending intent belongs to the just-resolved rally and must not
-                // survive into the next receive/organization lifecycle.
-                _formalAuthority.AttackCoordinator = new AttackDefenseAuthorityCoordinator(
-                    new AttackDefensePlanner(), new DirectorAttackDefenseCommandSink(this));
-                _formalAuthority.ClearGateI();
+                yield break;
             }
-            _scheduledPrimaryActor = null;
-            _scheduledBlockers.Clear();
-            _pendingGateIReceiveWindows.Clear();
-            _activePostAttackReceives.Clear();
-            _scheduledBlockPrimary = null;
-            _awaitingPostBlockCrossing = false;
-            _postBlockerTeam = null;
-            _postBlockerActor = null;
-            _postBlockImpactCenter = SimVector3.Zero;
-            _postBlockOutgoing = SimVector3.Zero;
-            _postAttackContinuationState = PostAttackContinuationStateV4.None;
-            _pendingCrossingTeam = null;
-            _contactDeadlineActive = false;
-            _lastTouchWasBackSetAttack = false;
-            _controlledHandlingActive = false;
-            _activeSetChain = false;
 
             var initialFlightSeconds = _initialServeFlightSeconds;
             var nominalReceiver = FindPlayer(
@@ -1360,13 +1476,431 @@ namespace Volleyball.Presentation
                 _status = $"{stableServer.Value} SERVE to {receivingTeam}";
             }
             _serveInFlight = true;
+            BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
             _rallyActive = true;
-            _restartScheduled = false;
 
             NotifyReplay(
                 ReplayServeStarted,
                 new ReplaySimpleEvent("Serve", _ball.SimulationTime, FromSide(_set.ServingSide), stableServer));
             BeginPossessionDecision(receivingTeam, initialFlightSeconds);
+        }
+
+        private bool TryResolvePositionFaultAtServeContact()
+        {
+            if (_matchContextV5 == null && _trainingRuntime == null)
+                return false;
+
+            var faults = PositionFaultEvaluatorV1.Evaluate(
+                CreateLiveServePositionSlots(),
+                _matchContextV5 == null
+                    ? PositionFaultCoordinateFrameV1.LegacySharedWorldLateral
+                    : PositionFaultCoordinateFrameV1.TeamLocalPointSymmetric);
+            if (faults.Count == 0)
+                return false;
+
+            var faultSide = faults[0].Side;
+            var sideFaults = faults.Where(value => value.Side == faultSide).ToArray();
+            if (_trainingRallyStartV5 != null)
+                _trainingPositionFaults.AddRange(sideFaults);
+            var evidence = _matchContextV5 == null
+                ? Array.Empty<MatchPositionFaultV5>()
+                : sideFaults.Select(CreateV5PositionFault).ToArray();
+            if (_matchContextV5 != null)
+                _v5PositionFaults.AddRange(evidence);
+            NotifyReplay(ReplayPositionFault, new ReplayPositionFaultEvent(
+                _ball.SimulationTime, _set.ServingSide, faultSide,
+                sideFaults, evidence));
+            var winner = Opponent(faultSide);
+            ResolveRally(new RallyOutcome(winner, true, "PositionFault"),
+                null, null, "PositionFault");
+            return true;
+        }
+
+        private MatchPositionFaultV5 CreateV5PositionFault(PositionFaultV1 fault)
+        {
+            var required = fault.RequiredAheadOrLeft;
+            var violating = fault.ViolatingBehindOrRight;
+            return new MatchPositionFaultV5(
+                _set.HomeScore + _set.AwayScore + 1,
+                fault.Side,
+                Opponent(fault.Side),
+                _set.ServingSide,
+                fault.Rule.ToString(),
+                required.PlayerId, required.Slot,
+                Mathf.RoundToInt(required.FootProjection.X * 1000f),
+                Mathf.RoundToInt(required.FootProjection.Z * 1000f),
+                violating.PlayerId, violating.Slot,
+                Mathf.RoundToInt(violating.FootProjection.X * 1000f),
+                Mathf.RoundToInt(violating.FootProjection.Z * 1000f));
+        }
+
+        private IReadOnlyList<ServePositionSlotV1> CreateLiveServePositionSlots()
+        {
+            var slots = new List<ServePositionSlotV1>(12);
+            AddLiveServePositionSlots(slots, TeamSide.Home);
+            AddLiveServePositionSlots(slots, TeamSide.Away);
+            return slots;
+        }
+
+        private void AddLiveServePositionSlots(ICollection<ServePositionSlotV1> output,
+            TeamSide side)
+        {
+            var rotation = RotationOrder(side);
+            for (var index = 0; index < rotation.Length; index++)
+            {
+                var player = FindPlayer(rotation[index]);
+                output.Add(new ServePositionSlotV1(side, index + 1,
+                    rotation[index], ToSimulation(player.transform.position)));
+            }
+        }
+
+        private void ResetRallyTransientState()
+        {
+            _scheduledDecision = null;
+            _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
+            if (GateIAuthorityEnabled)
+            {
+                // A pending intent belongs to the just-resolved rally and must not
+                // survive into the next receive/organization lifecycle.
+                _formalAuthority.AttackCoordinator = new AttackDefenseAuthorityCoordinator(
+                    new AttackDefensePlanner(), new DirectorAttackDefenseCommandSink(this));
+                _formalAuthority.ClearGateI();
+            }
+            _scheduledPrimaryActor = null;
+            _scheduledBlockers.Clear();
+            _pendingGateIReceiveWindows.Clear();
+            _activePostAttackReceives.Clear();
+            _scheduledBlockPrimary = null;
+            _awaitingPostBlockCrossing = false;
+            _trainingHistoricalAttackAuthoritySeeded = false;
+            _postBlockerTeam = null;
+            _postBlockerActor = null;
+            _postBlockImpactCenter = SimVector3.Zero;
+            _postBlockOutgoing = SimVector3.Zero;
+            _postAttackContinuationState = PostAttackContinuationStateV4.None;
+            _pendingCrossingTeam = null;
+            _contactDeadlineActive = false;
+            _lastTouchWasBackSetAttack = false;
+            _controlledHandlingActive = false;
+            _activeSetChain = false;
+            ClearFlightSegment();
+        }
+
+        private IEnumerator StartTrainingLoop(float delay)
+        {
+            _rallyActive = false;
+            yield return new WaitForSeconds(delay);
+
+            if (_trainingRuntime == null)
+            {
+                throw new InvalidOperationException(
+                    "Training startup requires its immutable runtime adapter.");
+            }
+
+            _trajectoryPredictionProviderV4 =
+                CreateTrajectoryPredictionProviderV4(_matchContext);
+            _lastTrajectoryPredictionArtifactV4 = null;
+            ResetRallyTransientState();
+            _trainingRuntime.ApplyPlayerSnapshots(_players.Values);
+
+            var scenario = _trainingRuntime.Scenario;
+            var serveStart = scenario.ServeStart;
+            _touchState = new RallyTouchState(FromSide(Opponent(serveStart.ServingSide)));
+            if (_v3RulesAdapter != null)
+            {
+                _v3RulesAdapter.BeginRally(
+                    CreateV3Eligibility(_matchContext),
+                    serveStart.ServingSide);
+                _pendingV3AuthorityContact = null;
+                _lastAcceptedV3Actor = null;
+                _lastAcceptedV3Classification = null;
+            }
+
+            _rallyActive = true;
+            _restartScheduled = false;
+            _trainingSingleRallyCompleted = false;
+            _status = "TRAINING " + scenario.DisplayName;
+            if (TryResolvePositionFaultAtServeContact())
+                yield break;
+            BeginTrainingServe(serveStart);
+        }
+
+        private IEnumerator StartTrainingRallyV5Loop(float delay)
+        {
+            _rallyActive = false;
+            yield return new WaitForSeconds(delay);
+            if (_trainingRallyStartV5 == null || _matchContextV5 == null)
+                throw new InvalidOperationException(
+                    "Native V5 training startup requires its frozen start and context.");
+
+            _trajectoryPredictionProviderV4 =
+                CreateTrajectoryPredictionProviderV5(_matchContextV5);
+            _lastTrajectoryPredictionArtifactV4 = null;
+            ResetRallyTransientState();
+            ApplyTrainingRallyV5Setup();
+
+            var servingSide = _trainingRallyStartV5.Setup.FirstServingSide;
+            _touchState = new RallyTouchState(FromSide(Opponent(servingSide)));
+            if (_v3RulesAdapter != null)
+            {
+                _v3RulesAdapter.BeginRally(CreateFormalEligibility(), servingSide);
+                _pendingV3AuthorityContact = null;
+                _lastAcceptedV3Actor = null;
+                _lastAcceptedV3Classification = null;
+            }
+
+            _rallyActive = true;
+            _restartScheduled = false;
+            _trainingSingleRallyCompleted = false;
+            _status = "TRAINING V5 " + _trainingRallyStartV5.SetupHash;
+            if (TryResolvePositionFaultAtServeContact()) yield break;
+            BeginTrainingRallyV5Serve();
+        }
+
+        private void ApplyTrainingRallyV5Setup()
+        {
+            var setup = _trainingRallyStartV5.Setup;
+            foreach (var pose in setup.Players)
+            {
+                var player = FindPlayer(pose.PlayerId);
+                var side = _matchContextV5.Home.RotationOrder.Any(value =>
+                    value.PlayerId.Equals(pose.PlayerId))
+                    ? TeamSide.Home : TeamSide.Away;
+                player.PrepareForTrainingSnapshot(
+                    pose.Position,
+                    side == TeamSide.Home
+                        ? new SimVector3(0f, 0f, 1f)
+                        : new SimVector3(0f, 0f, -1f),
+                    StickFigurePose.Ready);
+
+                var basePlayer = FindV5Snapshot(pose.PlayerId);
+                var attributeOverride = setup.AttributeOverrides.FirstOrDefault(
+                    value => value.PlayerId.Equals(pose.PlayerId));
+                var bases = attributeOverride == null
+                    ? basePlayer.Bases
+                    : attributeOverride.ApplyTo(basePlayer.Bases);
+                var hand = attributeOverride?.DominantHand ??
+                    basePlayer.DominantHand;
+                player.SetAbility(PlayerAbilityProfile.FromV5(
+                    Volleyball.Shared.Contracts.MatchAttributeDerivationV5.Derive(
+                        bases, hand)));
+                player.ApplyV5Presentation(bases.HeightMillimeters);
+            }
+        }
+
+        private Volleyball.Shared.Contracts.PlayerSnapshotV5 FindV5Snapshot(
+            StablePlayerId playerId)
+        {
+            foreach (var player in _matchContextV5.Home.RotationOrder)
+                if (player.PlayerId.Equals(playerId)) return player;
+            foreach (var player in _matchContextV5.Away.RotationOrder)
+                if (player.PlayerId.Equals(playerId)) return player;
+            throw new InvalidOperationException(
+                "Frozen V5 training player is absent from the base context.");
+        }
+
+        private void BeginTrainingRallyV5Serve()
+        {
+            var setup = _trainingRallyStartV5.Setup;
+            if (setup.FirstServingSide != _set.ServingSide)
+                throw new InvalidOperationException(
+                    "Frozen V5 serving side does not match the match set.");
+            _ball.ResetBall(ToUnity(setup.BallPosition));
+            _ball.Launch(ToUnity(setup.BallVelocity));
+            var stableServer = _set.ServerFor(_set.ServingSide);
+            var runtimeServer = FindPlayer(stableServer).Id;
+            _touchState.SynchronizeAuthoritativeContact(
+                runtimeServer, TechniqueAction.Serve, 0);
+            _players[runtimeServer].Rig.SetPose(StickFigurePose.Serve, 1f);
+            _set.RecordContact(stableServer, 0f);
+            _serveInFlight = true;
+            BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
+            NotifyReplay(ReplayServeStarted, new ReplaySimpleEvent(
+                "Serve", _ball.SimulationTime, runtimeServer.Team, stableServer));
+            BeginPossessionDecision(Opponent(runtimeServer.Team),
+                EstimateTrainingLeadSeconds());
+        }
+
+        private void BeginTrainingServe(TrainingServeStartV1 serveStart)
+        {
+            if (serveStart.ServingSide != _set.ServingSide)
+                throw new InvalidOperationException("Frozen training serving side does not match the match set.");
+            _ball.ResetBall(ToUnity(serveStart.BallPosition));
+            _ball.Launch(ToUnity(serveStart.BallVelocity));
+            var stableServer = _set.ServerFor(_set.ServingSide);
+            var runtimeServer = FindPlayer(stableServer).Id;
+            _touchState.SynchronizeAuthoritativeContact(runtimeServer, TechniqueAction.Serve, 0);
+            _players[runtimeServer].Rig.SetPose(StickFigurePose.Serve, 1f);
+            _set.RecordContact(stableServer, 0f);
+            _serveInFlight = true;
+            BeginFlightSegment(FlightSegmentOrigin.Serve, runtimeServer.Team);
+            NotifyReplay(ReplayServeStarted, new ReplaySimpleEvent("Serve", _ball.SimulationTime,
+                runtimeServer.Team, stableServer));
+            BeginPossessionDecision(Opponent(runtimeServer.Team), EstimateTrainingLeadSeconds());
+        }
+
+        private void InitializeTrainingContinuation(
+            TrainingScenarioV1 scenario,
+            PlayerId? runtimeLastActor)
+        {
+            var team = FromSide(scenario.StartState.SourceTeam);
+            switch (scenario.StartState.Recipe)
+            {
+                case RallyStartRecipeV3.ServeFlight:
+                    BeginPossessionDecision(team, EstimateTrainingLeadSeconds());
+                    break;
+                case RallyStartRecipeV3.AfterReceive:
+                    if (!runtimeLastActor.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Post-Receive training start requires the mapped receiver.");
+                    }
+
+                    SeedGateHAfterAcceptedReceive(
+                        team,
+                        StableId(runtimeLastActor.Value),
+                        scenario.ContentHash);
+                    break;
+                case RallyStartRecipeV3.AfterSet:
+                    if (!runtimeLastActor.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Post-Set training start requires the mapped organizer.");
+                    }
+
+                    SeedGateIAfterAcceptedSet(
+                        team,
+                        StableId(runtimeLastActor.Value),
+                        false);
+                    break;
+                case RallyStartRecipeV3.AfterAttack:
+                    if (!runtimeLastActor.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Post-attack training start requires the mapped attacker.");
+                    }
+
+                    var historicalAttackingTeam =
+                        runtimeLastActor.Value.Team;
+                    var historicalOrganizer = _players
+                        .Where(pair =>
+                            pair.Key.Team == historicalAttackingTeam &&
+                            !pair.Value.StableId.Equals(
+                                scenario.StartState.LastLegalActor.Value))
+                        .OrderBy(pair =>
+                            pair.Key.Role == PlayerRole.Setter ? 0 : 1)
+                        .ThenBy(pair => pair.Key.RosterSlot)
+                        .Select(pair => pair.Value.StableId)
+                        .First();
+                    if (SeedGateIAfterAcceptedSet(
+                            historicalAttackingTeam,
+                            historicalOrganizer,
+                            true))
+                    {
+                        _trainingHistoricalAttackAuthoritySeeded = true;
+                    }
+                    break;
+                case RallyStartRecipeV3.AfterAcceptedBlock:
+                    if (!runtimeLastActor.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            "Post-block training start requires the mapped blocker.");
+                    }
+
+                    _awaitingPostBlockCrossing = true;
+                    _postBlockerTeam = runtimeLastActor.Value.Team;
+                    _postBlockerActor =
+                        scenario.StartState.LastLegalActor;
+                    _postBlockImpactCenter = scenario.BallPosition;
+                    _postBlockOutgoing = scenario.BallVelocity;
+                    _postAttackContinuationState =
+                        PostAttackContinuationStateV4.AwaitingBlockOutcome;
+                    var priorAttackingTeam = Opponent(
+                        runtimeLastActor.Value.Team);
+                    var priorOrganizer = _players
+                        .Where(pair => pair.Key.Team == priorAttackingTeam)
+                        .OrderBy(pair =>
+                            pair.Key.Role == PlayerRole.Setter ? 0 : 1)
+                        .ThenBy(pair => pair.Key.RosterSlot)
+                        .Select(pair => pair.Value.StableId)
+                        .First();
+                    if (!SeedGateIAfterAcceptedSet(
+                            priorAttackingTeam,
+                            priorOrganizer,
+                            true))
+                    {
+                        throw new InvalidOperationException(
+                            "Post-block training start requires a complete continuation plan.");
+                    }
+                    _trainingHistoricalAttackAuthoritySeeded = true;
+                    PostBlockPossessionDeferrals++;
+                    PostBlockContinuations++;
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException();
+            }
+        }
+
+        private float EstimateTrainingLeadSeconds()
+        {
+            var position = _ball.State.Position;
+            var velocity = _ball.State.Velocity;
+            if (Mathf.Abs(velocity.Y) > .01f)
+            {
+                var groundDistance =
+                    position.Y - GroundHeight - SimulatedBall.DefaultRadius;
+                if (groundDistance > 0f)
+                {
+                    return Mathf.Clamp(
+                        Mathf.Abs(groundDistance / velocity.Y),
+                        .10f,
+                        1.20f);
+                }
+            }
+
+            return .55f;
+        }
+
+        private void SeedGateHAfterAcceptedReceive(
+            TeamId team,
+            StablePlayerId receiver,
+            string scenarioHash)
+        {
+            _activeTacticalWeights = LocalTacticalWeights();
+            var planning = PlanGateHReceive(
+                team,
+                EstimateTrainingLeadSeconds(),
+                receiver);
+            if (planning == null)
+            {
+                return;
+            }
+
+            var state = _formalAuthority.ReceiveCoordinator.State;
+            _formalAuthority.ReceiveCoordinator
+                .SeedPlannedReceiveAsAlreadyAccepted(
+                    new AcceptedReceiveV3(
+                        state.Revision,
+                        _formalAuthority.NextSourceSequence(),
+                        receiver,
+                        PredictGate5BallCenterV4(
+                            team,
+                            RallyDecisionStage.Organize,
+                            ReceiveFlightSeconds),
+                        PlanCoverageReason.WithinConditionalEnvelope,
+                        "training-semantic-receive-trajectory:" +
+                        scenarioHash,
+                        "training-semantic-receive-classification:" +
+                        scenarioHash));
+            var organization =
+                _formalAuthority.ReceiveCoordinator.CurrentPlanning;
+            if (organization.Decision.HasDecision)
+            {
+                ScheduleDecision(
+                    organization.Decision,
+                    ReceiveFlightSeconds);
+            }
         }
 
         private void BeginPossession(TeamId team, float availableSeconds)
@@ -1602,6 +2136,21 @@ namespace Volleyball.Presentation
                 request,
                 committedContinuationReceiver);
             var planning = _formalAuthority.ReceiveCoordinator.CurrentPlanning;
+            if (_trainingRuntime != null &&
+                planning?.Decision != null &&
+                planning.Decision.HasDecision)
+            {
+                NotifyReplay(
+                    ReplayDecisionPlanned,
+                    ReplayDecisionEvent.Create(
+                        _ball.SimulationTime,
+                        RallyDecisionStage.Receive,
+                        team,
+                        receiveSeconds,
+                        receiveInput.PredictedBallCenter,
+                        _activeTacticalWeights,
+                        planning.Decision));
+            }
             if (GateJEnabled && _lastTrajectoryPredictionArtifactV4 != null)
             {
                 _formalAuthority.ReceiveCoordinator.ApplyPerception(
@@ -1734,6 +2283,40 @@ namespace Volleyball.Presentation
             }
 
             return players;
+        }
+
+        private SetterTargetSnapshotV1 CreateSetterTargetSnapshot(
+            TeamId team,
+            AttackDefensePlanV3 plan)
+        {
+            var candidates = plan.AttackCandidates
+                .Select(candidate => new DecisionCandidateSnapshotV1(
+                    candidate.Actor,
+                    string.IsNullOrEmpty(candidate.EliminationReason),
+                    new RallyDecisionScore(
+                        candidate.LegalSampleRatio,
+                        candidate.IsQualifiedPowerRoute ? 1f : 0f,
+                        candidate.ExpectedRallyValue,
+                        0f,
+                        candidate.ExpectedRallyValue)))
+                .ToArray();
+            return new SetterTargetSnapshotV1(
+                _trainingRuntime.Scenario.ScenarioId,
+                _trainingRuntime.Scenario.ContentHash,
+                _matchContext.RulesVersion,
+                _formalAuthority.CurrentSourceSequence,
+                _ball.SimulationTime,
+                team,
+                _tacticRevision,
+                (int)plan.Revision,
+                plan.SetIntent.SetFlightSeconds,
+                _ball.State.Position,
+                _ball.State.Velocity,
+                plan.SetIntent.Target,
+                _v3RulesAdapter.State.CountedHits,
+                _v3RulesAdapter.State.LastCountedActor,
+                plan.SelectedAction.Actor,
+                candidates);
         }
 
         private ReplayOrganizationDecisionDiagnostic CreateOrganizationDiagnostic(
@@ -2688,7 +3271,18 @@ namespace Volleyball.Presentation
             }
             if (receives.Length == 0)
             {
-                return false;
+                if (!_trainingHistoricalAttackAuthoritySeeded)
+                {
+                    return false;
+                }
+
+                var opened = OpenDeclaredSeededDefenseWindow(
+                    receivingTeam,
+                    actualPosition,
+                    actualVelocity,
+                    out openedReceipt);
+                _trainingHistoricalAttackAuthoritySeeded = false;
+                return opened;
             }
 
             // Pre-crossing executions authorize actors and commit movement, but
@@ -2752,6 +3346,58 @@ namespace Volleyball.Presentation
             }
 
             return true;
+        }
+
+        private bool OpenDeclaredSeededDefenseWindow(
+            TeamId receivingTeam,
+            SimVector3 actualPosition,
+            SimVector3 actualVelocity,
+            out AttackDefenseAuthorityReceipt openedReceipt)
+        {
+            openedReceipt = null;
+            var plan = _formalAuthority.AttackCoordinator.State.Plan;
+            if (plan == null)
+            {
+                return false;
+            }
+
+            var opportunities = plan.Defense.Responsibilities
+                .Where(value =>
+                    value.Kind !=
+                    DefenseResponsibilityKindV3.PrimaryBlock &&
+                    value.Kind !=
+                    DefenseResponsibilityKindV3.SupportingBlock &&
+                    PlayerForStableId(value.Actor).Id.Team ==
+                    receivingTeam)
+                .OrderBy(value => value.Actor.Value, StringComparer.Ordinal)
+                .ThenBy(value => value.Branch)
+                .ToArray();
+            foreach (var opportunity in opportunities)
+            {
+                var execution = CreateActualContinuationReceiveExecution(
+                    opportunity.Actor,
+                    AttackDefenseCommandKind.FloorDefense,
+                    actualPosition,
+                    actualVelocity);
+                if (execution == null)
+                {
+                    continue;
+                }
+
+                var receipt = ActivatePostAttackReceive(
+                    receivingTeam,
+                    AttackDefenseCommandKind.FloorDefense,
+                    opportunity.Actor,
+                    opportunity.Branch,
+                    execution);
+                if (receipt != null)
+                {
+                    openedReceipt = receipt;
+                    return true;
+                }
+            }
+
+            return opportunities.Length > 0;
         }
 
         private bool OpenDeclaredAttackCoverageWindow(
@@ -3365,6 +4011,9 @@ namespace Volleyball.Presentation
             }
 
             _serveInFlight = false;
+            BeginFlightSegment(
+                FlightSegmentOrigin.AcceptedPlayerContact,
+                actorId.Team);
             var actor = _players[actorId];
             var movementDistance = (_scheduledPrimaryActor.HasValue &&
                                     _scheduledPrimaryActor.Value.Equals(actorId)) ||
@@ -3550,6 +4199,14 @@ namespace Volleyball.Presentation
                     {
                         _scheduledDecision = null;
                         _scheduledPrimaryActor = null;
+                        break;
+                    }
+
+                    if (authorityContact?.Transition.After.RemainingHits == 0)
+                    {
+                        _scheduledDecision = null;
+                        _scheduledPrimaryActor = null;
+                        _contactDeadlineActive = false;
                         break;
                     }
 
@@ -4126,11 +4783,100 @@ namespace Volleyball.Presentation
             AcceptedSetContactWriterCount++;
             var accepted = new AcceptedSetEvidenceV3(StableId(actor),
                 classification.ExecutableEnvelope.Identity, trajectory.ArtifactIdentity);
-            var players = _players.OrderBy(pair => pair.Key.Team).ThenBy(pair => pair.Key.RosterSlot)
-                .Select(pair => new GateITacticalPlayerV3(pair.Value.StableId, ToSide(pair.Key.Team),
-                    ToSimulation(pair.Value.transform.position), pair.Key.Team == actor.Team,
-                    _v3RulesAdapter.Eligibility.For(pair.Value.StableId).CanBlock,
-                    pair.Value.Ability.Snapshot)).ToArray();
+            CommitGateIAfterAcceptedSet(
+                actor.Team,
+                intent,
+                accepted,
+                BuildGateITacticalPlayers(actor.Team, null),
+                false);
+        }
+
+        private bool SeedGateIAfterAcceptedSet(
+            TeamId attackingTeam,
+            StablePlayerId organizer,
+            bool seedPostBlockContinuation)
+        {
+            if (_formalAuthority.AttackCoordinator == null ||
+                _trajectoryPredictionProviderV4 == null ||
+                _matchContext == null)
+            {
+                throw new InvalidOperationException(
+                    "A semantic accepted-Set start requires formal Gate I.");
+            }
+
+            var players = BuildGateITacticalPlayers(
+                attackingTeam,
+                organizer);
+            var organizerPlayer = PlayerForStableId(organizer);
+            if (!_formalAuthority.AttackCoordinator
+                    .TrySeedAcceptedSetIntent(
+                        new AcceptedSetIntentPlanningRequestV3(
+                        _formalAuthority.CurrentPlanRevision,
+                        _formalAuthority.NextSourceSequence(),
+                        ToSide(attackingTeam),
+                        organizer,
+                        _ball.SimulationTime,
+                        _ball.State.Clone(),
+                        players,
+                        organizerPlayer.Ability.Derived,
+                        _trajectoryPredictionProviderV4,
+                        SimulationParameters,
+                        _matchContext.PhysicsConfigurationHash,
+                        (long)(uint)BitConverter.ToInt32(
+                            BitConverter.GetBytes(_ball.SimulationTime),
+                            0)),
+                        out var result))
+            {
+                return false;
+            }
+            _formalAuthority.ActiveSetIntent = result;
+            GateISetIntentCommitted?.Invoke(result.Receipt);
+            var intent = result.Intent;
+            var accepted = new AcceptedSetEvidenceV3(
+                organizer,
+                intent.ExecutionClassification.ExecutableEnvelope.Identity,
+                intent.TrajectoryArtifact.ArtifactIdentity);
+            CommitGateIAfterAcceptedSet(
+                attackingTeam,
+                intent,
+                accepted,
+                players,
+                seedPostBlockContinuation);
+            return true;
+        }
+
+        private GateITacticalPlayerV3[] BuildGateITacticalPlayers(
+            TeamId attackingTeam,
+            StablePlayerId? excludedOrganizer)
+        {
+            return _players
+                .OrderBy(pair => pair.Key.Team)
+                .ThenBy(pair => pair.Key.RosterSlot)
+                .Select(pair => new GateITacticalPlayerV3(
+                    pair.Value.StableId,
+                    ToSide(pair.Key.Team),
+                    ToSimulation(pair.Value.transform.position),
+                    pair.Key.Team == attackingTeam &&
+                    (!excludedOrganizer.HasValue ||
+                     !pair.Value.StableId.Equals(
+                         excludedOrganizer.Value)) &&
+                    _v3RulesAdapter.Eligibility
+                        .For(pair.Value.StableId)
+                        .CanAttackAboveNetFromFrontZone,
+                    _v3RulesAdapter.Eligibility
+                        .For(pair.Value.StableId)
+                        .CanBlock,
+                    pair.Value.Ability.Snapshot))
+                .ToArray();
+        }
+
+        private void CommitGateIAfterAcceptedSet(
+            TeamId attackingTeam,
+            GateISetIntentV3 intent,
+            AcceptedSetEvidenceV3 accepted,
+            IReadOnlyList<GateITacticalPlayerV3> players,
+            bool seedPostBlockContinuation)
+        {
             _formalAuthority.AttackCoordinator.AcceptSet(new GateIAcceptedSetV3(intent.PlanRevision,
                 _formalAuthority.NextSourceSequence(), accepted), new AttackPlanningRequestV3(intent.PlanRevision,
                 intent, accepted, players, _trajectoryPredictionProviderV4,
@@ -4140,7 +4886,7 @@ namespace Volleyball.Presentation
                 (long)(uint)BitConverter.ToInt32(
                     BitConverter.GetBytes(_ball.SimulationTime), 0)));
             _formalAuthority.AttackCoordinator.PublishThreat(intent.PlanRevision, _formalAuthority.NextSourceSequence());
-            var defending = Opponent(actor.Team);
+            var defending = Opponent(attackingTeam);
             var defensePlayers = _players.Where(pair => pair.Key.Team == defending)
                 .OrderBy(pair => pair.Key.RosterSlot).Select(pair => new DefensePlayerSnapshotV3(
                     pair.Value.StableId, ToSimulation(pair.Value.transform.position), BaseMovementSpeed,
@@ -4172,10 +4918,41 @@ namespace Volleyball.Presentation
             if (perception != null)
                 _formalAuthority.AttackCoordinator.ApplyPerception(perception);
             var defense = new JointDefensePlanner().Plan(new JointDefensePlanningRequestV3(intent.PlanRevision,
-                Opponent(ToSide(actor.Team)), publicThreat,
+                Opponent(ToSide(attackingTeam)), publicThreat,
                 defensePlayers, assignments, exits, perception));
+            if (seedPostBlockContinuation)
+            {
+                _formalAuthority.AttackCoordinator
+                    .SeedAfterAcceptedAttackWithoutHistoricalCommands(
+                    intent.PlanRevision,
+                    _formalAuthority.NextSourceSequence(),
+                    defense);
+                PublishSetterTargetSnapshot(attackingTeam);
+                return;
+            }
+
             _formalAuthority.AttackCoordinator.CommitDefense(intent.PlanRevision, _formalAuthority.NextSourceSequence(), defense);
             _formalAuthority.AttackCoordinator.CommitFinalAttack(intent.PlanRevision, _formalAuthority.NextSourceSequence());
+            PublishSetterTargetSnapshot(attackingTeam);
+        }
+
+        private void PublishSetterTargetSnapshot(TeamId attackingTeam)
+        {
+            if (_trainingRuntime == null)
+            {
+                return;
+            }
+
+            var plan = _formalAuthority.AttackCoordinator.State.Plan;
+            if (plan?.SelectedAction == null)
+            {
+                throw new InvalidOperationException(
+                    "Committed Gate I plan requires a selected attacker.");
+            }
+
+            SetterTargetPlanned?.Invoke(CreateSetterTargetSnapshot(
+                attackingTeam,
+                plan));
         }
 
         private void RecordGateISetCalibration(
@@ -5308,7 +6085,7 @@ namespace Volleyball.Presentation
             }
 
             var hasReceiveLead =
-                TryDeflectedServeReceiveLeadTime(out var availableSeconds);
+                TryDeflectedReceiveLeadTime(out var availableSeconds);
             Debug.Log(
                 $"[{_configuration.LogTag}] serve-net receiving={receivingTeam} " +
                 $"lead={LastServeNetGroundLeadSeconds:0.000} " +
@@ -5337,7 +6114,7 @@ namespace Volleyball.Presentation
             }
         }
 
-        private bool TryDeflectedServeReceiveLeadTime(
+        private bool TryDeflectedReceiveLeadTime(
             out float availableSeconds)
         {
             var prediction = TrajectoryPredictor.Predict(
@@ -5385,7 +6162,7 @@ namespace Volleyball.Presentation
 
             if (hit.Kind == EnvironmentContactKind.Net)
             {
-                HandleServeNetContact();
+                HandleNetDeflection();
                 return;
             }
 
@@ -5428,6 +6205,7 @@ namespace Volleyball.Presentation
             _awaitingPostBlockCrossing = false;
             _postBlockerTeam = null;
             _postBlockerActor = null;
+            ClearFlightSegment();
             AttributeAttackFault(last.Value, outcome);
             ResolveRally(
                 outcome,
@@ -5439,6 +6217,158 @@ namespace Volleyball.Presentation
                 BackSetAttackFaults++;
             }
             GroundResolvedRallies++;
+        }
+
+        private void HandleNetDeflection()
+        {
+            if (_effectiveNetDeflectionHandled)
+            {
+                SuppressedNetDeflectionDispatches++;
+                return;
+            }
+
+            _effectiveNetDeflectionHandled = true;
+
+            // A block owns its rebound until the existing post-block controller
+            // resolves which side can next receive. Do not create a second
+            // continuation writer for a net contact in that flight.
+            if (_awaitingPostBlockCrossing)
+            {
+                return;
+            }
+
+            NetDeflectionDispatches++;
+
+            if (_flightSegmentOrigin == FlightSegmentOrigin.Serve)
+            {
+                HandleServeNetContact();
+                return;
+            }
+
+            if (_flightSegmentOrigin !=
+                    FlightSegmentOrigin.AcceptedPlayerContact ||
+                !_flightSegmentOriginTeam.HasValue ||
+                _touchState == null)
+            {
+                return;
+            }
+
+            var sourceTeam = _flightSegmentOriginTeam.Value;
+            InvalidatePreNetContinuation();
+            CancelGateIUnacceptedSetChainForNetDeflection();
+            if (!IsMovingTowardTeam(_ball.State.Velocity, sourceTeam))
+            {
+                // A deflection headed across the net is deliberately left to
+                // HandleNetPlaneCrossing so the opponent cannot contact early.
+                return;
+            }
+
+            var remainingTouches = 3 - _touchState.CountedTeamTouches;
+            if (remainingTouches <= 0)
+            {
+                _status = "Net deflection has no remaining touch; awaiting referee";
+                return;
+            }
+
+            if (!TryDeflectedReceiveLeadTime(out var availableSeconds))
+            {
+                _status = "Net deflection unreachable; awaiting referee";
+                return;
+            }
+
+            _activeTacticalWeights = LocalTacticalWeights();
+            ScheduleReceiveDecision(sourceTeam, availableSeconds);
+            if (_scheduledPrimaryActor.HasValue)
+            {
+                _status = $"Net deflection; {sourceTeam} receive replanned";
+            }
+        }
+
+        private void CancelGateIUnacceptedSetChainForNetDeflection()
+        {
+            if (!GateIAuthorityEnabled ||
+                _formalAuthority?.AttackCoordinator == null)
+            {
+                return;
+            }
+
+            var phase =
+                _formalAuthority.AttackCoordinator.State.Phase;
+            if (phase ==
+                AttackDefenseAuthorityPhaseV3.AttackCommitted)
+            {
+                ExpirePendingGateIReceiveWindows(
+                    "SetNetDeflectionBeforeAttack");
+                _formalAuthority.AttackCoordinator
+                    .CancelUnacceptedAttackAndReset(
+                        _formalAuthority.AttackCoordinator.State.Revision,
+                        _formalAuthority.NextSourceSequence());
+            }
+            else if (phase ==
+                     AttackDefenseAuthorityPhaseV3.SetIntentPlanned)
+            {
+                _formalAuthority.AttackCoordinator
+                    .CancelSetIntentAndReset(
+                        _formalAuthority.AttackCoordinator.State.Revision,
+                        _formalAuthority.NextSourceSequence());
+            }
+            else
+            {
+                return;
+            }
+
+            _formalAuthority.ClearGateI();
+            _scheduledBlockers.Clear();
+            _scheduledBlockPrimary = null;
+            _committedGateIBlockTime = -1f;
+        }
+
+        private void InvalidatePreNetContinuation()
+        {
+            _aiDecisionRequestVersion++;
+            _aiDecisionTimeController?.CancelPending();
+            DisableEmergencyReceiveWindows(TeamId.Blue);
+            DisableEmergencyReceiveWindows(TeamId.Orange);
+            DisablePhysicalBlockWindows();
+            foreach (var player in _players.Values)
+            {
+                player.CancelScheduledContact();
+            }
+            // Gate I receipts describe the already-authorized continuation
+            // actors. Keep them dormant until the real net crossing selects a
+            // side; clearing them here would leave the opponent with no legal
+            // receiver after a deflection crosses the net.
+            ExpireActivePostAttackReceiveWindow("NetDeflection");
+            _formalAuthority.ClearGateH();
+            _touchState.CloseWindow();
+            _scheduledDecision = null;
+            _scheduledPrimaryActor = null;
+            _plannedAttackDecision = null;
+            _plannedAttackTrajectoryArtifactV4 = null;
+            _contactDeadlineActive = false;
+        }
+
+        private void BeginFlightSegment(
+            FlightSegmentOrigin origin,
+            TeamId originTeam)
+        {
+            _flightSegmentOrigin = origin;
+            _flightSegmentOriginTeam = originTeam;
+            _effectiveNetDeflectionHandled = false;
+        }
+
+        private void ClearFlightSegment()
+        {
+            _flightSegmentOrigin = FlightSegmentOrigin.None;
+            _flightSegmentOriginTeam = null;
+            _effectiveNetDeflectionHandled = false;
+        }
+
+        private enum FlightSegmentOrigin
+        {
+            None = 0,
+            Serve = 1,
+            AcceptedPlayerContact = 2
         }
 
         private void ExpirePendingGateIReceiveWindows(string reason)
@@ -5578,6 +6508,7 @@ namespace Volleyball.Presentation
                     actualVelocity,
                     out openedReceipt);
             }
+            _trainingHistoricalAttackAuthoritySeeded = false;
 
             if (openedReceipt != null)
             {
@@ -5676,7 +6607,9 @@ namespace Volleyball.Presentation
                     PostAttackContinuationStateV4.DefendingSideFloorDefense;
             }
 
-            if (GateIAuthorityEnabled)
+            if (GateIAuthorityEnabled &&
+                _formalAuthority.AttackCoordinator.State.Phase !=
+                AttackDefenseAuthorityPhaseV3.Idle)
             {
                 OpenPendingGateIReceiveWindow(
                     receivingTeam,
@@ -5782,6 +6715,7 @@ namespace Volleyball.Presentation
 
             _restartScheduled = true;
             _rallyActive = false;
+            ClearFlightSegment();
             _aiDecisionRequestVersion++;
             _aiDecisionTimeController?.CancelPending();
             _contactDeadlineActive = false;
@@ -5820,6 +6754,42 @@ namespace Volleyball.Presentation
             Debug.Log(
                 $"[{_configuration.LogTag}] rally={reason} winner={outcome.Winner} " +
                 $"score={_set.HomeScore}:{_set.AwayScore}");
+            if (_trainingRuntime != null || _trainingRallyStartV5 != null)
+            {
+                _trainingSingleRallyCompleted = true;
+                _ball.Stop();
+                if (_trainingRallyStartV5 != null)
+                {
+                    var timeline = new List<TrainingRallyTimelineEntryV1>();
+                    foreach (var fault in _trainingPositionFaults)
+                    {
+                        timeline.Add(new TrainingRallyTimelineEntryV1(
+                            timeline.Count,
+                            _ball.SimulationTime,
+                            "PositionFault",
+                            fault.Rule.ToString()));
+                    }
+                    timeline.Add(new TrainingRallyTimelineEntryV1(
+                        timeline.Count,
+                        _ball.SimulationTime,
+                        "RallyResolved",
+                        reason));
+                    TrainingRallyOutcomeV1 = new TrainingRallyOutcomeV1(
+                        _trainingRallyStartV5,
+                        outcome.Winner,
+                        _set.HomeScore,
+                        _set.AwayScore,
+                        reason,
+                        SuccessfulContacts,
+                        _trainingPositionFaults,
+                        timeline);
+                }
+                _status =
+                    $"TRAINING COMPLETE  {_set.HomeScore}:{_set.AwayScore}";
+                RenderScore();
+                return;
+            }
+
             if (_set.IsComplete)
             {
                 if (_formalSet != null)
@@ -5835,9 +6805,14 @@ namespace Volleyball.Presentation
                         var winner = _set.HomeScore > _set.AwayScore
                             ? _matchContextV5.Home.TeamId
                             : _matchContextV5.Away.TeamId;
+                        var canonicalFaults = _v5PositionFaults
+                            .OrderBy(value => value.RallyNumber)
+                            .ThenBy(value => value.Rule,
+                                StringComparer.Ordinal)
+                            .ToArray();
                         ResultV5 = MatchResultV5.Create(_matchContextV5, winner,
                             _set.HomeScore, _set.AwayScore,
-                            _set.HomeScore + _set.AwayScore);
+                            _set.HomeScore + _set.AwayScore, canonicalFaults);
                     }
                 }
                 else
@@ -6205,7 +7180,11 @@ namespace Volleyball.Presentation
             if (_configuration.RosterSize == 6)
             {
                 var rotationPosition = _set.RotationPositionFor(StableId(player));
-                return _configuration.PositionFor(ToSide(player.Team), rotationPosition);
+                var side = ToSide(player.Team);
+                var target = _configuration.PositionFor(side, rotationPosition);
+                if (_matchContextV5 != null && side == TeamSide.Away)
+                    target.x = -target.x;
+                return target;
             }
 
             var tactic = TacticFor(player.Team);

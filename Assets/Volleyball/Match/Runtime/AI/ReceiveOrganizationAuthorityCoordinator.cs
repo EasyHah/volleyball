@@ -696,6 +696,36 @@ namespace Volleyball.AI
             return State;
         }
 
+        public ReceiveOrganizationAuthorityStateV3
+            SeedPlannedReceiveAsAlreadyAccepted(
+                AcceptedReceiveV3 accepted)
+        {
+            if (accepted == null)
+                throw new ArgumentNullException(nameof(accepted));
+            ValidateTransition(
+                accepted.Revision,
+                accepted.SourceSequence,
+                ReceiveOrganizationAuthorityPhaseV3.ReceivePlanned);
+            if (!IsDeclaredReceiveActor(accepted.Actor))
+                throw new InvalidOperationException(
+                    "Semantic Receive actor is outside the planned authority.");
+
+            _activeReceiveActor = accepted.Actor;
+            State = NewState(
+                ReceiveOrganizationAuthorityPhaseV3.ReceiveCommitted,
+                _planning,
+                State.ActiveBranch,
+                accepted.ActualFirstPassLanding,
+                State.CoverageDecision,
+                accepted.Actor,
+                Identity(
+                    accepted.Revision,
+                    accepted.SourceSequence,
+                    ReceiveOrganizationCommandKind.PrimaryReceive,
+                    accepted.Actor));
+            return AcceptReceive(accepted);
+        }
+
         public ReceiveOrganizationAuthorityStateV3 ActivateEmergency(
             long revision,
             long sourceSequence,

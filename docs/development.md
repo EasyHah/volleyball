@@ -194,6 +194,66 @@ checking its `BuildReport`.
 CI artifacts do not replace regular testing on real Windows x64 hardware for
 keyboard, controller, graphics and performance checks.
 
+## Formal training scenario lab
+
+Open
+`Assets/Volleyball/Match/Scenes/FormalTrainingScenarioLab.unity` with Unity
+`6000.3.20f1`. The lab starts in `Editing` with a separate 3D preview: the left
+panel selects the six built-in net scenarios or an in-memory draft, the center
+selects and drags the ball or twelve player markers, the right panel edits the
+semantic start and visible inputs, and the bottom console validates and runs one
+formal rally.
+
+The editor accepts only `TrainingScenarioDraftV1`. `Validate` freezes a
+`TrainingScenarioV1` with a canonical hash; `Run` then creates the normal formal
+6v6 ball, twelve players, V3 authority, physical contacts and referee. Editing is
+locked in `Running` and `Paused`. Keyboard controls are:
+
+- `P` or `Space`: pause/resume;
+- `.`: advance exactly one `1/120s` ball simulation step while paused;
+- `R`: rerun the completed frozen scenario with the same `matchSeed`;
+- `Escape`: return a completed or faulted run to editing.
+
+Returning to editing destroys the complete formal runtime and rebuilds preview
+objects from the unchanged draft. The timeline and decision snapshots are
+read-only observers. In the Unity Editor, `导出决策快照` writes JSONL to the
+ignored `TestResults/TrainingLab/DecisionSnapshots/` folder. Player builds show
+the snapshot summary but do not write dataset files.
+
+Focused verification:
+
+```bash
+UNITY="/Applications/Unity/Unity-6000.3.20f1/Unity.app/Contents/MacOS/Unity"
+mkdir -p TestResults
+"$UNITY" -batchmode -projectPath "$PWD" \
+  -runTests -testPlatform EditMode \
+  -testFilter \
+  "Volleyball.EditModeTests.TrainingScenarioLabControllerTests;Volleyball.EditModeTests.TrainingScenarioLabSceneTests;Volleyball.EditModeTests.DecisionSnapshotV1Tests;Volleyball.EditModeTests.TrainingScenarioV1Tests;Volleyball.EditModeTests.TrainingScenarioValidatorV1Tests" \
+  -testResults "$PWD/TestResults/TrainingLab-EditMode.xml" \
+  -logFile "$PWD/TestResults/TrainingLab-EditMode.log"
+
+"$UNITY" -batchmode -projectPath "$PWD" \
+  -runTests -testPlatform PlayMode \
+  -testFilter \
+  "Volleyball.PlayModeTests.TrainingScenarioRuntimePlayModeTests;Volleyball.PlayModeTests.TrainingNetContinuationPlayModeTests;Volleyball.PlayModeTests.TrainingTimelinePlayModeTests;Volleyball.PlayModeTests.TrainingScenarioLabPlayModeTests;Volleyball.PlayModeTests.DefensiveContactContinuationPlayModeTests" \
+  -testResults "$PWD/TestResults/TrainingLab-PlayMode.xml" \
+  -logFile "$PWD/TestResults/TrainingLab-PlayMode.log"
+```
+
+The dedicated build entry selects `StandaloneWindows64`, IL2CPP, Development,
+and Allow Debugging, with the training lab first and `FormalIndoor6v6` included:
+
+```bash
+"$UNITY" -batchmode -projectPath "$PWD" \
+  -executeMethod \
+  Volleyball.Editor.TrainingScenarioLabWindowsDevelopmentBuild.Build \
+  -logFile "$PWD/TestResults/TrainingLab-WindowsBuild.log" -quit
+```
+
+The Unity installation running that command must include the Windows Build
+Support (IL2CPP) module. The build writes ignored output under `Builds/Windows/`
+and a `training-lab-build-manifest.json` only after a successful `BuildReport`.
+
 ## All-AI prototype verification
 
 Open `Assets/Volleyball/Match/Scenes/AiRallyPrototype.unity` with Unity

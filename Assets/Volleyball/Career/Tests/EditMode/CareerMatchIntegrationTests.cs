@@ -296,7 +296,7 @@ namespace Volleyball.Career.EditModeTests
             var result = MatchResultV5.Create(context, context.Home.TeamId, 25, 20, 45);
             var reports = context.Home.RotationOrder.Concat(context.Away.RotationOrder).Select(player =>
                 new CareerMatchPlayerReportV1(player.PlayerId, player.PlayerId.Equals(profile.PlayerId) ? 3 : 0,
-                    player.PlayerId.Equals(profile.PlayerId) ? 2 : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                    player.PlayerId.Equals(profile.PlayerId) ? 3 : 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                     0, 0, 0, 0, 0, 0, 0, 0, 45, 0, 1, 300, 1, 1, 1, 0, 0, 0, 0, 0)).ToArray();
             var replay = MatchReplayV5.Create("v5.settlement", context);
             var report = CareerMatchReportV1.Create(context, result, CareerMatchEvidenceKindV1.PhysicalReplay,
@@ -335,6 +335,46 @@ namespace Volleyball.Career.EditModeTests
                 Assert.That(restored.ContextHash, Is.EqualTo(pending.ContextHash));
                 Assert.That(store.DiscardPending(profile.PlayerId), Is.True);
                 Assert.That(store.LoadPending(profile.PlayerId), Is.Null);
+            }
+            finally
+            {
+                if (Directory.Exists(root)) Directory.Delete(root, true);
+            }
+        }
+
+        [Test]
+        public void V5PendingStore_RejectsPreviousEvidenceContractWithRecoverableDiscard()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "volleyball-v5-legacy-evidence-" +
+                Guid.NewGuid().ToString("N"));
+            try
+            {
+                var profile = new Volleyball.Career.Domain.CareerPlayerProfileV5(
+                    new PlayerId("v5.legacy.evidence.player"), "Legacy Evidence Player", 12,
+                    DominantHandV5.Right, V5Bases(new[] { 6100, 1975, 6200, 6300, 6400, 6500,
+                        6600, 6700, 6800, 6900, 7000, 7100 }));
+                var mapper = new CareerMatchV5Mapper(new string('a', 64),
+                    V5TrajectoryConfiguration());
+                var store = new CareerV5PendingStore(new CareerStoragePaths(root),
+                    new SystemAtomicFileSystem());
+                var service = new CareerV5MatchLifecycleService(
+                    new CareerFirstMatchLaunchFactoryV5(), mapper,
+                    new CareerMatchExecutorV5(mapper, new TestV5Runner()), store);
+                var context = mapper.ToContext(V5Launch(profile.Bases, 0));
+                var previousPayload = ContractJson.SerializeV5(context).Replace(
+                    "\"positionFaultEvidenceVersion\":1,", string.Empty);
+
+                store.SaveProfile(profile);
+                store.SavePending(profile.PlayerId, Encoding.UTF8.GetBytes(previousPayload));
+
+                var recovery = service.LoadPending(profile);
+
+                Assert.That(recovery.Kind,
+                    Is.EqualTo(CareerV5PendingRecoveryKind.DiscardUnsupportedEvidenceAndCreateNewMatch));
+                Assert.That(recovery.Pending, Is.Null);
+                Assert.That(recovery.Reason, Does.Contain("discard"));
+                Assert.That(service.DiscardPending(profile), Is.True,
+                    "Recovery must preserve raw pending bytes until the user explicitly discards them.");
             }
             finally
             {

@@ -29,6 +29,7 @@ namespace Volleyball.Presentation
             director.ReplayContactAccepted += recorder.RecordContact;
             director.ReplayDecisionPlanned += recorder.RecordDecision;
             director.ReplayRallyResolved += recorder.RecordRally;
+            director.ReplayPositionFault += recorder.RecordPositionFault;
             recorder._capturing = true;
             return recorder;
         }
@@ -39,7 +40,8 @@ namespace Volleyball.Presentation
             if (_director.ResultV5 == null) throw new InvalidOperationException("V5 replay cannot complete before its result.");
             _capturing = false;
             return MatchReplayV5.Create("formal-v5-" + _director.MatchContextV5.SessionId.ToString("D"),
-                _director.MatchContextV5, _evidence, _reportFacts);
+                _director.MatchContextV5, _evidence, _reportFacts,
+                _director.ResultV5.PositionFaults);
         }
 
         public CareerMatchReportV1 CompleteReport(MatchReplayV5 replay)
@@ -91,6 +93,7 @@ namespace Volleyball.Presentation
             if (_director != null) _director.ReplayContactAccepted -= RecordContact;
             if (_director != null) _director.ReplayDecisionPlanned -= RecordDecision;
             if (_director != null) _director.ReplayRallyResolved -= RecordRally;
+            if (_director != null) _director.ReplayPositionFault -= RecordPositionFault;
         }
 
         private void RecordDecision(ReplayDecisionEvent decision)
@@ -111,6 +114,14 @@ namespace Volleyball.Presentation
                 "Decision", decision.SelectedAction.ToString(), selectedScore >= bestScore, false, 0,
                 executableChoices: executable, selectedChoice: decision.SelectedAction.ToString(),
                 decisionReason: selectedScore >= bestScore ? "HighestExecutableScore" : "LowerExecutableScore"));
+        }
+
+        private void RecordPositionFault(ReplayPositionFaultEvent fault)
+        {
+            if (!_capturing || fault == null) return;
+            // The immutable Match artifact owns the actual facts; this event confirms no contacts ran first.
+            if (_evidence.Count != 0 || _reportFacts.Count != 0)
+                throw new InvalidOperationException("V5 position faults must resolve before contact evidence.");
         }
 
         private static string Fingerprint(MatchContextV5 context,

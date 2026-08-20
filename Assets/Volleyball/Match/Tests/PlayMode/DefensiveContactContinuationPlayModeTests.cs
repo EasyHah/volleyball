@@ -59,6 +59,12 @@ namespace Volleyball.PlayModeTests
 
             Assert.That(probe.NetContactTimes, Is.Not.Empty,
                 probe.Evidence("The opening serve did not physically contact the net."));
+            Assert.That(probe.Director.NetDeflectionDispatches,
+                Is.EqualTo(1),
+                probe.Evidence("One serve flight must publish one net deflection dispatch."));
+            Assert.That(probe.Director.SuppressedNetDeflectionDispatches,
+                Is.Zero,
+                probe.Evidence("The single deflection scenario unexpectedly suppressed a dispatch."));
             Assert.That(probe.Director.ServeNetReceiveReplans,
                 Is.EqualTo(1),
                 probe.Evidence("The serve net contact did not create one replacement plan."));
@@ -103,6 +109,9 @@ namespace Volleyball.PlayModeTests
 
             Assert.That(probe.NetContactTimes, Is.Not.Empty,
                 probe.Evidence("The opening serve did not physically contact the net."));
+            Assert.That(probe.Director.NetDeflectionDispatches,
+                Is.EqualTo(1),
+                probe.Evidence("One serve flight must publish one net deflection dispatch."));
             Assert.That(probe.NetCrossings.Any(crossing =>
                     crossing.SimulationTimeSeconds >= probe.NetContactTimes[0]),
                 Is.True,
@@ -140,6 +149,9 @@ namespace Volleyball.PlayModeTests
 
             Assert.That(probe.NetContactTimes, Is.Not.Empty,
                 probe.Evidence("The opening serve did not physically contact the net."));
+            Assert.That(probe.Director.NetDeflectionDispatches,
+                Is.EqualTo(1),
+                probe.Evidence("One serve flight must publish one net deflection dispatch."));
             Assert.That(probe.NetCrossings.Where(crossing =>
                     crossing.SimulationTimeSeconds >= probe.NetContactTimes[0]),
                 Is.Empty,

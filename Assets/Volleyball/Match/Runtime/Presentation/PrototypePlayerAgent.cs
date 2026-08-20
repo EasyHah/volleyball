@@ -150,6 +150,28 @@ namespace Volleyball.Presentation
             Ability = ability;
         }
 
+        public float VisualBodyHeightMeters =>
+            Rig == null ? 0f : Rig.BodyHeightMeters;
+
+        public void ApplyV5Presentation(int heightMillimeters)
+        {
+            if (heightMillimeters < 1400 || heightMillimeters > 2300)
+                throw new ArgumentOutOfRangeException(
+                    nameof(heightMillimeters));
+            _presentation.SetBodyHeightMeters(heightMillimeters / 1000f);
+        }
+
+        public SetContactHand PreferredContactHand(TechniqueAction action)
+        {
+            return action == TechniqueAction.Attack ||
+                   action == TechniqueAction.Serve
+                ? Ability.Snapshot.DominantHand ==
+                  Volleyball.Shared.Contracts.DominantHandV5.Left
+                    ? SetContactHand.Left
+                    : SetContactHand.Right
+                : SetContactHand.Both;
+        }
+
         public void SetCourtHalfLength(float courtHalfLength)
         {
             if (float.IsNaN(courtHalfLength) || float.IsInfinity(courtHalfLength) || courtHalfLength <= 0f)
@@ -754,6 +776,41 @@ namespace Volleyball.Presentation
             SetRootPosition(constrained);
             _locomotion.MotionOrigin = constrained;
             _presentation.ApplyReadyPose();
+        }
+
+        public void PrepareForTrainingSnapshot(
+            SimVector3 worldPosition,
+            SimVector3 forward,
+            StickFigurePose pose)
+        {
+            if (!worldPosition.IsFinite || !forward.IsFinite ||
+                forward.SqrMagnitude < .25f)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(worldPosition),
+                    "Training pose vectors must be finite with a usable forward.");
+            }
+
+            if (!Enum.IsDefined(typeof(StickFigurePose), pose))
+            {
+                throw new ArgumentOutOfRangeException(nameof(pose));
+            }
+
+            CancelScheduledContact();
+            var requested = ToUnity(worldPosition);
+            var constrained = ConstrainToOwnCourt(requested);
+            if ((constrained - requested).sqrMagnitude > .000001f)
+            {
+                throw new ArgumentException(
+                    "Training pose must already satisfy formal court constraints.",
+                    nameof(worldPosition));
+            }
+
+            SetRootPosition(constrained);
+            _locomotion.MotionOrigin = constrained;
+            _locomotion.PreparedForward = forward.Normalized;
+            transform.forward = ToUnity(_locomotion.PreparedForward);
+            Rig.SetPose(pose, 1f);
         }
 
         public void SetPreparedFacing(TeamCourtFrame frame, SetRoute route)

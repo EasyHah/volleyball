@@ -20,5 +20,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Volleyball/Match/Scenes/FormalIndoor6v6.unity
     guid: 6f6f726d616c36667636636f75727431
+  - enabled: 1
+    path: Assets/Volleyball/Match/Scenes/FormalTrainingScenarioLab.unity
+    guid: 81928dbae9af7420094876c6e52518cb
   m_configObjects: {}
   m_UseUCBPForAssetBundles: 0
