@@ -87,7 +87,9 @@
 - 新增九张逐张核验为 `1920x1080` 的帧缓冲截图：
   `TestResults/TrainingLab/VisualAcceptance/2026-08-20-exact-1920x1080/00-hub.png` 至
   `08-unsaved-leave.png`，覆盖 Hub、标准轮转、合法站位、故障聚焦、精确字段修正、Serve、自动
-  preflight、原生 V5 单回合结果和 dirty-leave modal。Serve 侧视和只读 3D 的同分辨率截图尚待补齐。
+  preflight、原生 V5 单回合结果和 dirty-leave modal。新增 `09-serve-side-view.png` 与
+  `10-read-only-3d.png`，补齐 Serve 侧视和只读 3D；十一张文件均已逐张核验内容和
+  `1920x1080` 像素尺寸。
 - fresh pointer follow-up PlayMode `9/9`，证据为
   `TestResults/TrainingLab-Corrective-PhysicalFollowup-PlayMode.xml`。computer-use 的坐标点击可驱动 Game
   View，但 drag 未向 Unity 发送 PointerDown/Move/Up，因此不能作为物理拖拽通过证据。

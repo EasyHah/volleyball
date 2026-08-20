@@ -641,7 +641,7 @@ dead-end state.
 
     Run the repository's complete EditMode suite once after all runtime and UI changes are frozen. If a material runtime fix follows, rerun only the affected regression unless the fix crosses Shared/V4 compatibility boundaries and makes the complete result stale.
 
-- [ ] **Step 5: Perform 1920x1080 screenshot acceptance.**
+- [x] **Step 5: Perform 1920x1080 screenshot acceptance.**
 
     Capture 01-scenario-hub.png, 02-rotation.png, 03-positioning.png, 04-position-fault-focus.png, 05-serve-top.png, 06-serve-side.png, 07-serve-3d-modal.png, 08-preflight.png, 09-running-result.png and 10-unsaved-leave.png under TestResults/TrainingLab/VisualAcceptance/2026-08-17/. Reject legacy all-controls UI, overlap, clipped text, wrong court ratio, missing gate, a manual Validation control, side/3D player editing or editable 3D preview.
 

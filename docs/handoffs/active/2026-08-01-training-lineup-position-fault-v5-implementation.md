@@ -177,7 +177,8 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 - 1920x1080 Game View 中已人工确认标准模板零 fault、故障卡/聚焦/箭头、精确字段纠正、页面按钮进入
   Serve、自动 preflight、原生 V5 单回合结果和 dirty-leave modal。九张精确 `1920x1080` 帧缓冲截图位于
   `TestResults/TrainingLab/VisualAcceptance/2026-08-20-exact-1920x1080/00-hub.png` 至
-  `08-unsaved-leave.png`，像素尺寸已逐张核验；其中还缺 Serve 侧视和只读 3D 的同分辨率补图。
+  `08-unsaved-leave.png`；Serve 侧视和只读 3D 补图分别为 `09-serve-side-view.png` 与
+  `10-read-only-3d.png`。十一张文件均已逐张核验内容和 `1920x1080` 像素尺寸。
 - computer-use 对 Game View 的坐标点击有效，但其 drag 动作没有向 Unity 发送任何 PointerDown/Move/Up；
   因而真实物理鼠标 rotation/court/ruler drag 仍不计通过。生产拖放在 pointer capture 期间持续记录
   hit-test 目标，fresh PlayMode `9/9`（`TrainingLab-Corrective-PhysicalFollowup-PlayMode.xml`）通过，
