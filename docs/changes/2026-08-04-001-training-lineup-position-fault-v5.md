@@ -65,3 +65,25 @@
 - 尚未在 Windows Player 中执行本计划新增 TrainingLab 的 IL2CPP 构建、输入、渲染及 pending 恢复验收；现有
   V5 Windows IL2CPP 构建记录保留在 `9a3897e` 对应改动文档中。
 - 回滚方式：回退本里程碑分支；新 V5 位置错误证据版本继续按 handoff 规则拒绝旧 pending/result/replay。
+
+## 统一工作台交互纠偏（2026-08-20）
+
+- 修复情景入口复用旧 controller/草稿的问题：`ShowWorkbench` 只接受明确的 `builtin:`/`local:` identity；
+  built-in 每次创建独立 local ID 与 Match draft，saved local 按原 ID 从磁盘重载。普通模板均从零位置错误
+  开始，只有两项命名 fault 模板故意非法。
+- 恢复批准的轮转和站位体验：正式六点位轮转卡显示位次、姓名、号码和中文角色；真实 UI Toolkit
+  captured-pointer 仅允许同队交换并清理空白/跨队 drop；站位页选择场上球员，提供 court 与双轴 ruler
+  编辑、故障双方/位次/规则/方向、红色关系线、蓝色同源修正箭头和可达的 Serve 门禁。
+- fresh automated evidence：focused EditMode `46/46`、focused PlayMode `9/9`、完整 EditMode
+  `1625/1625`，分别见 `TestResults/TrainingLab-Corrective-ReviewFix-EditMode.xml`、
+  `TestResults/TrainingLab-Corrective-ReviewFix-PlayMode-2.xml`、
+  `TestResults/TrainingLab-Corrective-Complete-EditMode-2.xml`。此前同一代码冻结阶段的 V5 Career
+  PlayMode `8/8` 与 3v3 isolation `1/1` 仍有效；末次复核修复只影响 TrainingLab View 与其 PlayMode
+  用例。`git diff --check` 通过。
+- 只读独立复核已完成，发现的纠正方向与 pointer-capture 测试缺口均已修复。人工截图保存在
+  `TestResults/TrainingLab/VisualAcceptance/2026-08-18-corrective/00-current-hub.png` 至
+  `07-serve-reached-by-page-button.png`；其中 `03-same-team-exchange-attempt.png` 是未成功的物理拖拽尝试，
+  不作为通过证据。
+- 仍待门禁：真实物理鼠标 rotation/court/ruler drag、精确 1920x1080 像素截图、Preflight/Run/
+  dirty-leave 补图，以及安装 Windows Build Support (IL2CPP) 后的 Windows x64 Development Build 与
+  Player 验收。当前状态保持“已自动验证，待 Windows 与剩余人工验收”。

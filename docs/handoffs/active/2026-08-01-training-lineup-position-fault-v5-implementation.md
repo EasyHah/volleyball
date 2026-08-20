@@ -140,3 +140,43 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 - macOS 锁屏后已通过正常退出 Unity 解除工程锁并完成自动回归；自动预检、单 rally 结果和 dirty-leave
   的 08--10 截图仍未补齐。handoff 因 Windows 与剩余人工验收保持 `Status: active`，当前状态为
   “已自动验证 / 待人工验收”，不得称完成。
+
+## 交互验收纠偏与重开（2026-08-18）
+
+- 用户验收确认 2026-08-17 的 controller/结构测试不能证明 Rotation 与 Positioning 可用；此前“Task
+  0--9 已实现”和“macOS Editor 已验收轮转/摆位/位置错误聚焦”的表述对 Task 3--5 无效。Task 0--2、
+  6--8 的数据与运行边界保持冻结，Task 3--5 和 Task 9 重新打开。
+- 已确认的 P1 根因：`ShowWorkbench(entryKey)` 忽略 entry identity，导致“从标准轮转开始”可能复用先前
+  的位置错误模板或旧草稿；selected-player ruler points 与 pointer wiring 不存在；fault cards、关系线和
+  `FocusedPlayerIds` 的 View 接线缺失。Rotation 控制器交换正确，但没有真实 UI pointer 验收，页面也未按
+  正式球场固定点位呈现完整身份。
+- 唯一 unified implementation plan 新增 R0--R4 corrective increment，下一步从 R0 failing tests 开始。
+  完成条件包括：普通模板默认零 fault、模板/本地 identity 不复用、真实轮转/球员/标尺 Pointer 手势、
+  可理解且可修正的位置错误、按钮实际进入 Serve、全新 1920x1080 人工证据，以及代码冻结后的既有 Task
+  9 回归。
+- 当前状态回退为“修复计划已批准范围内完善 / 自动与人工验收均待重跑”。不得引用 2026-08-17 的
+  `76/76`、`3/3` 或 `1624/1624` 结果证明 R0--R4，也不得在 R0--R4 完成前重新宣称已自动验证。
+
+## 交互纠偏自动验证检查点（2026-08-20）
+
+- R0--R3 已实现：六个内置模板逐一验证 identity、默认合法性和独立草稿；所有公开入口按
+  `builtin:`/`local:` 身份替换 controller/runtime；轮转使用正式六点位卡片与同队交换；站位页默认选择
+  Home 1 号位，提供两轴标尺、故障卡、关系线、同源纠正箭头及可实际点击的 Serve 推进按钮。
+- 新鲜 focused 结果为 EditMode `46/46` 与 PlayMode `9/9`：
+  `TestResults/TrainingLab-Corrective-ReviewFix-EditMode.xml`、
+  `TestResults/TrainingLab-Corrective-ReviewFix-PlayMode-2.xml`。PlayMode 覆盖故障模板返回后点击标准入口、
+  普通模板互换、连续两次标准入口、已保存 local 重载、captured-pointer 同队/跨队/空白 drop、轮转重开、
+  站位 court/ruler drag、故障聚焦以及纠正后通过真实页面按钮进入 Serve。
+- 代码冻结后的完整 EditMode 为 `1625/1625`：
+  `TestResults/TrainingLab-Corrective-Complete-EditMode-2.xml`。冻结前已通过 V5 Career PlayMode `8/8`
+  和 3v3 隔离 PlayMode `1/1`；纠偏末次改动仅位于 TrainingLab View/PlayMode 测试，并由上述 focused
+  编译与交互测试覆盖。
+- 独立只读复核发现的纠正方向文案与 pointer-capture 测试真实性问题已修复；故障卡方向现由蓝色箭头
+  使用的同一 `ShortestLegalCorrection` 向量生成，深度和横向两类均有断言。复核未发现 V4 Career、
+  正式 Match 或 3v3 语义变化。
+- 1920x1080 Game View 中已人工确认标准模板零 fault、故障卡/聚焦/箭头、精确字段纠正和页面按钮进入
+  Serve；截图位于 `TestResults/TrainingLab/VisualAcceptance/2026-08-18-corrective/`。但真实物理鼠标
+  rotation/court/ruler drag、精确 1920x1080 像素截图、Preflight/Run/dirty-leave 补图仍未形成完整证据。
+- Windows x64 IL2CPP build 再次真实执行并因本机仅有 `MacStandaloneSupport` 报 unsupported target，
+  日志为 `TestResults/TrainingLab-Corrective-Windows-Build.log`。因此 handoff 保持 `Status: active`，
+  当前状态为“已自动验证 / 待人工验收”，不得称完成。

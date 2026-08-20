@@ -39,6 +39,7 @@ namespace Volleyball.Presentation.TrainingLab
         private VisualElement _bookmarkList;
         private VisualElement _leaveModal, _timeline;
         private Label _state, _hash, _rules, _feedback, _selection;
+        private Label _scenarioName;
         private Label _inspectorTitle, _inspectorSummary, _serveBlock;
         private Label _serveToolSummary, _preflightSummary, _runningSummary;
         private Label _leaveMessage;
@@ -57,6 +58,10 @@ namespace Volleyball.Presentation.TrainingLab
         private string _dragObjectId;
         private TeamSide? _rotationDragSide;
         private int _rotationDragSlot;
+        private VisualElement _rotationDragCard;
+        private int _rotationDragPointer = -1;
+        private string _rulerDragAxis;
+        private int _rulerDragPointer = -1;
         private int _previewPointer = -1;
         private Vector2 _previewPointerPosition;
         private float _previewYaw = 32f;
@@ -73,10 +78,14 @@ namespace Volleyball.Presentation.TrainingLab
         {
             InitializeVisualTree();
             EnsureBackgroundCamera();
-            if (_controller == null) OpenTemplate("standard-rotation", false);
-            _controller.Changed -= Render;
-            _controller.Changed += Render;
-            Render();
+            if (_controller == null)
+                OpenTemplate("standard-rotation", false);
+            else
+            {
+                _controller.Changed -= Render;
+                _controller.Changed += Render;
+                Render();
+            }
         }
 
         private void OnDisable()
@@ -136,6 +145,7 @@ namespace Volleyball.Presentation.TrainingLab
             _timeline = _root.Q("timeline-list");
             _state = _root.Q<Label>("state-label");
             _hash = _root.Q<Label>("hash-label");
+            _scenarioName = _root.Q<Label>("scenario-name-label");
             _rules = _root.Q<Label>("rules-label");
             _feedback = _root.Q<Label>("feedback-label");
             _selection = _root.Q<Label>("selection-label");
@@ -312,12 +322,53 @@ namespace Volleyball.Presentation.TrainingLab
             });
             _board.RegisterCallback<PointerMoveEvent>(OnBoardPointerMove);
             _board.RegisterCallback<PointerUpEvent>(_ => _dragObjectId = null);
+            _root.RegisterCallback<PointerUpEvent>(OnRotationPointerUp);
+            _root.RegisterCallback<PointerCancelEvent>(_ => ClearRotationDrag());
+            _root.RegisterCallback<DetachFromPanelEvent>(_ =>
+            {
+                ClearRotationDrag();
+                ClearRulerDrag();
+            });
+            _horizontalRuler.RegisterCallback<PointerMoveEvent>(OnRulerPointerMove);
+            _verticalRuler.RegisterCallback<PointerMoveEvent>(OnRulerPointerMove);
+            _horizontalRuler.RegisterCallback<PointerUpEvent>(OnRulerPointerUp);
+            _verticalRuler.RegisterCallback<PointerUpEvent>(OnRulerPointerUp);
+            _horizontalRuler.RegisterCallback<PointerCancelEvent>(_ =>
+                ClearRulerDrag());
+            _verticalRuler.RegisterCallback<PointerCancelEvent>(_ =>
+                ClearRulerDrag());
         }
 
         public void ShowWorkbench(string entryKey)
         {
-            _showingHub = false;
-            Render();
+            if (string.IsNullOrWhiteSpace(entryKey))
+                throw new ArgumentException(
+                    "TrainingLab entry key is required.", nameof(entryKey));
+            const string builtInPrefix = "builtin:";
+            const string localPrefix = "local:";
+            if (entryKey.StartsWith(builtInPrefix, StringComparison.Ordinal))
+            {
+                var id = entryKey.Substring(builtInPrefix.Length);
+                if (string.IsNullOrWhiteSpace(id))
+                    throw new ArgumentException(
+                        "Built-in TrainingLab entry ID is required.",
+                        nameof(entryKey));
+                OpenTemplate(id, true);
+                return;
+            }
+            if (entryKey.StartsWith(localPrefix, StringComparison.Ordinal))
+            {
+                var id = entryKey.Substring(localPrefix.Length);
+                if (string.IsNullOrWhiteSpace(id))
+                    throw new ArgumentException(
+                        "Local TrainingLab entry ID is required.",
+                        nameof(entryKey));
+                OpenLocal(id);
+                return;
+            }
+            throw new ArgumentException(
+                "TrainingLab entry key must use builtin: or local:.",
+                nameof(entryKey));
         }
 
         public void ShowScenarioHub()
@@ -349,6 +400,7 @@ namespace Volleyball.Presentation.TrainingLab
         private void OpenTemplate(string id, bool showWorkbench)
         {
             DestroyReadonly3dPreview();
+            if (_controller != null) _controller.Changed -= Render;
             _controller?.Dispose();
             _runtime?.Dispose();
             if (_worldHost == null)
@@ -369,6 +421,8 @@ namespace Volleyball.Presentation.TrainingLab
                 _repository, local, _runtime);
             RestorePreviewBookmarks();
             _showingHub = !showWorkbench;
+            _controller.Changed += Render;
+            Render();
         }
 
         private void Render()
@@ -381,6 +435,8 @@ namespace Volleyball.Presentation.TrainingLab
                 _workbench.style.display = _showingHub ? DisplayStyle.None : DisplayStyle.Flex;
                 RenderHub();
                 if (_showingHub) return;
+                _scenarioName.text = _controller.LocalScenario.DisplayName +
+                                     " · 正式 6v6";
                 _state.text = StateText(_controller.State);
                 _hash.text = _controller.PreflightSnapshot == null
                     ? "HASH · 自动预检待执行"
@@ -433,10 +489,7 @@ namespace Volleyball.Presentation.TrainingLab
                 card.Add(new Label("原生 V5 标准模板"));
                 card.Add(new Button(() =>
                 {
-                    _controller.Changed -= Render;
                     OpenTemplate(captured, true);
-                    _controller.Changed += Render;
-                    Render();
                 }) { text = "打开" });
                 _standard.Add(card);
             }
@@ -490,23 +543,42 @@ namespace Volleyball.Presentation.TrainingLab
         private void RenderRotationSide(TeamSide side, VisualElement grid,
             IReadOnlyList<PlayerId> rotation)
         {
-            for (var index = 0; index < rotation.Count; index++)
+            var displaySlots = new[] { 4, 5, 3, 6, 2, 1 };
+            foreach (var slot in displaySlots)
             {
-                var slot = index + 1;
-                var player = Player(rotation[index]);
-                var card = new VisualElement();
-                card.AddToClassList("rotation-card");
-                card.Add(new Label(slot + "号位"));
-                card.Add(new Label(player.DisplayName + " · " + player.Position));
-                card.RegisterCallback<PointerDownEvent>(_ =>
-                { _rotationDragSide = side; _rotationDragSlot = slot; });
-                card.RegisterCallback<PointerUpEvent>(_ =>
+                var player = Player(rotation[slot - 1]);
+                var card = new VisualElement
                 {
-                    if (_rotationDragSide.HasValue)
-                        _controller.TryDropRotationCard(_rotationDragSide.Value,
-                            _rotationDragSlot, side, slot);
-                    _rotationDragSide = null;
+                    name = "rotation-" + side.ToString().ToLowerInvariant() +
+                           "-slot-" + slot,
+                    userData = new RotationCardBinding(side, slot)
+                };
+                card.AddToClassList("rotation-card");
+                card.AddToClassList("rotation-slot-" + slot);
+                var slotLabel = new Label(slot + "号位");
+                slotLabel.AddToClassList("rotation-card-slot");
+                card.Add(slotLabel);
+                var name = new Label(player.DisplayName + " · #" +
+                                     player.JerseyNumber);
+                name.AddToClassList("rotation-card-name");
+                card.Add(name);
+                var role = new Label("注册位置：" + PositionText(player.Position));
+                role.AddToClassList("rotation-card-role");
+                card.Add(role);
+                card.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button != 0 || _controller.EditingLocked) return;
+                    ClearRotationDrag();
+                    _rotationDragSide = side;
+                    _rotationDragSlot = slot;
+                    _rotationDragCard = card;
+                    _rotationDragPointer = evt.pointerId;
+                    card.AddToClassList("rotation-card-dragging");
+                    card.CapturePointer(evt.pointerId);
                 });
+                card.RegisterCallback<PointerUpEvent>(OnRotationPointerUp);
+                card.RegisterCallback<PointerCancelEvent>(_ =>
+                    ClearRotationDrag());
                 grid.Add(card);
             }
         }
@@ -531,10 +603,13 @@ namespace Volleyball.Presentation.TrainingLab
             _inspectorTitle.text = StepText(step);
             _inspectorSummary.text = step == TrainingLabStepV1.Validation
                 ? "进入本页即自动校验并冻结。" : string.Empty;
-            _selection.text = _controller.SelectedObjectId;
+            _selection.text = SelectionText();
             _serveBlock.text = _controller.CanEnterServeSetup
                 ? "站位合法。下一步：设置发球球。"
-                : _controller.ServeSetupBlockReason;
+                : _controller.MatchSetup.RotationLocked
+                    ? "请先修正全部位置错误，才能继续设置发球球。"
+                    : "请先确认并锁定轮转位次。";
+            RenderPositionFaultSummary();
             _serveToolSummary.text = _controller.ServeTool.ToString();
             var selectedPlayer = TrySelectedPlayer(out _);
             _positionX.SetEnabled(step == TrainingLabStepV1.Positioning &&
@@ -582,6 +657,7 @@ namespace Volleyball.Presentation.TrainingLab
             _verticalRuler.style.left = left - 31f; _verticalRuler.style.top = top;
             _verticalRuler.style.height = courtHeight;
             _courtRect = new Rect(0f, 0f, courtWidth, courtHeight);
+            RenderRulers();
         }
 
         private void RenderCourt()
@@ -590,6 +666,7 @@ namespace Volleyball.Presentation.TrainingLab
             _tokens.Clear(); _faults.Clear();
             _topTrajectory.Clear();
             var home = new HashSet<PlayerId>(_controller.MatchSetup.HomeRotation);
+            var focused = new HashSet<PlayerId>(_controller.FocusedPlayerIds);
             foreach (var pose in _controller.MatchSetup.Players)
             {
                 var id = pose.PlayerId;
@@ -602,6 +679,8 @@ namespace Volleyball.Presentation.TrainingLab
                         f.RequiredAheadOrLeft.PlayerId.Equals(id) ||
                         f.ViolatingBehindOrRight.PlayerId.Equals(id)))
                     token.AddToClassList("fault-token");
+                if (focused.Contains(id))
+                    token.AddToClassList("focused-fault-token");
                 var point = TrainingLabCourtProjectionV1.CourtToBoard(
                     _courtRect, pose.Position);
                 token.style.left = point.x; token.style.top = point.y;
@@ -650,19 +729,299 @@ namespace Volleyball.Presentation.TrainingLab
             }
             foreach (var fault in _controller.PositionFaults)
             {
-                var from = TrainingLabCourtProjectionV1.CourtToBoard(
+                var required = TrainingLabCourtProjectionV1.CourtToBoard(
+                    _courtRect, fault.RequiredAheadOrLeft.FootProjection);
+                var violating = TrainingLabCourtProjectionV1.CourtToBoard(
                     _courtRect, fault.ViolatingBehindOrRight.FootProjection);
-                var to = TrainingLabCourtProjectionV1.CourtToBoard(_courtRect,
+                AddFaultRelation(required, violating, fault);
+                var correction = TrainingLabCourtProjectionV1.CourtToBoard(_courtRect,
                     TrainingLabCourtProjectionV1.ShortestLegalCorrection(fault));
-                var line = new VisualElement();
-                line.AddToClassList("fault-arrow");
-                var delta = to - from;
-                line.style.left = from.x; line.style.top = from.y;
-                line.style.width = delta.magnitude;
-                line.style.rotate = new Rotate(Mathf.Atan2(delta.y, delta.x) *
-                                               Mathf.Rad2Deg);
-                _faults.Add(line);
+                AddFaultArrow(violating, correction, fault);
             }
+            RenderRulers();
+        }
+
+        private void RenderPositionFaultSummary()
+        {
+            var host = _root.Q("position-fault-summary");
+            host.Clear();
+            if (_controller.CurrentStep != TrainingLabStepV1.Positioning)
+                return;
+            var faults = _controller.PositionFaults;
+            if (faults.Count == 0)
+            {
+                var legal = new Label("当前轮转站位合法，无位置错误。");
+                legal.AddToClassList("position-legal-summary");
+                host.Add(legal);
+                return;
+            }
+            for (var index = 0; index < faults.Count; index++)
+            {
+                var captured = index;
+                var fault = faults[index];
+                var required = Player(fault.RequiredAheadOrLeft.PlayerId);
+                var violating = Player(fault.ViolatingBehindOrRight.PlayerId);
+                var card = new Button(() =>
+                    _controller.FocusPositionFault(captured))
+                {
+                    text = SideText(fault.Side) + " · " +
+                           fault.RequiredAheadOrLeft.Slot + "号位 " +
+                           required.DisplayName + " / " +
+                           fault.ViolatingBehindOrRight.Slot + "号位 " +
+                           violating.DisplayName + "\n" +
+                           RuleText(fault.Rule) + "；" +
+                           CorrectionText(fault)
+                };
+                card.AddToClassList("position-fault-card");
+                if (IsFocused(fault))
+                    card.AddToClassList("focused-position-fault-card");
+                host.Add(card);
+            }
+        }
+
+        private void RenderRulers()
+        {
+            if (_horizontalRuler == null || _verticalRuler == null) return;
+            _horizontalRuler.Clear();
+            _verticalRuler.Clear();
+            var positioning = _controller.CurrentStep ==
+                              TrainingLabStepV1.Positioning &&
+                              TrySelectedPlayer(out var selected);
+            _horizontalRuler.style.display = positioning
+                ? DisplayStyle.Flex : DisplayStyle.None;
+            _verticalRuler.style.display = positioning
+                ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!positioning || _courtRect.width < 10f) return;
+
+            AddRulerTrack(_horizontalRuler);
+            AddRulerTrack(_verticalRuler);
+            for (var index = 0; index <= 18; index++)
+            {
+                var percent = index / 18f * 100f;
+                AddRulerTick(_horizontalRuler, percent, index % 3 == 0
+                    ? Mathf.Abs(index - 9).ToString()
+                    : null, true);
+            }
+            for (var index = 0; index <= 9; index++)
+            {
+                var percent = index / 9f * 100f;
+                AddRulerTick(_verticalRuler, percent,
+                    index % 3 == 0 ? (9 - index).ToString() : null, false);
+            }
+
+            var pose = _controller.MatchSetup.Players.Single(player =>
+                player.PlayerId.Equals(selected));
+            var point = TrainingLabCourtProjectionV1.CourtToBoard(
+                _courtRect, pose.Position);
+            AddRulerPoint(_horizontalRuler, selected, point.x, 7f,
+                "horizontal");
+            AddRulerPoint(_verticalRuler, selected, 15f, point.y,
+                "vertical");
+        }
+
+        private static void AddRulerTrack(VisualElement ruler)
+        {
+            var track = new VisualElement { pickingMode = PickingMode.Ignore };
+            track.AddToClassList("ruler-track");
+            ruler.Add(track);
+        }
+
+        private static void AddRulerTick(VisualElement ruler, float percent,
+            string text, bool horizontal)
+        {
+            var tick = new VisualElement { pickingMode = PickingMode.Ignore };
+            tick.AddToClassList("ruler-tick");
+            if (horizontal) tick.style.left = Length.Percent(percent);
+            else tick.style.top = Length.Percent(percent);
+            ruler.Add(tick);
+            if (string.IsNullOrEmpty(text)) return;
+            var label = new Label(text) { pickingMode = PickingMode.Ignore };
+            label.AddToClassList("ruler-label");
+            if (horizontal) label.style.left = Length.Percent(percent);
+            else label.style.top = Length.Percent(percent);
+            ruler.Add(label);
+        }
+
+        private void AddRulerPoint(VisualElement ruler, PlayerId playerId,
+            float left, float top, string axis)
+        {
+            var point = new VisualElement { userData = playerId.Value };
+            point.AddToClassList("selected-ruler-point");
+            if (_controller.FocusedPlayerIds.Contains(playerId))
+                point.AddToClassList("focused-ruler-point");
+            point.style.left = left;
+            point.style.top = top;
+            point.RegisterCallback<PointerDownEvent>(evt =>
+                BeginRulerDrag(axis, evt));
+            ruler.Add(point);
+        }
+
+        private void BeginRulerDrag(string axis, PointerDownEvent evt)
+        {
+            if (evt.button != 0 || _controller.EditingLocked ||
+                _controller.CurrentStep != TrainingLabStepV1.Positioning ||
+                !TrySelectedPlayer(out _)) return;
+            ClearRulerDrag();
+            _rulerDragAxis = axis;
+            _rulerDragPointer = evt.pointerId;
+            var ruler = axis == "horizontal"
+                ? _horizontalRuler : _verticalRuler;
+            ruler.CapturePointer(evt.pointerId);
+            ApplyRulerPointer(evt.position);
+            evt.StopPropagation();
+        }
+
+        private void OnRulerPointerMove(PointerMoveEvent evt)
+        {
+            if (_rulerDragPointer != evt.pointerId) return;
+            ApplyRulerPointer(evt.position);
+        }
+
+        private void OnRulerPointerUp(PointerUpEvent evt)
+        {
+            if (_rulerDragPointer != evt.pointerId) return;
+            ApplyRulerPointer(evt.position);
+            ClearRulerDrag();
+        }
+
+        private void ApplyRulerPointer(Vector3 worldPosition)
+        {
+            if (!TrySelectedPlayer(out var playerId)) return;
+            if (_rulerDragAxis == "horizontal")
+            {
+                var point = _horizontalRuler.WorldToLocal(worldPosition);
+                _controller.SetPlayerDepthFromHorizontalRuler(
+                    playerId, _courtRect, point.x);
+            }
+            else if (_rulerDragAxis == "vertical")
+            {
+                var point = _verticalRuler.WorldToLocal(worldPosition);
+                _controller.SetPlayerLateralFromVerticalRuler(
+                    playerId, _courtRect, point.y);
+            }
+        }
+
+        private void ClearRulerDrag()
+        {
+            var axis = _rulerDragAxis;
+            var pointer = _rulerDragPointer;
+            _rulerDragAxis = null;
+            _rulerDragPointer = -1;
+            var ruler = axis == "horizontal" ? _horizontalRuler :
+                axis == "vertical" ? _verticalRuler : null;
+            if (ruler != null && pointer >= 0 &&
+                ruler.HasPointerCapture(pointer))
+                ruler.ReleasePointer(pointer);
+        }
+
+        private void AddFaultRelation(Vector2 from, Vector2 to,
+            PositionFaultV1 fault)
+        {
+            var delta = to - from;
+            var relation = new VisualElement
+            {
+                pickingMode = PickingMode.Ignore
+            };
+            relation.AddToClassList("fault-relation");
+            if (IsFocused(fault)) relation.AddToClassList("focused-fault-overlay");
+            relation.style.left = from.x;
+            relation.style.top = from.y;
+            relation.style.width = delta.magnitude;
+            relation.style.height = 3f;
+            relation.style.rotate = new Rotate(Mathf.Atan2(delta.y, delta.x) *
+                                               Mathf.Rad2Deg);
+            for (var left = 0f; left < delta.magnitude; left += 12f)
+            {
+                var dash = new VisualElement
+                {
+                    pickingMode = PickingMode.Ignore
+                };
+                dash.AddToClassList("fault-relation-dash");
+                dash.style.left = left;
+                dash.style.width = Mathf.Min(7f, delta.magnitude - left);
+                relation.Add(dash);
+            }
+            _faults.Add(relation);
+        }
+
+        private void AddFaultArrow(Vector2 from, Vector2 to,
+            PositionFaultV1 fault)
+        {
+            var delta = to - from;
+            var arrow = new VisualElement
+            {
+                pickingMode = PickingMode.Ignore
+            };
+            arrow.AddToClassList("fault-arrow");
+            if (IsFocused(fault)) arrow.AddToClassList("focused-fault-overlay");
+            arrow.style.left = from.x;
+            arrow.style.top = from.y;
+            arrow.style.width = delta.magnitude;
+            arrow.style.height = 3f;
+            arrow.style.rotate = new Rotate(Mathf.Atan2(delta.y, delta.x) *
+                                            Mathf.Rad2Deg);
+            _faults.Add(arrow);
+            var head = new Label("▶") { pickingMode = PickingMode.Ignore };
+            head.AddToClassList("fault-arrow-head");
+            head.style.left = to.x - 5f;
+            head.style.top = to.y - 10f;
+            _faults.Add(head);
+        }
+
+        private bool IsFocused(PositionFaultV1 fault)
+        {
+            return _controller.FocusedPlayerIds.Count == 2 &&
+                   _controller.FocusedPlayerIds.Contains(
+                       fault.RequiredAheadOrLeft.PlayerId) &&
+                   _controller.FocusedPlayerIds.Contains(
+                       fault.ViolatingBehindOrRight.PlayerId);
+        }
+
+        private string SelectionText()
+        {
+            if (!TrySelectedPlayer(out var id)) return "未选择球员";
+            var player = Player(id);
+            var slot = _controller.MatchSetup.HomeRotation.IndexOf(id) + 1;
+            var side = TeamSide.Home;
+            if (slot == 0)
+            {
+                slot = _controller.MatchSetup.AwayRotation.IndexOf(id) + 1;
+                side = TeamSide.Away;
+            }
+            return SideText(side) + " · " + slot + "号位 · " +
+                   player.DisplayName + " · #" + player.JerseyNumber +
+                   " · " + PositionText(player.Position);
+        }
+
+        private static string SideText(TeamSide side) =>
+            side == TeamSide.Home ? "主队" : "客队";
+
+        private static string RuleText(PositionFaultRuleV1 rule) =>
+            rule switch
+            {
+                PositionFaultRuleV1.Slot4BehindSlot5 => "4号位必须在5号位前方",
+                PositionFaultRuleV1.Slot3BehindSlot6 => "3号位必须在6号位前方",
+                PositionFaultRuleV1.Slot2BehindSlot1 => "2号位必须在1号位前方",
+                PositionFaultRuleV1.Slot4RightOfSlot3 => "4号位必须在3号位左侧",
+                PositionFaultRuleV1.Slot3RightOfSlot2 => "3号位必须在2号位左侧",
+                PositionFaultRuleV1.Slot5RightOfSlot6 => "5号位必须在6号位左侧",
+                PositionFaultRuleV1.Slot6RightOfSlot1 => "6号位必须在1号位左侧",
+                _ => rule.ToString()
+            };
+
+        private static string CorrectionText(PositionFaultV1 fault)
+        {
+            var current = TrainingTeamCourtTransformV1.ToLocal(fault.Side,
+                fault.ViolatingBehindOrRight.FootProjection);
+            var target = TrainingTeamCourtTransformV1.ToLocal(fault.Side,
+                TrainingLabCourtProjectionV1.ShortestLegalCorrection(fault));
+            var deltaX = target.X - current.X;
+            var deltaZ = target.Z - current.Z;
+            var direction = Mathf.Abs(deltaZ) >= Mathf.Abs(deltaX)
+                ? deltaZ < 0f ? "球网方向" : "本方底线方向"
+                : deltaX < 0f ? "队伍局部左侧" : "队伍局部右侧";
+            return "将" + fault.ViolatingBehindOrRight.Slot + "号位向" +
+                   direction + "移动至蓝色箭头终点";
         }
 
         private void RenderOverrides()
@@ -804,6 +1163,47 @@ namespace Volleyball.Presentation.TrainingLab
             else if (_controller.CurrentStep == TrainingLabStepV1.Positioning)
                 _controller.SetPlayerPositionFromCourt(new PlayerId(_dragObjectId),
                     _courtRect, point);
+        }
+
+        private void OnRotationPointerUp(PointerUpEvent evt)
+        {
+            if (!_rotationDragSide.HasValue) return;
+            try
+            {
+                var picked = RotationCardAncestor(evt.target as VisualElement);
+                if (picked == _rotationDragCard)
+                    picked = RotationCardAncestor(_root.panel?.Pick(new Vector2(
+                        evt.position.x, evt.position.y)));
+                if (picked?.userData is RotationCardBinding target)
+                    _controller.TryDropRotationCard(_rotationDragSide.Value,
+                        _rotationDragSlot, target.Side, target.Slot);
+            }
+            finally
+            {
+                ClearRotationDrag();
+            }
+        }
+
+        private VisualElement RotationCardAncestor(VisualElement element)
+        {
+            while (element != null && element != _root &&
+                   element.userData is not RotationCardBinding)
+                element = element.parent;
+            return element?.userData is RotationCardBinding ? element : null;
+        }
+
+        private void ClearRotationDrag()
+        {
+            var card = _rotationDragCard;
+            var pointer = _rotationDragPointer;
+            _rotationDragSide = null;
+            _rotationDragSlot = 0;
+            _rotationDragCard = null;
+            _rotationDragPointer = -1;
+            if (card == null) return;
+            card.RemoveFromClassList("rotation-card-dragging");
+            if (pointer >= 0 && card.HasPointerCapture(pointer))
+                card.ReleasePointer(pointer);
         }
 
         private void ApplyExactPosition()
@@ -1150,6 +1550,18 @@ namespace Volleyball.Presentation.TrainingLab
                 p.PlayerId.Equals(selected));
         }
 
+        private static string PositionText(PlayerPosition position) =>
+            position switch
+            {
+                PlayerPosition.Setter => "二传",
+                PlayerPosition.OutsideHitter => "主攻",
+                PlayerPosition.MiddleBlocker => "副攻",
+                PlayerPosition.Opposite => "接应",
+                PlayerPosition.Libero => "自由人",
+                PlayerPosition.Defender => "防守",
+                _ => position.ToString()
+            };
+
         private SimVector3 SelectedPosition()
         {
             if (_controller.SelectedObjectId == "ball")
@@ -1162,6 +1574,18 @@ namespace Volleyball.Presentation.TrainingLab
         private void SetVisible(string name, bool visible) =>
             _root.Q(name).style.display = visible
                 ? DisplayStyle.Flex : DisplayStyle.None;
+
+        private sealed class RotationCardBinding
+        {
+            public RotationCardBinding(TeamSide side, int slot)
+            {
+                Side = side;
+                Slot = slot;
+            }
+
+            public TeamSide Side { get; }
+            public int Slot { get; }
+        }
 
         private static string StateText(TrainingScenarioLabStateV1 state) =>
             state switch

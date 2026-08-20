@@ -224,6 +224,8 @@ namespace Volleyball.EditModeTests
             Assert.That(setup.RotationLocked, Is.True);
             Assert.That(controller.CurrentStep,
                 Is.EqualTo(TrainingLabStepV1.Positioning));
+            Assert.That(controller.SelectedObjectId,
+                Is.EqualTo(setup.HomeRotation[0].Value));
             Assert.That(controller.PositionFaults, Is.Not.Empty);
 
             controller.ReopenRotation();

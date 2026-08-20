@@ -61,6 +61,7 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q<Button>("hub-new-from-standard-button"),
                 Is.Not.Null);
             Assert.That(root.Q("workbench-shell"), Is.Not.Null);
+            Assert.That(root.Q<Label>("scenario-name-label"), Is.Not.Null);
             Assert.That(root.Q("stage-rail"), Is.Not.Null);
             Assert.That(root.Q("workbench-content"), Is.Not.Null);
             Assert.That(root.Q("contextual-inspector"), Is.Not.Null);
@@ -77,6 +78,12 @@ namespace Volleyball.EditModeTests
             Assert.That(root.Q("rotation-home-grid"), Is.Not.Null);
             Assert.That(root.Q("rotation-away-grid"), Is.Not.Null);
             Assert.That(root.Q("context-positioning"), Is.Not.Null);
+            Assert.That(root.Q("position-fault-summary"), Is.Not.Null);
+            Assert.That(root.Q("position-fault-layer"), Is.Not.Null);
+            Assert.That(root.Q("horizontal-ruler").pickingMode,
+                Is.EqualTo(PickingMode.Position));
+            Assert.That(root.Q("vertical-ruler").pickingMode,
+                Is.EqualTo(PickingMode.Position));
             Assert.That(root.Q("context-serve-ball"), Is.Not.Null);
             Assert.That(root.Q("serve-view-selector"), Is.Not.Null);
             Assert.That(root.Q<Button>("serve-top-view-button"), Is.Not.Null);

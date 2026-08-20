@@ -140,6 +140,82 @@ namespace Volleyball.EditModeTests
         }
 
         [Test]
+        public void BuiltInV2Templates_HaveMatchingIdentityFreshDraftAndLegalitySemantics()
+        {
+            var expectedIds = new[]
+            {
+                "standard-rotation",
+                "home-serve",
+                "away-serve",
+                "position-fault-home",
+                "position-fault-away",
+                "attribute-override"
+            };
+            Assert.That(TrainingScenarioCatalogV2.ScenarioIds,
+                Is.EqualTo(expectedIds));
+
+            foreach (var id in expectedIds)
+            {
+                var template = TrainingScenarioCatalogV2.Create(id);
+                var setup = TrainingScenarioCatalogV2.CreateSetup(id);
+                var faults = new MatchSetupEditorV1(setup)
+                    .EvaluatePositionFaults();
+
+                Assert.That(template.ScenarioId, Is.EqualTo(
+                    TrainingScenarioTemplateV2.ScenarioIdPrefix + id), id);
+                Assert.That(template.FormatVersion, Is.EqualTo(
+                    TrainingScenarioTemplateV2.CurrentFormatVersion), id);
+                Assert.That(template.Context.ContractVersion,
+                    Is.EqualTo(ContractVersions.MatchV5), id);
+                Assert.That(template.Context.ContextHash, Is.Not.Empty, id);
+                Assert.That(template.ContentHash, Is.Not.Empty, id);
+
+                if (id == "position-fault-home")
+                {
+                    Assert.That(faults, Is.Not.Empty, id);
+                    Assert.That(faults.All(fault =>
+                        fault.Side == TeamSide.Home), Is.True, id);
+                }
+                else if (id == "position-fault-away")
+                {
+                    Assert.That(faults, Is.Not.Empty, id);
+                    Assert.That(faults.All(fault =>
+                        fault.Side == TeamSide.Away), Is.True, id);
+                }
+                else
+                {
+                    Assert.That(faults, Is.Empty, id);
+                }
+            }
+
+            var first = TrainingLabLocalScenarioV2.Create(
+                "local-" + Guid.NewGuid().ToString("N"),
+                "标准轮转 A",
+                TrainingScenarioCatalogV2.CreateSetup("standard-rotation"),
+                TrainingLabStepV1.Rotation.ToString(),
+                "Top", "MoveBall", "ball");
+            var second = TrainingLabLocalScenarioV2.Create(
+                "local-" + Guid.NewGuid().ToString("N"),
+                "标准轮转 B",
+                TrainingScenarioCatalogV2.CreateSetup("standard-rotation"),
+                TrainingLabStepV1.Rotation.ToString(),
+                "Top", "MoveBall", "ball");
+            var secondHomeBefore = second.MatchSetup.HomeRotation.ToArray();
+
+            new MatchSetupEditorV1(first.MatchSetup).ExchangeRotation(
+                TeamSide.Home, 1, 4);
+
+            Assert.That(first.LocalId, Is.Not.EqualTo(second.LocalId));
+            Assert.That(first.MatchSetup, Is.Not.SameAs(second.MatchSetup));
+            Assert.That(first.MatchSetup.HomeRotation,
+                Is.Not.EqualTo(secondHomeBefore));
+            Assert.That(second.MatchSetup.HomeRotation,
+                Is.EqualTo(secondHomeBefore));
+            Assert.That(first.MatchSetup.Players,
+                Is.Not.SameAs(second.MatchSetup.Players));
+        }
+
+        [Test]
         public void V2ProductionBoundary_HasNoV4TrainingDependencies()
         {
             var project = Directory.GetParent(Application.dataPath).FullName;

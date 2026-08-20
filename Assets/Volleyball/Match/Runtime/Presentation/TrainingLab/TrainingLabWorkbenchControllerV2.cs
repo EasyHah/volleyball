@@ -42,7 +42,9 @@ namespace Volleyball.Presentation.TrainingLab
             CurrentStep = setup.RotationLocked
                 ? TrainingLabStepV1.Positioning
                 : TrainingLabStepV1.Rotation;
-            SelectedObjectId = "ball";
+            SelectedObjectId = setup.RotationLocked
+                ? setup.HomeRotation[0].Value
+                : "ball";
         }
 
         public TrainingLabWorkbenchControllerV2(
@@ -189,6 +191,7 @@ namespace Volleyball.Presentation.TrainingLab
             _editor.Validate();
             MatchSetup.RotationLocked = true;
             CurrentStep = TrainingLabStepV1.Positioning;
+            EnsurePositioningSelection();
             Changed?.Invoke();
         }
 
@@ -646,6 +649,19 @@ namespace Volleyball.Presentation.TrainingLab
             SelectedObjectId = string.IsNullOrWhiteSpace(local.SelectedObjectId)
                 ? "ball"
                 : local.SelectedObjectId;
+            if (CurrentStep == TrainingLabStepV1.Positioning)
+                EnsurePositioningSelection();
+        }
+
+        private void EnsurePositioningSelection()
+        {
+            if (!string.IsNullOrWhiteSpace(SelectedObjectId) &&
+                SelectedObjectId != "ball" && MatchSetup.Players.Any(player =>
+                    string.Equals(player.PlayerId.Value, SelectedObjectId,
+                        StringComparison.Ordinal)))
+                return;
+            SelectedObjectId = MatchSetup.HomeRotation[0].Value;
+            FocusedPlayerIds = new[] { MatchSetup.HomeRotation[0] };
         }
 
         private string PersistenceFingerprint()

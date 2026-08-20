@@ -56,6 +56,214 @@
 - Local V1 files appear unavailable with an unsupported-version diagnostic and a delete/recreate action. Preserve their bytes until the user deletes them.
 - Rollback reverts only this plan's TrainingLab commits. It never downgrades or reinterprets V2 data as V1.
 
+## 2026-08-18 Corrective Reopen: Hub, Rotation and Positioning
+
+The 2026-08-17 automated checkpoint proved controller and runtime behavior but did not prove the approved
+user interactions. User acceptance found a serious gap: technical tests passed while the Rotation and
+Positioning workflow was not usable as specified. Tasks 0--2 and 6--8 remain frozen; Tasks 3--5 and Task 9
+are reopened through the corrective tasks below. Execute **R0 next**. Do not resume Task 9 or describe the
+workbench as automatically validated until R0--R4 pass.
+
+### Corrective invariants
+
+- `ShowWorkbench(entryKey)` must consume the requested identity. It may never reopen the current controller
+  while pretending to create a new standard working copy.
+- Opening `builtin:standard-rotation`, `builtin:home-serve`, `builtin:away-serve` or
+  `builtin:attribute-override` creates a fresh local working copy with zero position faults. Only
+  `builtin:position-fault-home` and `builtin:position-fault-away` intentionally begin invalid, on the named
+  side.
+- A template open creates a new local ID and independent Match draft. A local open loads that exact local ID.
+  Neither route mutates or aliases the previously open draft.
+- Rotation and Positioning acceptance requires actual UI Toolkit pointer/click events. Direct controller calls
+  remain unit evidence but cannot satisfy the user-interaction gate.
+- Positioning never presents the ball as the selected editable position. Entering Positioning selects a stable
+  on-court player when no player is already selected.
+- A position-fault gate is acceptable only when the page exposes the facts and controls required to correct it:
+  both players and slots, relation, direction, focus, court drag and selected-player ruler drag.
+- Do not add one-click auto-correction, a fault bypass, a second position model or UI-owned legality rules.
+  Continue using `MatchSetupEditorV1`, `PositionFaultEvaluatorV1` and the existing team-local transform.
+
+### Corrective file map
+
+| File | Corrective responsibility |
+| --- | --- |
+| `Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioLabView.cs` | Consume entry identity; bind real pointer gestures; render Rotation/Positioning feedback |
+| `Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioLab.uxml` | Formal rotation court, interactive ruler points and fault-card host |
+| `Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioLab.uss` | Fixed rotation slots, ruler/focus markers, relation/correction styles and bounded inspector layout |
+| `Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingLabWorkbenchControllerV2.cs` | Stable Positioning selection and existing Match-command orchestration only |
+| `Assets/Volleyball/Match/Runtime/Presentation/TrainingLab/TrainingScenarioCatalogV2.cs` | Preserve the six named template semantics; no new template schema |
+| `Assets/Volleyball/Match/Tests/EditMode/TrainingLabV2BoundaryTests.cs` | Explicit legal/intentional-fault template matrix |
+| `Assets/Volleyball/Match/Tests/EditMode/TrainingScenarioLabControllerTests.cs` | Selection, focus and gate state contracts |
+| `Assets/Volleyball/Match/Tests/EditMode/TrainingScenarioLabSceneTests.cs` | Required interactive nodes and absence of inert placeholders |
+| `Assets/Volleyball/Match/Tests/PlayMode/TrainingScenarioLabPlayModeTests.cs` | Hub routing, real pointer gestures, correction-to-Serve and 1920x1080 layout |
+
+## Task R0: Reproduce the User Failures and Reset Acceptance
+
+**Outcome:** Failing tests demonstrate stale-template reuse and the missing Rotation/Positioning interactions
+before production code changes.
+
+- [x] **Step 1: Add a template identity and legality matrix.**
+
+    In `TrainingLabV2BoundaryTests`, assert all six IDs load their matching V2 asset and a fresh Match draft.
+    Assert the four ordinary templates have zero `EvaluatePositionFaults()` results. Assert each intentional
+    fault template reports at least one fault only for its named side. Assert two opens of one built-in template
+    have different local IDs and independent mutable drafts.
+
+- [x] **Step 2: Add a failing stale-template PlayMode test.**
+
+    Open `builtin:position-fault-home`, return to the Hub, click the actual
+    `hub-new-from-standard-button`, and assert the new workbench displays `标准轮转`, has a different local ID,
+    starts at Rotation, and has zero position faults. Do not call the controller as a substitute for the button.
+
+- [x] **Step 3: Add failing gesture and feedback tests.**
+
+    Use actual UI Toolkit pointer/click events to prove: a same-team Rotation drag swaps the rendered/current
+    slots; a cross-team and blank drop make no change; a selected Positioning player exposes two ruler points;
+    a fault card click focuses exactly the two related tokens and ruler markers; correcting the fault enables
+    and clicking `positioning-next-button` enters Serve.
+
+- [x] **Step 4: Record the expected red evidence.**
+
+    Run only the new EditMode/PlayMode filters. Expected failure locations are entry routing in
+    `ShowWorkbench`, absent ruler points/callbacks, absent fault cards/relation line/focus rendering, and missing
+    gesture coverage. A test that passes without dispatching UI events is invalid evidence.
+
+## Task R1: Make Scenario Entry Identity Authoritative
+
+**Outcome:** Every Hub or public entry action opens the requested template/local working copy exactly once.
+
+- [x] **Step 1: Centralize entry routing without adding another data model.**
+
+    Make `ShowWorkbench(entryKey)` parse only `builtin:<scenarioId>` and `local:<localId>`, delegate to the
+    existing `OpenTemplate` or `OpenLocal` path, and reject malformed/unknown prefixes with a stable exception.
+    The `hub-new-from-standard-button` must route to `builtin:standard-rotation`. Keep one event-subscription
+    owner when replacing controller/runtime instances; the disposed controller must not receive later renders.
+
+- [x] **Step 2: Preserve working-copy and leave semantics.**
+
+    Each built-in open creates a unique unsaved `TrainingLabLocalScenarioV2`; each local open loads the exact
+    saved DTO. Switching cannot alias or mutate the prior Match draft. Existing Save/Discard/Cancel and
+    running-state leave blocks remain authoritative.
+
+- [x] **Step 3: Pass the R0 identity/legality tests.**
+
+    In addition to the stale fault-to-standard sequence, cover ordinary-to-ordinary switching, local reopen,
+    malformed entry rejection and two consecutive standard opens. The setup hash may match for identical
+    templates; the local identity and object ownership must not.
+
+## Task R2: Restore the Complete Rotation Interaction
+
+**Outcome:** Rotation is a formal-court six-position editor whose real pointer gestures preserve Match rotation
+semantics.
+
+- [x] **Step 1: Render fixed formal-court slots.**
+
+    Replace the free wrapping grids with one formal-court presentation containing Home/Away fixed slots in
+    three rows and two columns. Facing the net, right-back is slot 1 and numbering proceeds counter-clockwise
+    through slot 6. Reuse the existing court/net constants and do not create a second rotation geometry model.
+
+- [x] **Step 2: Render complete, localized card identity.**
+
+    Every card shows player display name, jersey, registered role and current slot. Map the existing V5
+    registered-position enum to stable Chinese presentation text in the View only; never edit the registered
+    role or copy it into TrainingLab state.
+
+- [x] **Step 3: Make pointer exchange deterministic.**
+
+    Capture pointer/drag source on a card, resolve the drop target, call
+    `MatchSetupEditorV1.ExchangeRotation` only for two slots on the same team, and always clear drag state on
+    up/cancel/detach. Cross-team, empty-court and outside-board drops leave both rotations byte-for-byte
+    unchanged. Rendered slots must update from the Match draft after a successful exchange.
+
+- [x] **Step 4: Verify lock/reopen through UI.**
+
+    Click the real confirm button to enter Positioning; click reopen to return to Rotation; exchange and relock;
+    assert player coordinates are preserved and position-fault relations are recomputed for the new slot
+    identities. Capture a new 1920x1080 Rotation image only after the gesture test passes.
+
+## Task R3: Complete Positioning Rulers, Fault Focus and the Serve Gate
+
+**Outcome:** A user can understand and correct every position fault, then advance to Serve without hidden or
+dead-end state.
+
+- [x] **Step 1: Establish a valid Positioning selection.**
+
+    On entry from confirmed Rotation, preserve an already selected on-court player; otherwise select Home slot
+    1. Never use `ball` as the Positioning exact-input subject. Show X/Z only, with name, jersey, registered role
+    and current slot derived from the Match setup/context.
+
+- [x] **Step 2: Implement selected-player ruler points.**
+
+    Replace inert `picking-mode="Ignore"` rulers with labeled/ticked rulers plus one selected-player point per
+    axis. Horizontal drag calls `SetPlayerDepthFromHorizontalRuler`; vertical drag calls
+    `SetPlayerLateralFromVerticalRuler`. Use pointer capture and clear drag state on up/cancel. Court, ruler and
+    exact-field edits must converge to the same snapped Match coordinate and never change Y or the other axis.
+
+- [x] **Step 3: Render complete Match fault facts.**
+
+    For every `PositionFaultV1`, render an inspector card naming side, rule, both player names, both slots and a
+    concrete side-local correction direction. Clicking a card calls `FocusPositionFault(index)` without
+    mutation. Consume `FocusedPlayerIds` in the View so only the associated tokens and ruler markers receive
+    focus styling.
+
+- [x] **Step 4: Separate relation and correction overlays.**
+
+    Render both participants as fault tokens, a red dashed line for the violated relation, and a distinct blue
+    shortest-legal-correction arrow for the violating player. Both overlays use the same team-local transform
+    and Match-provided facts; evidence coordinates remain world-space and unchanged.
+
+- [x] **Step 5: Prove the gate is correct and escapable.**
+
+    A standard working copy enters Positioning with zero faults and an enabled next action. An intentional
+    fault template shows the exact fault and disables the action. After the user corrects it through court or
+    ruler drag, fault cards/overlays clear, the button enables, and a real click enters Serve. No bypass or
+    auto-correction button is added.
+
+## Task R4: Corrective Validation, Visual Acceptance and Evidence
+
+**Outcome:** Technical and user-goal gates both pass before Task 9 resumes.
+
+- [x] **Step 1: Run focused corrective EditMode.**
+
+    Run `TrainingLabV2BoundaryTests`, `TrainingLabCourtProjectionV1Tests`,
+    `TrainingScenarioLabControllerTests` and `TrainingScenarioLabSceneTests`. Record a fresh XML; do not reuse
+    the 2026-08-17 counts.
+
+- [x] **Step 2: Run focused corrective PlayMode.**
+
+    Run `TrainingScenarioLabPlayModeTests` with the new Hub click, Rotation pointer drag, Positioning court/ruler
+    drag, fault-card focus and correction-to-Serve cases. Assert setup/local identities before and after each
+    action so a visual-only animation cannot satisfy the test.
+
+- [ ] **Step 3: Perform real 1920x1080 mouse acceptance.**
+
+    Save new evidence under `TestResults/TrainingLab/VisualAcceptance/2026-08-18-corrective/` without overwriting
+    the rejected 2026-08-17 captures. Required images: Hub after fault-template return, fresh standard Rotation,
+    same-team exchange, legal Positioning with ruler points, focused position fault with card/relation/arrow,
+    corrected legal Positioning, and Serve reached by the page button. Separately verify cross-team/blank drop
+    rejection with real mouse input.
+
+- [ ] **Step 4: Freeze code and resume the existing Task 9 gates.**
+
+    After R0--R3 code is frozen, run one complete EditMode suite, the native V5 TrainingLab PlayMode path, the
+    existing V5 Career regression and 3v3 isolation smoke required by Task 9. Then recapture the remaining
+    Preflight/Run/dirty-leave evidence. Windows x64 IL2CPP build/manual acceptance remains pending when Windows
+    Build Support or a physical Windows environment is unavailable.
+
+- [x] **Step 5: Independent review and status correction.**
+
+    Use at most one read-only independent review focused on entry identity, actual pointer wiring, position-fault
+    correction reachability and test authenticity. Update the change record and active handoff with exact fresh
+    counts and both the automated and manual gate status. Do not mark complete while Windows or any required
+    user-goal acceptance remains pending.
+
+- [ ] **Step 6: Hygiene and corrective commit.**
+
+    Run `git diff --check`, remove only Unity-generated `Assets/InitTestScene*.unity` and matching `.meta`, and
+    stage only the corrective TrainingLab/tests/evidence docs. Preserve inherited Career/AI/older-plan changes,
+    push the feature branch, create a PR for Bootstrap/shared-area integration, and never merge `main` without
+    explicit authorization.
+
 ## Task 0: Establish the V5 TrainingLab Data and Isolation Boundary
 
 **Files:**

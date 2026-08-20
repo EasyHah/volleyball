@@ -21,7 +21,7 @@
         <ui:VisualElement class="top-bar">
             <ui:VisualElement class="title-block">
                 <ui:Label text="正式训练情景实验室" class="app-title" />
-                <ui:Label text="训练起点 · 正式 6v6" class="app-subtitle" />
+                <ui:Label name="scenario-name-label" text="训练情景 · 正式 6v6" class="app-subtitle" />
             </ui:VisualElement>
             <ui:Label name="state-label" class="state-label" />
             <ui:Label name="hash-label" class="hash-label" />
@@ -74,8 +74,8 @@
                         <ui:Label text="AWAY" class="team-court-label team-away-label" picking-mode="Ignore" />
                     </ui:VisualElement>
                     <ui:VisualElement name="serve-top-trajectory-layer" class="trajectory-layer" picking-mode="Ignore" />
-                    <ui:VisualElement name="horizontal-ruler" class="ruler horizontal-ruler" picking-mode="Ignore" />
-                    <ui:VisualElement name="vertical-ruler" class="ruler vertical-ruler" picking-mode="Ignore" />
+                    <ui:VisualElement name="horizontal-ruler" class="ruler horizontal-ruler" />
+                    <ui:VisualElement name="vertical-ruler" class="ruler vertical-ruler" />
                     <ui:Label name="rules-label" class="rules-overlay" picking-mode="Ignore" />
                     <ui:Label text="2D 编辑 · 3D 预览只读" class="board-mode-label" picking-mode="Ignore" />
                 </ui:VisualElement>
