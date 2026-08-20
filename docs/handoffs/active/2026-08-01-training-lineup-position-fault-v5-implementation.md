@@ -174,9 +174,14 @@ context/result/replay hash 绑定的可验证位置错误事实；Career 仅消�
 - 独立只读复核发现的纠正方向文案与 pointer-capture 测试真实性问题已修复；故障卡方向现由蓝色箭头
   使用的同一 `ShortestLegalCorrection` 向量生成，深度和横向两类均有断言。复核未发现 V4 Career、
   正式 Match 或 3v3 语义变化。
-- 1920x1080 Game View 中已人工确认标准模板零 fault、故障卡/聚焦/箭头、精确字段纠正和页面按钮进入
-  Serve；截图位于 `TestResults/TrainingLab/VisualAcceptance/2026-08-18-corrective/`。但真实物理鼠标
-  rotation/court/ruler drag、精确 1920x1080 像素截图、Preflight/Run/dirty-leave 补图仍未形成完整证据。
+- 1920x1080 Game View 中已人工确认标准模板零 fault、故障卡/聚焦/箭头、精确字段纠正、页面按钮进入
+  Serve、自动 preflight、原生 V5 单回合结果和 dirty-leave modal。九张精确 `1920x1080` 帧缓冲截图位于
+  `TestResults/TrainingLab/VisualAcceptance/2026-08-20-exact-1920x1080/00-hub.png` 至
+  `08-unsaved-leave.png`，像素尺寸已逐张核验；其中还缺 Serve 侧视和只读 3D 的同分辨率补图。
+- computer-use 对 Game View 的坐标点击有效，但其 drag 动作没有向 Unity 发送任何 PointerDown/Move/Up；
+  因而真实物理鼠标 rotation/court/ruler drag 仍不计通过。生产拖放在 pointer capture 期间持续记录
+  hit-test 目标，fresh PlayMode `9/9`（`TrainingLab-Corrective-PhysicalFollowup-PlayMode.xml`）通过，
+  但自动事件不能替代该人工门禁。
 - Windows x64 IL2CPP build 再次真实执行并因本机仅有 `MacStandaloneSupport` 报 unsupported target，
   日志为 `TestResults/TrainingLab-Corrective-Windows-Build.log`。因此 handoff 保持 `Status: active`，
   当前状态为“已自动验证 / 待人工验收”，不得称完成。

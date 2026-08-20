@@ -243,7 +243,7 @@ dead-end state.
     corrected legal Positioning, and Serve reached by the page button. Separately verify cross-team/blank drop
     rejection with real mouse input.
 
-- [ ] **Step 4: Freeze code and resume the existing Task 9 gates.**
+- [x] **Step 4: Freeze code and resume the existing Task 9 gates.**
 
     After R0--R3 code is frozen, run one complete EditMode suite, the native V5 TrainingLab PlayMode path, the
     existing V5 Career regression and 3v3 isolation smoke required by Task 9. Then recapture the remaining
@@ -619,25 +619,25 @@ dead-end state.
 
 **Files:** docs/changes/2026-08-04-001-training-lineup-position-fault-v5.md, active handoff and tests only for discovered gaps.
 
-- [ ] **Step 1: Run final focused EditMode.**
+- [x] **Step 1: Run final focused EditMode.**
 
     "$UNITY_BIN" -batchmode -nographics -projectPath "$PWD" -runTests -testPlatform EditMode \
       -testFilter "Volleyball.EditModeTests.MatchSetupEditorV1Tests;Volleyball.EditModeTests.MatchSetupSnapshotV1Tests;Volleyball.EditModeTests.TrainingLabLocalScenarioRepositoryV2Tests;Volleyball.EditModeTests.TrainingLabCourtProjectionV1Tests;Volleyball.EditModeTests.TrainingScenarioLabControllerTests;Volleyball.EditModeTests.TrainingScenarioLabSceneTests" \
       -testResults "$PWD/TestResults/TrainingLab-Unified-Final-EditMode.xml" \
       -logFile "$PWD/TestResults/TrainingLab-Unified-Final-EditMode.log"
 
-- [ ] **Step 2: Run final TrainingLab PlayMode.**
+- [x] **Step 2: Run final TrainingLab PlayMode.**
 
     "$UNITY_BIN" -batchmode -nographics -projectPath "$PWD" -runTests -testPlatform PlayMode \
       -testFilter "Volleyball.PlayModeTests.TrainingScenarioLabPlayModeTests" \
       -testResults "$PWD/TestResults/TrainingLab-Unified-Final-PlayMode.xml" \
       -logFile "$PWD/TestResults/TrainingLab-Unified-Final-PlayMode.log"
 
-- [ ] **Step 3: Run affected native V5 and frozen V4 regressions.**
+- [x] **Step 3: Run affected native V5 and frozen V4 regressions.**
 
     Run focused native V5 startup/position-fault/result/replay tests, Career V5 aggregation tests, existing V4 Career/formal runner tests and the 3v3 compatibility PlayMode smoke. TrainingLab tests must assert V5 authority is used; V4 regression tests must assert the new startup envelope is unreachable. Do not describe any earlier XML as fresh evidence.
 
-- [ ] **Step 4: Run one complete EditMode suite after code freeze.**
+- [x] **Step 4: Run one complete EditMode suite after code freeze.**
 
     Run the repository's complete EditMode suite once after all runtime and UI changes are frozen. If a material runtime fix follows, rerun only the affected regression unless the fix crosses Shared/V4 compatibility boundaries and makes the complete result stale.
 
@@ -653,7 +653,7 @@ dead-end state.
 
     Run `Volleyball.Editor.TrainingScenarioLabWindowsDevelopmentBuild.Build` in batch mode and verify `Builds/Windows/training-lab-build-manifest.json`. On a physical Windows x64 Player, verify keyboard/mouse interaction, top/side edits, read-only 3D, V5 attributes, automatic preflight, legal rally, position-fault rally, pause/step/reset and deterministic rerun. If the environment is unavailable, record `待人工验收` and do not claim completion.
 
-- [ ] **Step 8: Record actual evidence.**
+- [x] **Step 8: Record actual evidence.**
 
     Update docs/changes/2026-08-04-001-training-lineup-position-fault-v5.md with exact XML counts, screenshot paths, restart result and the still-pending Windows x64 IL2CPP Player status.
 

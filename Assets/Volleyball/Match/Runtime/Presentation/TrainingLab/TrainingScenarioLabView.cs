@@ -60,6 +60,8 @@ namespace Volleyball.Presentation.TrainingLab
         private int _rotationDragSlot;
         private VisualElement _rotationDragCard;
         private int _rotationDragPointer = -1;
+        private TeamSide? _rotationDropSide;
+        private int? _rotationDropSlot;
         private string _rulerDragAxis;
         private int _rulerDragPointer = -1;
         private int _previewPointer = -1;
@@ -576,6 +578,7 @@ namespace Volleyball.Presentation.TrainingLab
                     card.AddToClassList("rotation-card-dragging");
                     card.CapturePointer(evt.pointerId);
                 });
+                card.RegisterCallback<PointerMoveEvent>(OnRotationPointerMove);
                 card.RegisterCallback<PointerUpEvent>(OnRotationPointerUp);
                 card.RegisterCallback<PointerCancelEvent>(_ =>
                     ClearRotationDrag());
@@ -1170,18 +1173,37 @@ namespace Volleyball.Presentation.TrainingLab
             if (!_rotationDragSide.HasValue) return;
             try
             {
-                var picked = RotationCardAncestor(evt.target as VisualElement);
-                if (picked == _rotationDragCard)
-                    picked = RotationCardAncestor(_root.panel?.Pick(new Vector2(
-                        evt.position.x, evt.position.y)));
-                if (picked?.userData is RotationCardBinding target)
+                UpdateRotationDropTarget(evt.position);
+                if (_rotationDropSide.HasValue && _rotationDropSlot.HasValue)
                     _controller.TryDropRotationCard(_rotationDragSide.Value,
-                        _rotationDragSlot, target.Side, target.Slot);
+                        _rotationDragSlot, _rotationDropSide.Value,
+                        _rotationDropSlot.Value);
             }
             finally
             {
                 ClearRotationDrag();
             }
+        }
+
+        private void OnRotationPointerMove(PointerMoveEvent evt)
+        {
+            if (_rotationDragSide.HasValue &&
+                evt.pointerId == _rotationDragPointer)
+                UpdateRotationDropTarget(evt.position);
+        }
+
+        private void UpdateRotationDropTarget(Vector3 pointerPosition)
+        {
+            var picked = RotationCardAncestor(_root.panel?.Pick(new Vector2(
+                pointerPosition.x, pointerPosition.y)));
+            if (picked?.userData is RotationCardBinding target)
+            {
+                _rotationDropSide = target.Side;
+                _rotationDropSlot = target.Slot;
+                return;
+            }
+            _rotationDropSide = null;
+            _rotationDropSlot = null;
         }
 
         private VisualElement RotationCardAncestor(VisualElement element)
@@ -1200,6 +1222,8 @@ namespace Volleyball.Presentation.TrainingLab
             _rotationDragSlot = 0;
             _rotationDragCard = null;
             _rotationDragPointer = -1;
+            _rotationDropSide = null;
+            _rotationDropSlot = null;
             if (card == null) return;
             card.RemoveFromClassList("rotation-card-dragging");
             if (pointer >= 0 && card.HasPointerCapture(pointer))

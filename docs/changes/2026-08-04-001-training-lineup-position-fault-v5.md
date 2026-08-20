@@ -84,6 +84,13 @@
   `TestResults/TrainingLab/VisualAcceptance/2026-08-18-corrective/00-current-hub.png` 至
   `07-serve-reached-by-page-button.png`；其中 `03-same-team-exchange-attempt.png` 是未成功的物理拖拽尝试，
   不作为通过证据。
-- 仍待门禁：真实物理鼠标 rotation/court/ruler drag、精确 1920x1080 像素截图、Preflight/Run/
-  dirty-leave 补图，以及安装 Windows Build Support (IL2CPP) 后的 Windows x64 Development Build 与
-  Player 验收。当前状态保持“已自动验证，待 Windows 与剩余人工验收”。
+- 新增九张逐张核验为 `1920x1080` 的帧缓冲截图：
+  `TestResults/TrainingLab/VisualAcceptance/2026-08-20-exact-1920x1080/00-hub.png` 至
+  `08-unsaved-leave.png`，覆盖 Hub、标准轮转、合法站位、故障聚焦、精确字段修正、Serve、自动
+  preflight、原生 V5 单回合结果和 dirty-leave modal。Serve 侧视和只读 3D 的同分辨率截图尚待补齐。
+- fresh pointer follow-up PlayMode `9/9`，证据为
+  `TestResults/TrainingLab-Corrective-PhysicalFollowup-PlayMode.xml`。computer-use 的坐标点击可驱动 Game
+  View，但 drag 未向 Unity 发送 PointerDown/Move/Up，因此不能作为物理拖拽通过证据。
+- 仍待门禁：真实物理鼠标 rotation/court/ruler drag、Serve 侧视/只读 3D 精确截图，以及安装 Windows
+  Build Support (IL2CPP) 后的 Windows x64 Development Build 与 Player 验收。当前状态保持
+  “已自动验证，待 Windows 与剩余人工验收”。
